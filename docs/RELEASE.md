@@ -61,7 +61,7 @@ The Chrome App Store Connect session has expired. The following is **last-saved 
 
 ## Remaining publication work
 
-Five actual Store build 3 screenshots have been captured; composition is in progress. **Zero screenshots are uploaded.** The chosen set will be five strong frames; ten is the optional maximum, not a requirement. Historical direct layout studies are not final upload assets. Final compositions need dimension, readability, privacy and metadata checks.
+Five compositions from actual Store build 3 captures are complete and reviewed: Disk Map, developer resources, cleanup review, memory and the menu-bar monitor. Each is opaque sRGB at 2880×1800, with sample-folder labels where applicable and recorded source/output hashes. **Zero screenshots are uploaded.** Ten is the optional maximum, not a requirement. Historical direct layout studies are not final upload assets.
 
 Renew account access and resolve Store signing/profile prerequisites, validate a genuine distribution export, finish user-confirmed privacy publication and remaining publisher declarations, then upload and verify processing. App Review submission, approval and live availability are separate later outcomes. No Store upload, review approval or public Store release is claimed.
 
