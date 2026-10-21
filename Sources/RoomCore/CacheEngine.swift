@@ -20,6 +20,7 @@ public actor CacheEngine {
     private let protectedMeasurementNodeLimit: Int
     private let protectedMeasurementTimeLimit: TimeInterval
     private let candidatePartitionUnitLimit: Int
+    private let npmContentLimits: NPMContentLimits
     private var candidates: [UUID: Candidate] = [:]
     private var activeScan: UUID?
     private var receipts: [ActivityReceipt] = []
@@ -36,6 +37,7 @@ public actor CacheEngine {
         self.protectedMeasurementNodeLimit = 25_000
         self.protectedMeasurementTimeLimit = 1
         self.candidatePartitionUnitLimit = 20_000
+        self.npmContentLimits = .standard
     }
 
     /// Dynamic metadata discovery runs lazily on this actor, never in the caller's initializer.
@@ -52,6 +54,7 @@ public actor CacheEngine {
         self.protectedMeasurementNodeLimit = 25_000
         self.protectedMeasurementTimeLimit = 1
         self.candidatePartitionUnitLimit = 20_000
+        self.npmContentLimits = .standard
     }
 
     // Tests may substitute only their own isolated Trash folder and process listing.
@@ -61,7 +64,8 @@ public actor CacheEngine {
          protectedMeasurementNodeLimit: Int = 25_000,
          protectedMeasurementTimeLimit: TimeInterval = 1,
          candidatePartitionUnitLimit: Int = 20_000,
-         trashProvider: (@Sendable (URL) throws -> URL)? = nil) {
+         trashProvider: (@Sendable (URL) throws -> URL)? = nil,
+         npmContentLimits: NPMContentLimits = .standard) {
         self.resolvedConfiguration = configuration
         self.configurationProvider = nil
         self.activityDirectory = activityDirectory
@@ -72,6 +76,7 @@ public actor CacheEngine {
         self.protectedMeasurementNodeLimit = max(1, protectedMeasurementNodeLimit)
         self.protectedMeasurementTimeLimit = max(0, protectedMeasurementTimeLimit)
         self.candidatePartitionUnitLimit = max(0, candidatePartitionUnitLimit)
+        self.npmContentLimits = npmContentLimits
     }
 
     public func scan(progress: (@Sendable (CacheScanProgress) async -> Void)? = nil) async -> ScanReport {
@@ -88,6 +93,7 @@ public actor CacheEngine {
         var protectedData: [ProtectedData] = []
         var issues: [ScanIssue] = configuration.inspectionIssues
         var pendingCandidates: [UUID: Candidate] = [:]
+        let contentBudget = NPMContentBudget(npmContentLimits)
         let processes: Result<[String], any Error> = configuration.roots.contains(where: { !$0.guardedProcesses.isEmpty })
             ? Result { try processProvider() } : .success([])
         var seenRootIDs: Set<String> = []
@@ -129,6 +135,8 @@ public actor CacheEngine {
             let inspectionOnly: Bool
             if case .inspectOnly = root.cleanupPolicy { inspectionOnly = true } else { inspectionOnly = false }
             let deadline = Date().addingTimeInterval(root.inspectionTimeLimit)
+            let boundedMeasurement = inspectionOnly || root.contentValidation != nil
+            let measurementDeadline = root.contentValidation == nil ? deadline : min(deadline, contentBudget.deadline)
             var remainingNodes = root.inspectionNodeLimit
             do {
                 try Self.validateAncestors(root.url)
@@ -149,7 +157,9 @@ public actor CacheEngine {
                     guard fstat(rootDescriptor, &opened) == 0, Self.metadata(opened).identity == rootStat.identity else {
                         throw EngineError.message("The cache folder changed while it was being scanned. Scan again.")
                     }
-                    let listing = try Self.directoryNames(rootDescriptor, maximumNames: inspectionOnly ? 10_000 : nil)
+                    let listing = try Self.directoryNames(rootDescriptor,
+                        maximumNames: boundedMeasurement ? min(10_000, root.inspectionNodeLimit) : nil,
+                        deadline: root.contentValidation == nil ? nil : measurementDeadline)
                     partial = listing.limited
                     var finished = stat()
                     guard fstat(rootDescriptor, &finished) == 0, Self.metadata(finished).identity == rootStat.identity else {
@@ -163,19 +173,25 @@ public actor CacheEngine {
                 }
                 for child in children {
                     if Task.isCancelled || activeScan != scanID { partial = true; break }
-                    if inspectionOnly && (remainingNodes <= 0 || Date() >= deadline) { partial = true; break }
+                    if boundedMeasurement && (remainingNodes <= 0 || Date() >= measurementDeadline) { partial = true; break }
                     if inspectionOnly && (Self.isExcluded(child, exclusions: root.excludedURLs) ||
                         root.excludedChildNameRules.contains(where: { $0.matches(child.lastPathComponent) })) { continue }
                     do {
-                        let budget = inspectionOnly ? MeasurementBudget(maximumNodes: remainingNodes, deadline: deadline) : nil
+                        let budget = boundedMeasurement ? MeasurementBudget(maximumNodes: remainingNodes, deadline: measurementDeadline) : nil
                         let snapshot = try Self.snapshot(child, measurementBudget: budget,
-                            partitionDepth: inspectionOnly || isBlockedByOwner(root, processes: processes) ? 0 : root.candidateDepth - 1,
+                            partitionDepth: boundedMeasurement || isBlockedByOwner(root, processes: processes) ? 0 : root.candidateDepth - 1,
                             maximumPartitionUnits: candidatePartitionUnitLimit, excluding: inspectionOnly ? root.excludedURLs : [])
                         remainingNodes -= snapshot.visitedNodes
                         partial = partial || snapshot.measurementLimited
                         groupIssues.append(contentsOf: snapshot.issues.prefix(max(0, 100 - groupIssues.count)))
                         func append(_ url: URL, _ measured: TreeSnapshot, parentIdentity: FileIdentity) {
-                            let eligibility = eligibility(for: root, url: url, snapshot: measured, now: now, processes: processes)
+                            var eligibility = eligibility(for: root, url: url, snapshot: measured, now: now, processes: processes)
+                            if eligibility.isEligible, root.contentValidation != nil {
+                                do { try NPMContentPolicy.verify(source: url, originalURL: url, root: root,
+                                    identity: measured.identity, budget: contentBudget) }
+                                catch { eligibility = .blocked(error.localizedDescription) }
+                                partial = partial || contentBudget.limited || Task.isCancelled
+                            }
                             // Only known independent caches opt into splitting. A failed
                             // metadata walk never creates eligible descendant candidates.
                             if !inspectionOnly, !eligibility.isEligible, root.candidateDepth > 1,
@@ -257,11 +273,12 @@ public actor CacheEngine {
     public func authorizationLocations(entryIDs: [UUID]) throws -> [URL] {
         guard !entryIDs.isEmpty else { throw EngineError.message("Select eligible cache items before reviewing access.") }
         var locations: [String: URL] = [:]
+        let contentBudget = NPMContentBudget(npmContentLimits)
         for id in Set(entryIDs) {
             guard let candidate = candidates[id] else {
                 throw EngineError.message("The selection belongs to an older or incomplete scan. Scan again.")
             }
-            try validate(candidate)
+            try validate(candidate, contentBudget: contentBudget)
             let parent = candidate.entry.url.deletingLastPathComponent()
             locations[parent.path] = parent
         }
@@ -324,6 +341,7 @@ public actor CacheEngine {
 
     public func clean(entryIDs: Set<UUID>) async -> ActivityReceipt {
         var receipt = ActivityReceipt(id: UUID(), date: Date(), items: [], issues: [])
+        let contentBudget = NPMContentBudget(npmContentLimits)
         for id in entryIDs.sorted(by: { $0.uuidString < $1.uuidString }) {
             guard let candidate = candidates[id] else {
                 receipt.issues.append(ScanIssue(url: configuration.homeDirectory,
@@ -354,13 +372,21 @@ public actor CacheEngine {
             let id = receipt.items[index].id
             guard let candidate = candidates[id] else { continue }
             do {
-                try validate(candidate)
+                try validate(candidate, contentBudget: contentBudget, verifyContent: false)
                 // Re-check live tools after walking the tree, immediately before the move.
                 try requireInactive(candidate.root)
                 try Self.validateAncestors(candidate.entry.url)
                 guard try Self.metadata(candidate.entry.url).identity == candidate.snapshot.identity,
                       Self.sameObject(try Self.metadata(candidate.entry.url.deletingLastPathComponent()).identity, candidate.parentIdentity) else {
                     throw EngineError.message("The item changed after scanning. Scan again.")
+                }
+                if candidate.root.contentValidation != nil {
+                    try NPMContentPolicy.verify(source: candidate.entry.url, originalURL: candidate.entry.url,
+                        root: candidate.root, identity: candidate.snapshot.identity, budget: contentBudget)
+                    guard try Self.metadata(candidate.entry.url).identity == candidate.snapshot.identity,
+                          Self.sameObject(try Self.metadata(candidate.entry.url.deletingLastPathComponent()).identity, candidate.parentIdentity) else {
+                        throw EngineError.message("The npm object or its parent changed after verification. Nothing moved.")
+                    }
                 }
                 let returnedTrashURL = try trashProvider(candidate.entry.url)
                 let trashURL = returnedTrashURL.roomLexicallyNormalized
@@ -444,6 +470,7 @@ public actor CacheEngine {
         }
         var issues: [ScanIssue] = []
         var restoredCount = 0
+        let contentBudget = NPMContentBudget(npmContentLimits)
         for index in receipt.items.indices where receipt.items[index].status == .trashed {
             if Task.isCancelled { break }
             let item = receipt.items[index]
@@ -480,6 +507,10 @@ public actor CacheEngine {
                     throw EngineError.message("The item in Trash changed or is unavailable. Restore it manually in Finder.")
                 }
                 try requireInactive(root)
+                if root.contentValidation != nil {
+                    try NPMContentPolicy.verify(source: trashURL, originalURL: item.originalURL,
+                        root: root, identity: current.identity, budget: contentBudget, exactTrashItem: true)
+                }
                 // Revalidate every parent component immediately before the move.
                 try validateRestoreParent(item)
                 try Self.validateAncestors(trashURL)
@@ -519,6 +550,11 @@ public actor CacheEngine {
                              processes: Result<[String], any Error>) -> Eligibility {
         if case .inspectOnly(let reason) = root.cleanupPolicy { return .blocked(reason) }
         if intersectsProtected(url) { return .blocked("Contains protected user work or installed resources. Inspect only.") }
+        if root.contentValidation != nil,
+           (snapshot.identity.mode & UInt16(S_IFMT) != UInt16(S_IFREG) ||
+            NPMContentPolicy.expectedDigest(originalURL: url, root: root) == nil) {
+            return .blocked("Only individual completed npm SHA512 objects match this cleanup rule. This item stays in place.")
+        }
         if root.childNameRule != nil, snapshot.identity.mode & UInt16(S_IFMT) != UInt16(S_IFDIR) {
             return .blocked("Only generated cache folders match this cleanup rule. Inspect this file manually.")
         }
@@ -528,13 +564,20 @@ public actor CacheEngine {
         if snapshot.hasForeignOwner { return .blocked("Contains files owned by another user. Review this item in Finder.") }
         if snapshot.hasMultipleLinks { return .blocked("Contains shared hard links. Reclaimed space cannot be guaranteed; review in Finder.") }
         if snapshot.hasUnsupportedType { return .blocked("Contains a special filesystem item. Review this item in Finder.") }
-        if now.timeIntervalSince(snapshot.latestModification) < root.minimumAge {
-            let days = max(1, Int(root.minimumAge / 86_400))
+        let minimumAge = root.contentValidation == nil ? root.minimumAge : max(root.minimumAge, NPMContentPolicy.minimumAge)
+        if now.timeIntervalSince(snapshot.latestModification) < minimumAge {
+            let days = max(1, Int(minimumAge / 86_400))
+            if root.contentValidation != nil { return .blocked("Modified within the last \(days) days. This npm object stays in place.") }
             return .blocked("Used within the last \(days) days. Kept until every file is older.")
         }
         if !root.guardedProcesses.isEmpty {
             switch processes {
-            case .failure: return .blocked("Running tools could not be checked. Try scanning again.")
+            case .failure:
+                #if ROOM_APP_STORE
+                return .blocked("Background-tool activity is unavailable in the App Store sandbox. This cache stays held; review it with its owning app.")
+                #else
+                return .blocked("Running tools could not be checked. Try scanning again.")
+                #endif
             case .success(let names):
                 if let process = Self.activeProcess(for: root, in: names) {
                     return .blocked("\(process) is running. Quit it and scan again.")
@@ -557,7 +600,7 @@ public actor CacheEngine {
         }
     }
 
-    private func validate(_ candidate: Candidate) throws {
+    private func validate(_ candidate: Candidate, contentBudget: NPMContentBudget? = nil, verifyContent: Bool = true) throws {
         if case .inspectOnly = candidate.root.cleanupPolicy { throw EngineError.message("This discovered location is inspect-only. Nothing moved.") }
         guard !intersectsProtected(candidate.entry.url) else { throw EngineError.message("Protected user work intersects this item. Nothing moved.") }
         try Self.validateCandidatePath(candidate.entry.url, root: candidate.root)
@@ -581,17 +624,29 @@ public actor CacheEngine {
               !current.hasUnsupportedType, !current.hasMultipleLinks else {
             throw EngineError.message("The item or its contents changed after scanning. Scan again.")
         }
-        guard Date().timeIntervalSince(current.latestModification) >= candidate.root.minimumAge else {
+        let minimumAge = candidate.root.contentValidation == nil ? candidate.root.minimumAge : max(candidate.root.minimumAge, NPMContentPolicy.minimumAge)
+        guard Date().timeIntervalSince(current.latestModification) >= minimumAge else {
             throw EngineError.message("The item was recently modified. It will stay in place.")
         }
         try requireInactive(candidate.root)
+        if verifyContent, candidate.root.contentValidation != nil {
+            try NPMContentPolicy.verify(source: candidate.entry.url, originalURL: candidate.entry.url,
+                root: candidate.root, identity: candidate.snapshot.identity,
+                budget: contentBudget ?? NPMContentBudget(npmContentLimits))
+        }
     }
 
     private func requireInactive(_ root: CacheRoot) throws {
         guard !root.guardedProcesses.isEmpty else { return }
         let names: [String]
         do { names = try processProvider() }
-        catch { throw EngineError.message("Running tools could not be checked. Nothing moved.") }
+        catch {
+            #if ROOM_APP_STORE
+            throw EngineError.message("Background-tool activity is unavailable in the App Store sandbox. This cache stays held; review it with its owning app.")
+            #else
+            throw EngineError.message("Running tools could not be checked. Nothing moved.")
+            #endif
+        }
         if let name = Self.activeProcess(for: root, in: names) {
             throw EngineError.message("\(name) started running. Quit it and scan again.")
         }

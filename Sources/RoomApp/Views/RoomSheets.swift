@@ -407,16 +407,30 @@ private struct RoomFolderAccessSection: View {
                 .frame(height: min(140, CGFloat(insights.accessFolders.count) * 47))
             }
             #if ROOM_APP_STORE
-            Text("Choose folders to inspect. macOS permissions can keep some locations unavailable.")
+            if insights.hasRememberedHomeAccess {
+                Label("Home folder access remembered", systemImage: "checkmark.circle")
+                    .font(.system(size: 13)).foregroundStyle(.secondary)
+            } else {
+                Button { insights.chooseHomeAccess() } label: {
+                    Label("Remember home folder", systemImage: "house")
+                }
+                .buttonStyle(.glass)
+                .accessibilityIdentifier("RoomRememberHomeFolderButton")
+            }
+            Text("One read approval covers accessible subfolders and hidden files. macOS can still protect locations; other volumes need separate approval. Changes require a reviewed write grant.")
                 .font(.system(size: 12)).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             #else
-            HStack {
-                Text("macOS manages system permissions.").foregroundStyle(.secondary)
-                Spacer()
-                Button("Privacy settings") { insights.openPrivacySettings() }.buttonStyle(.plain)
+            VStack(alignment: .leading, spacing: 10) {
+                Button { insights.openPrivacySettings() } label: {
+                    Label("Open Full Disk Access", systemImage: "lock.shield")
+                }
+                .buttonStyle(.glass)
+                .accessibilityIdentifier("RoomFullDiskAccessButton")
+                Text("Enable Room in macOS settings to inspect protected locations. Folder approvals stay remembered; macOS controls access.")
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .font(.system(size: 12))
             #endif
             if let note = insights.accessNote {
                 Text(note).font(.system(size: 12)).foregroundStyle(.secondary)

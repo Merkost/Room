@@ -2,23 +2,45 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleExecutable</key><string>Room</string>
-    <key>CFBundleIdentifier</key><string>app.room.storage</string>
-    <key>CFBundleName</key><string>Room</string>
-    <key>CFBundleDisplayName</key><string>Room</string>
-    <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>1.6.0</string>
-    <key>CFBundleVersion</key><string>8</string>
-    <key>CFBundleIconFile</key><string>Room.icns</string>
-    <key>LSMinimumSystemVersion</key><string>26.0</string>
-    <key>NSHighResolutionCapable</key><true/>
-    <key>NSPrincipalClass</key><string>NSApplication</string>
-    <key>NSDocumentsFolderUsageDescription</key><string>Room reads file names and sizes to map storage in folders you choose. File contents are not sent to AI.</string>
-    <key>NSDownloadsFolderUsageDescription</key><string>Room reads file names and sizes to find large downloads and categorize storage in folders you choose.</string>
-    <key>NSDesktopFolderUsageDescription</key><string>Room reads file names and sizes to map the Desktop when you choose to inspect it.</string>
-    <key>NSRemovableVolumesUsageDescription</key><string>Room maps file sizes on removable volumes you choose to inspect.</string>
-    <key>NSNetworkVolumesUsageDescription</key><string>Room maps file sizes on network volumes you choose to inspect.</string>
-    <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
-    <key>NSHumanReadableCopyright</key><string>Room</string>
+	<key>CFBundleDisplayName</key>
+	<string>Room</string>
+	<key>CFBundleExecutable</key>
+	<string>Room</string>
+	<key>CFBundleIconFile</key>
+	<string>Room.icns</string>
+	<key>CFBundleIdentifier</key>
+	<string>app.room.storage</string>
+	<key>CFBundleName</key>
+	<string>Room</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.7.0</string>
+	<key>CFBundleVersion</key>
+	<string>9</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.utilities</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>26.0</string>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>Room reads file names and sizes to map the Desktop when you choose to inspect it.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>Room reads file names and sizes to map storage in folders you choose. File contents are not sent to AI.</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>Room reads file names and sizes to find large downloads and categorize storage in folders you choose.</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>Room</string>
+	<key>NSNetworkVolumesUsageDescription</key>
+	<string>Room maps file sizes on network volumes you choose to inspect.</string>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+	<key>NSRemovableVolumesUsageDescription</key>
+	<string>Room maps file sizes on removable volumes you choose to inspect.</string>
+	<key>RoomPrivacyURL</key>
+	<string>https://room.merkost.dev/privacy/</string>
+	<key>RoomSupportURL</key>
+	<string>https://room.merkost.dev/support/</string>
 </dict>
 </plist>

@@ -70,7 +70,13 @@ struct RoomStoreAccessTests {
         let model = RoomViewModel(engine: engine)
         model.scan()
         for _ in 0..<200 where model.isScanning { try await Task.sleep(for: .milliseconds(10)) }
-        #expect(!model.isScanning && model.selectedBytes > 0 && model.canReviewCleanup)
+        #expect(!model.isScanning)
+        #expect(model.scanIssues.isEmpty, "Fixture scan issues: \(model.scanIssues.joined(separator: "; "))")
+        let source = try #require(model.sources.first)
+        #expect(source.blockedReason == nil, "Unexpected fixture hold: \(source.blockedReason ?? "none")")
+        #expect(source.eligibleBytes == Int64(data.count))
+        #expect(model.selection == [source.id])
+        #expect(model.selectedBytes == Int64(data.count) && model.canReviewCleanup)
         await model.cleanSelected()
         #expect(calls.withLock { $0 } == 0)
         #expect(try Data(contentsOf: item) == data)
@@ -96,7 +102,9 @@ private struct StoreAccessFixture {
     let cache: URL
     let trash: URL
     init() throws {
-        root = FileManager.default.temporaryDirectory.appendingPathComponent("Room-StoreAccess-" + UUID().uuidString, isDirectory: true)
+        // Keep the physical spelling: Foundation can rewrite resolved /private/var
+        // paths to /var aliases, which the scanner correctly refuses to traverse.
+        root = URL(fileURLWithPath: "/private/tmp/Room-StoreAccess-" + UUID().uuidString, isDirectory: true)
         cache = root.appendingPathComponent("cache", isDirectory: true)
         trash = root.appendingPathComponent("fixture-trash", isDirectory: true)
         try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)

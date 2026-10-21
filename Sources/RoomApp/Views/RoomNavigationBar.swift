@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// A stable row of destinations with one glass selection that moves between them.
-/// Labels remain visible; only an explicit selection triggers the symbol feedback.
+/// Flat navigation lives on the native toolbar. Only the selected destination
+/// receives glass; there is no second enclosing material behind the controls.
 struct RoomNavigationBar: View {
     @Binding var selection: RoomDestination
     @AppStorage("RoomMotionEnabled") private var motionEnabled = true
@@ -10,11 +10,9 @@ struct RoomNavigationBar: View {
     @Namespace private var selectionGlass
     @FocusState private var focusedDestination: RoomDestination?
     @State private var hoveredDestination: RoomDestination?
-    @State private var selectionPulses: [RoomDestination: Int] = [:]
 
-    private var allowsMotion: Bool { motionEnabled && !reduceMotion }
     private var selectionAnimation: Animation? {
-        allowsMotion ? .spring(response: 0.24, dampingFraction: 1) : nil
+        motionEnabled && !reduceMotion ? .smooth(duration: 0.22) : nil
     }
     private var items: [NavigationItem] {
         [
@@ -27,60 +25,50 @@ struct RoomNavigationBar: View {
     }
 
     var body: some View {
-        GlassEffectContainer(spacing: 4) {
-            ViewThatFits(in: .horizontal) {
-                navigationRow(compact: false)
-                navigationRow(compact: true)
-            }
-        }
-        .background {
-            Capsule()
-                .fill(reduceTransparency ? Color(nsColor: .windowBackgroundColor) : Color.primary.opacity(0.035))
+        ViewThatFits(in: .horizontal) {
+            navigationRow(compact: false)
+            navigationRow(compact: true)
         }
         .fixedSize(horizontal: false, vertical: true)
         .animation(selectionAnimation, value: selection)
-        .transaction { transaction in
-            if !allowsMotion { transaction.disablesAnimations = true }
-        }
         .onMoveCommand(perform: moveSelection)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Room views")
     }
 
     private func navigationRow(compact: Bool) -> some View {
-        HStack(spacing: 2) {
-            ForEach(items) { item in destinationButton(item, compact: compact) }
-        }.padding(4)
+        GlassEffectContainer(spacing: 2) {
+            HStack(spacing: 2) {
+                ForEach(items) { item in destinationButton(item, compact: compact) }
+            }
+            .padding(.vertical, 3)
+            .padding(.horizontal, 2)
+        }
     }
 
     private func destinationButton(_ item: NavigationItem, compact: Bool) -> some View {
-        Button {
-            select(item.destination)
-        } label: {
-            HStack(spacing: 6) {
-                destinationSymbol(item)
-                    .font(.system(size: 14, weight: .medium))
-                    .frame(width: 17)
-                if !compact || selection == item.destination {
-                    Text(item.title)
-                        .font(.system(size: 12, weight: selection == item.destination ? .semibold : .medium))
-                        .lineLimit(1)
+        let selected = selection == item.destination
+        let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
+        return Button { select(item.destination) } label: {
+            HStack(spacing: 5) {
+                Image(systemName: item.symbol).font(.system(size: 13, weight: .medium)).frame(width: 16)
+                if !compact || selected {
+                    Text(item.title).font(.system(size: 12, weight: .medium)).lineLimit(1)
                 }
             }
-            .foregroundStyle(selection == item.destination ? .primary : .secondary)
-            .padding(.horizontal, compact && selection != item.destination ? 12 : 13)
-            .frame(height: 34)
-            .fixedSize(horizontal: true, vertical: false)
+            .foregroundStyle(selected ? .primary : .secondary)
+            .frame(width: compact ? (selected ? 96 : 34) : 88, height: 30)
             .background {
-                neutralBackground(for: item.destination)
+                if selected && reduceTransparency {
+                    shape.fill(Color(nsColor: .controlBackgroundColor))
+                } else if !selected && hoveredDestination == item.destination {
+                    shape.fill(Color.primary.opacity(0.045))
+                }
             }
-            // Apply material to the content-bearing view so SwiftUI keeps the
-            // icon and title above the refractive plane, rather than sampling them.
-            .glassEffect(selection == item.destination && !reduceTransparency
-                ? .regular.tint(Color.cyan.opacity(0.08)).interactive() : .identity, in: Capsule())
-            .glassEffectID(selection == item.destination ? "RoomSelectedDestination" : nil, in: selectionGlass)
-            .glassEffectTransition(allowsMotion ? .matchedGeometry : .identity)
-            .contentShape(Capsule())
+            .glassEffect(selected && !reduceTransparency ? .regular.interactive() : .identity, in: shape)
+            .glassEffectID(selected ? "RoomSelectedDestination" : nil, in: selectionGlass)
+            .glassEffectTransition(motionEnabled && !reduceMotion ? .matchedGeometry : .identity)
+            .contentShape(shape)
         }
         .buttonStyle(.plain)
         .focused($focusedDestination, equals: item.destination)
@@ -92,32 +80,12 @@ struct RoomNavigationBar: View {
         .help("\(item.title) (⌘\(String(item.shortcut)))")
         .accessibilityLabel(item.title)
         .accessibilityIdentifier("RoomNavigation-\(item.id)")
-        .accessibilityValue(selection == item.destination ? "Selected" : "")
-        .accessibilityAddTraits(selection == item.destination ? [.isSelected] : [])
-    }
-
-    @ViewBuilder
-    private func destinationSymbol(_ item: NavigationItem) -> some View {
-        if allowsMotion {
-            Image(systemName: item.symbol)
-                .symbolEffect(.bounce.byLayer, options: .speed(2.5), value: selectionPulses[item.destination, default: 0])
-        } else {
-            Image(systemName: item.symbol)
-        }
-    }
-
-    @ViewBuilder
-    private func neutralBackground(for destination: RoomDestination) -> some View {
-        if selection == destination && reduceTransparency {
-            Capsule().fill(Color(nsColor: .controlBackgroundColor))
-        } else if selection != destination && hoveredDestination == destination {
-            Capsule().fill(Color.primary.opacity(0.045))
-        }
+        .accessibilityValue(selected ? "Selected" : "")
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 
     private func select(_ destination: RoomDestination) {
         guard destination != selection else { return }
-        if allowsMotion { selectionPulses[destination, default: 0] += 1 }
         withAnimation(selectionAnimation) { selection = destination }
     }
 

@@ -11,18 +11,22 @@ struct RoomDiskMapView: View {
     @State private var showingAllFindings = false
     @State private var filter = RoomDiskFilter.all
 
-    private var animation: Animation? { motionEnabled && !reduceMotion ? .smooth(duration: 0.35) : nil }
+    private var animation: Animation? { motionEnabled && !reduceMotion ? .smooth(duration: 0.24) : nil }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
-            HStack(alignment: .center, spacing: 14) {
-                Label("Disk map", systemImage: "square.grid.2x2")
-                    .font(RoomType.heading(26)).tracking(-0.4)
-                Spacer(minLength: 12)
-                accessMenu
-                Button { insights.chooseDiskFolder() } label: { Label("Choose folder", systemImage: "folder") }
-                    .buttonStyle(.glass).controlSize(.large)
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: 20) {
+                    headerIdentity
+                    Spacer(minLength: 12)
+                    headerActions
+                }
+                VStack(alignment: .leading, spacing: 16) {
+                    headerIdentity
+                    headerActions
+                }
             }
+
 
             if let report = insights.diskReport {
                 reportContents(report)
@@ -41,7 +45,7 @@ struct RoomDiskMapView: View {
                 .frame(maxWidth: .infinity, minHeight: 380)
             }
         }
-        .padding(.top, 22)
+        .padding(.top, 6)
         .animation(animation, value: insights.diskReport?.id)
         .animation(animation, value: filter)
         .animation(animation, value: showingAllFindings)
@@ -58,6 +62,44 @@ struct RoomDiskMapView: View {
         }
     }
 
+    private var headerIdentity: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text("Disk map").font(RoomType.heading(22)).tracking(-0.4)
+            if let url = insights.diskURL {
+                Label(url.lastPathComponent.isEmpty ? url.path : url.lastPathComponent, systemImage: "folder")
+                    .font(.system(size: 13)).foregroundStyle(.secondary)
+                    .lineLimit(1).truncationMode(.middle).help(url.path)
+                    .accessibilityLabel("Current folder: \(url.path)")
+            } else {
+                Text("Map a folder, including its hidden files.")
+                    .font(.system(size: 13)).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var headerActions: some View {
+        HStack(spacing: 12) {
+            accessMenu
+            Button { insights.chooseDiskFolder() } label: {
+                Label(insights.diskURL == nil ? "Choose folder" : "Change folder", systemImage: "folder")
+            }
+            .buttonStyle(.glass).controlSize(.large).disabled(insights.isScanningDisk)
+            .accessibilityIdentifier("RoomDiskChangeFolderButton")
+            Button {
+                if insights.isScanningDisk { insights.cancelDiskScan() }
+                else if let url = insights.diskURL { insights.scanDisk(url: url) }
+                else { insights.scanHome() }
+            } label: {
+                Label(insights.isScanningDisk ? "Stop scan" : insights.diskURL == nil ? "Scan" : "Rescan",
+                      systemImage: insights.isScanningDisk ? "stop.fill" : "magnifyingglass")
+                    .font(.system(size: 13, weight: .medium)).padding(.horizontal, 8).padding(.vertical, 3)
+            }
+            .buttonStyle(.glassProminent).controlSize(.large)
+            .keyboardShortcut("r", modifiers: .command)
+            .accessibilityIdentifier("RoomDiskScanButton")
+        }.fixedSize(horizontal: true, vertical: false)
+    }
+
     private var accessMenu: some View {
         Menu {
             if !insights.accessFolders.isEmpty {
@@ -68,7 +110,13 @@ struct RoomDiskMapView: View {
                 }
             }
             Button("Add folder access…", systemImage: "folder.badge.plus") { insights.chooseAccessFolder() }
-            Button("Privacy & Security…", systemImage: "lock.shield") { insights.openPrivacySettings() }
+            #if ROOM_APP_STORE
+            if !insights.hasRememberedHomeAccess {
+                Button("Remember home folder…", systemImage: "house") { insights.chooseHomeAccess() }
+            }
+            #else
+            Button("Full Disk Access…", systemImage: "lock.shield") { insights.openPrivacySettings() }
+            #endif
         } label: {
             Image(systemName: "folder.badge.gearshape")
         }

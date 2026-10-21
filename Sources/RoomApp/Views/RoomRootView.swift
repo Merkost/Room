@@ -12,6 +12,7 @@ struct RoomRootView: View {
     @AppStorage("RoomAppearance") private var appearance = "dark"
     @AppStorage("RoomMotionEnabled") private var motionEnabled = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var developer = RoomDeveloperModel()
     @State private var destination = RoomDestination.clean
     @State private var sheet: RoomSheet?
@@ -111,8 +112,8 @@ struct RoomRootView: View {
                         .frame(width: 23, height: 23)
                     Text("Room").font(RoomType.heading(15))
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
                 .accessibilityElement(children: .combine)
             }
             ToolbarItem(placement: .principal) {
@@ -120,7 +121,7 @@ struct RoomRootView: View {
             }
             .sharedBackgroundVisibility(.hidden)
             ToolbarItemGroup(placement: .primaryAction) {
-                if destination != .activity && destination != .clean && destination != .developer {
+                if destination == .memory {
                     Button(action: refreshCurrentView) {
                         Image(systemName: canStopScan ? "stop" : "arrow.clockwise")
                     }
@@ -214,12 +215,12 @@ struct RoomRootView: View {
             .frame(minHeight: 152)
 
             ViewThatFits(in: .horizontal) {
-                HStack(spacing: 16) {
+                HStack(alignment: .center, spacing: 14) {
                     scanScopePicker
-                    Spacer(minLength: 12)
                     scanActions
+                    Spacer(minLength: 0)
                 }
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 14) {
                     scanScopePicker
                     scanActions
                 }
@@ -303,32 +304,40 @@ struct RoomRootView: View {
     @ViewBuilder private var scanScopePicker: some View {
         #if ROOM_APP_STORE
         HStack(spacing: 12) {
-            Label("\(model.approvedStoreFolderCount) folders", systemImage: "folder")
+            Label(model.approvedStoreFolderCount == 0 ? "Choose folders" : "\(model.approvedStoreFolderCount) approved \(model.approvedStoreFolderCount == 1 ? "folder" : "folders")", systemImage: "folder.badge.checkmark")
                 .font(.system(size: 12)).foregroundStyle(.secondary)
-            Button("Add folder") { model.chooseStoreFolder() }
-                .buttonStyle(.glass)
+                .fixedSize()
+            Button("Manage access") { sheet = .settings }
+                .buttonStyle(.glass).controlSize(.large)
                 .disabled(model.isWorking || model.isScanning)
-                .accessibilityIdentifier("RoomStoreAddScanFolder")
+                .accessibilityIdentifier("RoomStoreManageFolderAccess")
         }
+        .frame(minHeight: 40)
         #else
         Picker("Scan scope", selection: Binding(get: { model.scanScope }, set: { model.setScanScope($0) })) {
             ForEach(RoomCacheScanScope.allCases) { scope in Text(scope.title).tag(scope) }
         }
         .pickerStyle(.segmented)
+        .controlSize(.large)
         .labelsHidden()
+        .font(.system(size: 13, weight: .medium))
+        .frame(width: 228)
+        .padding(4)
+        .glassEffect(reduceTransparency ? .identity : .regular, in: Capsule())
+        .frame(minHeight: 40)
         .accessibilityLabel("Scan scope")
-        .frame(width: 230)
+        .accessibilityIdentifier("RoomCacheScanScopePicker")
         .disabled(model.isScanning || model.isWorking)
         .help("Full scan includes developer stores, app and hidden caches, logs, and your temporary folder. Quick scan checks the core catalogue.")
         #endif
     }
 
     private var scanActions: some View {
-        HStack(spacing: 10) {
+        HStack(alignment: .center, spacing: 10) {
             Button(action: refreshCurrentView) {
                 Label(model.isScanning ? "Stop scan" : "Scan caches", systemImage: model.isScanning ? "stop.fill" : "magnifyingglass")
                     .font(.system(size: 13, weight: .medium))
-                    .padding(.horizontal, 10).padding(.vertical, 3)
+                    .padding(.horizontal, 8).padding(.vertical, 3)
             }
             .buttonStyle(.glassProminent)
             .tint(Color(red: 0.60, green: 0.79, blue: 0.91))

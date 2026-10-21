@@ -19,7 +19,7 @@ extension CacheConfiguration {
                 cleanupPolicy: root.cleanupPolicy,
                 candidateDepth: root.id == "gradle" ? 3 : (root.id == "npm" ? 5 : root.candidateDepth),
                 excludedURLs: root.excludedURLs, childNameRule: root.childNameRule, excludedChildNameRules: root.excludedChildNameRules, inspectionNodeLimit: root.inspectionNodeLimit,
-                inspectionTimeLimit: root.inspectionTimeLimit)
+                inspectionTimeLimit: root.inspectionTimeLimit, contentValidation: root.contentValidation)
         }
         let temporary = physicalSystemDirectory(temporaryDirectory) ?? temporaryDirectory.roomLexicallyNormalized
         let generated = generatedKarmaFolders(in: temporary)

@@ -179,6 +179,8 @@ public struct CacheRoot: Sendable {
     public let guardedProcesses: [String]
     public let scope: CacheScope
     public let cleanupPolicy: CacheCleanupPolicy
+    /// Completed immutable content must pass this additional byte-level rule.
+    public let contentValidation: CacheContentValidation?
     /// Maximum nested cleanup-unit depth, used only for known independent caches.
     public let candidateDepth: Int
     /// Inventory omits these known or protected subtrees to avoid counting them twice.
@@ -193,7 +195,7 @@ public struct CacheRoot: Sendable {
                 guardedProcesses: [String] = [], scope: CacheScope = .children,
                 cleanupPolicy: CacheCleanupPolicy = .allowed, candidateDepth: Int = 1,
                 excludedURLs: [URL] = [], childNameRule: CacheChildNameRule? = nil, excludedChildNameRules: [CacheChildNameRule] = [], inspectionNodeLimit: Int = 25_000,
-                inspectionTimeLimit: TimeInterval = 2) {
+                inspectionTimeLimit: TimeInterval = 2, contentValidation: CacheContentValidation? = nil) {
         self.id = id
         self.title = title
         self.subtitle = subtitle
@@ -205,6 +207,7 @@ public struct CacheRoot: Sendable {
         self.guardedProcesses = guardedProcesses.map { $0.lowercased() }
         self.scope = scope
         self.cleanupPolicy = cleanupPolicy
+        self.contentValidation = contentValidation
         self.candidateDepth = min(6, max(1, candidateDepth))
         self.excludedURLs = excludedURLs.map(\.roomLexicallyNormalized)
         self.childNameRule = childNameRule
@@ -219,6 +222,7 @@ extension CacheRoot {
     /// inspect-only discovery parent or a sibling outside a named cache family.
     func allowsKnownLocation(_ url: URL) -> Bool {
         guard case .allowed = cleanupPolicy else { return false }
+        if contentValidation == .npmSHA512 { return NPMContentPolicy.expectedDigest(originalURL: url, root: self) != nil }
         if scope == .singleFile { return url.path == self.url.path }
         let prefix = self.url.path + "/"
         if let childNameRule {

@@ -43,7 +43,7 @@ struct RoomApp: App {
         }
         .defaultSize(width: 1000, height: 760)
         .windowStyle(.hiddenTitleBar)
-        .windowToolbarStyle(.unifiedCompact)
+        .windowToolbarStyle(.unified)
         .windowBackgroundDragBehavior(.enabled)
         .commands {
             CommandGroup(replacing: .newItem) { }

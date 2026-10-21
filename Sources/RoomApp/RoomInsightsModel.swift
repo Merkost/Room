@@ -25,13 +25,21 @@ final class RoomInsightsModel {
     @ObservationIgnored private let memoryEngine = MemoryEngine()
     @ObservationIgnored private let diskEngine = DiskMapEngine()
     @ObservationIgnored private let storageAI = StorageAIEngine()
-    @ObservationIgnored private let fileAccess = RoomFileAccess.shared
+    @ObservationIgnored private let fileAccess: RoomFileAccess
+    @ObservationIgnored private let folderPicker: @MainActor (String, String, String, URL?) async -> URL?
     @ObservationIgnored private var memoryTask: Task<Void, Never>?
     @ObservationIgnored private var diskTask: Task<Void, Never>?
     @ObservationIgnored private var diskGeneration = UUID()
     @ObservationIgnored private var analysisTask: Task<Void, Never>?
     @ObservationIgnored private var monitorTask: Task<Void, Never>?
-    @ObservationIgnored private var accessPanel: NSOpenPanel?
+
+    init(access: RoomFileAccess = .shared,
+         folderPicker: (@MainActor (String, String, String, URL?) async -> URL?)? = nil) {
+        self.fileAccess = access
+        self.folderPicker = folderPicker ?? { title, message, prompt, initial in
+            await RoomNativeFolderPicker.shared.choose(title: title, message: message, prompt: prompt, initialURL: initial)
+        }
+    }
 
     func beginMonitoring() {
         guard monitorTask == nil else { return }
@@ -84,12 +92,36 @@ final class RoomInsightsModel {
         presentFolderPicker(initialURL: suggestedHome, mapAfterApproval: false)
     }
 
-    private func presentFolderPicker(initialURL: URL, mapAfterApproval: Bool) {
+    var hasRememberedHomeAccess: Bool {
         #if ROOM_APP_STORE
+        guard let home = RoomStoreEnvironment.userHome else { return false }
+        #else
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        #endif
+        return fileAccess.scope(for: home) != nil
+    }
+
+    func chooseHomeAccess() {
+        #if ROOM_APP_STORE
+        guard let home = RoomStoreEnvironment.userHome else {
+            fileAccess.setNote("The account home could not be identified. Choose a folder explicitly.")
+            return
+        }
+        #else
+        let home = suggestedHome
+        #endif
+        presentFolderPicker(initialURL: home, mapAfterApproval: false, homeApproval: true)
+    }
+
+    private func presentFolderPicker(initialURL: URL, mapAfterApproval: Bool, homeApproval: Bool = false) {
         Task { [weak self] in
-            guard let url = await RoomNativeFolderPicker.shared.choose(title: "Allow Room to inspect a folder",
-                message: "Choose a folder to inspect. Room remembers read-only access; supported changes require a separate review and approval.",
-                prompt: mapAfterApproval ? "Allow & Map" : "Allow Folder", initialURL: initialURL), let self else { return }
+            guard let self else { return }
+            let title = homeApproval ? "Remember home folder access" : "Allow Room to inspect a folder"
+            let message = homeApproval
+                ? "Choose your home folder to remember read-only access to accessible files and hidden folders inside it. macOS may still protect some locations. Other volumes need their own folder approval. Changes always require a separate reviewed write approval."
+                : "Choose a folder to inspect. Room remembers read-only access, including accessible descendants. Supported changes require a separate review and approval."
+            guard let url = await self.folderPicker(title, message,
+                mapAfterApproval ? "Allow & Map" : "Remember Folder", initialURL) else { return }
             do {
                 let approved = try self.fileAccess.remember(url)
                 if mapAfterApproval { self.scanDisk(url: approved) }
@@ -98,41 +130,6 @@ final class RoomInsightsModel {
                 if mapAfterApproval { self.scanAuthorizedDisk(url: url, scope: url) }
             }
         }
-        #else
-        guard accessPanel == nil else { accessPanel?.makeKeyAndOrderFront(nil); return }
-        let panel = NSOpenPanel()
-        accessPanel = panel
-        panel.title = "Allow Room to inspect a folder"
-        panel.message = "Choose the folder Room may map. Hidden files are included. Analysis uses names, types and sizes, without reading file contents."
-        panel.prompt = mapAfterApproval ? "Allow & Map" : "Allow Folder"
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.showsHiddenFiles = true
-        panel.canCreateDirectories = false
-        panel.directoryURL = initialURL
-        let completion: @MainActor (NSApplication.ModalResponse) -> Void = { [weak self, weak panel] response in
-            guard let self else { return }
-            self.accessPanel = nil
-            guard response == .OK, let url = panel?.url else { return }
-            do {
-                let approvedURL = try self.fileAccess.remember(url)
-                if mapAfterApproval { self.scanDisk(url: approvedURL) }
-            } catch {
-                // The picker has still approved this session; bookmark failure
-                // prevents persistence, not the user's immediate inspection.
-                self.fileAccess.setNote("Access could not be remembered. Choose this folder again next time.")
-                if mapAfterApproval { self.scanAuthorizedDisk(url: url, scope: url) }
-            }
-        }
-        if let window = NSApp.windows.first(where: { $0.identifier?.rawValue == "RoomPrimaryWindow" && $0.isVisible }) {
-            var presenter = window
-            while let sheet = presenter.attachedSheet { presenter = sheet }
-            panel.beginSheetModal(for: presenter, completionHandler: completion)
-        } else {
-            panel.begin(completionHandler: completion)
-        }
-        #endif
     }
 
     func scanHome() {

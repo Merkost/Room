@@ -8,24 +8,29 @@ Room is a native macOS utility for understanding storage, reviewing developer re
 
 ## See what is taking space
 
-- **Clean** — measure known caches, separate clearable items from held resources, and review before moving anything to Trash.
-- **Disk Map** — explore allocated size by folder, including hidden files, with drill-down and large-item details.
-- **Memory** — inspect RAM, compression, swap, and the macOS pressure signal.
-- **Activity** — keep cleanup receipts and restore unchanged items when the original location is still available.
-- **Local analysis** — add on-device suggestions when supported; deterministic protections remain in charge.
+- **Clean** — measure known caches, distinguish clearable items from held storage, and review before any supported move to Trash.
+- **Disk Map** — explore allocated size by folder, including hidden files, categories, and large items. Labeled Scan, Rescan, and Stop controls keep the current folder clear.
+- **Developer** — review Android virtual-device sizes and available metadata evidence; group Gradle storage by version and show references from selected project wrappers. This view is read-only. Standard AVD metadata does not provide verified last-launch history, and no project reference does not mean unused.
+- **Memory** — inspect RAM, compression, swap, and the macOS pressure signal. Choose RAM or available storage for the menu bar; pressure colors and swap details are configurable. Unavailable signals stay unknown.
+- **Activity** — keep local cleanup receipts and restore unchanged items when their original locations remain available.
+- **Local analysis** — add on-device review suggestions when supported; deterministic protections remain in charge.
 
-Scans are on demand. Unknown files, installed resources, credentials, and project source are held for inspection. Moving files to Trash does not release their disk space until Trash is emptied. Room never empties Trash.
+Storage scans start on demand. The optional menu-bar monitor periodically samples memory and disk capacity. Unknown files, installed resources, credentials, and project source remain held for inspection. Moving files to Trash does not release their disk space until Trash is emptied. Room never empties Trash.
 
 ## Two editions
 
-| | Mac App Store | Direct |
+| | Mac App Store candidate | Direct |
 |---|---|---|
-| File access | Folders selected through native macOS permission dialogs | Broader known-location scans, subject to macOS permissions |
-| Memory | Monitoring and suggestions | Monitoring plus an explicit normal app-quit review |
-| Analysis | Apple on-device models when available, otherwise local rules | Apple on-device models, optional separately installed local runtime, or rules |
-| Agent worktrees | Excluded from the first Store release | Separate review with live remote verification and conservative holds |
+| File access | Native, remembered read-only folder approvals; optional home-folder approval covers accessible descendants. Reviewed changes need temporary exact write grants. | Broader known-location scans, subject to macOS permissions; Settings opens Full Disk Access for the user to enable. |
+| Cache cleanup | Narrow exception for old, locally SHA512-verified npm download objects. Other process-guarded caches remain held because sandboxed background-tool visibility cannot be established. | Broader known-cache cleanup with age, identity and available owner-activity checks. |
+| Developer review | Read-only AVD evidence and Gradle selected-project references. | Same read-only review. |
+| Memory | Monitoring and suggestions. | Monitoring plus an explicit normal app-quit review. |
+| Analysis | Apple on-device models when available, otherwise local rules. | Apple on-device models, an optional separately installed local runtime, or rules. |
+| Agent worktrees | Excluded. Codex and Claude storage may be inspected, but general agent-cache cleanup is not enabled. | Separate worktree review with live remote verification and conservative holds. |
 
-The Store edition is being qualified for its first release. An App Store record or local build is not a published download. The website shows release availability when it is ready.
+The Store npm exception applies only to supported immutable download-object files modified more than 30 days ago, within approved folders and bounded local content-verification limits. It does not prove an object is unused. Installs may download it again, active installs may retry, and offline installs may fail. npm indexes, temporary data, and installed packages stay in place. Native sandboxed Trash and restart/Restore qualification is still pending.
+
+The Store edition is being qualified for its first release. An App Store record, local build, or passing unit test is not a published download. The website shows release availability when it is ready.
 
 ## Build
 
@@ -46,18 +51,20 @@ swift test
 ROOM_EDITION=store swift test
 ```
 
-Tests use isolated fixtures. Some recovery tests exercise macOS Trash with their own temporary files.
+Tests use isolated fixtures. Some recovery tests exercise macOS Trash with their own temporary files. Unit-test fixtures do not establish distribution-signed sandbox behavior.
 
 ## Design and boundaries
 
-The interface uses native glass controls, readable numeric hierarchy, keyboard shortcuts, and system Reduce Motion and Reduce Transparency preferences. Scan cancellation keeps partial results visibly incomplete.
+The interface uses native glass controls, a flat adaptive toolbar, readable numeric hierarchy, keyboard shortcuts, and system Reduce Motion and Reduce Transparency preferences. Scan cancellation keeps partial results visibly incomplete.
 
-Cleanup rechecks path and filesystem identity, age, owner activity where reliable, and access before moving an item. Unverifiable candidates remain held. Restore refuses changed files and occupied destinations. These checks reduce races; filesystem changes are not an atomic transaction.
+Read-only folder bookmarks cover accessible descendants, so rescans and approved drill-down do not need another picker. macOS may still protect files, and other volumes need separate approval. Room never enables system permissions itself.
+
+Cleanup rechecks path and filesystem identity, age, applicable content validation, owner activity where reliable, and access before moving an item. Unverifiable candidates remain held. Restore refuses changed files and occupied destinations. These checks reduce races; filesystem changes are not an atomic transaction. npm verification reads bounded object contents locally; optional model analysis receives metadata rather than scanned file contents.
 
 `RoomCore` owns scanners, classifications, cleanup, and recovery. `RoomApp` owns observable state, native permissions, and views. See [architecture](docs/ARCHITECTURE.md) for the source map and [release notes](docs/RELEASE.md) for distribution boundaries.
 
 ## Website
 
-The `website/` directory contains the static marketing, support, and privacy pages deployed on Cloudflare. It has no analytics, advertising SDK, sign-in, or third-party font dependency.
+The `website/` directory contains the static marketing, support, and privacy pages for Cloudflare. It has no analytics, advertising SDK, sign-in, or third-party font dependency.
 
 © 2026 Konstantin Merenkov. All rights reserved.

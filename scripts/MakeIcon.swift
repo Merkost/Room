@@ -1,43 +1,56 @@
-import AppKit
+import CoreGraphics
+import Foundation
+import ImageIO
+import UniformTypeIdentifiers
 
-let destination = CommandLine.arguments[1]
-let size = 1024
-let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: size, pixelsHigh: size,
-    bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
-    colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
-NSGraphicsContext.saveGraphicsState()
-NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
-let outer = NSBezierPath(roundedRect: NSRect(x: 30, y: 30, width: 964, height: 964), xRadius: 220, yRadius: 220)
-NSGradient(colors: [NSColor(calibratedRed: 0.23, green: 0.32, blue: 0.43, alpha: 1),
-    NSColor(calibratedRed: 0.075, green: 0.12, blue: 0.19, alpha: 1)])!.draw(in: outer, angle: -75)
-NSColor.white.withAlphaComponent(0.18).setStroke()
-outer.lineWidth = 2
-outer.stroke()
-
-// The mark sits directly on one glass surface, with no nested icon tile.
-
-// Match RoomMark exactly, converting SwiftUI's top-down coordinates to AppKit.
-let side: CGFloat = 720
-let origin: CGFloat = (1024 - side) / 2
-let radius = side * 0.14
-let curve = radius * 0.5522847498
-func point(_ x: CGFloat, _ y: CGFloat) -> NSPoint { NSPoint(x: origin + x * side, y: 1024 - origin - y * side) }
-let mark = NSBezierPath()
-mark.lineWidth = 26
-mark.lineCapStyle = .round
-mark.lineJoinStyle = .round
-for index in 0..<3 {
-    let inset = CGFloat(index) * 0.215
-    let left = 0.10 + inset
-    let top = 0.09 + inset
-    mark.move(to: point(left, 0.91))
-    mark.line(to: point(left, top + 0.14))
-    mark.curve(to: point(left + 0.14, top),
-        controlPoint1: NSPoint(x: origin + left * side, y: 1024 - origin - (top * side + radius - curve)),
-        controlPoint2: NSPoint(x: origin + left * side + radius - curve, y: 1024 - origin - top * side))
-    mark.line(to: point(0.90, top))
+// Deterministic vector rendering of Resources/RoomIcon.svg. Coordinates use the
+// same 1000-unit, top-down canvas as both editable SVGs and the native RoomMark.
+guard CommandLine.arguments.count == 2 else {
+    throw NSError(domain: "RoomIcon", code: 1, userInfo: [NSLocalizedDescriptionKey: "Usage: swift MakeIcon.swift /absolute/path/Room-1024.png"])
 }
-NSColor(calibratedWhite: 0.98, alpha: 0.96).setStroke()
-mark.stroke()
-NSGraphicsContext.restoreGraphicsState()
-try bitmap.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: destination))
+let destination = URL(fileURLWithPath: CommandLine.arguments[1])
+let pixels = 1024
+let space = CGColorSpace(name: CGColorSpace.sRGB)!
+guard let context = CGContext(data: nil, width: pixels, height: pixels, bitsPerComponent: 8,
+    bytesPerRow: 0, space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
+    throw NSError(domain: "RoomIcon", code: 2, userInfo: [NSLocalizedDescriptionKey: "Could not create the icon canvas."])
+}
+func color(_ red: CGFloat, _ green: CGFloat, _ blue: CGFloat) -> CGColor {
+    CGColor(colorSpace: space, components: [red / 255, green / 255, blue / 255, 1])!
+}
+context.setAllowsAntialiasing(true)
+context.setShouldAntialias(true)
+context.translateBy(x: 0, y: CGFloat(pixels))
+context.scaleBy(x: CGFloat(pixels) / 1000, y: -CGFloat(pixels) / 1000)
+
+// One flat mist surface reaches the canvas edges. Only its corners are clear.
+context.setFillColor(color(234, 241, 243)) // #EAF1F3
+context.addPath(CGPath(roundedRect: CGRect(x: 0, y: 0, width: 1000, height: 1000),
+    cornerWidth: 224, cornerHeight: 224, transform: nil))
+context.fillPath()
+
+// An open R: a room-like upright stem, generous aperture, and one decisive leg.
+// The 100-unit stroke occupies 86% of the tile along both axes.
+let mark = CGMutablePath()
+mark.move(to: CGPoint(x: 120, y: 880))
+mark.addLine(to: CGPoint(x: 120, y: 120))
+mark.addLine(to: CGPoint(x: 565, y: 120))
+mark.addCurve(to: CGPoint(x: 880, y: 320), control1: CGPoint(x: 765, y: 120), control2: CGPoint(x: 880, y: 208))
+mark.addCurve(to: CGPoint(x: 565, y: 520), control1: CGPoint(x: 880, y: 432), control2: CGPoint(x: 765, y: 520))
+mark.addLine(to: CGPoint(x: 420, y: 520))
+mark.addLine(to: CGPoint(x: 880, y: 880))
+context.addPath(mark)
+context.setStrokeColor(color(22, 47, 58)) // #162F3A
+context.setLineWidth(100)
+context.setLineCap(.round)
+context.setLineJoin(.round)
+context.strokePath()
+
+guard let image = context.makeImage(),
+      let output = CGImageDestinationCreateWithURL(destination as CFURL, UTType.png.identifier as CFString, 1, nil) else {
+    throw NSError(domain: "RoomIcon", code: 3, userInfo: [NSLocalizedDescriptionKey: "Could not create the PNG output."])
+}
+CGImageDestinationAddImage(output, image, nil)
+guard CGImageDestinationFinalize(output) else {
+    throw NSError(domain: "RoomIcon", code: 4, userInfo: [NSLocalizedDescriptionKey: "Could not save the PNG output."])
+}

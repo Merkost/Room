@@ -89,22 +89,19 @@ struct RoomMark: Shape {
     nonisolated func path(in rect: CGRect) -> Path {
         let side = min(rect.width, rect.height)
         let origin = CGPoint(x: rect.midX - side / 2, y: rect.midY - side / 2)
-        let radius = side * 0.14
-        let curve = radius * 0.5522847498
-        let right = origin.x + side * 0.90
-        let bottom = origin.y + side * 0.91
-        var path = Path()
-        for index in 0..<3 {
-            let inset = CGFloat(index) * 0.215
-            let left = origin.x + side * (0.10 + inset)
-            let top = origin.y + side * (0.09 + inset)
-            path.move(to: CGPoint(x: left, y: bottom))
-            path.addLine(to: CGPoint(x: left, y: top + radius))
-            path.addCurve(to: CGPoint(x: left + radius, y: top),
-                          control1: CGPoint(x: left, y: top + radius - curve),
-                          control2: CGPoint(x: left + radius - curve, y: top))
-            path.addLine(to: CGPoint(x: right, y: top))
+        func point(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
+            CGPoint(x: origin.x + side * x, y: origin.y + side * y)
         }
+        // Matches the editable RoomMark.svg. The open counter is intentional;
+        // stroke-based consumers keep their native foreground and line weight.
+        var path = Path()
+        path.move(to: point(0.12, 0.88))
+        path.addLine(to: point(0.12, 0.12))
+        path.addLine(to: point(0.565, 0.12))
+        path.addCurve(to: point(0.88, 0.32), control1: point(0.765, 0.12), control2: point(0.88, 0.208))
+        path.addCurve(to: point(0.565, 0.52), control1: point(0.88, 0.432), control2: point(0.765, 0.52))
+        path.addLine(to: point(0.42, 0.52))
+        path.addLine(to: point(0.88, 0.88))
         return path
     }
 }

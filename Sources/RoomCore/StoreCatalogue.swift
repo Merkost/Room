@@ -63,6 +63,23 @@ extension CacheConfiguration {
         let protected = base.protectedLocations.filter { location in
             folders.contains { StoreFolderBoundary.contains(location.url, in: $0) }
         }
+        #if ROOM_APP_STORE
+        let npm = StoreNPMCatalogue.discover(approvedFolders: folders, userHome: home)
+        issues.append(contentsOf: npm.issues)
+        // The mutable parent remains visible as inventory. Only independently
+        // verified immutable leaves have the exception; no index/tmp bucket can move.
+        catalogue = catalogue.map { root in
+            guard root.id == "npm" else { return root }
+            return CacheRoot(id: root.id, title: "npm cache inventory", subtitle: root.subtitle,
+                symbol: root.symbol, category: root.category, url: root.url,
+                consequence: "Mutable indexes, temporary content and unsupported objects stay inspect-only. Only separately verified old SHA512 download objects can be reviewed for Trash.",
+                minimumAge: root.minimumAge, scope: root.scope,
+                cleanupPolicy: .inspectOnly("Mutable npm index/tmp data is inspect-only. Review individual verified SHA512 objects instead."),
+                excludedURLs: npm.roots.map(\.url), inspectionNodeLimit: root.inspectionNodeLimit,
+                inspectionTimeLimit: root.inspectionTimeLimit)
+        }
+        catalogue.append(contentsOf: npm.roots)
+        #endif
         let known = catalogue.filter { root in folders.contains { StoreFolderBoundary.contains(root.url, in: $0) } }
         var roots = known
         for folder in folders {

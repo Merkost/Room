@@ -71,7 +71,7 @@ struct CacheEngineTests {
             _ = try fixture.write("protected/\(name)", String(repeating: "protected", count: 1024))
         }
         let protected = fixture.base.appendingPathComponent("protected", isDirectory: true)
-        let configuration = CacheConfiguration(roots: [fixture.root()], protectedLocations: [
+        let configuration = CacheConfiguration(roots: [fixture.root(processes: ["room-phase-ordering-fixture"])], protectedLocations: [
             ProtectedLocation(id: "protected", title: "Protected work", url: protected, reason: "User work stays in place.")
         ], homeDirectory: fixture.base)
         let complete = await fixture.engine(configuration: configuration, protectedTimeLimit: 60).scan()
