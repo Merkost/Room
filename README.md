@@ -32,7 +32,7 @@ Storage scans start on demand. The optional menu-bar monitor periodically sample
 
 The Store npm exception applies only to supported immutable download-object files modified more than 30 days ago, within approved folders and bounded local content-verification limits. It does not prove an object is unused. Installs may download it again, active installs may retry, and offline installs may fail. npm indexes, temporary data, and installed packages stay in place. Native sandboxed Trash, Quit/relaunch and Restore passed on a disposable release 2 fixture with exact content hashes; build 3 verified the impact disclosure and pre-grant write gate without repeating the move. Core/Store write code was unchanged, and no user caches were cleaned.
 
-Store 1.0.0 (3) passed its final tests and archive-derived sandboxed native checks; direct 1.7.2 (11) passed its final tests, native checks and strict signature verification. Store distribution export remains blocked by account/signing prerequisites, and publication work is still in progress. An App Store record, local build, or passing unit test is not a published download. The website shows release availability when it is ready.
+The current C4 identity builds are Store 1.0.0 (4) and direct 1.7.3 (12). Both built successfully, passed installed native identity checks, and were packaged with verified signatures. The functional test checkpoint remains Store build 3 and direct build 11; those tests were not rerun for this visual change. Store distribution export remains blocked by account/signing prerequisites, and publication work is still in progress. An App Store record, local build, or passing unit test is not a published download. The website shows release availability when it is ready.
 
 ## Build
 

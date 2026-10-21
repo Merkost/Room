@@ -23,7 +23,7 @@ struct RoomMenuBarView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(spacing: 10) {
-                RoomMark().stroke(.secondary, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+                RoomMark().fill(.secondary, style: FillStyle(eoFill: true))
                     .frame(width: 19, height: 19).accessibilityHidden(true)
                 Text("Room").font(.system(size: 16, weight: .semibold))
                 Spacer()

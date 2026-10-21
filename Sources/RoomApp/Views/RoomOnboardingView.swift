@@ -18,7 +18,7 @@ struct RoomOnboardingView: View {
         VStack(alignment: .leading, spacing: 24) {
             HStack(spacing: 9) {
                 RoomMark()
-                    .stroke(.primary, style: StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
+                    .fill(.primary, style: FillStyle(eoFill: true))
                     .frame(width: 25, height: 25)
                     .accessibilityHidden(true)
                 Text("Room").font(RoomType.heading(16))

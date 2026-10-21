@@ -1,5 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" fill="none">
-  <title>Room — nested room frames</title>
-  <path d="M112 888V208Q112 112 208 112H888M336 888V432Q336 336 432 336H888M560 888V656Q560 560 656 560H888"
-        stroke="#162F3A" stroke-width="64" stroke-linecap="round" stroke-linejoin="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="currentColor" fill-rule="evenodd">
+  <title>Room — Aperture, soft pocket</title>
+  <path d="M23 12H41C48.18 12 52 15.82 52 23V41C52 48.18 48.18 52 41 52H23C15.82 52 12 48.18 12 41V23C12 15.82 15.82 12 23 12ZM24 19H40C43.314 19 45 20.686 45 24V29C45 31.209 43.209 33 41 33H39C35.686 33 33 35.686 33 39V41C33 43.209 31.209 45 29 45H24C20.686 45 19 43.314 19 40V24C19 20.686 20.686 19 24 19Z"/>
 </svg>

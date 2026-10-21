@@ -29,3 +29,6 @@
 /* SVG copy stays readable when the infographic scales down on small phones. */
 .care-flow .flow-node text{font-size:22px}.care-flow .flow-node .flow-detail{font-size:19px}
 @media(max-width:760px){.explorer-caption{min-height:165px}}
+
+/* The approved C4 mark is a filled even-odd silhouette. */
+.memory-rings svg.room-mark,.review-paper svg.room-mark{fill:currentColor;fill-rule:evenodd;stroke:none;color:#56788a}

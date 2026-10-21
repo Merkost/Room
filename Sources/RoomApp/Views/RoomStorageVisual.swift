@@ -24,7 +24,7 @@ struct RoomStorageVisual: View {
                 .offset(y: selectionCount > 0 ? 7 : 5)
 
             RoomMark()
-                .stroke(Color.primary.opacity(0.8), style: StrokeStyle(lineWidth: 2.7, lineCap: .round, lineJoin: .round))
+                .fill(Color.primary.opacity(0.8), style: FillStyle(eoFill: true))
                 .frame(width: 42, height: 42)
                 .frame(width: 96, height: 104)
                 .background(reduceTransparency ? Color(nsColor: .controlBackgroundColor) : .clear,

@@ -1,20 +1,35 @@
 # Release
 
-## Qualified candidates
+## Final C4 identity candidates
+
+The user-selected **C4 soft pocket** is applied exactly as the SVG-derived graphite/white icon and five filled native mark consumers.
+
+- **Direct 1.7.3 (12)**: Swift Release build exited 0 in **126.96 s**; installed. Actual C4 toolbar and Settings build label 12 were inspected.
+- **Store 1.0.0 (4)**: native Xcode archive reported **ARCHIVE SUCCEEDED**, exit 0; installed. Actual C4 toolbar, onboarding, menu popup and Settings build label 4 were inspected. Store quit after capture; direct Room was left running.
+
+Core, scanning, cleanup and model code are unchanged. The functional tests below remain the previous Store 3/direct 11 checkpoint; **Core/AI/cache tests were not rerun for the C4 identity-only change**. No new cleanup/move is claimed.
+
+The direct and sandbox-preview ZIPs were extracted and passed `codesign --deep --strict`; packaged icon bytes match the selected C4. `outputs/Room-macOS.zip` is direct 1.7.3 (12); `outputs/Room-Store-sandbox.zip` is Store preview 1.0.0 (4). Store archive ZIP `outputs/Room-AppStore/Room-1.0.0-4.xcarchive.zip` is ready. Package hashes are recorded in `work/room-native/c4-packages-proof.json`; identity/build/native proof is consolidated in `work/room-native/c4-identity-proof.json`. Local strict signature checks do not establish a Store distribution export or notarization.
+
+C4 website branding deployment **`8003eb77-f495-487d-807a-af0835734db4`** was verified. Website branding and the user's logo choice did not change Apple account/privacy state or authorize the pending legal privacy Publish action.
+
+Five C4 screenshot compositions are complete under `screenshots-c4`, each **2880×1800, opaque sRGB**. Four use unchanged qualified Store 3 native content crops excluding the old toolbar glyph; the fifth uses a fresh actual Store 4 full monitor capture. Root reviewed the contact sheet; provenance/source/output hashes are recorded. This is not five all-new Store 4 captures. Earlier Store 3 proofs remain preserved; **zero screenshots are uploaded**.
+
+## Previous qualified functional candidates
 
 - **Store 1.0.0 (3)**: native Xcode archive succeeded. An archive-derived sandboxed preview was installed and checked. This is not a distribution-signed Store export or upload.
 - **Direct 1.7.2 (11)**: release build succeeded, installed, and passed strict `codesign` verification. No notarization or public-release claim is implied.
 
-Final source/build acceptance is complete for these candidates. The root task is consolidating the separate final proof JSON; earlier checkpoints are not relabeled as these artifacts.
+Source/build acceptance was complete for these previous functional candidates. Their proof is preserved and not relabeled as Store 4/direct 12 acceptance.
 
-## Final tests
+## Functional test checkpoint — Store 3 / direct 11
 
 | Edition | Result | Evidence |
 | --- | --- | --- |
 | Store build 3 | **171 tests / 20 suites passed in 35.279 s** | `work/room-native/store-tests-release3-20261022.log` |
 | Direct build 11 | **186 tests / 20 suites passed in 28.181 s** | `work/room-native/direct-tests-release11-20261022.log` |
 
-These final runs supersede earlier 166/171 Store and 181 direct checkpoints. Unit tests and native acceptance remain distinct evidence.
+These runs passed on Store build 3/direct build 11 and supersede earlier checkpoints. They were not rerun or relabeled as Store 4/direct 12 tests; Core/scanning/cleanup/model source is unchanged for C4. Unit tests, identity rebuilds and native appearance acceptance remain distinct evidence.
 
 ## Native Store acceptance
 
@@ -29,7 +44,7 @@ The complete recovery flow was exercised on **Store release 2**, using one dispo
 5. Room quit and relaunched; read approvals persisted.
 6. Restore returned the object with identical **SHA256 and SHA512** content.
 
-Core and Store write/recovery code were unchanged for build 3. The carried recovery evidence therefore remains specifically a release 2 full-move test plus build 3 permission/impact smoke, not a second build 3 move. Only synthetic fixture data moved; **no user caches were cleaned**.
+Core and Store write/recovery code were unchanged for build 3 and remain unchanged in the identity-only build 4 source. The carried recovery evidence therefore remains specifically a release 2 full-move test plus build 3 permission/impact smoke, not a second build 3 move. Only synthetic fixture data moved; **no user caches were cleaned**.
 
 Synthetic native Android/Gradle mapping passed. AVD review remains read-only and metadata dates do not establish last launch. Gradle references cover selected project wrappers; no reference does not mean unused. On the qualification Mac, the Apple Intelligence model was not ready and the honestly labeled rule-based fallback worked. No Apple-model inference success is claimed.
 
@@ -49,7 +64,7 @@ Verification does not prove non-use: downloads can recur, active installs can re
 
 ## Store distribution and last-saved account state
 
-The final build 3 Store export was retried and failed with exit code **70**: **No Accounts**, missing **Mac Installer Distribution** identity/certificate, and no provisioning profile for `com.merkost.room`. Native archive success does not establish a distribution-signed export, accepted upload or Apple export-compliance approval. Info declares `ITSAppUsesNonExemptEncryption=false`.
+The last Store export attempt was for build 3 and was retried and failed with exit code **70**: **No Accounts**, missing **Mac Installer Distribution** identity/certificate, and no provisioning profile for `com.merkost.room`. Native archive success does not establish a distribution-signed export, accepted upload or Apple export-compliance approval. Info declares `ITSAppUsesNonExemptEncryption=false`.
 
 The Chrome App Store Connect session has expired. The following is **last-saved state before expiry**, not a fresh live account check:
 
@@ -61,7 +76,7 @@ The Chrome App Store Connect session has expired. The following is **last-saved 
 
 ## Remaining publication work
 
-Five compositions from actual Store build 3 captures are complete and reviewed: Disk Map, developer resources, cleanup review, memory and the menu-bar monitor. Each is opaque sRGB at 2880×1800, with sample-folder labels where applicable and recorded source/output hashes. **Zero screenshots are uploaded.** Ten is the optional maximum, not a requirement. Historical direct layout studies are not final upload assets.
+The selected five C4 compositions are complete, inspected and provenance-verified, with four unchanged Store 3 native content crops and one fresh Store 4 monitor capture. Prior Store 3 compositions/proofs remain preserved. **Zero screenshots are uploaded.** Ten is optional maximum, not a requirement. Account/signing, final legal privacy confirmation and submission gates below are unchanged.
 
 Renew account access and resolve Store signing/profile prerequisites, validate a genuine distribution export, finish user-confirmed privacy publication and remaining publisher declarations, then upload and verify processing. App Review submission, approval and live availability are separate later outcomes. No Store upload, review approval or public Store release is claimed.
 

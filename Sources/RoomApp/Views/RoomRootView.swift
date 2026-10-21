@@ -108,7 +108,7 @@ struct RoomRootView: View {
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 HStack(spacing: 10) {
-                    RoomMark().stroke(.secondary, style: StrokeStyle(lineWidth: 1.65, lineCap: .round, lineJoin: .round))
+                    RoomMark().fill(.secondary, style: FillStyle(eoFill: true))
                         .frame(width: 23, height: 23)
                     Text("Room").font(RoomType.heading(15))
                 }
