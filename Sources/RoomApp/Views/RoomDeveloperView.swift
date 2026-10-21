@@ -14,10 +14,10 @@ struct RoomDeveloperView: View {
     private var groups: [RoomGradleVersionGroup] { RoomDeveloperPresentation.groups(model.report?.gradleResources ?? []) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
+        VStack(alignment: .leading, spacing: 24) {
             HStack(alignment: .center, spacing: 20) {
                 VStack(alignment: .leading, spacing: 7) {
-                    Text("Developer resources").font(RoomType.heading(22))
+                    Text("Developer resources").font(RoomType.heading(24))
                     Text(model.report == nil ? "Devices, build versions, and the projects that reference them." : "\(RoomFormat.bytes(model.totalBytes)) measured · read-only review")
                         .font(.system(size: 13)).foregroundStyle(.secondary)
                 }
@@ -27,7 +27,7 @@ struct RoomDeveloperView: View {
                 Button {
                     if model.isScanning { model.stop() } else { model.scan() }
                 } label: {
-                    Label(model.isScanning ? "Stop" : "Scan", systemImage: model.isScanning ? "stop" : "arrow.clockwise")
+                    Label(model.isScanning ? "Stop" : model.report == nil ? "Scan" : "Rescan", systemImage: model.isScanning ? "stop.fill" : "arrow.clockwise")
                 }
                 .buttonStyle(.glassProminent).controlSize(.large)
                 .disabled(!model.canScan)
@@ -58,7 +58,7 @@ struct RoomDeveloperView: View {
                     }.padding(.top, 12)
                 }
                 .font(.system(size: 12)).foregroundStyle(.secondary)
-                .padding(16).roomGlass(in: RoundedRectangle(cornerRadius: 18))
+                .padding(16).roomContentGroup()
             }
 
             if model.isScanning {
@@ -86,7 +86,6 @@ struct RoomDeveloperView: View {
                 }.font(.system(size: 12)).foregroundStyle(.secondary)
             }
         }
-        .padding(.top, 6)
         .animation(animation, value: section)
         .animation(animation, value: model.report?.id)
         .onChange(of: section) { _, _ in showingAll = false }
@@ -104,16 +103,16 @@ struct RoomDeveloperView: View {
                 Button { model.addFolder(role: role) } label: { Label(role.title, systemImage: role.symbol) }
             }
         } label: { Label("Add folder", systemImage: "plus") }
-        .menuStyle(.borderlessButton).fixedSize().font(.system(size: 13))
+        .menuStyle(.button).buttonStyle(.glass).controlSize(.large).fixedSize().font(.system(size: 13))
         .disabled(model.isScanning || model.isChoosingFolder)
         .accessibilityIdentifier("RoomDeveloperAddFolder")
     }
 
     private var emptyReview: some View {
-        VStack(alignment: .leading, spacing: 22) {
+        VStack(alignment: .leading, spacing: 24) {
             HStack(alignment: .center, spacing: 24) {
                 Image(systemName: "externaldrive.connected.to.line.below")
-                    .font(.system(size: 40, weight: .ultraLight)).foregroundStyle(.secondary).frame(width: 70)
+                    .font(.system(size: 32, weight: .light)).foregroundStyle(.secondary).frame(width: 44)
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Connect the storage to the work.").font(RoomType.heading(19))
                     Text("Choose your AVD directory, Gradle home, or project folders to begin.")
@@ -129,8 +128,8 @@ struct RoomDeveloperView: View {
             Text("Only chosen folders are read. No resources are removed.")
                 .font(.system(size: 12)).foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity, alignment: .leading).padding(24)
-        .roomGlass(in: RoundedRectangle(cornerRadius: 24))
+        .frame(maxWidth: .infinity, alignment: .leading).padding(20)
+        .roomContentGroup()
     }
 
     private func summary(_ report: DeveloperResourcesReport) -> some View {
@@ -145,7 +144,7 @@ struct RoomDeveloperView: View {
     }
     private func countMetric(_ title: String, value: Int, symbol: String) -> some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text(value.formatted()).font(RoomType.figure(28)).monospacedDigit()
+            Text(value.formatted()).font(RoomType.figure(24)).monospacedDigit()
             Label(title, systemImage: symbol).font(.system(size: 12)).foregroundStyle(.secondary)
         }
     }
@@ -166,7 +165,7 @@ struct RoomDeveloperView: View {
                     Spacer(minLength: 12)
                     VStack(alignment: .trailing, spacing: 5) {
                         Text("\(device.isPartial ? "≥ " : "")\(RoomFormat.bytes(device.allocatedBytes))").font(RoomType.figure(22)).monospacedDigit()
-                        Text("on disk").font(.system(size: 11)).foregroundStyle(.secondary)
+                        Text("on disk").font(.system(size: 12)).foregroundStyle(.secondary)
                     }
                 }
                 DisclosureGroup("Last use & evidence") {
@@ -178,7 +177,7 @@ struct RoomDeveloperView: View {
                         path(device.url)
                     }.padding(.top, 12)
                 }.font(.system(size: 12)).foregroundStyle(.secondary)
-            }.padding(20).roomGlass(in: RoundedRectangle(cornerRadius: 22))
+            }.padding(16).roomContentGroup()
         }
         moreButton(total: report.androidDevices.count)
     }
@@ -226,7 +225,7 @@ struct RoomDeveloperView: View {
                         }
                     }.padding(.top, 14)
                 }.font(.system(size: 12)).foregroundStyle(.secondary)
-            }.padding(20).roomGlass(in: RoundedRectangle(cornerRadius: 22))
+            }.padding(16).roomContentGroup()
         }
         if !report.projectWrappers.isEmpty {
             DisclosureGroup("Selected project wrappers") {
@@ -259,14 +258,14 @@ struct RoomDeveloperView: View {
                 HStack {
                     Text(item.label).font(.system(size: 12, weight: .medium))
                     Spacer()
-                    if let date = item.date { Text(date, style: .date).font(.system(size: 11)).monospacedDigit() }
+                    if let date = item.date { Text(date, style: .date).font(.system(size: 12)).monospacedDigit() }
                 }
                 Text(item.uncertainty).font(.system(size: 12)).foregroundStyle(.secondary)
             }
         }
     }
     private func path(_ url: URL) -> some View {
-        Text(url.path).font(.system(size: 11)).foregroundStyle(.secondary).textSelection(.enabled)
+        Text(url.path).font(.system(size: 12)).foregroundStyle(.secondary).textSelection(.enabled)
             .lineLimit(2).truncationMode(.middle)
     }
     private func noResults(_ title: String) -> some View {
@@ -291,15 +290,8 @@ private struct AndroidDeviceGlyph: View {
     }
 }
 
-private struct RoomDeveloperGlass<S: Shape>: ViewModifier {
-    let shape: S
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    func body(content: Content) -> some View {
-        content
-            .background(reduceTransparency ? Color(nsColor: .controlBackgroundColor) : .clear, in: shape)
-            .glassEffect(reduceTransparency ? .identity : .regular, in: shape)
-    }
-}
 private extension View {
-    func roomGlass<S: Shape>(in shape: S) -> some View { modifier(RoomDeveloperGlass(shape: shape)) }
+    func roomContentGroup() -> some View {
+        background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
 }

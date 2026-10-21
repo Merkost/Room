@@ -9,7 +9,6 @@ struct RoomMemoryView: View {
     #endif
     @AppStorage("RoomMotionEnabled") private var motionEnabled = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var showingIssues = false
     #if !ROOM_APP_STORE
     @State private var quitReview: MemoryQuitReview?
@@ -22,22 +21,36 @@ struct RoomMemoryView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
+        VStack(alignment: .leading, spacing: 24) {
+            HStack(alignment: .center, spacing: 16) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Memory").font(RoomType.heading(24))
+                    Text(memoryIntroduction)
+                        .font(.system(size: 13)).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 12)
+                Button { insights.scanMemory() } label: {
+                    Label(insights.isScanningMemory ? "Reading…" : insights.memoryReport == nil ? "Scan memory" : "Refresh",
+                          systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.glass).controlSize(.large)
+                .disabled(insights.isScanningMemory)
+                .keyboardShortcut("r", modifiers: .command)
+                .accessibilityIdentifier("RoomMemoryRefreshButton")
+            }
+
             if let report = insights.memoryReport {
                 memorySummary(report)
             } else {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Memory overview").font(RoomType.heading(22))
-                    Text(memoryIntroduction)
-                        .font(.system(size: 13)).foregroundStyle(.secondary)
                     if insights.isScanningMemory {
                         ProgressView("Reading memory…").controlSize(.small)
                     } else {
-                        Button("Scan memory") { insights.scanMemory() }
-                            .buttonStyle(.glassProminent).controlSize(.large)
+                        Text("Ready to read your Mac’s current memory.")
+                            .font(.system(size: 14)).foregroundStyle(.secondary)
                     }
                 }
-                .frame(maxWidth: .infinity, minHeight: 150, alignment: .leading)
+                .frame(maxWidth: .infinity, minHeight: 88, alignment: .leading)
             }
 
             #if ROOM_APP_STORE
@@ -46,6 +59,8 @@ struct RoomMemoryView: View {
                 storeMeasuredProcesses(report)
             }
             #else
+            if let report = insights.memoryReport, !report.recommendations.isEmpty { recommendations(report) }
+
             Picker("Memory view", selection: $section) {
                 Text("Apps").tag(MemorySection.apps)
                 Text("Agent work").tag(MemorySection.agentWork)
@@ -61,7 +76,6 @@ struct RoomMemoryView: View {
                 if let report = insights.memoryReport {
                     applicationsSection(report)
                     if !memoryActions.results.isEmpty { quitResults }
-                    if !report.recommendations.isEmpty { recommendations(report) }
                 }
             } else {
                 RoomAgentWorkView(model: agentWork, memoryReport: insights.memoryReport)
@@ -94,7 +108,6 @@ struct RoomMemoryView: View {
                 Text(status).font(.system(size: 13)).foregroundStyle(.secondary)
             }
         }
-        .padding(.top, 6)
         .animation(animation, value: insights.memoryReport?.usedBytes)
         .animation(animation, value: memoryActions.selectedCount)
         #if !ROOM_APP_STORE
@@ -265,36 +278,29 @@ struct RoomMemoryView: View {
 
     private func memorySummary(_ report: MemoryReport) -> some View {
         VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .center, spacing: 28) {
+            HStack(alignment: .center, spacing: 24) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Memory overview").font(RoomType.heading(22)).tracking(-0.4)
+                    Text("In use").font(.system(size: 13, weight: .medium)).foregroundStyle(.secondary)
                     if countersUnavailable(report) {
                         Text("Unavailable").font(RoomType.figure(34))
                     } else {
-                        HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            RoomByteMetric(bytes: report.usedBytes, maximumSize: 52, memory: true)
-                                .fixedSize(horizontal: true, vertical: false)
-                            Text("in use").font(.system(size: 12)).foregroundStyle(.secondary)
-                        }
+                        RoomByteMetric(bytes: report.usedBytes, maximumSize: 40, memory: true)
+                            .fixedSize(horizontal: true, vertical: false)
                     }
                     Text("\(RoomFormat.memoryBytes(report.totalBytes)) physical memory")
                         .font(.system(size: 13)).foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                VStack(alignment: .leading, spacing: 7) {
-                    Text("Memory pressure")
-                        .font(.system(size: 12)).foregroundStyle(.secondary)
-                    Label(pressureTitle(report), systemImage: "circle.fill")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(pressureColor(report))
+                VStack(alignment: .trailing, spacing: 8) {
+                    Text("Memory pressure").font(.system(size: 12)).foregroundStyle(.secondary)
+                    HStack(spacing: 7) {
+                        Circle().fill(pressureColor(report)).frame(width: 7, height: 7)
+                        Text(pressureTitle(report)).font(.system(size: 14, weight: .semibold))
+                    }
+                    .foregroundStyle(pressureColor(report))
                 }
-                .frame(minWidth: 130, alignment: .leading)
-                .padding(16)
-                .background(reduceTransparency ? Color(nsColor: .controlBackgroundColor) : .clear,
-                            in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                .glassEffect(reduceTransparency ? .identity : .regular,
-                             in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .accessibilityElement(children: .combine)
             }
 
             if !countersUnavailable(report) {
@@ -317,17 +323,19 @@ struct RoomMemoryView: View {
                 HStack(alignment: .top, spacing: 24) {
                     memoryCounter("Available / reclaimable", bytes: report.availableBytes)
                     memoryCounter("Compressed", bytes: report.compressedBytes)
-                    memoryCounter("Swap used", bytes: RoomMonitorPresentation.measuredSwap(report))
-                        .foregroundStyle(pressureColor(report))
+                    memoryCounter("Swap used", bytes: RoomMonitorPresentation.measuredSwap(report), valueColor: pressureColor(report))
                 }
             }
         }
+        .padding(20)
+        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
-    private func memoryCounter(_ title: String, bytes: Int64?) -> some View {
+    private func memoryCounter(_ title: String, bytes: Int64?, valueColor: Color = .primary) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(bytes.map(RoomFormat.memoryBytes) ?? "Unavailable")
                 .font(RoomType.figure(20)).monospacedDigit()
+                .foregroundStyle(valueColor)
                 .lineLimit(1).minimumScaleFactor(0.8)
             Text(title).font(.system(size: 12)).foregroundStyle(.secondary)
         }
@@ -397,7 +405,7 @@ private struct MemoryQuitReviewSheet: View {
         VStack(alignment: .leading, spacing: 22) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 9) {
-                    Text("A little breathing room.").font(RoomType.heading(25))
+                    Text("A little breathing room.").font(RoomType.heading(24))
                     Text("Review \(review.count) \(review.count == 1 ? "app" : "apps") before requesting a normal quit.")
                         .font(.system(size: 14)).foregroundStyle(.secondary)
                 }

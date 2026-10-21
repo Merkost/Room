@@ -8,7 +8,6 @@ struct RoomGlassVisual: View {
     let motionEnabled: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Environment(\.colorScheme) private var colorScheme
     @State private var hovering = false
     @Namespace private var glassNamespace
 
@@ -16,12 +15,6 @@ struct RoomGlassVisual: View {
 
     var body: some View {
         ZStack {
-            Ellipse()
-                .fill(Color.cyan.opacity(colorScheme == .dark ? 0.14 : 0.09))
-                .frame(width: 230, height: 135)
-                .blur(radius: 54)
-                .offset(x: 20, y: 14)
-
             GlassEffectContainer(spacing: 22) {
                 ZStack {
                     plate(index: 2)
@@ -123,20 +116,8 @@ struct RoomMark: Shape {
 }
 
 struct RoomAmbientBackground: View {
-    @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-
     var body: some View {
-        ZStack {
-            Color(nsColor: .windowBackgroundColor)
-            if !reduceTransparency {
-                RadialGradient(colors: [Color.cyan.opacity(colorScheme == .dark ? 0.07 : 0.06), .clear],
-                               center: .topTrailing, startRadius: 10, endRadius: 620)
-                RadialGradient(colors: [Color.pink.opacity(colorScheme == .dark ? 0.045 : 0.045), .clear],
-                               center: .bottomLeading, startRadius: 10, endRadius: 530)
-            }
-        }
-        .ignoresSafeArea()
+        Color(nsColor: .windowBackgroundColor).ignoresSafeArea()
     }
 }
 
@@ -159,15 +140,15 @@ enum RoomFormat {
 }
 
 enum RoomType {
-    static func heading(_ size: CGFloat) -> Font { .custom("AvenirNext-DemiBold", size: size) }
-    static func figure(_ size: CGFloat) -> Font { .custom("AvenirNext-Regular", size: size) }
+    static func heading(_ size: CGFloat) -> Font { .system(size: size, weight: .semibold) }
+    static func figure(_ size: CGFloat) -> Font { .system(size: size, weight: .regular) }
 }
 
 /// Each alternative keeps its unit and baseline together. Narrow windows choose
 /// the next complete size rather than clipping a unit or compressing its glyphs.
 struct RoomByteMetric: View {
     let bytes: Int64
-    var maximumSize: CGFloat = 76
+    var maximumSize: CGFloat = 38
     var memory = false
 
     var body: some View {
@@ -185,13 +166,13 @@ struct RoomByteMetric: View {
         return HStack(alignment: .firstTextBaseline, spacing: 9) {
             Text(amount.value)
                 .font(RoomType.figure(size))
-                .tracking(-0.6)
+                .tracking(size > 30 ? -0.5 : 0)
                 .monospacedDigit()
                 .contentTransition(.numericText())
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
             Text(amount.unit)
-                .font(RoomType.figure(max(19, size * 0.35)))
+                .font(RoomType.figure(max(14, size * 0.4)))
                 .foregroundStyle(.secondary)
                 .fixedSize()
         }

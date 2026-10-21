@@ -11,7 +11,7 @@ struct RoomStoreCacheReviewSheet: View {
         VStack(alignment: .leading, spacing: 20) {
             RoomSheetHeading(title: "Make a little room.", subtitle: "Review the selection and approve its exact folders.")
             HStack(alignment: .firstTextBaseline) {
-                Text(RoomFormat.bytes(model.selectedBytes)).font(RoomType.figure(38)).tracking(-1)
+                Text(RoomFormat.bytes(model.selectedBytes)).font(RoomType.figure(36)).monospacedDigit()
                 Spacer()
                 Text("\(sources.count) \(sources.count == 1 ? "source" : "sources")").font(.system(size: 13)).foregroundStyle(.secondary)
             }
@@ -24,8 +24,8 @@ struct RoomStoreCacheReviewSheet: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                .padding(14).frame(maxWidth: .infinity, alignment: .leading)
-                .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 14))
+                .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("RoomStoreCleanupImpact")
             }
@@ -53,7 +53,7 @@ struct RoomStoreCacheReviewSheet: View {
                 .padding(16).frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(maxHeight: 240)
-            .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 16))
+            .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             HStack {
                 Button("Cancel") { dismiss() }.buttonStyle(.glass).keyboardShortcut(.cancelAction)
                     .disabled(model.isWorking)
@@ -112,7 +112,7 @@ struct RoomStoreRestoreSheet: View {
                 .padding(16).frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(maxHeight: 320)
-            .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 16))
+            .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             HStack {
                 Button("Cancel") { dismiss() }.buttonStyle(.glass).keyboardShortcut(.cancelAction)
                     .disabled(model.isWorking)
@@ -143,7 +143,7 @@ private struct RoomStorePermissionSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Folder approval").font(.system(size: 14, weight: .medium))
+            Text("Folder approval").font(.system(size: 15, weight: .semibold))
             Text("Allowing access does not move files. These write approvals are used for this review and are not saved.")
                 .font(.system(size: 12)).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

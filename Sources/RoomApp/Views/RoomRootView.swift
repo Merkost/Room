@@ -12,7 +12,6 @@ struct RoomRootView: View {
     @AppStorage("RoomAppearance") private var appearance = "dark"
     @AppStorage("RoomMotionEnabled") private var motionEnabled = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var developer = RoomDeveloperModel()
     @State private var destination = RoomDestination.clean
     @State private var sheet: RoomSheet?
@@ -23,8 +22,8 @@ struct RoomRootView: View {
 
     private var animate: Animation? { motionEnabled && !reduceMotion ? .smooth(duration: 0.24) : nil }
     private var selectedCount: Int { model.sources.filter { model.selection.contains($0.id) && $0.isAvailable }.count }
-    private var visibleSources: [RoomSource] {
-        let sources = model.sources.filter { source in
+    private var matchingSources: [RoomSource] {
+        model.sources.filter { source in
             (category == nil || source.category == category) &&
             (sourceFilter == .all || (sourceFilter == .clearable ? source.isAvailable :
                 source.bytes > source.eligibleBytes || !source.heldReasons.isEmpty || source.blockedReason != nil || source.isPartial)) &&
@@ -34,26 +33,13 @@ struct RoomRootView: View {
             if lhs.eligibleBytes != rhs.eligibleBytes { return lhs.eligibleBytes > rhs.eligibleBytes }
             return lhs.bytes > rhs.bytes
         }
-        return expanded || category != nil || sourceFilter != .all || !query.isEmpty ? sources : Array(sources.prefix(8))
+    }
+    private var visibleSources: [RoomSource] {
+        expanded || category != nil || sourceFilter != .all || !query.isEmpty
+            ? matchingSources : Array(matchingSources.prefix(8))
     }
     private var colorScheme: ColorScheme? {
         switch appearance { case "light": .light; case "dark": .dark; default: nil }
-    }
-    private var canStopScan: Bool {
-        switch destination { case .clean: model.isScanning; case .disk: insights.isScanningDisk; default: false }
-    }
-    private var refreshLabel: String {
-        switch destination {
-        case .clean: model.isScanning ? "Stop cache scan" : "Scan caches (⌘R)"
-        case .memory: "Scan memory (⌘R)"
-        case .disk: insights.isScanningDisk ? "Stop folder scan" : "Rescan folder (⌘R)"
-        case .developer: developer.isScanning ? "Stop developer review" : "Scan developer resources (⌘R)"
-        case .activity: "Refresh"
-        }
-    }
-    private var refreshDisabled: Bool {
-        model.isWorking || (destination == .memory && insights.isScanningMemory) ||
-        (destination == .disk && insights.diskURL == nil && !insights.isScanningDisk)
     }
     private func refreshCurrentView() {
         switch destination {
@@ -95,10 +81,10 @@ struct RoomRootView: View {
                             .transition(.opacity.combined(with: .offset(y: reduceMotion ? 0 : 8)))
                     }
                 }
-                .padding(.horizontal, 44)
-                .padding(.top, 18)
-                .padding(.bottom, 25)
-                .frame(maxWidth: 1040)
+                .padding(.horizontal, 28)
+                .padding(.top, 24)
+                .padding(.bottom, 28)
+                .frame(maxWidth: 1120)
                 .frame(maxWidth: .infinity)
             }
             .scrollIndicators(.hidden)
@@ -107,30 +93,22 @@ struct RoomRootView: View {
         .preferredColorScheme(colorScheme)
         .toolbar {
             ToolbarItem(placement: .navigation) {
-                HStack(spacing: 10) {
-                    RoomMark().fill(.secondary, style: FillStyle(eoFill: true))
-                        .frame(width: 23, height: 23)
+                HStack(spacing: 6) {
+                    RoomMark().fill(.primary, style: FillStyle(eoFill: true))
+                        .frame(width: 24, height: 24)
+                        .accessibilityHidden(true)
                     Text("Room").font(RoomType.heading(15))
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
                 .accessibilityElement(children: .combine)
             }
+            .sharedBackgroundVisibility(.hidden)
             ToolbarItem(placement: .principal) {
                 RoomNavigationBar(selection: $destination)
             }
             .sharedBackgroundVisibility(.hidden)
             ToolbarItemGroup(placement: .primaryAction) {
-                if destination == .memory {
-                    Button(action: refreshCurrentView) {
-                        Image(systemName: canStopScan ? "stop" : "arrow.clockwise")
-                    }
-                    .help(refreshLabel)
-                    .accessibilityLabel(refreshLabel)
-                    .keyboardShortcut("r", modifiers: .command)
-                    .disabled(refreshDisabled)
-                }
-
                 Button { sheet = .settings } label: { Image(systemName: "slider.horizontal.3") }
                     .help("Settings")
                     .accessibilityLabel("Settings")
@@ -177,53 +155,31 @@ struct RoomRootView: View {
     }
 
     private var overview: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            HStack(alignment: .center, spacing: 24) {
-                VStack(alignment: .leading, spacing: 9) {
-                    Text(model.isScanning ? "Measuring storage." : "Storage overview")
-                        .font(RoomType.heading(22))
-                        .tracking(-0.4)
-
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        if model.hasPartialMeasurements {
-                            Text("≥").font(RoomType.figure(25)).foregroundStyle(.secondary)
-                        }
-                        RoomByteMetric(bytes: model.totalBytes, maximumSize: 56)
-                            .fixedSize(horizontal: true, vertical: false)
-                        Text("found").font(.system(size: 12)).foregroundStyle(.secondary)
-                    }
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("\(model.hasPartialMeasurements ? "At least " : "")\(RoomFormat.bytes(model.totalBytes)) found across scanned storage locations")
-
-                    Text(heroSubtitle)
-                        .font(.system(size: 13))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                if model.totalBytes > 0 && !model.isScanning {
-                    VStack(alignment: .leading, spacing: 14) {
-                        summaryMetric("Clearable", bytes: model.clearableBytes)
-                        summaryMetric("Held", bytes: model.heldBytes, lowerBound: model.hasPartialMeasurements)
-                    }
-                    .frame(width: 120, alignment: .leading)
-                }
-
-                RoomStorageVisual(selectionCount: selectedCount, isScanning: model.isScanning, motionEnabled: motionEnabled)
+        VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(model.isScanning ? "Measuring storage" : "Storage overview")
+                    .font(RoomType.heading(24))
+                    .tracking(-0.4)
+                Text(heroSubtitle)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .frame(minHeight: 152)
 
             ViewThatFits(in: .horizontal) {
-                HStack(alignment: .center, spacing: 14) {
+                HStack(alignment: .center, spacing: 12) {
                     scanScopePicker
-                    scanActions
-                    Spacer(minLength: 0)
-                }
-                VStack(alignment: .leading, spacing: 14) {
-                    scanScopePicker
+                    Spacer(minLength: 16)
                     scanActions
                 }
+                VStack(alignment: .leading, spacing: 12) {
+                    scanScopePicker
+                    scanActions
+                }
+            }
+
+            if model.lastScanned != nil || !model.sources.isEmpty {
+                storageSummary
             }
 
             if model.isScanning {
@@ -287,13 +243,39 @@ struct RoomRootView: View {
         }
     }
 
+    private var storageSummary: some View {
+        HStack(alignment: .center, spacing: 24) {
+            VStack(alignment: .leading, spacing: 7) {
+                Text(model.isScanning ? "Measured so far" : "Measured storage")
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                HStack(alignment: .firstTextBaseline, spacing: 5) {
+                    if model.hasPartialMeasurements {
+                        Text("≥").font(RoomType.figure(24)).foregroundStyle(.secondary)
+                    }
+                    RoomByteMetric(bytes: model.totalBytes, maximumSize: 38)
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(model.hasPartialMeasurements ? "At least " : "")\(RoomFormat.bytes(model.totalBytes)) measured across scanned storage locations")
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Divider().frame(height: 44)
+            summaryMetric("Clearable", bytes: model.clearableBytes)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Divider().frame(height: 44)
+            summaryMetric("Held", bytes: model.heldBytes, lowerBound: model.hasPartialMeasurements)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(20)
+        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
     private func summaryMetric(_ title: String, bytes: Int64, lowerBound: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title)
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
             Text("\(lowerBound ? "≥ " : "")\(RoomFormat.bytes(bytes))")
-                .font(RoomType.figure(20))
+                .font(RoomType.figure(24))
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
@@ -304,7 +286,7 @@ struct RoomRootView: View {
     @ViewBuilder private var scanScopePicker: some View {
         #if ROOM_APP_STORE
         HStack(spacing: 12) {
-            Label(model.approvedStoreFolderCount == 0 ? "Choose folders" : "\(model.approvedStoreFolderCount) approved \(model.approvedStoreFolderCount == 1 ? "folder" : "folders")", systemImage: "folder.badge.checkmark")
+            Label(model.approvedStoreFolderCount == 0 ? "No folders approved" : "\(model.approvedStoreFolderCount) approved \(model.approvedStoreFolderCount == 1 ? "folder" : "folders")", systemImage: "folder.badge.checkmark")
                 .font(.system(size: 12)).foregroundStyle(.secondary)
                 .fixedSize()
             Button("Manage access") { sheet = .settings }
@@ -312,7 +294,7 @@ struct RoomRootView: View {
                 .disabled(model.isWorking || model.isScanning)
                 .accessibilityIdentifier("RoomStoreManageFolderAccess")
         }
-        .frame(minHeight: 40)
+        .frame(minHeight: 36)
         #else
         Picker("Scan scope", selection: Binding(get: { model.scanScope }, set: { model.setScanScope($0) })) {
             ForEach(RoomCacheScanScope.allCases) { scope in Text(scope.title).tag(scope) }
@@ -322,9 +304,7 @@ struct RoomRootView: View {
         .labelsHidden()
         .font(.system(size: 13, weight: .medium))
         .frame(width: 228)
-        .padding(4)
-        .glassEffect(reduceTransparency ? .identity : .regular, in: Capsule())
-        .frame(minHeight: 40)
+        .frame(minHeight: 36)
         .accessibilityLabel("Scan scope")
         .accessibilityIdentifier("RoomCacheScanScopePicker")
         .disabled(model.isScanning || model.isWorking)
@@ -335,13 +315,14 @@ struct RoomRootView: View {
     private var scanActions: some View {
         HStack(alignment: .center, spacing: 10) {
             Button(action: refreshCurrentView) {
-                Label(model.isScanning ? "Stop scan" : "Scan caches", systemImage: model.isScanning ? "stop.fill" : "magnifyingglass")
-                    .font(.system(size: 13, weight: .medium))
-                    .padding(.horizontal, 8).padding(.vertical, 3)
+                Label(scanButtonTitle, systemImage: model.isScanning ? "stop.fill" : "magnifyingglass")
+                    .font(.system(size: 13, weight: .semibold))
+                    .padding(.horizontal, 4)
             }
             .buttonStyle(.glassProminent)
-            .tint(Color(red: 0.60, green: 0.79, blue: 0.91))
+            .tint(.accentColor)
             .controlSize(.large)
+            .frame(minHeight: 36)
             .disabled(!model.canScan)
             .keyboardShortcut("r", modifiers: .command)
             .accessibilityIdentifier("RoomCacheScanButton")
@@ -350,14 +331,23 @@ struct RoomRootView: View {
                 Button { sheet = .review } label: {
                     Label("Review \(RoomFormat.bytes(model.selectedBytes))", systemImage: "arrow.right")
                         .font(.system(size: 13, weight: .medium))
-                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .padding(.horizontal, 4)
                 }
                 .buttonStyle(.glass)
                 .controlSize(.large)
+                .frame(minHeight: 36)
                 .keyboardShortcut(.return, modifiers: .command)
             }
         }
         .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var scanButtonTitle: String {
+        if model.isScanning { return "Stop scan" }
+        #if ROOM_APP_STORE
+        if model.approvedStoreFolderCount == 0 { return "Choose folder & scan" }
+        #endif
+        return "Scan caches"
     }
 
     private var heroSubtitle: String {
@@ -375,46 +365,35 @@ struct RoomRootView: View {
     }
 
     private var sourceSection: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 12) {
-                HStack(alignment: .firstTextBaseline, spacing: 7) {
-                    Text("Sources").font(.system(size: 15, weight: .semibold))
-                    if !model.sources.isEmpty {
-                        Text("\(model.sources.count)")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
-                    }
+        VStack(alignment: .leading, spacing: 12) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) {
+                    sourceSectionTitle
+                    Spacer(minLength: 12)
+                    if !model.sources.isEmpty { sourceFilters }
                 }
-                .fixedSize()
-
-                Spacer(minLength: 12)
-
-                if expanded { sourceSearch }
-
-                if !model.sources.isEmpty {
-                    Picker("Show sources", selection: $sourceFilter) {
-                        Text("All").tag(RoomSourceFilter.all)
-                        Text("Clearable").tag(RoomSourceFilter.clearable)
-                        Text("Held").tag(RoomSourceFilter.held)
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .accessibilityLabel("Show sources")
-                    .frame(width: 220)
+                VStack(alignment: .leading, spacing: 12) {
+                    sourceSectionTitle
+                    if !model.sources.isEmpty { sourceFilters }
                 }
-
-                sourceCategoryMenu
             }
             .padding(.bottom, 2)
 
             if model.sources.isEmpty {
-                Text(model.isScanning ? "Preparing locations. Results appear as each source is measured." : "Start a scan to inspect storage locations.")
-                    .font(.system(size: 14))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, minHeight: 130)
+                sourceEmptyState
             } else if visibleSources.isEmpty {
-                ContentUnavailableView("No matching sources", systemImage: "line.3.horizontal.decrease", description: Text(sourceFilter == .clearable ? "Open Held to see why files are protected." : "Try another category or filter."))
-                    .frame(height: 130)
+                HStack(spacing: 12) {
+                    Image(systemName: "line.3.horizontal.decrease").foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("No matching sources").font(.system(size: 14, weight: .medium))
+                        Text(sourceFilter == .clearable ? "Open Held to see why files are protected." : "Try another category or filter.")
+                            .font(.system(size: 13)).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(20)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 16))
             } else {
                 LazyVStack(spacing: 2) {
                     ForEach(visibleSources) { source in
@@ -447,17 +426,67 @@ struct RoomRootView: View {
         }
     }
 
+    private var sourceSectionTitle: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 7) {
+            Text("Sources").font(.system(size: 16, weight: .semibold))
+            if !model.sources.isEmpty {
+                Text(matchingSources.count == model.sources.count ? "\(model.sources.count)" : "\(matchingSources.count) of \(model.sources.count)")
+                    .font(.system(size: 12)).foregroundStyle(.secondary).monospacedDigit()
+            }
+        }
+        .fixedSize()
+    }
+
+    private var sourceFilters: some View {
+        HStack(spacing: 12) {
+            sourceSearch
+            Picker("Show sources", selection: $sourceFilter) {
+                Text("All").tag(RoomSourceFilter.all)
+                Text("Clearable").tag(RoomSourceFilter.clearable)
+                Text("Held").tag(RoomSourceFilter.held)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .accessibilityLabel("Show sources")
+            .frame(width: 220)
+            sourceCategoryMenu
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var sourceEmptyState: some View {
+        HStack(alignment: .center, spacing: 14) {
+            Image(systemName: model.isScanning ? "magnifyingglass" : "externaldrive")
+                .font(.system(size: 23, weight: .regular))
+                .foregroundStyle(.secondary)
+                .frame(width: 30)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 5) {
+                Text(model.isScanning ? "Preparing locations" : model.isPartialScan ? "Scan again to finish" : model.lastScanned == nil ? "Ready for a scan" : "No sources measured")
+                    .font(.system(size: 14, weight: .medium))
+                Text(model.isScanning ? "Results appear as each source is measured." : model.lastScanned == nil ? "A scan measures storage before you review any changes." : "Check scan notes for access or inspection limits.")
+                    .font(.system(size: 13)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
     private var sourceSearch: some View {
         HStack(spacing: 6) {
             Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
             TextField("Find a source", text: $query)
                 .textFieldStyle(.plain)
-                .frame(width: 120)
+                .frame(width: 130)
                 .accessibilityLabel("Find a cache source")
         }
-        .font(.system(size: 12))
-        .padding(.horizontal, 10).padding(.vertical, 6)
-        .glassEffect(.regular, in: Capsule())
+        .font(.system(size: 13))
+        .padding(.horizontal, 10).padding(.vertical, 7)
+        .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+        .overlay { RoundedRectangle(cornerRadius: 8).strokeBorder(Color.primary.opacity(0.12), lineWidth: 1) }
     }
 
     private var sourceCategoryMenu: some View {
@@ -470,7 +499,7 @@ struct RoomRootView: View {
             Button("Select recommended") { model.selectRecommended() }
             Button("Deselect all") { model.clearSelection() }
         } label: {
-            Text(category?.title ?? "All sources").font(.system(size: 12))
+            Text(category?.title ?? "All categories").font(.system(size: 13))
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
@@ -501,9 +530,10 @@ private struct RoomSourceRow: View {
                 .disabled(disabled || source.isInspectionOnly || !source.isAvailable)
                 .accessibilityLabel("Select \(source.name)")
                 .frame(width: 18)
+                .help(source.blockedReason ?? (source.isInspectionOnly ? "This source is available for inspection only." : source.isAvailable ? "Include this source in the cleanup review." : "This source is held and cannot be selected."))
 
             Image(systemName: source.symbol)
-                .font(.system(size: 19, weight: .regular))
+                .font(.system(size: 17, weight: .regular))
                 .foregroundStyle(.secondary)
                 .frame(width: 24)
 
@@ -537,18 +567,18 @@ private struct RoomSourceRow: View {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.secondary)
-                        .opacity(hovering ? 1 : 0.4)
+                        .opacity(hovering ? 1 : 0.65)
                 }
                 .frame(maxWidth: .infinity, minHeight: 48)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .help(source.blockedReason ?? source.subtitle)
-            .accessibilityLabel("Inspect \(source.name), \(RoomFormat.bytes(source.eligibleBytes)) available")
+            .accessibilityLabel("Inspect \(source.name), \(RoomFormat.bytes(source.bytes)) measured, \(statusLabel)")
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(hovering ? Color.primary.opacity(0.045) : Color.clear, in: RoundedRectangle(cornerRadius: 12))
+        .padding(.vertical, 8)
+        .background(selected ? Color.accentColor.opacity(0.065) : hovering ? Color.primary.opacity(0.045) : Color.clear, in: RoundedRectangle(cornerRadius: 12))
         .onHover { hovering = $0 }
         .contextMenu {
             Button("Inspect source", action: inspect)

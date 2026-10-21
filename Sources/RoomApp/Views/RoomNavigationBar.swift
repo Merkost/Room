@@ -26,8 +26,9 @@ struct RoomNavigationBar: View {
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
-            navigationRow(compact: false)
-            navigationRow(compact: true)
+            navigationRow(presentation: .labeled)
+            navigationRow(presentation: .labelsOnly)
+            navigationRow(presentation: .iconsOnly)
         }
         .fixedSize(horizontal: false, vertical: true)
         .animation(selectionAnimation, value: selection)
@@ -36,28 +37,30 @@ struct RoomNavigationBar: View {
         .accessibilityLabel("Room views")
     }
 
-    private func navigationRow(compact: Bool) -> some View {
+    private func navigationRow(presentation: NavigationPresentation) -> some View {
         GlassEffectContainer(spacing: 2) {
             HStack(spacing: 2) {
-                ForEach(items) { item in destinationButton(item, compact: compact) }
+                ForEach(items) { item in destinationButton(item, presentation: presentation) }
             }
-            .padding(.vertical, 3)
-            .padding(.horizontal, 2)
+            .padding(.vertical, 4)
+            .padding(.horizontal, 4)
         }
     }
 
-    private func destinationButton(_ item: NavigationItem, compact: Bool) -> some View {
+    private func destinationButton(_ item: NavigationItem, presentation: NavigationPresentation) -> some View {
         let selected = selection == item.destination
         let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
         return Button { select(item.destination) } label: {
-            HStack(spacing: 5) {
-                Image(systemName: item.symbol).font(.system(size: 13, weight: .medium)).frame(width: 16)
-                if !compact || selected {
+            HStack(spacing: 6) {
+                if presentation != .labelsOnly {
+                    Image(systemName: item.symbol).font(.system(size: 13, weight: .medium)).frame(width: 16)
+                }
+                if presentation != .iconsOnly {
                     Text(item.title).font(.system(size: 12, weight: .medium)).lineLimit(1)
                 }
             }
             .foregroundStyle(selected ? .primary : .secondary)
-            .frame(width: compact ? (selected ? 96 : 34) : 88, height: 30)
+            .frame(width: presentation.slotWidth, height: 32)
             .background {
                 if selected && reduceTransparency {
                     shape.fill(Color(nsColor: .controlBackgroundColor))
@@ -100,6 +103,14 @@ struct RoomNavigationBar: View {
         let destination = items[next].destination
         focusedDestination = destination
         select(destination)
+    }
+}
+
+private enum NavigationPresentation: Equatable {
+    case labeled, labelsOnly, iconsOnly
+
+    var slotWidth: CGFloat {
+        switch self { case .labeled: 94; case .labelsOnly: 78; case .iconsOnly: 36 }
     }
 }
 

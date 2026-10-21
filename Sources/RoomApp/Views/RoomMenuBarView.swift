@@ -19,9 +19,16 @@ struct RoomMenuBarView: View {
             swap: report.flatMap(RoomMonitorPresentation.measuredSwap), showPressure: showPressure, showSwap: showSwap)
     }
     private var storage: RoomMonitorPresentation { .storage(total: insights.diskCapacityBytes, available: insights.diskAvailableBytes) }
+    private var cacheActionTitle: String {
+        if cacheModel.isScanning { return "Stop scan" }
+        #if ROOM_APP_STORE
+        if cacheModel.approvedStoreFolderCount == 0 { return "Choose folder & scan" }
+        #endif
+        return "Scan caches"
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 10) {
                 RoomMark().fill(.secondary, style: FillStyle(eoFill: true))
                     .frame(width: 19, height: 19).accessibilityHidden(true)
@@ -30,7 +37,7 @@ struct RoomMenuBarView: View {
                 if insights.isScanningMemory { ProgressView().controlSize(.small) }
                 Button {
                     insights.scanMemory(); insights.refreshDiskCapacity()
-                } label: { Image(systemName: "arrow.clockwise").frame(width: 25, height: 25) }
+                } label: { Image(systemName: "arrow.clockwise").frame(width: 22, height: 22) }
                 .buttonStyle(.glass).help("Refresh measurements").accessibilityLabel("Refresh measurements")
                 .disabled(insights.isScanningMemory)
             }
@@ -40,13 +47,18 @@ struct RoomMenuBarView: View {
             .pickerStyle(.segmented).labelsHidden()
             .accessibilityIdentifier("RoomMonitorMetricPicker")
 
-            if selectedMetric == .memory {
-                memoryCard
-                storageCard
-            } else {
-                storageCard
-                memoryCard
+            VStack(spacing: 18) {
+                if selectedMetric == .memory {
+                    memoryCard
+                    Divider()
+                    storageCard
+                } else {
+                    storageCard
+                    Divider()
+                    memoryCard
+                }
             }
+            .padding(.vertical, 4)
 
             #if !ROOM_APP_STORE
             if memoryActions.selectedCount > 0 {
@@ -57,7 +69,7 @@ struct RoomMenuBarView: View {
             }
             #endif
             HStack(spacing: 9) {
-                Button(cacheModel.isScanning ? "Stop scan" : "Scan caches") {
+                Button(cacheActionTitle) {
                     if cacheModel.isScanning { cacheModel.cancelScan() } else { cacheModel.scan() }
                     show(.clean)
                 }
@@ -66,10 +78,10 @@ struct RoomMenuBarView: View {
                 Button("Open Room") { openRoom() }.buttonStyle(.glassProminent)
             }.controlSize(.regular)
             if let date = insights.memoryReport?.scannedAt {
-                Text("Updated \(date, style: .relative) ago").font(.system(size: 11)).foregroundStyle(.tertiary)
+                Text("Updated \(date, style: .relative) ago").font(.system(size: 12)).foregroundStyle(.secondary)
             }
         }
-        .padding(20).frame(width: 320)
+        .padding(20).frame(width: 332)
         .animation(motionEnabled && !reduceMotion ? .smooth(duration: 0.22) : nil, value: selectedMetric)
         .task {
             memoryActions.refresh(from: insights.memoryReport)

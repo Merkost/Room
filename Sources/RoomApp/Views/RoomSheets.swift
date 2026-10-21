@@ -242,9 +242,9 @@ struct RoomSettingsSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
-            RoomSheetHeading(title: "Settings", subtitle: "Make Room feel at home.")
+            RoomSheetHeading(title: "Settings", subtitle: "Appearance, menu bar, and folder access.")
             ScrollView {
-                VStack(alignment: .leading, spacing: 26) {
+                VStack(alignment: .leading, spacing: 16) {
                     settingsSection("Appearance", symbol: "circle.lefthalf.filled") {
                         HStack {
                             Text("Theme").font(.system(size: 13))
@@ -285,7 +285,7 @@ struct RoomSettingsSheet: View {
                                 Text(about.versionLabel).font(.system(size: 12)).foregroundStyle(.secondary)
                                     .accessibilityIdentifier("RoomAboutVersion")
                                 #if ROOM_APP_STORE
-                                Text("Mac App Store edition").font(.system(size: 11)).foregroundStyle(.tertiary)
+                                Text("Mac App Store edition").font(.system(size: 12)).foregroundStyle(.secondary)
                                 #endif
                             }
                         }
@@ -313,14 +313,17 @@ struct RoomSettingsSheet: View {
                 Spacer()
                 Button("Done") { dismiss() }.buttonStyle(.glassProminent).keyboardShortcut(.defaultAction)
             }.controlSize(.large)
-        }.padding(32).frame(width: 540)
+        }.padding(28).frame(width: 560)
     }
 
     private func settingsSection<Content: View>(_ title: String, symbol: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 15) {
-            Label(title, systemImage: symbol).font(.system(size: 14, weight: .semibold))
+        VStack(alignment: .leading, spacing: 16) {
+            Label(title, systemImage: symbol).font(.system(size: 15, weight: .semibold))
             VStack(alignment: .leading, spacing: 14, content: content)
         }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
 
@@ -375,7 +378,7 @@ private struct RoomFolderAccessSection: View {
         VStack(alignment: .leading, spacing: 13) {
             HStack {
                 Label("Folder access", systemImage: "folder.badge.gearshape")
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.system(size: 15, weight: .semibold))
                 Spacer()
                 Button { insights.chooseAccessFolder() } label: { Image(systemName: "plus") }
                     .buttonStyle(.glass).help("Choose a folder to save access")
@@ -437,6 +440,9 @@ private struct RoomFolderAccessSection: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
 
@@ -471,11 +477,11 @@ struct RoomActivityView: View {
     #endif
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 30) {
+        VStack(alignment: .leading, spacing: 24) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Room to look back.")
-                        .font(RoomType.heading(27)).tracking(-0.8)
+                    Text("Activity")
+                        .font(RoomType.heading(24))
                     Text("Your cleanup history. Restore anything still in Trash.")
                         .font(.system(size: 14)).foregroundStyle(.secondary)
                 }
@@ -484,15 +490,14 @@ struct RoomActivityView: View {
                     .buttonStyle(.glass)
                     .controlSize(.large)
             }
-            .padding(.top, 35)
 
             if model.activity.isEmpty {
                 ContentUnavailableView {
-                    Label("A fresh start.", systemImage: "clock.arrow.circlepath")
+                    Label("No cleanup history", systemImage: "clock.arrow.circlepath")
                 } description: {
                     Text("Caches you move to Trash will appear here.")
                 }
-                .frame(maxWidth: .infinity, minHeight: 350)
+                .frame(maxWidth: .infinity, minHeight: 240)
             } else {
                 VStack(alignment: .leading, spacing: 20) {
                     ForEach(model.activity) { record in
@@ -580,8 +585,8 @@ private struct RoomActivityRow: View {
             }
             .padding(.leading, 48)
         }
-        .padding(22)
-        .background(.quaternary.opacity(0.24), in: RoundedRectangle(cornerRadius: 20))
+        .padding(16)
+        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
 
@@ -591,7 +596,7 @@ struct RoomSheetHeading: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
-            Text(title).font(RoomType.heading(25)).tracking(-0.7)
+            Text(title).font(RoomType.heading(24))
             Text(subtitle).font(.system(size: 14)).foregroundStyle(.secondary)
         }
     }

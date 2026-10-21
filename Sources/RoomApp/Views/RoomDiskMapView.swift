@@ -22,7 +22,7 @@ struct RoomDiskMapView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
+        VStack(alignment: .leading, spacing: 24) {
             ViewThatFits(in: .horizontal) {
                 HStack(alignment: .center, spacing: 20) {
                     headerIdentity
@@ -39,21 +39,20 @@ struct RoomDiskMapView: View {
             if let report = insights.diskReport {
                 reportContents(report)
             } else if insights.isScanningDisk {
-                scanProgress.frame(maxWidth: .infinity, minHeight: 380)
+                scanProgress.frame(maxWidth: .infinity, minHeight: 260)
             } else {
-                VStack(spacing: 18) {
+                VStack(spacing: 16) {
                     Image(systemName: "square.grid.3x3.square")
-                        .font(.system(size: 48, weight: .ultraLight)).foregroundStyle(.secondary)
-                    Text("Start with a folder.").font(RoomType.heading(22))
+                        .font(.system(size: 36, weight: .light)).foregroundStyle(.secondary)
+                    Text("Start with a folder.").font(RoomType.heading(20))
                     Text("Hidden files included. Your files stay in place.")
                         .font(.system(size: 14)).foregroundStyle(.secondary)
-                    Button { insights.scanHome() } label: { Label("Choose home folder", systemImage: "house") }
-                        .buttonStyle(.glassProminent).controlSize(.large)
                 }
-                .frame(maxWidth: .infinity, minHeight: 380)
+                .frame(maxWidth: .infinity, minHeight: 260)
+                .padding(20)
+                .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
         }
-        .padding(.top, 6)
         .animation(animation, value: insights.diskReport?.id)
         .animation(animation, value: filter)
         .animation(animation, value: showingAllFindings)
@@ -72,14 +71,17 @@ struct RoomDiskMapView: View {
 
     private var headerIdentity: some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text("Disk map").font(RoomType.heading(22)).tracking(-0.4)
-            if let url = insights.diskURL {
+            Text("Disk map").font(RoomType.heading(24))
+            if let url = insights.diskURL, insights.diskReport == nil {
                 Label(url.lastPathComponent.isEmpty ? url.path : url.lastPathComponent, systemImage: "folder")
                     .font(.system(size: 13)).foregroundStyle(.secondary)
                     .lineLimit(1).truncationMode(.middle).help(url.path)
                     .accessibilityLabel("Current folder: \(url.path)")
-            } else {
+            } else if insights.diskReport == nil {
                 Text("Map a folder, including its hidden files.")
+                    .font(.system(size: 13)).foregroundStyle(.secondary)
+            } else {
+                Text("Locally allocated space, by folder.")
                     .font(.system(size: 13)).foregroundStyle(.secondary)
             }
         }
@@ -98,9 +100,9 @@ struct RoomDiskMapView: View {
                 else if let url = insights.diskURL { insights.scanDisk(url: url) }
                 else { insights.scanHome() }
             } label: {
-                Label(insights.isScanningDisk ? "Stop scan" : insights.diskURL == nil ? "Scan" : "Rescan",
-                      systemImage: insights.isScanningDisk ? "stop.fill" : "magnifyingglass")
-                    .font(.system(size: 13, weight: .medium)).padding(.horizontal, 8).padding(.vertical, 3)
+                Label(insights.isScanningDisk ? "Stop scan" : insights.diskURL == nil ? "Choose home folder" : "Rescan",
+                      systemImage: insights.isScanningDisk ? "stop.fill" : insights.diskURL == nil ? "house" : "magnifyingglass")
+                    .font(.system(size: 13, weight: .medium))
             }
             .buttonStyle(.glassProminent).controlSize(.large)
             .keyboardShortcut("r", modifiers: .command)
@@ -135,7 +137,7 @@ struct RoomDiskMapView: View {
     private func reportContents(_ report: DiskMapReport) -> some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .firstTextBaseline, spacing: 20) {
-                RoomByteMetric(bytes: filter.total(in: report), maximumSize: 54)
+                RoomByteMetric(bytes: filter.total(in: report), maximumSize: 40)
                 VStack(alignment: .trailing, spacing: 6) {
                     Text(filter == .all ? "\(report.fileCount.formatted()) \(report.fileCount == 1 ? "file" : "files")" : filter.title)
                         .font(.system(size: 14))
@@ -166,7 +168,7 @@ struct RoomDiskMapView: View {
                 scanProgress.frame(height: 280)
             } else if filter.total(in: report) > 0 {
                 RoomTreemap(entries: entries(in: report), open: open)
-                    .frame(height: 285)
+                    .frame(height: 300)
                     .id(report.url.path + filter.id)
                     .transition(.opacity.combined(with: .scale(scale: reduceMotion ? 1 : 0.985)))
             } else {

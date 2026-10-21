@@ -10,63 +10,56 @@ Room is a native macOS utility for understanding storage, reviewing developer re
 
 ## See what is taking space
 
-- **Clean** — measure known caches, distinguish clearable items from held storage, and review before any supported move to Trash.
-- **Disk Map** — explore allocated size by folder, including hidden files, categories, and large items. Labeled Scan, Rescan, and Stop controls keep the current folder clear.
-- **Developer** — review Android virtual-device sizes and available metadata evidence; group Gradle storage by version and show references from selected project wrappers. This view is read-only. Standard AVD metadata does not provide verified last-launch history, and no project reference does not mean unused.
-- **Memory** — inspect RAM, compression, swap, and the macOS pressure signal. Choose RAM or available storage for the menu bar; pressure colors and swap details are configurable. Unavailable signals stay unknown.
-- **Activity** — keep local cleanup receipts and restore unchanged items when their original locations remain available.
-- **Local analysis** — add on-device review suggestions when supported; deterministic protections remain in charge.
+- **Clean** — measure known cache locations, distinguish clearable files from held storage, and review supported changes before moving anything to Trash.
+- **Disk Map** — explore allocated space by folder, including hidden files, categories, and large items. Scan, Rescan, and Stop stay visible beside the current folder.
+- **Developer** — inspect Android virtual devices and group Gradle versions with references from selected project wrappers. This view is read-only; metadata dates and missing references do not prove non-use.
+- **Memory** — understand RAM, compression, swap, and memory pressure. Choose RAM or available storage for the menu bar, with configurable pressure colors and swap details.
+- **Activity** — keep local cleanup receipts and restore eligible unchanged items when their original locations remain available.
 
-Storage scans start on demand. The optional menu-bar monitor periodically samples memory and disk capacity. Unknown files, installed resources, credentials, and project source remain held for inspection. Moving files to Trash does not release their disk space until Trash is emptied. Room never empties Trash.
+Optional on-device analysis adds review suggestions when supported; local rules remain available. Suggestions do not authorize deletion. Storage scans start on demand, while the optional menu-bar monitor periodically samples memory and disk capacity.
 
 ## Two editions
 
-| | Mac App Store candidate | Direct |
+| | Store | Direct |
 |---|---|---|
-| File access | Native, remembered read-only folder approvals; optional home-folder approval covers accessible descendants. Reviewed changes need temporary exact write grants. | Broader known-location scans, subject to macOS permissions; Settings opens Full Disk Access for the user to enable. |
-| Cache cleanup | Narrow exception for old, locally SHA512-verified npm download objects. Other process-guarded caches remain held because sandboxed background-tool visibility cannot be established. | Broader known-cache cleanup with age, identity and available owner-activity checks. |
-| Developer review | Read-only AVD evidence and Gradle selected-project references. | Same read-only review. |
+| File access | Remembered read-only folder approvals; reviewed changes require temporary exact write grants. | Broader known-location scans, subject to macOS permissions and user-enabled Full Disk Access. |
+| Cache cleanup | Old, locally verified npm download objects only. | Broader known-cache catalogue with conservative eligibility checks. |
 | Memory | Monitoring and suggestions. | Monitoring plus an explicit normal app-quit review. |
-| Analysis | Apple on-device models when available, otherwise local rules. | Apple on-device models, an optional separately installed local runtime, or rules. |
-| Agent worktrees | Excluded. Codex and Claude storage may be inspected, but general agent-cache cleanup is not enabled. | Separate worktree review with live remote verification and conservative holds. |
+| Analysis | Apple on-device models when available; local rules otherwise. | Apple models, an optional separately installed local runtime, or rules. |
+| Agent worktrees | Excluded. General agent-cache cleanup is not enabled. | Separate worktree review with live remote verification and conservative holds. |
 
-The Store npm exception applies only to supported immutable download-object files modified more than 30 days ago, within approved folders and bounded local content-verification limits. It does not prove an object is unused. Installs may download it again, active installs may retry, and offline installs may fail. npm indexes, temporary data, and installed packages stay in place. Native sandboxed Trash, Quit/relaunch and Restore passed on a disposable release 2 fixture with exact content hashes; build 3 verified the impact disclosure and pre-grant write gate without repeating the move. Core/Store write code was unchanged, and no user caches were cleaned.
+The Store cleanup exception covers supported SHA512-addressed npm download objects modified more than 30 days ago, within approved folders and bounded local verification limits. Verification does not prove an object is unused: installs may download it again, active installs may retry, and offline installs may fail. npm indexes, temporary data, installed packages, and other process-guarded caches stay held.
 
-The current C4 identity builds are Store 1.0.0 (4) and direct 1.7.3 (12). Both built successfully, passed installed native identity checks, and were packaged with verified signatures. The functional test checkpoint remains Store build 3 and direct build 11; those tests were not rerun for this visual change. Store distribution export remains blocked by account/signing prerequisites, and publication work is still in progress. An App Store record, local build, or passing unit test is not a published download. The website shows release availability when it is ready.
+Unknown files, credentials, installed resources, and project source remain protected. Trash retains disk space until you empty it; Room never empties Trash. Restore refuses changed files and occupied destinations. Folder approvals cover accessible descendants, while macOS protections and separate-volume approvals still apply.
+
+## Release status
+
+As of 22 October 2026, **Store 1.0.0 (5)** has been distribution-signed and uploaded to App Store Connect; the upload entered processing. App Review submission is not yet confirmed. **Direct 1.8.0 (13)** passed its release build and native Scan/Stop checks. The website will show public Store availability after release.
+
+Fresh tests passed for both editions: **186 Direct tests** and **171 Store tests**. Native Store 5 cleanup, Quit/relaunch, a fresh recovery write grant, and exact-byte Restore passed using disposable data. See [release evidence and boundaries](docs/RELEASE.md).
 
 ## Build
 
-Requires an Apple silicon Mac, macOS 26+, and Xcode with Swift 6.2 or newer. No external package dependencies are needed to build the app.
+Requires an Apple silicon Mac, macOS 26+, and Xcode with Swift 6.2 or newer. The app has no external package dependencies.
 
 ```sh
 # Direct edition
 ./scripts/build.sh
 
-# Sandboxed Store candidate
+# Locally signed sandbox preview
 ./scripts/build-store.sh
-```
 
-These scripts create locally signed candidates. App Store distribution requires the publisher’s distribution signing identities, provisioning, and an accepted upload.
-
-```sh
+# Tests
 swift test
 ROOM_EDITION=store swift test
 ```
 
-Tests use isolated fixtures. Some recovery tests exercise macOS Trash with their own temporary files. Unit-test fixtures do not establish distribution-signed sandbox behavior.
+The build scripts produce local candidates. Store distribution uses the separate [archive/export workflow](scripts/STORE-ARCHIVE.md) and requires the publisher’s signing assets. Tests use isolated fixtures; some exercise macOS Trash with their own temporary files.
 
-## Design and boundaries
+## Design and architecture
 
-The interface uses native glass controls, a flat adaptive toolbar, readable numeric hierarchy, keyboard shortcuts, and system Reduce Motion and Reduce Transparency preferences. Scan cancellation keeps partial results visibly incomplete.
+Room uses system typography, a stable adaptive toolbar, compact numeric hierarchy, native glass controls, keyboard shortcuts, and the Mac’s Reduce Motion and Reduce Transparency preferences. The selected C4 soft-pocket mark is shared across the app and website. Cancelled scans keep partial results explicit.
 
-Read-only folder bookmarks cover accessible descendants, so rescans and approved drill-down do not need another picker. macOS may still protect files, and other volumes need separate approval. Room never enables system permissions itself.
-
-Cleanup rechecks path and filesystem identity, age, applicable content validation, owner activity where reliable, and access before moving an item. Unverifiable candidates remain held. Restore refuses changed files and occupied destinations. These checks reduce races; filesystem changes are not an atomic transaction. npm verification reads bounded object contents locally; optional model analysis receives metadata rather than scanned file contents.
-
-`RoomCore` owns scanners, classifications, cleanup, and recovery. `RoomApp` owns observable state, native permissions, and views. See [architecture](docs/ARCHITECTURE.md) for the source map and [release notes](docs/RELEASE.md) for distribution boundaries.
-
-## Website
-
-The `website/` directory contains the static marketing, support, and privacy pages for Cloudflare. It has no analytics, advertising SDK, sign-in, or third-party font dependency.
+`RoomCore` owns scanning, classification, cleanup, and recovery. `RoomApp` owns state, native permissions, and views. See [architecture](docs/ARCHITECTURE.md) and [design](DESIGN.md). The `website/` directory contains the marketing, support, and privacy pages; it has no analytics, advertising SDK, sign-in, or third-party font dependency.
 
 © 2026 Konstantin Merenkov. All rights reserved.
