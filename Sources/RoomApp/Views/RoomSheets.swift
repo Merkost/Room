@@ -174,7 +174,7 @@ struct RoomSourceSheet: View {
                                         Spacer(minLength: 0)
                                         VStack(alignment: .trailing, spacing: 3) {
                                             Text(RoomFormat.bytes(held.bytes)).monospacedDigit()
-                                            Text("\(held.count) items").foregroundStyle(.secondary)
+                                            Text("\(held.count) \(held.count == 1 ? "item" : "items")").foregroundStyle(.secondary)
                                         }
                                         .font(.system(size: 12))
                                         .fixedSize()
@@ -548,7 +548,7 @@ private struct RoomActivityRow: View {
                 Spacer()
                 VStack(alignment: .trailing, spacing: 5) {
                     Text(RoomFormat.bytes(record.bytes)).font(.system(size: 14)).monospacedDigit()
-                    Text("\(record.itemCount) items · \(record.restoredCount) restored")
+                    Text("\(record.itemCount) \(record.itemCount == 1 ? "item" : "items") · \(record.restoredCount) restored")
                         .font(.system(size: 12)).foregroundStyle(.secondary)
                 }
                 Button("Restore", action: restore)
@@ -575,7 +575,7 @@ private struct RoomActivityRow: View {
                 }
                 .padding(.top, 12)
             } label: {
-                Text(record.errorCount > 0 ? "Review \(record.errorCount) issues and item details" : "Item details")
+                Text(record.errorCount > 0 ? "Review \(record.errorCount) \(record.errorCount == 1 ? "issue" : "issues") and item details" : "Item details")
                     .font(.system(size: 12)).foregroundStyle(.secondary)
             }
             .padding(.leading, 48)

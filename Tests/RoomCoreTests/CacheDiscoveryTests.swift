@@ -38,8 +38,17 @@ struct CacheDiscoveryTests {
     }
 
     @Test("OS-supplied temporary and cache roots retain physical paths without a var alias")
-    func physicalSystemRoots() {
-        let config = CacheConfiguration.full
+    func physicalSystemRoots() throws {
+        let length = confstr(_CS_DARWIN_USER_CACHE_DIR, nil, 0)
+        try #require((2..<16_384).contains(length))
+        var buffer = [CChar](repeating: 0, count: length)
+        try #require(confstr(_CS_DARWIN_USER_CACHE_DIR, &buffer, length) > 0)
+        let bytes = buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
+        let userCache = URL(fileURLWithPath: String(decoding: bytes, as: UTF8.self), isDirectory: true)
+        // This checks OS path canonicalization, independently of app catalogue
+        // discovery and the permissions of unrelated installed applications.
+        let config = CacheConfiguration.addingDiscoveredSources(to: CacheConfiguration(roots: []),
+            temporaryDirectory: FileManager.default.temporaryDirectory, userCacheDirectory: userCache)
         for id in ["temporary-karma", "discovered-temporary", "discovered-user-cache"] {
             let root = config.roots.first { $0.id == id }
             #expect(root != nil)
@@ -52,6 +61,19 @@ struct CacheDiscoveryTests {
                 cursor.deleteLastPathComponent()
             }
         }
+    }
+
+    @Test("Automatic temporary and user-cache overrides cannot enter app containers")
+    func containerSystemDirectoryOverridesRequireApproval() throws {
+        let fixture = try DiscoveryFixture()
+        defer { fixture.remove() }
+        let cache = try fixture.write("Library/Containers/com.example.app/Data/Library/Caches/resource", count: 8_000)
+        let temporary = try fixture.write("Library/Group Containers/group.example.app/temporary/_karma_webpack_123/data", count: 12_000)
+        let config = CacheConfiguration.addingDiscoveredSources(to: CacheConfiguration(roots: [], homeDirectory: fixture.home),
+            temporaryDirectory: temporary.deletingLastPathComponent().deletingLastPathComponent(),
+            userCacheDirectory: cache.deletingLastPathComponent())
+        #expect(!config.roots.contains { ["temporary-karma", "discovered-temporary", "discovered-user-cache"].contains($0.id) })
+        #expect(config.inspectionIssues.contains { $0.message.contains("folder approval") })
     }
 
     @Test("Trusted parent aliases are normalized while discovered child links remain untraversed")

@@ -9,6 +9,7 @@ extension CacheConfiguration {
         let home = base.homeDirectory
         var roots = base.roots
         var protected = base.protectedLocations
+        var inspectionIssues = base.inspectionIssues
         let week: TimeInterval = 7 * 86_400
         let month: TimeInterval = 30 * 86_400
         func location(_ path: String) -> URL { home.appendingPathComponent(path, isDirectory: false) }
@@ -25,15 +26,15 @@ extension CacheConfiguration {
         // Local installation discovery is shallow and skips substituted directories.
         func folders(_ path: String) -> [String] {
             let url = location(path)
-            guard let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey]),
-                  values.isDirectory == true, values.isSymbolicLink != true,
-                  let children = try? FileManager.default.contentsOfDirectory(at: url,
-                    includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey]) else { return [] }
-            return children.compactMap { child in
-                guard let values = try? child.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey]),
-                      values.isDirectory == true, values.isSymbolicLink != true else { return nil }
-                return child.lastPathComponent
-            }.sorted()
+            guard !automaticContainerApprovalRequired(for: url, home: home) else { return [] }
+            // Check every ancestor without following aliases. A final physical
+            // directory can still have an app-support alias into a container.
+            let inventory = CatalogueMetadata.directoryNames(url, limit: 1_536, opener: CatalogueMetadata.openDirectory)
+            if inventory.partial {
+                inspectionIssues.append(ScanIssue(url: url,
+                    message: "Cache profile discovery was limited by folder access or its name limit. Only accessible physical profile folders were added."))
+            }
+            return inventory.names.sorted()
         }
         func slug(_ value: String) -> String {
             value.lowercased().map { $0.isLetter || $0.isNumber ? String($0) : "-" }.joined()
@@ -133,6 +134,8 @@ extension CacheConfiguration {
 
         var ids = Set<String>(), paths = Set<String>()
         let uniqueRoots = roots.filter { ids.insert($0.id).inserted && paths.insert($0.url.path).inserted }
-        return CacheConfiguration(roots: uniqueRoots, protectedLocations: protected, homeDirectory: home, inspectionIssues: base.inspectionIssues)
+        return CacheConfiguration(roots: uniqueRoots, protectedLocations: protected, homeDirectory: home,
+            inspectionIssues: inspectionIssues, readAccessRoots: base.readAccessRoots,
+            protectedMeasurementExclusions: base.protectedMeasurementExclusions)
     }
 }

@@ -84,7 +84,7 @@ struct RoomAgentWorkView: View {
                         .font(.system(size: 12)).foregroundStyle(.secondary)
                 }
                 if !report.issues.isEmpty {
-                    DisclosureGroup("\(report.issues.count) scan notes") {
+                    DisclosureGroup("\(report.issues.count) scan \(report.issues.count == 1 ? "note" : "notes")") {
                         VStack(alignment: .leading, spacing: 12) {
                             ForEach(Array(report.issues.prefix(20))) { issue in
                                 VStack(alignment: .leading, spacing: 4) {
@@ -96,7 +96,7 @@ struct RoomAgentWorkView: View {
                                 }
                             }
                             if report.issues.count > 20 {
-                                Text("\(report.issues.count - 20) additional notes")
+                                Text("\(report.issues.count - 20) additional \(report.issues.count - 20 == 1 ? "note" : "notes")")
                                     .font(.system(size: 12)).foregroundStyle(.secondary)
                             }
                         }
@@ -211,7 +211,7 @@ private struct AgentWorkRow: View {
             }
             .buttonStyle(.plain)
             .help(item.url.path)
-            .accessibilityLabel("Inspect worktree \(item.title), \(RoomFormat.bytes(item.allocatedBytes)), \(item.processIDs.count) linked processes")
+            .accessibilityLabel("Inspect worktree \(item.title), \(RoomFormat.bytes(item.allocatedBytes)), \(item.processIDs.count) linked \(item.processIDs.count == 1 ? "process" : "processes")")
 
             HStack(spacing: 10) {
                 if verifying { ProgressView().controlSize(.mini) }

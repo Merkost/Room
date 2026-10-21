@@ -13,6 +13,14 @@ struct RoomDiskMapView: View {
 
     private var animation: Animation? { motionEnabled && !reduceMotion ? .smooth(duration: 0.24) : nil }
 
+    private var appleIntelligenceSettingsHelp: String {
+        #if ROOM_APP_STORE
+        "Open Apple Intelligence settings for supported on-device analysis. Local rules remain available."
+        #else
+        "Open Apple Intelligence settings. Local models use an existing runtime and model on this Mac."
+        #endif
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             ViewThatFits(in: .horizontal) {
@@ -129,7 +137,7 @@ struct RoomDiskMapView: View {
             HStack(alignment: .firstTextBaseline, spacing: 20) {
                 RoomByteMetric(bytes: filter.total(in: report), maximumSize: 54)
                 VStack(alignment: .trailing, spacing: 6) {
-                    Text(filter == .all ? "\(report.fileCount.formatted()) files" : filter.title)
+                    Text(filter == .all ? "\(report.fileCount.formatted()) \(report.fileCount == 1 ? "file" : "files")" : filter.title)
                         .font(.system(size: 14))
                     Text(report.isPartial ? "Partial measurement" : "Allocated on disk")
                         .font(.system(size: 12)).foregroundStyle(.secondary)
@@ -171,7 +179,7 @@ struct RoomDiskMapView: View {
                 Label(filter.mapNote, systemImage: "info.circle")
                 Spacer(minLength: 0)
                 if !report.issues.isEmpty {
-                    Button("\(report.issues.count) scan notes") { showingIssues = true }.buttonStyle(.plain)
+                    Button("\(report.issues.count) scan \(report.issues.count == 1 ? "note" : "notes")") { showingIssues = true }.buttonStyle(.plain)
                 }
             }
             .font(.system(size: 12)).foregroundStyle(.secondary)
@@ -240,7 +248,7 @@ struct RoomDiskMapView: View {
                 Label(category.title, systemImage: category.symbol)
                     .font(.system(size: 12)).foregroundStyle(.secondary)
             } else if filter == .hidden {
-                Text("\(report.hiddenFileCount.formatted()) hidden files")
+                Text("\(report.hiddenFileCount.formatted()) hidden \(report.hiddenFileCount == 1 ? "file" : "files")")
                     .font(.system(size: 12)).foregroundStyle(.secondary)
             } else if filter == .large {
                 Text("Items ≥ 1 GB").font(.system(size: 12)).foregroundStyle(.secondary)
@@ -302,13 +310,13 @@ struct RoomDiskMapView: View {
                     }
                 }
                 HStack(alignment: .top, spacing: 12) {
-                    Text(insights.isAnalyzingStorage ? "Analyzing file metadata locally…" : analysis.availability.reason)
+                    Text(insights.isAnalyzingStorage ? "Analyzing file metadata locally…" : (insights.analysisStatus ?? analysis.availability.reason))
                         .font(.system(size: 12)).foregroundStyle(.secondary)
                     Spacer(minLength: 8)
                     if !analysis.availability.isAvailable && !insights.isAnalyzingStorage {
                         Button { insights.openAppleIntelligenceSettings() } label: { Image(systemName: "gearshape") }
                             .buttonStyle(.plain).foregroundStyle(.secondary)
-                            .help("Open Apple Intelligence settings. Local models use an existing runtime and model on this Mac.")
+                            .help(appleIntelligenceSettingsHelp)
                             .accessibilityLabel("Apple Intelligence settings")
                     }
                 }

@@ -5,6 +5,7 @@ struct RoomStoreCacheReviewSheet: View {
     @Bindable var model: RoomViewModel
     @Environment(\.dismiss) private var dismiss
     private var sources: [RoomSource] { model.sources.filter { model.selection.contains($0.id) && $0.isAvailable } }
+    private var impacts: [String] { Array(Set(sources.flatMap(\.cleanupConsequences))).sorted() }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -12,7 +13,21 @@ struct RoomStoreCacheReviewSheet: View {
             HStack(alignment: .firstTextBaseline) {
                 Text(RoomFormat.bytes(model.selectedBytes)).font(RoomType.figure(38)).tracking(-1)
                 Spacer()
-                Text("\(sources.count) sources").font(.system(size: 13)).foregroundStyle(.secondary)
+                Text("\(sources.count) \(sources.count == 1 ? "source" : "sources")").font(.system(size: 13)).foregroundStyle(.secondary)
+            }
+            if !impacts.isEmpty {
+                VStack(alignment: .leading, spacing: 9) {
+                    Label("Before you move", systemImage: "exclamationmark.triangle")
+                        .font(.system(size: 13, weight: .medium)).foregroundStyle(.orange)
+                    ForEach(impacts, id: \.self) { impact in
+                        Text(impact).font(.system(size: 12)).lineSpacing(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+                .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 14))
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("RoomStoreCleanupImpact")
             }
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
@@ -27,7 +42,7 @@ struct RoomStoreCacheReviewSheet: View {
                         }
                     }
                     RoomStorePermissionSection(model: model, retry: { Task { await model.prepareStoreCleanupReview() } })
-                    Label("Caches can rebuild. Items move to Trash; disk space is released when Trash is emptied.", systemImage: "arrow.uturn.backward")
+                    Label("Items move to Trash; Room never empties it.", systemImage: "arrow.uturn.backward")
                         .font(.system(size: 13)).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     if let message = model.errorMessage {
@@ -37,7 +52,7 @@ struct RoomStoreCacheReviewSheet: View {
                 }
                 .padding(16).frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxHeight: 300)
+            .frame(maxHeight: 240)
             .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 16))
             HStack {
                 Button("Cancel") { dismiss() }.buttonStyle(.glass).keyboardShortcut(.cancelAction)

@@ -6,6 +6,133 @@ import Testing
 
 @Suite("Additional cache and managed-storage catalogue", .serialized)
 struct AdditionalCatalogueTests {
+    @Test("Automatic catalogues never request app-container metadata, including Docker and overrides")
+    func automaticContainerAccessRequiresApproval() throws {
+        let fixture = try AdditionalFixture()
+        defer { fixture.remove() }
+        let container = fixture.url("Library/Containers/com.example.app/Data/Library/Caches")
+        let group = fixture.url("Library/Group Containers/group.example.app/Library/Caches")
+        let base = CacheConfiguration(roots: [
+            CacheRoot(id: "preexisting-container", title: "Container", subtitle: "", symbol: "folder", category: "apps",
+                url: container, consequence: "Inspect", cleanupPolicy: .inspectOnly("Inspect")),
+            CacheRoot(id: "preexisting-library", title: "Library", subtitle: "", symbol: "folder", category: "apps",
+                url: fixture.url("Library"), consequence: "Inspect", cleanupPolicy: .inspectOnly("Inspect"))
+        ], protectedLocations: [ProtectedLocation(id: "group-state", title: "State", url: group, reason: "Keep")],
+            homeDirectory: fixture.home)
+        let opened = Mutex<[String]>([])
+        let opener: (URL) -> Int32 = { url in
+            opened.withLock { $0.append(url.path) }
+            return -1
+        }
+        let environment = ["UV_CACHE_DIR": container.path, "HF_HOME": group.path,
+            "PIP_CACHE_DIR": fixture.url("Library").path,
+            "GOCACHE": fixture.url("Library/containers/com.example.lowercase/cache").path]
+        // Exercise the production default and the explicit zero bound. Neither
+        // may enumerate even the container parent before applying that bound.
+        let automatic = CacheConfiguration.addingAdditionalSources(to: base, environment: environment,
+            metadataDirectoryOpener: opener)
+        let zero = CacheConfiguration.addingAdditionalSources(to: base, environment: environment,
+            maximumSandboxRoots: 0, metadataDirectoryOpener: opener)
+        #expect(opened.withLock { !$0.isEmpty })
+        #expect(opened.withLock { paths in !paths.contains { $0.contains("/Library/Containers") || $0.contains("/Library/Group Containers") || $0.contains("/Library/containers") } })
+        for config in [automatic, zero] {
+            #expect(!config.roots.contains { $0.id.hasPrefix("preexisting-") || $0.id.hasPrefix("docker-") || $0.id.hasPrefix("sandbox-cache-") || $0.id.hasPrefix("custom-") })
+            #expect(config.protectedLocations.map(\.id) == ["group-state"])
+            #expect(config.protectedMeasurementExclusions == [group])
+            #expect(config.roots.contains { $0.id == "swiftpm-prebuilts" })
+            #expect(config.roots.contains { $0.id == "cargo-index" })
+            #expect(config.inspectionIssues.contains { $0.message.contains("folder approval") })
+        }
+    }
+
+    @Test("Automatic cache scans defer app-container storage to an explicitly selected Disk Map folder")
+    func selectedContainerDiskMapRemainsAvailable() async throws {
+        let fixture = try AdditionalFixture()
+        defer { fixture.remove() }
+        let cache = try fixture.write("Library/Containers/com.example.app/Data/Library/Caches/resource.bin", count: 8_000)
+        _ = try fixture.write("Library/Containers/com.example.app/Data/Documents/work.txt", count: 12_000)
+        _ = try fixture.write("Library/Group Containers/group.example.app/Library/Caches/resource.bin", count: 16_000)
+        _ = try fixture.write("Library/Containers/com.docker.docker/Data/vms/0/data/Docker.raw", count: 20_000)
+        let known = try fixture.write("cache/finished.bin", count: 4_000)
+        let base = CacheConfiguration(roots: [
+            CacheRoot(id: "known", title: "Known cache", subtitle: "", symbol: "folder", category: "developer",
+                url: fixture.url("cache"), consequence: "Rebuild", minimumAge: 0)
+        ], protectedLocations: [ProtectedLocation(id: "container-state", title: "State",
+            url: fixture.url("Library/Containers/com.example.app/Data"), reason: "Keep")], homeDirectory: fixture.home)
+        let additional = CacheConfiguration.addingAdditionalSources(to: base, environment: [:])
+        let full = CacheConfiguration.addingDiscoveredSources(to: additional, temporaryDirectory: fixture.temporary)
+        let report = await fixture.engine(full).scan()
+        #expect(report.totalBytes == (try fixture.allocated(known)))
+        #expect(report.protectedData.isEmpty)
+        #expect(report.eligibleEntries.map(\.url) == [known])
+        #expect(report.issues.contains { $0.message.contains("folder approval") })
+        let selected = await DiskMapEngine().scan(url: cache.deletingLastPathComponent())
+        #expect(selected.fileCount == 1)
+        #expect(selected.allocatedBytes == (try fixture.allocated(cache)))
+        #expect(selected.children.map(\.url) == [cache])
+        #expect(selected.issues.isEmpty)
+    }
+
+    @Test("Deferred protected boundaries survive additional, deep and discovered catalogue composition")
+    func broadProtectedAncestorRemainsHeld() async throws {
+        let fixture = try AdditionalFixture()
+        defer { fixture.remove() }
+        _ = try fixture.write("cache/finished.bin", count: 4_000)
+        let generated = try fixture.write("temporary/_karma_webpack_123/data", count: 8_000)
+        let old = Date().addingTimeInterval(-30 * 86_400)
+        for url in [generated, generated.deletingLastPathComponent()] {
+            try FileManager.default.setAttributes([.modificationDate: old], ofItemAtPath: url.path)
+        }
+        let base = CacheConfiguration(roots: [
+            CacheRoot(id: "known", title: "Known cache", subtitle: "", symbol: "folder", category: "developer",
+                url: fixture.url("cache"), consequence: "Rebuild", minimumAge: 0)
+        ], protectedLocations: [ProtectedLocation(id: "all-work", title: "Work", url: fixture.home, reason: "Keep this work")],
+            homeDirectory: fixture.home)
+        let additional = CacheConfiguration.addingAdditionalSources(to: base, environment: [:])
+        for intermediate in [additional, CacheConfiguration.addingDeepSources(to: additional)] {
+            let config = CacheConfiguration.addingDiscoveredSources(to: intermediate, temporaryDirectory: fixture.temporary)
+            #expect(config.protectedLocations.contains { $0.id == "all-work" && $0.url == fixture.home })
+            #expect(config.protectedMeasurementExclusions == [fixture.home])
+            let report = await fixture.engine(config).scan()
+            #expect(report.protectedData.isEmpty)
+            #expect(report.eligibleEntries.isEmpty)
+            #expect(report.groups.first { $0.id == "known" }?.isInspectionOnly == true)
+            let karma = try #require(report.groups.first { $0.id == "temporary-karma" })
+            let expectedKarmaPath = generated.deletingLastPathComponent().path
+            let entry = try #require(karma.entries.first { $0.url.path == expectedKarmaPath },
+                "The generated fixture must be measured. Entry paths: \(karma.entries.map { $0.url.path })")
+            if case .blocked(let reason) = entry.eligibility {
+                #expect(reason.contains("protected"))
+            } else { Issue.record("A later catalogue addition escaped a retained protection boundary") }
+            let disk = await DiskMapEngine().scan(url: generated.deletingLastPathComponent())
+            let analysis = StorageAnalyzer.analyze(report: disk, configuration: config)
+            #expect(!analysis.findings.isEmpty)
+            #expect(analysis.findings.allSatisfy { $0.disposition == .protected })
+        }
+    }
+
+    @Test("Automatic profile discovery cannot follow an app-support alias into a protected container")
+    func profileDiscoveryRejectsLinkedAncestors() throws {
+        let fixture = try AdditionalFixture()
+        defer { fixture.remove() }
+        let support = try fixture.directory("Library/Containers/com.example.app/Data/Library/Application Support/Codex")
+        _ = try fixture.directory("Library/Containers/com.example.app/Data/Library/Application Support/Codex/Partitions/UnapprovedProfile")
+        _ = try fixture.directory("Library/Application Support")
+        try FileManager.default.createSymbolicLink(at: fixture.url("Library/Application Support/Codex"), withDestinationURL: support)
+        let config = CacheConfiguration.addingDeepSources(to: fixture.base)
+        #expect(!config.roots.contains { $0.url.path.contains("/Partitions/UnapprovedProfile/") })
+        let aliasCache = fixture.url("Library/Application Support/Codex/Cache")
+        let base = CacheConfiguration(roots: [
+            CacheRoot(id: "aliased-cache", title: "Aliased", subtitle: "", symbol: "folder", category: "apps",
+                url: aliasCache, consequence: "Inspect", cleanupPolicy: .inspectOnly("Inspect"))
+        ], protectedLocations: [ProtectedLocation(id: "aliased-history", title: "History",
+            url: fixture.url("Library/Application Support/Codex/history"), reason: "Keep")], homeDirectory: fixture.home)
+        let automatic = CacheConfiguration.addingAdditionalSources(to: base, environment: [:])
+        #expect(!automatic.roots.contains { $0.id == "aliased-cache" })
+        #expect(automatic.protectedLocations.map(\.id) == ["aliased-history"])
+        #expect(automatic.protectedMeasurementExclusions == [fixture.url("Library/Application Support/Codex/history")])
+    }
+
     @Test("Explicit cache additions preserve preferences, app state and source checkouts")
     func explicitCacheBoundaries() throws {
         let fixture = try AdditionalFixture()

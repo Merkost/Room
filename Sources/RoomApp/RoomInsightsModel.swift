@@ -226,6 +226,7 @@ final class RoomInsightsModel {
     }
 
     func cancelStorageAnalysis() {
+        if isAnalyzingStorage { analysisStatus = "Analysis stopped. Current review kept." }
         analysisTask?.cancel()
         analysisTask = nil
         isAnalyzingStorage = false

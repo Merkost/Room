@@ -81,7 +81,7 @@ struct RoomDeveloperView: View {
                     Text(report.cancelled ? "Stopped · partial results" : report.isPartial ? "Partial results · some locations need attention" : "Measured \(report.scannedAt.formatted(date: .omitted, time: .shortened))")
                     Spacer()
                     if !report.issues.isEmpty {
-                        Button("\(report.issues.count) notes") { showingNotes = true }.buttonStyle(.plain)
+                        Button("\(report.issues.count) \(report.issues.count == 1 ? "note" : "notes")") { showingNotes = true }.buttonStyle(.plain)
                     }
                 }.font(.system(size: 12)).foregroundStyle(.secondary)
             }

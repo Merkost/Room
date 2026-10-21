@@ -84,7 +84,7 @@ struct RoomMemoryView: View {
                     VStack(alignment: .trailing, spacing: 5) {
                         Text("Scanned \(report.scannedAt, style: .relative) ago").fixedSize()
                         if !report.issues.isEmpty {
-                            Button("\(report.issues.count) notes") { showingIssues = true }.buttonStyle(.plain)
+                            Button("\(report.issues.count) \(report.issues.count == 1 ? "note" : "notes")") { showingIssues = true }.buttonStyle(.plain)
                         }
                     }
                 }

@@ -92,16 +92,16 @@ struct RoomMark: Shape {
         func point(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
             CGPoint(x: origin.x + side * x, y: origin.y + side * y)
         }
-        // Matches the editable RoomMark.svg. The open counter is intentional;
-        // stroke-based consumers keep their native foreground and line weight.
+        // Three receding room frames match RoomMark.svg. Native stroke consumers
+        // retain their foreground and line weight; no filled glyph is required.
         var path = Path()
-        path.move(to: point(0.12, 0.88))
-        path.addLine(to: point(0.12, 0.12))
-        path.addLine(to: point(0.565, 0.12))
-        path.addCurve(to: point(0.88, 0.32), control1: point(0.765, 0.12), control2: point(0.88, 0.208))
-        path.addCurve(to: point(0.565, 0.52), control1: point(0.88, 0.432), control2: point(0.765, 0.52))
-        path.addLine(to: point(0.42, 0.52))
-        path.addLine(to: point(0.88, 0.88))
+        for index in 0..<3 {
+            let corner = CGFloat(0.112) + CGFloat(index) * 0.224
+            path.move(to: point(corner, 0.888))
+            path.addLine(to: point(corner, corner + 0.096))
+            path.addQuadCurve(to: point(corner + 0.096, corner), control: point(corner, corner))
+            path.addLine(to: point(0.888, corner))
+        }
         return path
     }
 }

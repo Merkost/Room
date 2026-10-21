@@ -75,6 +75,7 @@ struct RoomStoreAccessTests {
         let source = try #require(model.sources.first)
         #expect(source.blockedReason == nil, "Unexpected fixture hold: \(source.blockedReason ?? "none")")
         #expect(source.eligibleBytes == Int64(data.count))
+        #expect(source.cleanupConsequences == ["Can rebuild"])
         #expect(model.selection == [source.id])
         #expect(model.selectedBytes == Int64(data.count) && model.canReviewCleanup)
         await model.cleanSelected()

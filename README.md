@@ -6,6 +6,8 @@
 
 Room is a native macOS utility for understanding storage, reviewing developer resources, and monitoring memory. Built with SwiftUI, AppKit, and Liquid Glass. Free, with no ads or in-app purchases.
 
+![Room Disk Map showing sample folders](Resources/RoomPreview.png)
+
 ## See what is taking space
 
 - **Clean** — measure known caches, distinguish clearable items from held storage, and review before any supported move to Trash.
@@ -28,9 +30,9 @@ Storage scans start on demand. The optional menu-bar monitor periodically sample
 | Analysis | Apple on-device models when available, otherwise local rules. | Apple on-device models, an optional separately installed local runtime, or rules. |
 | Agent worktrees | Excluded. Codex and Claude storage may be inspected, but general agent-cache cleanup is not enabled. | Separate worktree review with live remote verification and conservative holds. |
 
-The Store npm exception applies only to supported immutable download-object files modified more than 30 days ago, within approved folders and bounded local content-verification limits. It does not prove an object is unused. Installs may download it again, active installs may retry, and offline installs may fail. npm indexes, temporary data, and installed packages stay in place. Native sandboxed Trash and restart/Restore qualification is still pending.
+The Store npm exception applies only to supported immutable download-object files modified more than 30 days ago, within approved folders and bounded local content-verification limits. It does not prove an object is unused. Installs may download it again, active installs may retry, and offline installs may fail. npm indexes, temporary data, and installed packages stay in place. Native sandboxed Trash, Quit/relaunch and Restore passed on a disposable release 2 fixture with exact content hashes; build 3 verified the impact disclosure and pre-grant write gate without repeating the move. Core/Store write code was unchanged, and no user caches were cleaned.
 
-The Store edition is being qualified for its first release. An App Store record, local build, or passing unit test is not a published download. The website shows release availability when it is ready.
+Store 1.0.0 (3) passed its final tests and archive-derived sandboxed native checks; direct 1.7.2 (11) passed its final tests, native checks and strict signature verification. Store distribution export remains blocked by account/signing prerequisites, and publication work is still in progress. An App Store record, local build, or passing unit test is not a published download. The website shows release availability when it is ready.
 
 ## Build
 

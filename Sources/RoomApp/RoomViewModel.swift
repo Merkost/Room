@@ -301,7 +301,7 @@ final class RoomViewModel {
         let result = await recoveryEngine.restore(receiptID: record.id)
         #endif
         statusMessage = result.restoredCount > 0
-            ? "Restored \(result.restoredCount) \(result.restoredCount == 1 ? "item" : "items") to their original locations."
+            ? "Restored \(result.restoredCount) \(result.restoredCount == 1 ? "item to its original location" : "items to their original locations")."
             : "Nothing was restored. Existing files were kept."
         if !result.issues.isEmpty { errorMessage = result.issues.prefix(4).map(\.message).joined(separator: "\n\n") }
         await refreshHistory()
@@ -348,6 +348,8 @@ final class RoomViewModel {
             let title = familyTitle(key, fallback: groups.first?.title ?? key)
             let paths = groups.map { $0.rootURL.path }.sorted().joined(separator: "\n")
             let consequences = Array(Set(groups.map(\.consequence))).sorted().joined(separator: "\n\n")
+            let cleanupConsequences = Array(Set(groups.filter { !$0.eligibleEntries.isEmpty }
+                .map(\.consequence).filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })).sorted()
             let issues = groups.flatMap(\.issues).map(\.message)
             let held = Dictionary(grouping: entries.filter { !allowsCleanup || !$0.eligibility.isEligible }) {
                 allowsCleanup ? ($0.eligibility.reason ?? "Held for review") : "Scan incomplete. Finish measuring before cleanup."
@@ -357,7 +359,7 @@ final class RoomViewModel {
             let inspectionOnly = groups.allSatisfy { $0.isInspectionOnly == true }
             let eligibilityNote = inspectionOnly
                 ? "These resources stay in place. Manage them with their owning application or tool."
-                : "Only unchanged cache items older than seven days are eligible. Diagnostic logs must be older than 30 days. Running tools and recent files are excluded."
+                : "Each source sets its own age and validation rules. Recent, changed, or unsupported items stay held."
             return RoomSource(
                 id: key,
                 name: title,
@@ -376,7 +378,8 @@ final class RoomViewModel {
                 largestEntries: entries.sorted { $0.byteCount > $1.byteCount }.prefix(20).map {
                     RoomSourceEntry(name: $0.name, path: $0.url.path, bytes: $0.byteCount, reason: $0.eligibility.reason)
                 },
-                isInspectionOnly: inspectionOnly
+                isInspectionOnly: inspectionOnly,
+                cleanupConsequences: cleanupConsequences
             )
         }.sorted {
             if ($0.category == .agents) != ($1.category == .agents) { return $0.category == .agents }

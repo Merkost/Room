@@ -240,6 +240,7 @@ public actor CacheEngine {
                 await progress(update)
             }
             completedRoots += 1
+            guard !Self.isExcluded(location.url, exclusions: configuration.protectedMeasurementExclusions) else { continue }
             guard Self.existsWithoutFollowingLinks(location.url) else { continue }
             do {
                 try Self.validateAncestors(location.url)

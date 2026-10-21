@@ -23,25 +23,25 @@ context.setShouldAntialias(true)
 context.translateBy(x: 0, y: CGFloat(pixels))
 context.scaleBy(x: CGFloat(pixels) / 1000, y: -CGFloat(pixels) / 1000)
 
-// One flat mist surface reaches the canvas edges. Only its corners are clear.
-context.setFillColor(color(234, 241, 243)) // #EAF1F3
+// One flat slate surface reaches the canvas edges. Only its corners are clear.
+context.setFillColor(color(22, 47, 58)) // #162F3A
 context.addPath(CGPath(roundedRect: CGRect(x: 0, y: 0, width: 1000, height: 1000),
     cornerWidth: 224, cornerHeight: 224, transform: nil))
 context.fillPath()
 
-// An open R: a room-like upright stem, generous aperture, and one decisive leg.
-// The 100-unit stroke occupies 86% of the tile along both axes.
+// The original room/frame idea, reduced to three equal-weight open corners.
+// A 64-unit stroke on 112...888 coordinates occupies 84% of the tile bounds.
 let mark = CGMutablePath()
-mark.move(to: CGPoint(x: 120, y: 880))
-mark.addLine(to: CGPoint(x: 120, y: 120))
-mark.addLine(to: CGPoint(x: 565, y: 120))
-mark.addCurve(to: CGPoint(x: 880, y: 320), control1: CGPoint(x: 765, y: 120), control2: CGPoint(x: 880, y: 208))
-mark.addCurve(to: CGPoint(x: 565, y: 520), control1: CGPoint(x: 880, y: 432), control2: CGPoint(x: 765, y: 520))
-mark.addLine(to: CGPoint(x: 420, y: 520))
-mark.addLine(to: CGPoint(x: 880, y: 880))
+for index in 0..<3 {
+    let corner = CGFloat(112 + index * 224)
+    mark.move(to: CGPoint(x: corner, y: 888))
+    mark.addLine(to: CGPoint(x: corner, y: corner + 96))
+    mark.addQuadCurve(to: CGPoint(x: corner + 96, y: corner), control: CGPoint(x: corner, y: corner))
+    mark.addLine(to: CGPoint(x: 888, y: corner))
+}
 context.addPath(mark)
-context.setStrokeColor(color(22, 47, 58)) // #162F3A
-context.setLineWidth(100)
+context.setStrokeColor(color(234, 241, 243)) // #EAF1F3
+context.setLineWidth(64)
 context.setLineCap(.round)
 context.setLineJoin(.round)
 context.strokePath()

@@ -229,7 +229,7 @@ struct RoomRootView: View {
             if model.isScanning {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 16) {
-                        Text("\(model.scannedLocationCount) of \(model.scanLocationCount) locations")
+                        Text("\(model.scannedLocationCount) of \(model.scanLocationCount) \(model.scanLocationCount == 1 ? "location" : "locations")")
                             .fixedSize()
                         Text(model.currentScanPath)
                             .frame(maxWidth: .infinity, alignment: .trailing)
@@ -263,7 +263,7 @@ struct RoomRootView: View {
                         Text("Measuring…")
                     }
                 } else if !model.scanIssues.isEmpty {
-                    Button("\(model.scanIssues.count) scan notes") { sheet = .scanIssues }
+                    Button("\(model.scanIssues.count) scan \(model.scanIssues.count == 1 ? "note" : "notes")") { sheet = .scanIssues }
                         .buttonStyle(.plain)
                         .foregroundStyle(.secondary)
                 } else if let lastScanned = model.lastScanned {

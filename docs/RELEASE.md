@@ -1,51 +1,68 @@
 # Release
 
-## Shared candidate features
+## Qualified candidates
 
-Disk Map has labeled Scan/Rescan/Stop controls, current-folder context, category and hidden-file filters, and remembered ancestor-folder access for accessible drill-down. Developer review is read-only: Android AVD sizes and metadata evidence, plus Gradle version storage linked only to selected project wrappers. Standard AVD metadata does not establish a last launch; timestamp evidence is not an unused verdict.
+- **Store 1.0.0 (3)**: native Xcode archive succeeded. An archive-derived sandboxed preview was installed and checked. This is not a distribution-signed Store export or upload.
+- **Direct 1.7.2 (11)**: release build succeeded, installed, and passed strict `codesign` verification. No notarization or public-release claim is implied.
 
-The menu-bar monitor can display RAM or available storage. Pressure colors use the actual macOS signal, swap details are optional, and unavailable values are not presented as measured zero. Settings About reads the actual bundle version/build. Native toolbar, icon, Reduce Motion, and Reduce Transparency acceptance must be checked in the final artifact.
+Final source/build acceptance is complete for these candidates. The root task is consolidating the separate final proof JSON; earlier checkpoints are not relabeled as these artifacts.
 
-## Direct edition
+## Final tests
 
-The direct edition supports broader known-location scans, an explicit normal app-quit review, an optional installed local model runtime, and a separate worktree review. Settings offers an explicit shortcut to macOS Full Disk Access; the user must enable access. Local builds are ad hoc signed unless a publisher identity is supplied. The direct release 1.7.0 (9) built successfully and passed strict `codesign` verification; `outputs/Room-macOS.zip` was refreshed. This establishes the local artifact and signature check, not notarization or a public release. Public direct distribution still requires the appropriate signing/notarization and release handoff.
+| Edition | Result | Evidence |
+| --- | --- | --- |
+| Store build 3 | **171 tests / 20 suites passed in 35.279 s** | `work/room-native/store-tests-release3-20261022.log` |
+| Direct build 11 | **186 tests / 20 suites passed in 28.181 s** | `work/room-native/direct-tests-release11-20261022.log` |
 
-## Mac App Store edition
+These final runs supersede earlier 166/171 Store and 181 direct checkpoints. Unit tests and native acceptance remain distinct evidence.
 
-Bundle identifier: `com.merkost.room`. App Store Connect record: `6825292305`; current recorded state is Prepare for Submission. This is not an upload receipt or published release.
+## Native Store acceptance
 
-The Store edition is free, with no advertising or in-app purchases. It is sandboxed and uses native user-selected read-only folder access, optionally remembered for the home folder and accessible descendants. It excludes other-app termination, external model executables, and the direct worktree review/cleanup flow.
+Build 3 verified saved-folder read access, hidden-file Disk Map/rescan, styling, About build 3, pressure/swap settings, and the exact cleanup-impact disclosure. **Move to Trash remained disabled before the native exact-folder write grant.** No actual move was repeated on build 3.
 
-Store cleanup is restricted to supported npm SHA512-addressed immutable download-object files modified more than 30 days ago, verified through bounded local content reads. A candidate still needs exact reviewed write access and identity/content revalidation. This is not proof of non-use: downloads can recur, active installs can retry, and offline installs can fail. npm index/tmp data, installed packages, and other process-guarded caches remain held. The sandbox cannot establish complete background-tool visibility. General Codex/Claude cache cleanup is not a Store feature.
+The complete recovery flow was exercised on **Store release 2**, using one disposable **1 MiB (1,048,576-byte)** npm object:
 
-Eligible moves use Trash and container-local recovery receipts. Restore requires the original parent approval and either an exact saved Trash-item scope or explicit approval of that exact item. Changed content and occupied destinations remain protected. Room never empties Trash, and Trash continues occupying space. Signed native move, Quit/relaunch, and Restore qualification for the npm exception is pending; fixture test evidence alone is insufficient.
+1. Approved-folder scan found the synthetic eligible object.
+2. Its cleanup consequences were reviewed, including download/retry/offline effects.
+3. A native panel approved its exact npm prefix-bucket parent for the reviewed write.
+4. The object moved to Trash with a local receipt.
+5. Room quit and relaunched; read approvals persisted.
+6. Restore returned the object with identical **SHA256 and SHA512** content.
 
-## Qualification and publication
+Core and Store write/recovery code were unchanged for build 3. The carried recovery evidence therefore remains specifically a release 2 full-move test plus build 3 permission/impact smoke, not a second build 3 move. Only synthetic fixture data moved; **no user caches were cleaned**.
 
-The current qualification logs record Store 166 tests in 20 suites passed (`work/room-native/store-test-verified.log`) and direct 181 tests in 20 suites passed (`work/room-native/direct-test-verified.log`). Focused App access and remembered-access tests also passed. A Store preview showed basic memory statistics and About. Fixture results and basic preview observations do not qualify the latest native toolbar/icon, Developer review, status-item interactions, analysis, or signed npm Trash/restart/Restore. Final native acceptance remains a release gate.
+Synthetic native Android/Gradle mapping passed. AVD review remains read-only and metadata dates do not establish last launch. Gradle references cover selected project wrappers; no reference does not mean unused. On the qualification Mac, the Apple Intelligence model was not ready and the honestly labeled rule-based fallback worked. No Apple-model inference success is claimed.
 
-### Archive and export evidence
+## Direct native acceptance
 
-Native `xcodebuild` reported **ARCHIVE SUCCEEDED** for `/private/tmp/Room-Store-final/Room-release.xcarchive`. That archive includes the current SVG-derived icon/mark, repaired toolbar and header alignment. Store Info declares `ITSAppUsesNonExemptEncryption=false`; this declaration is not Apple approval of export-compliance answers.
+Build 11 completed actual Analyze through its owned local-model worker. Stop while busy displayed **“Analysis stopped. Current review kept.”** and the owned worker exited. Quit while busy exited Room and its worker and removed temporary key directories. Healthy relaunch and About build 11 passed. These direct-runtime results are not Store AI evidence; unrelated opened apps were not targeted.
 
-The actual Apple Store export command was attempted and **failed with exit code 70**: `No Accounts`, no `Mac Installer Distribution` identity, and no provisioning profile for `com.merkost.room`. Native archive creation did not produce a distribution-signed Store export or accepted upload. The user has been asked to sign into the appropriate Xcode account so its team, identity and profile can be made available.
+A read-only Full scan completed 216 catalogue locations and 43 source groups. Stop was responsive, and no files moved. Personal storage totals and paths are deliberately omitted.
 
-Final native interaction testing is currently blocked by the locked Mac; the unlock request is pending. The successful archive and earlier basic Memory/About preview do not establish latest native toolbar, permission, Developer, monitor, analysis, or npm Trash/restart/Restore acceptance.
+## Scope and cleanup boundaries
 
-### App Store Connect state
+Disk Map exposes labeled Scan/Rescan/Stop, current-folder context, allocated-size categories and hidden-file filters. Remembered ancestor read access covers accessible descendants, while macOS protections and separate-volume approvals remain. The monitor supports RAM or available storage with actual pressure colors and optional swap details; unavailable signals remain unknown.
 
-The final Description, Promotional Text and Keywords were saved from the current listing draft. Review contact and the no-sign-in answer were already saved; private contact values are not reproduced here. Free pricing is confirmed, and the authoritative Availability page saved **All Countries or Regions (175)**, with each entry **Available on App Release**. This is configured availability, not a live release.
+Store is free, with no ads or in-app purchases. It excludes other-app termination, external model executables, worktree actions and Git remote verification. Store cleanup admits only supported npm SHA512-addressed download-object leaves modified more than 30 days ago and passing bounded local verification plus exact reviewed access. npm index/tmp, installed packages and other process-guarded caches stay held because complete background-tool visibility is unavailable. General Codex/Claude cache cleanup is excluded.
 
-All seven existing age-rating questionnaire steps were reviewed as No/None and not designed for Kids, with a calculated **4+** rating. Save was disabled because the answers were unchanged; Cancel preserved the existing settings. No new age-rating save is claimed.
+Verification does not prove non-use: downloads can recur, active installs can retry, and offline installs can fail. Trash retains disk space until the user empties it; Room never does so. Restore rechecks content/identity/access and refuses occupied destinations. The successful narrow fixture does not imply global all-file or whole-Trash access.
 
-Data Not Collected privacy answers were saved, but the final legally worded privacy Publish/attestation still awaits the user's confirmation at that action. Saved answers are not a completed privacy publication or App Review submission.
+## Store distribution and last-saved account state
 
-Before release:
+The final build 3 Store export was retried and failed with exit code **70**: **No Accounts**, missing **Mac Installer Distribution** identity/certificate, and no provisioning profile for `com.merkost.room`. Native archive success does not establish a distribution-signed export, accepted upload or Apple export-compliance approval. Info declares `ITSAppUsesNonExemptEncryption=false`.
 
-1. Retain the current both-edition test evidence with the frozen candidate; rerun relevant checks if release code changes. Distinguish full suites from focused fixes and older direct runs.
-2. Verify the actual signed sandboxed app: remembered read access, exact temporary write scopes, cancellation, npm Trash/receipt persistence, Quit/relaunch/Restore, conflict handling, local analysis/fallback, Developer evidence, menu-bar metrics, and the repaired toolbar at minimum/default window sizes.
-3. Recapture and review the final native Store screenshots with non-private demonstration data. Existing historical layout studies are not final upload assets.
-4. Align metadata, privacy inventory/manifest, public support/privacy pages, final version/build, publisher declarations, and reviewer notes with the actual qualified artifact.
-5. Resolve the failed export through the correct Xcode account, distribution identity and provisioning profile; validate the resulting distribution export, then complete upload processing, App Review, and final live availability as separate steps. An accepted upload does not mean approval or publication.
+The Chrome App Store Connect session has expired. The following is **last-saved state before expiry**, not a fresh live account check:
 
-The support and privacy pages are configured at `https://room.merkost.dev/support/` and `https://room.merkost.dev/privacy/`. Availability on the website must match the actual release state. No App Review approval or public Store release is established by this document.
+- App `com.merkost.room`, record `6825292305`, Prepare for Submission.
+- Description, Promotional Text, Keywords, review contact and no-sign-in saved; private contact values are omitted.
+- Free pricing and All Countries or Regions (175) saved, each Available on App Release.
+- Seven existing No/None, non-Kids age steps reviewed, calculated 4+; unchanged disabled Save/Cancel preserved them.
+- Data Not Collected answers saved **but not published**. Final legal privacy Publish/attestation still requires the user's confirmation at that action.
+
+## Remaining publication work
+
+Five actual Store build 3 screenshots have been captured; composition is in progress. **Zero screenshots are uploaded.** The chosen set will be five strong frames; ten is the optional maximum, not a requirement. Historical direct layout studies are not final upload assets. Final compositions need dimension, readability, privacy and metadata checks.
+
+Renew account access and resolve Store signing/profile prerequisites, validate a genuine distribution export, finish user-confirmed privacy publication and remaining publisher declarations, then upload and verify processing. App Review submission, approval and live availability are separate later outcomes. No Store upload, review approval or public Store release is claimed.
+
+Configured support: `https://room.merkost.dev/support/`. Configured privacy: `https://room.merkost.dev/privacy/`.

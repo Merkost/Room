@@ -250,6 +250,10 @@ public struct ProtectedLocation: Sendable {
 public struct CacheConfiguration: Sendable {
     public let roots: [CacheRoot]
     public let protectedLocations: [ProtectedLocation]
+    /// Retain these protection boundaries without probing or measuring them.
+    /// This is independent of cleanup protection, including for roots added by
+    /// subsequent catalogue composition.
+    public let protectedMeasurementExclusions: [URL]
     public let homeDirectory: URL
     public let inspectionIssues: [ScanIssue]
     /// nil preserves the direct edition's implicit catalogue. Store catalogues
@@ -258,9 +262,11 @@ public struct CacheConfiguration: Sendable {
 
     public init(roots: [CacheRoot], protectedLocations: [ProtectedLocation] = [],
                 homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
-                inspectionIssues: [ScanIssue] = [], readAccessRoots: [URL]? = nil) {
+                inspectionIssues: [ScanIssue] = [], readAccessRoots: [URL]? = nil,
+                protectedMeasurementExclusions: [URL] = []) {
         self.roots = roots
         self.protectedLocations = protectedLocations
+        self.protectedMeasurementExclusions = protectedMeasurementExclusions.map(\.roomLexicallyNormalized)
         self.homeDirectory = homeDirectory.roomLexicallyNormalized
         self.inspectionIssues = inspectionIssues
         self.readAccessRoots = readAccessRoots?.map(\.roomLexicallyNormalized)

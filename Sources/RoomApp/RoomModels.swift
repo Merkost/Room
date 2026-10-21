@@ -52,6 +52,8 @@ struct RoomSource: Identifiable, Sendable {
     let heldReasons: [RoomHeldReason]
     let largestEntries: [RoomSourceEntry]
     let isInspectionOnly: Bool
+    /// Explicit impacts for eligible cleanup units, separate from mixed notes.
+    var cleanupConsequences: [String] = []
     var isAvailable: Bool { eligibleBytes > 0 && selectableCount > 0 }
 }
 
