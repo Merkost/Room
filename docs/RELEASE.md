@@ -34,7 +34,11 @@ Final native interaction testing is currently blocked by the locked Mac; the unl
 
 ### App Store Connect state
 
-Review contact and the no-sign-in answer were saved. Free pricing across 175 countries is being configured; completion and final territory choices are not established here. Data Not Collected privacy answers were saved, but the final legally worded privacy Publish/attestation awaits the user's confirmation at that action. Saved answers are not a completed privacy publication or App Review submission.
+The final Description, Promotional Text and Keywords were saved from the current listing draft. Review contact and the no-sign-in answer were already saved; private contact values are not reproduced here. Free pricing is confirmed, and the authoritative Availability page saved **All Countries or Regions (175)**, with each entry **Available on App Release**. This is configured availability, not a live release.
+
+All seven existing age-rating questionnaire steps were reviewed as No/None and not designed for Kids, with a calculated **4+** rating. Save was disabled because the answers were unchanged; Cancel preserved the existing settings. No new age-rating save is claimed.
+
+Data Not Collected privacy answers were saved, but the final legally worded privacy Publish/attestation still awaits the user's confirmation at that action. Saved answers are not a completed privacy publication or App Review submission.
 
 Before release:
 
