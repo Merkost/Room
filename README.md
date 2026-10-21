@@ -34,7 +34,7 @@ Unknown files, credentials, installed resources, and project source remain prote
 
 ## Release status
 
-As of 22 October 2026, **Store 1.0.0 (5)** has been distribution-signed and uploaded to App Store Connect; the upload entered processing. App Review submission is not yet confirmed. **Direct 1.8.0 (13)** passed its release build and native Scan/Stop checks. The website will show public Store availability after release.
+As of 22 October 2026, **Store 1.0.0 (5)** has been distribution-signed, uploaded, processed, and attached in App Store Connect. The English listing and six screenshots are saved. App Review submission is awaiting the requested motion preview. **Direct 1.8.0 (13)** passed its release build and native Scan/Stop checks. The website will show public Store availability after release.
 
 Fresh tests passed for both editions: **186 Direct tests** and **171 Store tests**. Native Store 5 cleanup, Quit/relaunch, a fresh recovery write grant, and exact-byte Restore passed using disposable data. See [release evidence and boundaries](docs/RELEASE.md).
 
@@ -60,6 +60,6 @@ The build scripts produce local candidates. Store distribution uses the separate
 
 Room uses system typography, a stable adaptive toolbar, compact numeric hierarchy, native glass controls, keyboard shortcuts, and the Mac’s Reduce Motion and Reduce Transparency preferences. The selected C4 soft-pocket mark is shared across the app and website. Cancelled scans keep partial results explicit.
 
-`RoomCore` owns scanning, classification, cleanup, and recovery. `RoomApp` owns state, native permissions, and views. See [architecture](docs/ARCHITECTURE.md) and [design](DESIGN.md). The `website/` directory contains the marketing, support, and privacy pages; it has no analytics, advertising SDK, sign-in, or third-party font dependency.
+`RoomCore` owns scanning, classification, cleanup, and recovery. `RoomApp` owns state, native permissions, and views. See [architecture](docs/ARCHITECTURE.md), [design](DESIGN.md), and [App Store copy](docs/APP_STORE.md). The `website/` directory contains the marketing, support, and privacy pages; it has no analytics, advertising SDK, sign-in, or third-party font dependency.
 
 © 2026 Konstantin Merenkov. All rights reserved.
