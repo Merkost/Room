@@ -1,0 +1,664 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 90;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		04BC83E4A802D844B77ABE19 /* RoomRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1729AA8768BA551499C73B05 /* RoomRootView.swift */; };
+		1696C883D43EF47B197B9AC2 /* RoomDiskMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4017FE4AD892DB03DBE58D94 /* RoomDiskMapView.swift */; };
+		27D8AF00AB56721379FA3CDD /* RoomMenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D76B0159E47EE20D2094A3BF /* RoomMenuBarView.swift */; };
+		2A02A1E431179BF2DA26F477 /* RoomFileAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03FE6F060223DDABDB245961 /* RoomFileAccess.swift */; };
+		30D0FEEFB84EEBC27F9CE287 /* AgentWorkEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34CBD2C88A3706BC27737E47 /* AgentWorkEngine.swift */; };
+		3203FC52131DCDCBB7B94537 /* StorageAnalysis.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEAA5DF3AEC90F74DB65EF72 /* StorageAnalysis.swift */; };
+		41CFD19563B9B574EF73683E /* RoomModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 860BA5CE88FC812E5912AD2B /* RoomModels.swift */; };
+		42E4067C29DD31E269FC1112 /* RoomViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4497592CFD0CF258FC3D1932 /* RoomViewModel.swift */; };
+		4D318758AA53F9609F761DC1 /* RoomAgentWorkView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5CEDB7AC4967F8E31FC09B /* RoomAgentWorkView.swift */; };
+		51CA01E7DC9698EBD7A1BEF4 /* RoomStoreAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = 921CEB24CB399FC3D5DB54ED /* RoomStoreAccess.swift */; };
+		58AC16036416BF81CA1D1225 /* RoomOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF130D1DB04ABCF7EC616D48 /* RoomOnboardingView.swift */; };
+		5D1B0C90A4169D010A94E896 /* CacheEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB4FB32248A3E1F9ED25C4DF /* CacheEngine.swift */; };
+		6EE38BDEF44F694EF4361DEA /* RoomInsightsModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F47E2004C0F024387BF1D58A /* RoomInsightsModel.swift */; };
+		7F29AC96C9C0BDB8C61D4CB9 /* RoomStatusMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41634D135EF4B1BD04451290 /* RoomStatusMonitor.swift */; };
+		8212F750AEC278DC271681EF /* AdditionalCatalogue.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD51756C1E05865212F601F0 /* AdditionalCatalogue.swift */; };
+		8A8B127F6333552FD3D0F2C7 /* DeveloperResourcesModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = D104B24F1DFE7941B12A6731 /* DeveloperResourcesModels.swift */; };
+		8B873C74A596739721CBFABC /* DiscoveredCatalogue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E3557291DCFB6EDD0CEAB5F /* DiscoveredCatalogue.swift */; };
+		91AFC7326DCC4B143C0521B9 /* StorageAIEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF81DEA165EB0397C1DCA884 /* StorageAIEngine.swift */; };
+		94E9779AAC03EAE330B75397 /* LocalModelRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE30EAD9A3C6460E96881E19 /* LocalModelRuntime.swift */; };
+		97309C20F95EEC22046A8402 /* MemoryEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38F128B13D6DA820AFE609D5 /* MemoryEngine.swift */; };
+		98105E6673323CB862F03592 /* DeveloperResourcesEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9D865A95607D5DCCE969EF9 /* DeveloperResourcesEngine.swift */; };
+		9E389833E051F56B6B78A017 /* StoreCatalogue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 337A806B1F7E0542B22D7D64 /* StoreCatalogue.swift */; };
+		A10A09BD4BAAA9225D4D59AB /* RoomDeveloperView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54EDE3A87D12DE25FD309585 /* RoomDeveloperView.swift */; };
+		A2D39E5136C22F835D2E83AF /* RoomFolderPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7638868EDDF7335487DFA587 /* RoomFolderPicker.swift */; };
+		A5BB74736E9DB0AA5987C3F4 /* RoomApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20F266E22AFFA011763D51A1 /* RoomApp.swift */; };
+		A7A08E11D0C88D4E84C19308 /* RoomStoreReviewViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA52BA1DFF94D1BD4DCE4D99 /* RoomStoreReviewViews.swift */; };
+		AB9080C6E0C2CA7ED0D34DF7 /* RoomStorageVisual.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6441E3D118911113B5F49735 /* RoomStorageVisual.swift */; };
+		AF91E8D3B1D8E64DC5426E58 /* AgentWorkModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33AB7A5128046BB41102681B /* AgentWorkModel.swift */; };
+		B0DDEFB2060475009C484572 /* Catalogue.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDDF3AFF82CF89EDEF8C311A /* Catalogue.swift */; };
+		B1D77A7021BB6093B5028B89 /* RoomDeveloperModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34997C8F55A6F321B305B044 /* RoomDeveloperModel.swift */; };
+		B3F5727DD4A5EC79B9F5C87B /* DiskMapEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = E15D82C6A0370CDD17F3115F /* DiskMapEngine.swift */; };
+		B4B4FFA7432302DE2833E6FF /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CD8A5FF5EB26D8E5DA3F257 /* Models.swift */; };
+		B52A62515F519B9FA4BA673E /* AgentWorkModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A545129D0A887ED90FC72787 /* AgentWorkModels.swift */; };
+		B7078A34A131009DBBD6AC78 /* RoomGlassVisual.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0408BF12BE401C9FD737AA6A /* RoomGlassVisual.swift */; };
+		CD2578A4D6F4B82AA3104BB9 /* libRoomCore.a in Frameworks */ = {isa = PBXBuildFile; fileRef = B5835208C7B8FEA8D32DD006 /* libRoomCore.a */; };
+		D95A66047E3D9E4448131354 /* RoomMemoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90ADC9DD4AC04A01AA90CB55 /* RoomMemoryView.swift */; };
+		E58C920C75A8A69641D06734 /* Room.icns in Resources */ = {isa = PBXBuildFile; fileRef = 75753CB74069A8A8CEF2F390 /* Room.icns */; };
+		ED6D477D52D148444A122E0C /* RoomSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB15B7BDC6663EB0A17679B1 /* RoomSheets.swift */; };
+		F25E647F91A46A81E29BE115 /* RoomAppLinks.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88949B5371395DC5851D819C /* RoomAppLinks.swift */; };
+		F2DFFC2DC9F0A3B147B49101 /* RoomNavigationBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20F0C800C8A232CB9E4CBCAF /* RoomNavigationBar.swift */; };
+		F3DB48EE419C5EACE2F11DF7 /* MemoryActionsModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B25BA9A7BFF9B51AC7A10A9 /* MemoryActionsModel.swift */; };
+		FD96D274AD6C0E7CD44C7FCF /* ExpandedCatalogue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06FF4694333FF1CD35E76301 /* ExpandedCatalogue.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		79D62BFFCFB68417CC7B5C97 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 73AAE3C27484B0CCF55B3AC6 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 755EDDEA2B35AB06A44B0A14;
+			remoteInfo = RoomCore;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		03FE6F060223DDABDB245961 /* RoomFileAccess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomFileAccess.swift; sourceTree = "<group>"; };
+		0408BF12BE401C9FD737AA6A /* RoomGlassVisual.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomGlassVisual.swift; sourceTree = "<group>"; };
+		06FF4694333FF1CD35E76301 /* ExpandedCatalogue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExpandedCatalogue.swift; sourceTree = "<group>"; };
+		1729AA8768BA551499C73B05 /* RoomRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomRootView.swift; sourceTree = "<group>"; };
+		20F0C800C8A232CB9E4CBCAF /* RoomNavigationBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomNavigationBar.swift; sourceTree = "<group>"; };
+		20F266E22AFFA011763D51A1 /* RoomApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomApp.swift; sourceTree = "<group>"; };
+		337A806B1F7E0542B22D7D64 /* StoreCatalogue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreCatalogue.swift; sourceTree = "<group>"; };
+		33AB7A5128046BB41102681B /* AgentWorkModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentWorkModel.swift; sourceTree = "<group>"; };
+		34997C8F55A6F321B305B044 /* RoomDeveloperModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomDeveloperModel.swift; sourceTree = "<group>"; };
+		34CBD2C88A3706BC27737E47 /* AgentWorkEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentWorkEngine.swift; sourceTree = "<group>"; };
+		35CF43E7F4CAC6A63AD39274 /* generate-store-project.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "generate-store-project.sh"; sourceTree = "<group>"; };
+		38F128B13D6DA820AFE609D5 /* MemoryEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryEngine.swift; sourceTree = "<group>"; };
+		4017FE4AD892DB03DBE58D94 /* RoomDiskMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomDiskMapView.swift; sourceTree = "<group>"; };
+		41634D135EF4B1BD04451290 /* RoomStatusMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomStatusMonitor.swift; sourceTree = "<group>"; };
+		447C1DDDEE286B893E6B190E /* Package.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Package.swift; sourceTree = "<group>"; };
+		4497592CFD0CF258FC3D1932 /* RoomViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomViewModel.swift; sourceTree = "<group>"; };
+		482652662081D8048B276235 /* Room.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Room.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		4A0CC38DC7DECAD3CEF2947D /* Info-Store.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "Info-Store.plist"; sourceTree = "<group>"; };
+		54EDE3A87D12DE25FD309585 /* RoomDeveloperView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomDeveloperView.swift; sourceTree = "<group>"; };
+		5EFC43C180AF07C5C84DAA7B /* ExportOptions-AppStore.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "ExportOptions-AppStore.plist"; sourceTree = "<group>"; };
+		5F27D89489407619B71389A1 /* build-store.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "build-store.sh"; sourceTree = "<group>"; };
+		6441E3D118911113B5F49735 /* RoomStorageVisual.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomStorageVisual.swift; sourceTree = "<group>"; };
+		6CD8A5FF5EB26D8E5DA3F257 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		6E3557291DCFB6EDD0CEAB5F /* DiscoveredCatalogue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoveredCatalogue.swift; sourceTree = "<group>"; };
+		75753CB74069A8A8CEF2F390 /* Room.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = Room.icns; sourceTree = "<group>"; };
+		7638868EDDF7335487DFA587 /* RoomFolderPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomFolderPicker.swift; sourceTree = "<group>"; };
+		860BA5CE88FC812E5912AD2B /* RoomModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomModels.swift; sourceTree = "<group>"; };
+		88949B5371395DC5851D819C /* RoomAppLinks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomAppLinks.swift; sourceTree = "<group>"; };
+		8B25BA9A7BFF9B51AC7A10A9 /* MemoryActionsModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryActionsModel.swift; sourceTree = "<group>"; };
+		90ADC9DD4AC04A01AA90CB55 /* RoomMemoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomMemoryView.swift; sourceTree = "<group>"; };
+		921CEB24CB399FC3D5DB54ED /* RoomStoreAccess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomStoreAccess.swift; sourceTree = "<group>"; };
+		933225F45F753B48446C5B03 /* Room-Store.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "Room-Store.entitlements"; sourceTree = "<group>"; };
+		94507AF39ADEC9DB9325A48E /* STORE-ARCHIVE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "STORE-ARCHIVE.md"; sourceTree = "<group>"; };
+		97CB4F217B2FC876B5F326E2 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
+		9BCADD419E089FBA20DEBA89 /* build.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = build.sh; sourceTree = "<group>"; };
+		A545129D0A887ED90FC72787 /* AgentWorkModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentWorkModels.swift; sourceTree = "<group>"; };
+		A6B86A9F8918BFC4E4A7BAAA /* archive-store.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "archive-store.sh"; sourceTree = "<group>"; };
+		AB4FB32248A3E1F9ED25C4DF /* CacheEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheEngine.swift; sourceTree = "<group>"; };
+		AF130D1DB04ABCF7EC616D48 /* RoomOnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomOnboardingView.swift; sourceTree = "<group>"; };
+		B5835208C7B8FEA8D32DD006 /* libRoomCore.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libRoomCore.a; sourceTree = BUILT_PRODUCTS_DIR; };
+		CA52BA1DFF94D1BD4DCE4D99 /* RoomStoreReviewViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomStoreReviewViews.swift; sourceTree = "<group>"; };
+		CA5CEDB7AC4967F8E31FC09B /* RoomAgentWorkView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomAgentWorkView.swift; sourceTree = "<group>"; };
+		CB15B7BDC6663EB0A17679B1 /* RoomSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomSheets.swift; sourceTree = "<group>"; };
+		CF81DEA165EB0397C1DCA884 /* StorageAIEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageAIEngine.swift; sourceTree = "<group>"; };
+		D104B24F1DFE7941B12A6731 /* DeveloperResourcesModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeveloperResourcesModels.swift; sourceTree = "<group>"; };
+		D76B0159E47EE20D2094A3BF /* RoomMenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomMenuBarView.swift; sourceTree = "<group>"; };
+		E15D82C6A0370CDD17F3115F /* DiskMapEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskMapEngine.swift; sourceTree = "<group>"; };
+		E5FB6BF1669A24647706D7DC /* MakeIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MakeIcon.swift; sourceTree = "<group>"; };
+		E9D865A95607D5DCCE969EF9 /* DeveloperResourcesEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeveloperResourcesEngine.swift; sourceTree = "<group>"; };
+		EDDF3AFF82CF89EDEF8C311A /* Catalogue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Catalogue.swift; sourceTree = "<group>"; };
+		F47E2004C0F024387BF1D58A /* RoomInsightsModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomInsightsModel.swift; sourceTree = "<group>"; };
+		FD51756C1E05865212F601F0 /* AdditionalCatalogue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdditionalCatalogue.swift; sourceTree = "<group>"; };
+		FE30EAD9A3C6460E96881E19 /* LocalModelRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalModelRuntime.swift; sourceTree = "<group>"; };
+		FEAA5DF3AEC90F74DB65EF72 /* StorageAnalysis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageAnalysis.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		DADCB0A888B3C551FE214A4D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CD2578A4D6F4B82AA3104BB9 /* libRoomCore.a in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0677000725E40B65C5BA1B20 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				B5835208C7B8FEA8D32DD006 /* libRoomCore.a */,
+				482652662081D8048B276235 /* Room.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		2FF3BDEFD58AA67D6B2426B0 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				CA5CEDB7AC4967F8E31FC09B /* RoomAgentWorkView.swift */,
+				54EDE3A87D12DE25FD309585 /* RoomDeveloperView.swift */,
+				4017FE4AD892DB03DBE58D94 /* RoomDiskMapView.swift */,
+				0408BF12BE401C9FD737AA6A /* RoomGlassVisual.swift */,
+				90ADC9DD4AC04A01AA90CB55 /* RoomMemoryView.swift */,
+				D76B0159E47EE20D2094A3BF /* RoomMenuBarView.swift */,
+				20F0C800C8A232CB9E4CBCAF /* RoomNavigationBar.swift */,
+				AF130D1DB04ABCF7EC616D48 /* RoomOnboardingView.swift */,
+				1729AA8768BA551499C73B05 /* RoomRootView.swift */,
+				CB15B7BDC6663EB0A17679B1 /* RoomSheets.swift */,
+				6441E3D118911113B5F49735 /* RoomStorageVisual.swift */,
+				CA52BA1DFF94D1BD4DCE4D99 /* RoomStoreReviewViews.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		38CA6EBCCB55D80D5DBC965E /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				4A0CC38DC7DECAD3CEF2947D /* Info-Store.plist */,
+				933225F45F753B48446C5B03 /* Room-Store.entitlements */,
+				75753CB74069A8A8CEF2F390 /* Room.icns */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		65C59C098BC2EBB443FBAFE1 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				C65AB0E2D7A3DF57E7309983 /* RoomApp */,
+				CEF3836C8677C6E302F78C7B /* RoomCore */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		A9BA20AE766ADE79859026EB /* scripts */ = {
+			isa = PBXGroup;
+			children = (
+				A6B86A9F8918BFC4E4A7BAAA /* archive-store.sh */,
+				5F27D89489407619B71389A1 /* build-store.sh */,
+				9BCADD419E089FBA20DEBA89 /* build.sh */,
+				5EFC43C180AF07C5C84DAA7B /* ExportOptions-AppStore.plist */,
+				35CF43E7F4CAC6A63AD39274 /* generate-store-project.sh */,
+				E5FB6BF1669A24647706D7DC /* MakeIcon.swift */,
+				94507AF39ADEC9DB9325A48E /* STORE-ARCHIVE.md */,
+			);
+			path = scripts;
+			sourceTree = "<group>";
+		};
+		C5BC612C87FD9F2DAE598B17 = {
+			isa = PBXGroup;
+			children = (
+				447C1DDDEE286B893E6B190E /* Package.swift */,
+				97CB4F217B2FC876B5F326E2 /* README.md */,
+				38CA6EBCCB55D80D5DBC965E /* Resources */,
+				A9BA20AE766ADE79859026EB /* scripts */,
+				65C59C098BC2EBB443FBAFE1 /* Sources */,
+				0677000725E40B65C5BA1B20 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		C65AB0E2D7A3DF57E7309983 /* RoomApp */ = {
+			isa = PBXGroup;
+			children = (
+				33AB7A5128046BB41102681B /* AgentWorkModel.swift */,
+				8B25BA9A7BFF9B51AC7A10A9 /* MemoryActionsModel.swift */,
+				20F266E22AFFA011763D51A1 /* RoomApp.swift */,
+				88949B5371395DC5851D819C /* RoomAppLinks.swift */,
+				34997C8F55A6F321B305B044 /* RoomDeveloperModel.swift */,
+				03FE6F060223DDABDB245961 /* RoomFileAccess.swift */,
+				7638868EDDF7335487DFA587 /* RoomFolderPicker.swift */,
+				F47E2004C0F024387BF1D58A /* RoomInsightsModel.swift */,
+				860BA5CE88FC812E5912AD2B /* RoomModels.swift */,
+				41634D135EF4B1BD04451290 /* RoomStatusMonitor.swift */,
+				921CEB24CB399FC3D5DB54ED /* RoomStoreAccess.swift */,
+				4497592CFD0CF258FC3D1932 /* RoomViewModel.swift */,
+				2FF3BDEFD58AA67D6B2426B0 /* Views */,
+			);
+			path = RoomApp;
+			sourceTree = "<group>";
+		};
+		CEF3836C8677C6E302F78C7B /* RoomCore */ = {
+			isa = PBXGroup;
+			children = (
+				FD51756C1E05865212F601F0 /* AdditionalCatalogue.swift */,
+				34CBD2C88A3706BC27737E47 /* AgentWorkEngine.swift */,
+				A545129D0A887ED90FC72787 /* AgentWorkModels.swift */,
+				AB4FB32248A3E1F9ED25C4DF /* CacheEngine.swift */,
+				EDDF3AFF82CF89EDEF8C311A /* Catalogue.swift */,
+				E9D865A95607D5DCCE969EF9 /* DeveloperResourcesEngine.swift */,
+				D104B24F1DFE7941B12A6731 /* DeveloperResourcesModels.swift */,
+				6E3557291DCFB6EDD0CEAB5F /* DiscoveredCatalogue.swift */,
+				E15D82C6A0370CDD17F3115F /* DiskMapEngine.swift */,
+				06FF4694333FF1CD35E76301 /* ExpandedCatalogue.swift */,
+				FE30EAD9A3C6460E96881E19 /* LocalModelRuntime.swift */,
+				38F128B13D6DA820AFE609D5 /* MemoryEngine.swift */,
+				6CD8A5FF5EB26D8E5DA3F257 /* Models.swift */,
+				CF81DEA165EB0397C1DCA884 /* StorageAIEngine.swift */,
+				FEAA5DF3AEC90F74DB65EF72 /* StorageAnalysis.swift */,
+				337A806B1F7E0542B22D7D64 /* StoreCatalogue.swift */,
+			);
+			path = RoomCore;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		6EACB8CF4A181FFA7D3E7FCB /* Room */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BB9135613AEDD03C0F8866B2 /* Build configuration list for PBXNativeTarget "Room" */;
+			buildPhases = (
+				D545B37EDF7B45D1310C5CFF /* Sources */,
+				51D8856E741778090DDA89D4 /* Resources */,
+				DADCB0A888B3C551FE214A4D /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				53A5EB14592B324118193FF4 /* PBXTargetDependency */,
+			);
+			name = Room;
+			packageProductDependencies = (
+			);
+			productName = Room;
+			productReference = 482652662081D8048B276235 /* Room.app */;
+			productType = "com.apple.product-type.application";
+		};
+		755EDDEA2B35AB06A44B0A14 /* RoomCore */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 531E6402C0DA9CE0D58B0011 /* Build configuration list for PBXNativeTarget "RoomCore" */;
+			buildPhases = (
+				B1A7BFF0627C97BF2AFCBB12 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = RoomCore;
+			packageProductDependencies = (
+			);
+			productName = RoomCore;
+			productReference = B5835208C7B8FEA8D32DD006 /* libRoomCore.a */;
+			productType = "com.apple.product-type.library.static";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		73AAE3C27484B0CCF55B3AC6 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 2660;
+				TargetAttributes = {
+					6EACB8CF4A181FFA7D3E7FCB = {
+						DevelopmentTeam = P47X2292CM;
+						ProvisioningStyle = Automatic;
+					};
+					755EDDEA2B35AB06A44B0A14 = {
+						DevelopmentTeam = P47X2292CM;
+					};
+				};
+			};
+			buildConfigurationList = EA88F23BF621673DAF1D43BB /* Build configuration list for PBXProject "RoomStore" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = C5BC612C87FD9F2DAE598B17;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 90;
+			productRefGroup = 0677000725E40B65C5BA1B20 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				6EACB8CF4A181FFA7D3E7FCB /* Room */,
+				755EDDEA2B35AB06A44B0A14 /* RoomCore */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		51D8856E741778090DDA89D4 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E58C920C75A8A69641D06734 /* Room.icns in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		B1A7BFF0627C97BF2AFCBB12 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8212F750AEC278DC271681EF /* AdditionalCatalogue.swift in Sources */,
+				30D0FEEFB84EEBC27F9CE287 /* AgentWorkEngine.swift in Sources */,
+				B52A62515F519B9FA4BA673E /* AgentWorkModels.swift in Sources */,
+				5D1B0C90A4169D010A94E896 /* CacheEngine.swift in Sources */,
+				B0DDEFB2060475009C484572 /* Catalogue.swift in Sources */,
+				98105E6673323CB862F03592 /* DeveloperResourcesEngine.swift in Sources */,
+				8A8B127F6333552FD3D0F2C7 /* DeveloperResourcesModels.swift in Sources */,
+				8B873C74A596739721CBFABC /* DiscoveredCatalogue.swift in Sources */,
+				B3F5727DD4A5EC79B9F5C87B /* DiskMapEngine.swift in Sources */,
+				FD96D274AD6C0E7CD44C7FCF /* ExpandedCatalogue.swift in Sources */,
+				94E9779AAC03EAE330B75397 /* LocalModelRuntime.swift in Sources */,
+				97309C20F95EEC22046A8402 /* MemoryEngine.swift in Sources */,
+				B4B4FFA7432302DE2833E6FF /* Models.swift in Sources */,
+				91AFC7326DCC4B143C0521B9 /* StorageAIEngine.swift in Sources */,
+				3203FC52131DCDCBB7B94537 /* StorageAnalysis.swift in Sources */,
+				9E389833E051F56B6B78A017 /* StoreCatalogue.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D545B37EDF7B45D1310C5CFF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AF91E8D3B1D8E64DC5426E58 /* AgentWorkModel.swift in Sources */,
+				F3DB48EE419C5EACE2F11DF7 /* MemoryActionsModel.swift in Sources */,
+				4D318758AA53F9609F761DC1 /* RoomAgentWorkView.swift in Sources */,
+				A5BB74736E9DB0AA5987C3F4 /* RoomApp.swift in Sources */,
+				F25E647F91A46A81E29BE115 /* RoomAppLinks.swift in Sources */,
+				B1D77A7021BB6093B5028B89 /* RoomDeveloperModel.swift in Sources */,
+				A10A09BD4BAAA9225D4D59AB /* RoomDeveloperView.swift in Sources */,
+				1696C883D43EF47B197B9AC2 /* RoomDiskMapView.swift in Sources */,
+				2A02A1E431179BF2DA26F477 /* RoomFileAccess.swift in Sources */,
+				A2D39E5136C22F835D2E83AF /* RoomFolderPicker.swift in Sources */,
+				B7078A34A131009DBBD6AC78 /* RoomGlassVisual.swift in Sources */,
+				6EE38BDEF44F694EF4361DEA /* RoomInsightsModel.swift in Sources */,
+				D95A66047E3D9E4448131354 /* RoomMemoryView.swift in Sources */,
+				27D8AF00AB56721379FA3CDD /* RoomMenuBarView.swift in Sources */,
+				41CFD19563B9B574EF73683E /* RoomModels.swift in Sources */,
+				F2DFFC2DC9F0A3B147B49101 /* RoomNavigationBar.swift in Sources */,
+				58AC16036416BF81CA1D1225 /* RoomOnboardingView.swift in Sources */,
+				04BC83E4A802D844B77ABE19 /* RoomRootView.swift in Sources */,
+				ED6D477D52D148444A122E0C /* RoomSheets.swift in Sources */,
+				7F29AC96C9C0BDB8C61D4CB9 /* RoomStatusMonitor.swift in Sources */,
+				AB9080C6E0C2CA7ED0D34DF7 /* RoomStorageVisual.swift in Sources */,
+				51CA01E7DC9698EBD7A1BEF4 /* RoomStoreAccess.swift in Sources */,
+				A7A08E11D0C88D4E84C19308 /* RoomStoreReviewViews.swift in Sources */,
+				42E4067C29DD31E269FC1112 /* RoomViewModel.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		53A5EB14592B324118193FF4 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 755EDDEA2B35AB06A44B0A14 /* RoomCore */;
+			targetProxy = 79D62BFFCFB68417CC7B5C97 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		1115D205EB465651A1C4258A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = "";
+				CODE_SIGN_ENTITLEMENTS = "Resources/Room-Store.entitlements";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "Resources/Info-Store.plist";
+				INSTALL_PATH = "$(LOCAL_APPS_DIR)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.merkost.room;
+				PRODUCT_MODULE_NAME = RoomApp;
+				PRODUCT_NAME = Room;
+				SDKROOT = macosx;
+				SKIP_INSTALL = NO;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+			};
+			name = Debug;
+		};
+		2C7EF01E88E689C2492CB6A6 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = "";
+				CODE_SIGN_ENTITLEMENTS = "Resources/Room-Store.entitlements";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "Resources/Info-Store.plist";
+				INSTALL_PATH = "$(LOCAL_APPS_DIR)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.merkost.room;
+				PRODUCT_MODULE_NAME = RoomApp;
+				PRODUCT_NAME = Room;
+				SDKROOT = macosx;
+				SKIP_INSTALL = NO;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+			};
+			name = Release;
+		};
+		5AFD7475CD6BA8501FD00D7E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGNING_ALLOWED = NO;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEFINES_MODULE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_MODULE_NAME = RoomCore;
+				PRODUCT_NAME = RoomCore;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_INSTALL_OBJC_HEADER = NO;
+			};
+			name = Release;
+		};
+		6904216DA612715A81541E6C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGNING_ALLOWED = NO;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEFINES_MODULE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_MODULE_NAME = RoomCore;
+				PRODUCT_NAME = RoomCore;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_INSTALL_OBJC_HEADER = NO;
+			};
+			name = Debug;
+		};
+		A5167E2CDB5A1DDFAA94F75D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = P47X2292CM;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = NO;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) ROOM_APP_STORE";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		E7558931CDD88AC4FCC12D78 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = P47X2292CM;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = NO;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) ROOM_APP_STORE";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		531E6402C0DA9CE0D58B0011 /* Build configuration list for PBXNativeTarget "RoomCore" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6904216DA612715A81541E6C /* Debug */,
+				5AFD7475CD6BA8501FD00D7E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		BB9135613AEDD03C0F8866B2 /* Build configuration list for PBXNativeTarget "Room" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1115D205EB465651A1C4258A /* Debug */,
+				2C7EF01E88E689C2492CB6A6 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		EA88F23BF621673DAF1D43BB /* Build configuration list for PBXProject "RoomStore" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A5167E2CDB5A1DDFAA94F75D /* Debug */,
+				E7558931CDD88AC4FCC12D78 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 73AAE3C27484B0CCF55B3AC6 /* Project object */;
+}

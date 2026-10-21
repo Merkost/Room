@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#f2f6f7">
+  <meta name="description" content="Room is a free native Mac utility for clearer storage, visual disk exploration, supported cache review, and memory insight. Coming to the Mac App Store.">
+  <meta property="og:title" content="Room — Room to breathe.">
+  <meta property="og:description" content="See your storage. Understand your memory. Choose what stays. A free native Mac utility, coming to the Mac App Store.">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="https://room.merkost.dev/assets/room-icon.png">
+  <link rel="canonical" href="https://room.merkost.dev/">
+  <meta property="og:url" content="https://room.merkost.dev/">
+  <title>Room — Room to breathe.</title>
+  <link rel="icon" type="image/png" href="assets/room-icon.png">
+  <link rel="stylesheet" href="style.css">
+  <script src="site-config.js" defer></script>
+  <script src="site.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="wordmark" href="./" aria-label="Room home"><img src="assets/room-icon.png" alt="" width="38" height="38"><span>Room</span></a>
+    <nav aria-label="Main navigation"><a href="#explore">Explore</a><a href="support/">Support</a><a href="privacy/">Privacy</a></nav>
+  </header>
+  <main id="main">
+    <section class="hero wrap" aria-labelledby="hero-title">
+      <h1 id="hero-title"><span>Room to</span><span>breathe.</span></h1>
+      <div class="hero-bottom">
+        <div class="hero-description"><p>See your storage. Understand your memory.<br>Choose what stays.</p><p class="release-state" data-release-status>Coming to the Mac App Store.</p></div>
+        <div class="hero-actions"><a class="button" href="#explore" data-store-cta>Explore Room <span aria-hidden="true">↗</span></a><span>Free. No ads. No in-app purchases.</span></div>
+      </div>
+    </section>
+
+    <section class="explore-section" id="explore" aria-labelledby="explore-title">
+      <div class="wrap">
+        <div class="section-intro"><h2 id="explore-title">A clearer view.<br>A considered clean.</h2><p>Room is being prepared as a native Mac app for exploring approved folders, understanding memory, and reviewing supported cache changes.</p></div>
+        <div class="explorer">
+          <div class="explorer-controls" role="tablist" aria-label="Explore Room’s planned features" hidden>
+            <button type="button" role="tab" id="tab-storage" aria-controls="panel-storage" aria-selected="true" tabindex="0" data-explore="storage">Storage</button>
+            <button type="button" role="tab" id="tab-memory" aria-controls="panel-memory" aria-selected="false" tabindex="-1" data-explore="memory">Memory</button>
+            <button type="button" role="tab" id="tab-review" aria-controls="panel-review" aria-selected="false" tabindex="-1" data-explore="review">Review</button>
+          </div>
+
+          <div class="explore-panel" id="panel-storage" role="tabpanel" aria-labelledby="tab-storage" data-panel="storage">
+            <div class="storage-art illustration" role="img" aria-label="Conceptual folder map with Media, Builds, Archives and Documents. This illustration has no measured values.">
+              <div class="map-tile media"><span class="tile-symbol" aria-hidden="true">▧</span><span>Media</span></div>
+              <div class="map-tile builds"><span class="tile-symbol" aria-hidden="true">⌘</span><span>Builds</span></div>
+              <div class="map-tile archives"><span class="tile-symbol" aria-hidden="true">▱</span><span>Archives</span></div>
+              <div class="map-tile documents"><span class="tile-symbol" aria-hidden="true">▤</span><span>Documents</span></div>
+            </div>
+            <div class="explorer-caption"><h3>Follow the folders.</h3><p>Visual Disk Map is designed to show allocated space by folder. Explore hidden entries and large files within the access you approve.</p></div>
+          </div>
+
+          <div class="explore-panel" id="panel-memory" role="tabpanel" aria-labelledby="tab-memory" data-panel="memory" hidden>
+            <div class="memory-art illustration" role="img" aria-label="Conceptual memory illustration showing the categories Available, Compressed and Swap, without live readings.">
+              <div class="memory-rings" aria-hidden="true"><span></span><span></span><span></span><svg viewBox="0 0 100 100"><path d="M20 79V31q0-11 11-11h48M39 79V50q0-11 11-11h29M58 79V69q0-11 11-11h10"/></svg></div>
+              <div class="memory-words"><span>Available</span><span>Compressed</span><span>Swap</span></div>
+            </div>
+            <div class="explorer-caption"><h3>Know your memory.</h3><p>Understand pressure, compression and swap. The Store edition focuses on monitoring and suggestions, while you stay in control of your open apps.</p></div>
+          </div>
+
+          <div class="explore-panel" id="panel-review" role="tabpanel" aria-labelledby="tab-review" data-panel="review" hidden>
+            <div class="review-art illustration" role="img" aria-label="Conceptual sequence: review supported items, move to Trash, and restore when eligible. This is an illustration, not the app interface.">
+              <div class="review-paper"><svg viewBox="0 0 100 100" aria-hidden="true"><path d="M20 79V31q0-11 11-11h48M39 79V50q0-11 11-11h29M58 79V69q0-11 11-11h10"/></svg><span>Review</span></div>
+              <span class="review-arrow" aria-hidden="true">→</span><div class="review-word">Trash</div><span class="review-arrow" aria-hidden="true">→</span><div class="review-word">Restore</div>
+            </div>
+            <div class="explorer-caption"><h3>Review. Then clear.</h3><p>Eligible cache changes are planned around a clear selection, contextual access and recovery receipts. Held or unsupported items stay in place.</p></div>
+          </div>
+          <p class="illustration-note">Illustrations explain the idea. The Store interface is being finalized.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="memory-section" aria-labelledby="memory-title">
+      <div class="wrap memory-layout">
+        <h2 id="memory-title">Less guesswork.<br>More perspective.</h2>
+        <div class="memory-copy"><p>Large isn’t the same as unnecessary. Hidden isn’t the same as disposable. Room keeps those distinctions visible.</p><div class="capability-list"><p><strong>Measured storage</strong><span>See what a permitted scan finds, with limits and held items kept in view.</span></p><p><strong>Local suggestions</strong><span>Optional on-device Foundation Models analysis when available; rule-based review otherwise.</span></p><p><strong>Native by nature</strong><span>Liquid Glass controls, keyboard shortcuts, and support for your Mac’s motion and transparency preferences.</span></p></div></div>
+      </div>
+    </section>
+
+    <section class="care-section wrap" aria-labelledby="care-title">
+      <div class="section-intro"><h2 id="care-title">Your files.<br>Your decision.</h2><p>Access is a choice. Clearing is a choice. A useful storage app should make both easy to understand.</p></div>
+      <div class="care-path"><div class="care-sequence"><article data-care-stage="0"><h3>Choose access.</h3><p>Native folder pickers keep permission requests in context. Coverage depends on the folders and resources macOS permits.</p></article><article data-care-stage="1"><h3>Review the change.</h3><p>Supported cleanup is reviewed before anything moves. Suggestions do not authorize deletion or prove redundancy.</p></article><article data-care-stage="2"><h3>Keep a way back.</h3><p>Eligible changes use Trash and recovery receipts. Disk space is released when Trash is emptied; Room will not empty it for you.</p></article></div>
+      <figure class="care-visual" aria-label="Illustrated review path: choose access, review the selection, and keep recovery available.">
+        <svg class="care-flow" viewBox="0 0 440 340" role="img" aria-labelledby="care-flow-title">
+          <title id="care-flow-title">A change starts with permission</title>
+          <path class="flow-track" d="M73 65V273"/>
+          <g class="flow-node" data-flow-stage="0"><circle cx="73" cy="65" r="22"/><path d="M64 65l6 6 12-13"/><text x="122" y="61">Choose access</text><text class="flow-detail" x="122" y="84">A folder you approve</text></g>
+          <g class="flow-node" data-flow-stage="1"><circle cx="73" cy="169" r="22"/><path d="M63 169h20m-20-6h15m-15 12h11"/><text x="122" y="165">Review the change</text><text class="flow-detail" x="122" y="188">Supported items only</text></g>
+          <g class="flow-node" data-flow-stage="2"><circle cx="73" cy="273" r="22"/><path d="M79 267a9 9 0 1 1-11 1m-1-5v7h7"/><text x="122" y="269">Keep a way back</text><text class="flow-detail" x="122" y="292">Trash and recovery receipts</text></g>
+          <circle class="flow-marker" cx="73" cy="65" r="28"/>
+        </svg>
+        <figcaption>Each change starts with permission.</figcaption>
+      </figure></div>
+    </section>
+
+    <section class="faq-section wrap" aria-labelledby="faq-title">
+      <h2 id="faq-title">A few clear answers.</h2>
+      <div class="faq-pair"><h3>When is it available?</h3><p>Room is being prepared for the Mac App Store. There is no public Store download yet. The release will be free, with no ads or in-app purchases.</p></div>
+      <div class="faq-pair"><h3>What Mac will it need?</h3><p>The planned first release targets Apple silicon Macs running macOS 26 or later. On-device analysis also depends on Apple Intelligence support and availability.</p></div>
+      <div class="faq-pair"><h3>Will it close my apps?</h3><p>No. The planned Store edition offers memory monitoring and guidance, with no control that quits other applications. It also excludes the direct edition’s external model-runtime integration.</p></div>
+      <div class="faq-pair"><h3>Does it scan everything?</h3><p>No. Scans are limited by approved access, macOS permissions and inspection budgets. Large, hidden or cache-like files are never automatically considered unnecessary.</p></div>
+      <p class="faq-more"><a class="text-link" href="support/">More help and troubleshooting <span aria-hidden="true">↗</span></a></p>
+    </section>
+  </main>
+  <footer class="site-footer"><div class="wrap"><div class="footer-top"><p>A little more clarity.<br>A little more room.</p><div><a href="support/">Support</a><a href="privacy/">Privacy</a><a href="support/#contact">Contact</a></div><p class="release-state" data-release-status>Coming to the Mac App Store.</p></div><div class="footer-room" aria-hidden="true">Room</div><div class="footer-legal"><span>© 2026 Konstantin Merenkov</span><span>Made for a calmer Mac.</span></div></div></footer>
+</body>
+</html>

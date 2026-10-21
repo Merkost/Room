@@ -1,0 +1,104 @@
+import Darwin
+import Foundation
+
+extension CacheConfiguration {
+    /// A sandboxed catalogue is built only from explicitly approved physical
+    /// folders. Construction never enumerates a directory or probes a known
+    /// cache path outside those approvals. Unknown selected data is inspect-only.
+    public static func store(approvedFolders: [URL], userHome: URL) -> CacheConfiguration {
+        let home = userHome.roomLexicallyNormalized
+        guard userHome.isFileURL, home.path != "/" else {
+            return CacheConfiguration(roots: [], homeDirectory: home,
+                inspectionIssues: [ScanIssue(url: home, message: "Choose a valid user home and approve the folders to inspect.")],
+                readAccessRoots: [])
+        }
+        var issues: [ScanIssue] = []
+        var folders: [URL] = []
+        for supplied in approvedFolders.prefix(32) {
+            let folder = supplied.roomLexicallyNormalized
+            guard supplied.isFileURL, folder.path != "/", StoreFolderBoundary.isPhysicalOwnedDirectory(folder) else {
+                issues.append(ScanIssue(url: folder, message: "The approved folder is unavailable, linked or not owned by this user. Approve its physical location again."))
+                continue
+            }
+            if !folders.contains(where: { $0.path == folder.path }) { folders.append(folder) }
+        }
+        if approvedFolders.count > 32 {
+            issues.append(ScanIssue(url: home, message: "This scan is limited to 32 approved folders. Other folders were not inspected."))
+        }
+        folders = folders.filter { candidate in
+            !folders.contains { $0.path != candidate.path && StoreFolderBoundary.contains(candidate, in: $0) }
+        }.sorted { $0.path < $1.path }
+
+        let base = standard(home: home)
+        var catalogue = base.roots
+        func add(_ id: String, _ title: String, _ path: String, _ processes: [String],
+                 category: String = "developer", scope: CacheScope = .children,
+                 age: TimeInterval = 7 * 86_400) {
+            catalogue.append(CacheRoot(id: id, title: title, subtitle: path,
+                symbol: category == "agents" ? "terminal" : "shippingbox", category: category,
+                url: home.appendingPathComponent(path),
+                consequence: "Known rebuildable cache data may be downloaded or rebuilt by its owning tool. User work and installed resources remain protected.",
+                minimumAge: age, guardedProcesses: processes, scope: scope))
+        }
+        add("claude-model-catalog", "Claude model catalog", ".claude/cache/model-catalog", ["claude", "node"], category: "agents")
+        add("claude-shell-snapshots", "Claude environment snapshots", ".claude/shell-snapshots", ["claude", "node"], category: "agents", age: 30 * 86_400)
+        add("npm-exec", "npm execution downloads", ".npm/_npx", ["node", "npm", "npx"])
+        for folder in ["manifests", "package-metadata", "repositories", "artifacts"] {
+            add("swiftpm-\(folder)", "Swift packages", "Library/Caches/org.swift.swiftpm/\(folder)", ["swift", "swift-build", "xcode", "xcodebuild", "sourcekit"])
+        }
+        add("swiftpm-prebuilts", "Swift prebuilt downloads", "Library/Caches/org.swift.swiftpm/prebuilts/swift-syntax", ["swift", "xcode", "xcodebuild", "sourcekit"])
+        add("go-build", "Go build cache", "Library/Caches/go-build", ["go", "gopls"])
+        add("go-downloads", "Go module downloads", "go/pkg/mod/cache/download", ["go", "gopls"])
+        add("cargo", "Rust packages", ".cargo/registry/cache", ["cargo", "rustc", "rust-analyzer"])
+        for folder in ["gen", "npm", "remote"] {
+            add("deno-\(folder)", "Deno", "Library/Caches/deno/\(folder)", ["deno"])
+        }
+        for (app, processes) in [("Code", ["code", "code helper", "node"]), ("Cursor", ["cursor", "cursor helper", "node"])] {
+            for child in ["Code Cache", "GPUCache", "DawnGraphiteCache", "DawnWebGPUCache", "CachedData"] {
+                let id = "store-" + app.lowercased() + "-" + child.lowercased().replacingOccurrences(of: " ", with: "-")
+                add(id, "\(app) · \(child)", "Library/Application Support/\(app)/\(child)", processes, category: "apps")
+            }
+        }
+
+        let protected = base.protectedLocations.filter { location in
+            folders.contains { StoreFolderBoundary.contains(location.url, in: $0) }
+        }
+        let known = catalogue.filter { root in folders.contains { StoreFolderBoundary.contains(root.url, in: $0) } }
+        var roots = known
+        for folder in folders {
+            // A selected known root has its own measurement; do not inventory it
+            // a second time. Selecting a subfolder never promotes it to a cache.
+            if known.contains(where: { $0.url.path == folder.path }) { continue }
+            let excludes = (known.map(\.url) + protected.map(\.url)).filter {
+                StoreFolderBoundary.contains($0, in: folder)
+            }
+            let reason = "This selected folder may contain user work, persistent app state or installed resources. It is inspect-only; names and locations do not establish that files are unnecessary."
+            roots.append(CacheRoot(id: "store-selected-" + folder.path, title: folder.lastPathComponent,
+                subtitle: folder.path, symbol: "folder", category: "apps", url: folder,
+                consequence: reason, cleanupPolicy: .inspectOnly(reason), excludedURLs: excludes,
+                inspectionNodeLimit: 25_000, inspectionTimeLimit: 2))
+        }
+        return CacheConfiguration(roots: roots, protectedLocations: protected,
+            homeDirectory: home, inspectionIssues: issues, readAccessRoots: folders)
+    }
+}
+
+private enum StoreFolderBoundary {
+    static func contains(_ child: URL, in parent: URL) -> Bool {
+        child.path == parent.path || child.path.hasPrefix(parent.path + "/")
+    }
+
+    static func isPhysicalOwnedDirectory(_ url: URL) -> Bool {
+        var fd = open("/", O_SEARCH | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard fd >= 0 else { return false }
+        defer { close(fd) }
+        for component in url.pathComponents where component != "/" {
+            let next = openat(fd, component, O_SEARCH | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+            guard next >= 0 else { return false }
+            close(fd); fd = next
+        }
+        var info = stat()
+        return fstat(fd, &info) == 0 && info.st_uid == getuid()
+            && info.st_mode & UInt16(S_IFMT) == UInt16(S_IFDIR)
+    }
+}

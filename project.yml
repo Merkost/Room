@@ -1,0 +1,97 @@
+name: RoomStore
+options:
+  minimumXcodeGenVersion: 2.45.3
+  xcodeVersion: "26.6"
+  projectFormat: xcode16_3
+  createIntermediateGroups: true
+  deploymentTarget:
+    macOS: "26.0"
+  defaultConfig: Release
+
+configs:
+  Debug: debug
+  Release: release
+
+settings:
+  base:
+    SDKROOT: macosx
+    MACOSX_DEPLOYMENT_TARGET: "26.0"
+    ARCHS: arm64
+    ONLY_ACTIVE_ARCH: NO
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) ROOM_APP_STORE"
+    DEVELOPMENT_TEAM: P47X2292CM
+  configs:
+    Release:
+      DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
+      SWIFT_COMPILATION_MODE: wholemodule
+
+fileGroups:
+  - Package.swift
+  - README.md
+  - Resources/Info-Store.plist
+  - Resources/Room-Store.entitlements
+  - scripts
+
+targets:
+  RoomCore:
+    type: library.static
+    platform: macOS
+    sources:
+      - path: Sources/RoomCore
+    settings:
+      base:
+        PRODUCT_NAME: RoomCore
+        PRODUCT_MODULE_NAME: RoomCore
+        DEFINES_MODULE: YES
+        SKIP_INSTALL: YES
+        CODE_SIGNING_ALLOWED: NO
+        SWIFT_INSTALL_OBJC_HEADER: NO
+
+  Room:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/RoomApp
+      - path: Resources/Room.icns
+        buildPhase: resources
+    dependencies:
+      - target: RoomCore
+        embed: false
+    settings:
+      base:
+        PRODUCT_NAME: Room
+        PRODUCT_MODULE_NAME: RoomApp
+        PRODUCT_BUNDLE_IDENTIFIER: com.merkost.room
+        INFOPLIST_FILE: Resources/Info-Store.plist
+        GENERATE_INFOPLIST_FILE: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+        CODE_SIGN_ENTITLEMENTS: Resources/Room-Store.entitlements
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_APP_SANDBOX: YES
+        ENABLE_HARDENED_RUNTIME: YES
+        SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+        MARKETING_VERSION: "1.0.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SKIP_INSTALL: NO
+        INSTALL_PATH: "$(LOCAL_APPS_DIR)"
+      configs:
+        Debug:
+          CODE_SIGN_IDENTITY: Apple Development
+        Release:
+          CODE_SIGN_IDENTITY: Apple Development
+
+schemes:
+  StoreArchive:
+    build:
+      targets:
+        Room: all
+    run:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release

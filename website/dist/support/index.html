@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f2f6f7">
+  <meta name="description" content="Help with Room’s planned Mac App Store edition: folder access, supported cache review, Disk Map, memory monitoring and local suggestions.">
+  <link rel="canonical" href="https://room.merkost.dev/support/">
+  <meta property="og:image" content="https://room.merkost.dev/assets/room-icon.png"><meta property="og:url" content="https://room.merkost.dev/support/">
+  <title>Support — Room</title><link rel="icon" type="image/png" href="../assets/room-icon.png"><link rel="stylesheet" href="../style.css"><script src="../site-config.js" defer></script><script src="../site.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header"><a class="wordmark" href="../" aria-label="Room home"><img src="../assets/room-icon.png" alt="" width="38" height="38"><span>Room</span></a><nav aria-label="Main navigation"><a href="../#explore">Explore</a><a href="./" aria-current="page">Support</a><a href="../privacy/">Privacy</a></nav></header>
+  <main id="main" class="document wrap">
+    <header class="document-heading"><h1>A clearer answer.</h1><p>Help for Room’s planned Mac App Store edition. Room is not available on the Store yet; these answers describe the intended release.</p></header>
+    <section class="help-group" aria-labelledby="start-title"><h2 id="start-title">Start here.</h2><div class="help-answers">
+      <details open><summary>Where can I download Room?</summary><p>The Mac App Store edition is in preparation. A Store link will appear on the home page when the app is available. Room will be free, with no ads or in-app purchases.</p></details>
+      <details><summary>Which Macs are supported?</summary><p>The planned first release requires an Apple silicon Mac with macOS 26 or later. Optional Foundation Models suggestions additionally need a compatible Mac with Apple Intelligence enabled and ready.</p></details>
+      <details><summary>Why does Room ask for a folder?</summary><p>Room’s Store edition is designed around access that you choose. Use the native picker to approve the folder you want to inspect. Protected or inaccessible resources may remain unavailable even after a selection.</p></details>
+      <details><summary>How do I remove folder access?</summary><p>The intended Settings flow lets you remove saved folder access from Room. Operating-system permissions remain under macOS Privacy &amp; Security. Removing a bookmark does not change another app’s files or grant broader access.</p></details>
+    </div></section>
+    <section class="help-group" aria-labelledby="storage-title"><h2 id="storage-title">Storage and cleanup.</h2><div class="help-answers">
+      <details><summary>Why is the scan partial?</summary><p>Folder permissions, unreadable entries and inspection limits can prevent a complete measurement. A partial result is useful for exploration, but it must not be treated as the size of your entire disk. Try a narrower approved folder or rescan after finishing active work.</p></details>
+      <details><summary>What does “held” mean?</summary><p>A held item has not met the requirements for supported cleanup. It may be recent, active, unreadable, installed or otherwise unsupported. Its name, size or location alone is not enough to show that it is unnecessary.</p></details>
+      <details><summary>Why do file sizes differ in Finder?</summary><p>Disk Map is designed around allocated disk blocks, while Finder may display a logical file size. Sparse files, compression, shared storage and hard links can make these values differ. Measurement limits are shown when applicable.</p></details>
+      <details><summary>Does Disk Map delete files?</summary><p>No. Disk Map helps you investigate folders, categories and large items. Supported cache review is a separate flow; discovering a large or hidden file does not make it eligible for cleanup.</p></details>
+      <details><summary>When is space actually freed?</summary><p>Moving an item to Trash preserves recovery and does not immediately release its disk space. Space is released when Trash is emptied. Room does not empty Trash for you. Cache data may also be recreated by the app or tool that uses it.</p></details>
+      <details><summary>What if Restore is blocked?</summary><p>The planned recovery flow refuses occupied destinations or changed recovery items. Keep the Trash item available and inspect the reason before making further changes. Do not overwrite a new file just to recreate the original path.</p></details>
+    </div></section>
+    <section class="help-group" aria-labelledby="memory-title"><h2 id="memory-title">Memory and suggestions.</h2><div class="help-answers">
+      <details><summary>Will Room quit my apps?</summary><p>No. The planned Mac App Store edition offers memory monitoring and guidance without quitting other apps. You decide which work to finish and which applications to close yourself.</p></details>
+      <details><summary>Does it guarantee more free RAM?</summary><p>No. Memory pressure, compression and swap are managed by macOS and change with your workload. Room’s purpose is to make those measurements easier to understand, without promising a fixed saving.</p></details>
+      <details><summary>What happens if Apple Intelligence is off?</summary><p>Rule-based review remains available. On-device Foundation Models suggestions are optional and depend on system support and readiness. Room does not enable Apple Intelligence or change your system settings for you.</p></details>
+      <details><summary>Are file contents sent to a model?</summary><p>The proposed Store analysis uses a bounded list of file names, relative paths, types, sizes and timestamps. Scanned file contents are excluded. Suggestions do not prove that a file can safely be removed.</p></details>
+      <details><summary>Does the Store app use LM Studio or Git?</summary><p>The initial Store scope excludes the direct edition’s external model-runtime execution and worktree cleanup or remote-verification promises. Any future change would need an updated implementation, testing and privacy information.</p></details>
+    </div></section>
+    <section class="contact-section" id="contact" aria-labelledby="contact-title"><div><h2 id="contact-title">Still need a hand?</h2><p>Room is developed by Konstantin Merenkov. If you contact support, include the app version, macOS version, what you expected and what happened. Remove private file paths, names and account details from screenshots.</p></div><div class="contact-route"><a class="button" data-support-link hidden>Contact support <span aria-hidden="true">↗</span></a><p data-support-pending>The public support contact will be available before Room launches.</p><p class="small-copy">Email opens in your mail app. This website has no support form and does not receive a message until you choose to send one.</p></div></section>
+  </main>
+  <footer class="site-footer compact-footer"><div class="wrap"><div class="footer-top"><p>A little more clarity.<br>A little more room.</p><div><a href="../">Home</a><a href="../privacy/">Privacy</a></div><p class="release-state" data-release-status>Coming to the Mac App Store.</p></div><div class="footer-room" aria-hidden="true">Room</div><div class="footer-legal"><span>© 2026 Konstantin Merenkov</span><span>Support, without the clutter.</span></div></div></footer>
+</body>
+</html>
