@@ -20,5 +20,6 @@ node_modules/
 docs/*
 !docs/ARCHITECTURE.md
 !docs/RELEASE.md
+!docs/APP_STORE.md
 xcuserdata/
 *.xcuserstate
