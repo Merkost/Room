@@ -30,11 +30,11 @@ Optional on-device analysis adds review suggestions when supported; local rules 
 
 The Store cleanup exception covers supported SHA512-addressed npm download objects modified more than 30 days ago, within approved folders and bounded local verification limits. Verification does not prove an object is unused: installs may download it again, active installs may retry, and offline installs may fail. npm indexes, temporary data, installed packages, and other process-guarded caches stay held.
 
-Unknown files, credentials, installed resources, and project source remain protected. Trash retains disk space until you empty it; Room never empties Trash. Restore refuses changed files and occupied destinations. Folder approvals cover accessible descendants, while macOS protections and separate-volume approvals still apply.
+Cache cleanup holds unknown files, credentials, installed resources, and project source. Direct-edition worktrees have a separate explicit review before an eligible finished worktree can move to Trash. Trash retains disk space until you empty it; Room never empties Trash. Restore refuses changed files and occupied destinations. Folder approvals cover accessible descendants, while macOS protections and separate-volume approvals still apply.
 
 ## Release status
 
-As of 22 October 2026, **Store 1.0.0 (5)** has been distribution-signed, uploaded, processed, and attached in App Store Connect. The English listing and six screenshots are saved. App Review submission is awaiting the requested motion preview. **Direct 1.8.0 (13)** passed its release build and native Scan/Stop checks. The website will show public Store availability after release.
+As of 22 October 2026, **Store 1.0.0 (5)** has been distribution-signed, uploaded, processed, and attached in App Store Connect. The English listing, six screenshots, and a 26-second native app preview are attached. Apple confirmed **Waiting for Review** on 22 October 2026. **Direct 1.8.0 (13)** passed its release build and native Scan/Stop checks. The website will show public Store availability after release.
 
 Fresh tests passed for both editions: **186 Direct tests** and **171 Store tests**. Native Store 5 cleanup, Quit/relaunch, a fresh recovery write grant, and exact-byte Restore passed using disposable data. See [release evidence and boundaries](docs/RELEASE.md).
 

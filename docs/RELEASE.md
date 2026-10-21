@@ -2,7 +2,7 @@
 
 ## Current candidates — 22 October 2026
 
-- **Store 1.0.0 (5)** — final native archive and genuine Mac App Store export succeeded. The app, installer, profile, entitlements, and exact C4 icon passed distribution verification. Xcode reported **Upload succeeded**. Apple completed build processing and build 5 was selected for version 1.0.0. App Review submission, approval, and public availability are not yet confirmed.
+- **Store 1.0.0 (5)** — final native archive and genuine Mac App Store export succeeded. The app, installer, profile, entitlements, and exact C4 icon passed distribution verification. Xcode reported **Upload succeeded**. Apple completed build processing and build 5 was selected for version 1.0.0. Apple confirmed the submission as **Waiting for Review** on 22 October 2026 at 10:03 AM (Australia/Sydney). Approval and public availability remain pending.
 - **Direct 1.8.0 (13)** — final Release rebuild succeeded in **157.34 s**. Actual Scan and Stop were verified without moving files; the Full scan scope was preserved.
 
 The release refines the native hierarchy across Clean, Memory, Disk Map, Developer, Settings, and the menu-bar popup. It uses system typography, a stable toolbar, aligned native scan controls, a solid semantic canvas, smaller measured-value groups, and clearer read-access/setup states. Clean no longer presents an unmeasured first run as a large zero. The approved C4 soft-pocket geometry is unchanged.
@@ -58,9 +58,9 @@ Verification does not prove non-use. Downloads may recur, active installs may re
 
 The Direct edition retains broader guarded cache scanning, explicit normal app-quit review, and separate conservative worktree review. Current Direct 13 Scan/Stop acceptance moved no files. Successful actual local-model Analyze, busy Stop, owned-worker exit, Quit, and healthy relaunch remain specifically **historical Direct build 11** evidence; those interactive model flows were not rerun on Direct 13. Earlier Store 2 recovery and Store 3 functional checks are retained as historical checkpoints and are not relabeled as Store 5 runs.
 
-## Remaining publication steps
+## App Review submission
 
-The user requested a motion preview before submission. The exact requested design model was verified available; motion direction is in production. A Store preview must use genuine app footage, and the native macOS recorder currently needs user assistance to open. No animated-stills marketing video is represented as a qualifying Store preview. Finish and verify the video, upload it, then submit and verify App Review status. Approval and live Store release are later outcomes. No submitted, approved, or publicly available status is claimed.
+A 26-second preview has been rendered from actual native Store 5 window captures and uploaded. It shows the Disk Map with synthetic folders and Memory with live macOS readings, using explanatory captions and simple scene dissolves. The 1920×1080, 30 fps H.264 High 4.0 video has BT.709 color and silent stereo AAC; full decode and black-frame checks passed. Apple accepted the complete version for review with the video and six screenshots attached. The App Review receipt confirms build 5, one submitted app version, and **Waiting for Review**. Submission ID: `87820e2e-77fb-4907-9316-eaa678821364`. Automatic release after approval is selected. Approval and live Store release are later outcomes; neither is claimed.
 
 Support: `https://room.merkost.dev/support/`. Privacy: `https://room.merkost.dev/privacy/`.
 
