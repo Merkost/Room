@@ -56,7 +56,7 @@ struct RoomApp: App {
                     if model.isScanning { model.cancelScan() } else { model.scan() }
                 }
                     .keyboardShortcut("r", modifiers: [.command, .shift])
-                    .disabled(model.isWorking)
+                    .disabled(!model.canScan)
                 Button("Open Trash") { model.openTrash() }
             }
         }

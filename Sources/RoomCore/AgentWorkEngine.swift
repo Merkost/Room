@@ -9,6 +9,7 @@ public actor AgentWorkEngine {
     private let activityDirectory: URL
     private let runner: @Sendable (URL, [String], URL?, TimeInterval) async throws -> AgentCommandResult
     private let processReader: @Sendable () async throws -> AgentProcessSnapshot
+    private let directoryReader: AgentDirectoryReader
     private let trash: @Sendable (URL) throws -> URL
     private let fixtureTrash: URL?
     private let clock: @Sendable () -> Date
@@ -22,6 +23,7 @@ public actor AgentWorkEngine {
         self.activityDirectory = activityDirectory ?? homeDirectory.appendingPathComponent("Library/Application Support/Room/AgentWork", isDirectory: true)
         self.runner = AgentCommand.run
         self.processReader = AgentProcesses.read
+        self.directoryReader = AgentDirectoryReader()
         self.trash = { url in var result: NSURL?; try FileManager.default.trashItem(at: url, resultingItemURL: &result)
             guard let result else { throw AgentWorkError.message("Trash did not return a recovery location.") }; return result as URL }
         self.fixtureTrash = nil; self.clock = Date.init; self.fixtureRemote = false
@@ -29,9 +31,11 @@ public actor AgentWorkEngine {
     init(home: URL, activity: URL, fixtureTrash: URL?,
          clock: @escaping @Sendable () -> Date = Date.init,
          runner: @escaping @Sendable (URL, [String], URL?, TimeInterval) async throws -> AgentCommandResult = AgentCommand.run,
+         directoryReader: AgentDirectoryReader = AgentDirectoryReader(),
          processes: @escaping @Sendable () async throws -> AgentProcessSnapshot = { AgentProcessSnapshot(paths: [], complete: true) }) {
         self.home = home; self.activityDirectory = activity; self.fixtureTrash = fixtureTrash
         self.clock = clock; self.runner = runner; self.processReader = processes; self.fixtureRemote = true
+        self.directoryReader = directoryReader
         self.trash = { source in
             if let fixtureTrash {
                 let destination = fixtureTrash.appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -54,7 +58,8 @@ public actor AgentWorkEngine {
         var pending: [String: AgentCandidate] = [:]
         var discovered: [(URL, AgentWorkOwner)] = [], issues: [ScanIssue] = [], associations: [AgentWorkProcessAssociation] = []
         for (path, owner) in [(".codex/worktrees", AgentWorkOwner.codex), (".claude/worktrees", .claude)] {
-            do { discovered += try AgentFilesystem.discover(home.appendingPathComponent(path, isDirectory: true), owner: owner) }
+            do { discovered += try AgentFilesystem.discover(home.appendingPathComponent(path, isDirectory: true), owner: owner,
+                directoryReader: directoryReader) }
             catch { issues.append(ScanIssue(url: home.appendingPathComponent(path), message: error.localizedDescription)) }
         }
         for root in approvedProjectRoots.prefix(32) {
@@ -220,7 +225,7 @@ public actor AgentWorkEngine {
             guard check.complete, AgentProcesses.matches(check, worktree: receipt.originalURL, admin: receipt.adminURL).isEmpty else {
                 throw AgentWorkError.message("A process is using this worktree. Keep it in place.")
             }
-            let final = try AgentFilesystem.snapshot(receipt.originalURL)
+            let final = try AgentFilesystem.snapshot(receipt.originalURL, directoryReader: directoryReader)
             guard final.fingerprint == receipt.fingerprint else { throw AgentWorkError.message("Worktree files changed before cleanup.") }
             let finalHead = try await git(["rev-parse", "--verify", "HEAD"], at: receipt.originalURL).text.trimmingCharacters(in: .whitespacesAndNewlines)
             let finalStatus = try await git(["status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignored=matching", "--ignore-submodules=all"], at: receipt.originalURL)
@@ -245,7 +250,7 @@ public actor AgentWorkEngine {
                 receipt.status = .needsAttention; receipt.detail = "The worktree moved to Trash; recovery metadata needs attention. Keep its Git lock and restore through Room or Finder."
             } else {
                 if (try? validateOwnedLock(receipt)) != nil { receipt.lockAcquired = true }
-                let intact = (try? AgentFilesystem.snapshot(receipt.originalURL))
+                let intact = (try? AgentFilesystem.snapshot(receipt.originalURL, directoryReader: directoryReader))
                 if receipt.lockAcquired, intact?.identity == receipt.originalIdentity, intact?.fingerprint == receipt.fingerprint {
                     do { try await unlockOwned(receipt); receipt.lockAcquired = false; receipt.status = .failed }
                     catch { receipt.status = .needsAttention }
@@ -268,7 +273,7 @@ public actor AgentWorkEngine {
         try validateOwnedLock(receipt)
         try await validateReceiptHEAD(receipt)
         guard let source = receipt.trashURL else {
-            let intact = try AgentFilesystem.snapshot(receipt.originalURL)
+            let intact = try AgentFilesystem.snapshot(receipt.originalURL, directoryReader: directoryReader)
             guard intact.identity == receipt.originalIdentity, intact.fingerprint == receipt.fingerprint else {
                 throw AgentWorkError.message("The interrupted operation is uncertain. Its protective Git lock remains; inspect the worktree manually.")
             }
@@ -286,7 +291,8 @@ public actor AgentWorkEngine {
         guard AgentFilesystem.sameNode(parent, receipt.parentIdentity), !AgentFilesystem.exists(receipt.originalURL) else {
             throw AgentWorkError.message("The original location changed or is occupied. Room will not overwrite files.")
         }
-        let measured = try AgentFilesystem.snapshot(source, rootReference: receipt.originalIdentity, exactTrash: fixtureTrash == nil)
+        let measured = try AgentFilesystem.snapshot(source, rootReference: receipt.originalIdentity, exactTrash: fixtureTrash == nil,
+            directoryReader: directoryReader)
         guard measured.fingerprint == receipt.fingerprint, !measured.partial, measured.safe else {
             throw AgentWorkError.message("The item in Trash changed. Inspect it manually before restoring.")
         }
@@ -312,7 +318,7 @@ public actor AgentWorkEngine {
     }
 
     private func inspect(_ url: URL, owner: AgentWorkOwner, activity: AgentProcessSnapshot) async throws -> AgentCandidate {
-        let snapshot = try AgentFilesystem.snapshot(url)
+        let snapshot = try AgentFilesystem.snapshot(url, directoryReader: directoryReader)
         let dotGit = url.appendingPathComponent(".git", isDirectory: false)
         let dotIdentity = try AgentFilesystem.identity(dotGit, directory: false)
         let filters = try await git(["config", "--local", "--no-includes", "--null", "--name-only", "--get-regexp", ".*"], at: url, accepted: [0, 1])
@@ -464,7 +470,8 @@ public actor AgentWorkEngine {
         }
     }
     private func recoveredSourceMatches(_ receipt: AgentWorkReceipt) -> Bool {
-        guard let snapshot = try? AgentFilesystem.snapshot(receipt.originalURL, rootReference: receipt.originalIdentity) else { return false }
+        guard let snapshot = try? AgentFilesystem.snapshot(receipt.originalURL, rootReference: receipt.originalIdentity,
+            directoryReader: directoryReader) else { return false }
         return snapshot.safe && !snapshot.partial && snapshot.fingerprint == receipt.fingerprint
             && AgentFilesystem.sameNode(snapshot.identity, receipt.originalIdentity)
     }
@@ -739,6 +746,29 @@ private struct AgentTreeSnapshot: Sendable {
     let partial: Bool
     let safe: Bool
 }
+
+/// A nil readdir result is complete only when that exact call left errno clear.
+/// The internal reader substitution changes IO outcomes, never cleanup policy.
+struct AgentDirectoryReader: Sendable {
+    private let read: @Sendable (UnsafeMutablePointer<DIR>) -> UnsafeMutablePointer<dirent>?
+
+    init(read: @escaping @Sendable (UnsafeMutablePointer<DIR>) -> UnsafeMutablePointer<dirent>? = { readdir($0) }) {
+        self.read = read
+    }
+
+    func nextName(in directory: UnsafeMutablePointer<DIR>) throws -> String? {
+        try Task.checkCancellation()
+        errno = 0
+        let entry = read(directory)
+        let failure = errno
+        guard let entry else {
+            guard failure == 0 else { throw AgentWorkError.message("An agent folder could not be completely read.") }
+            return nil
+        }
+        return AgentFilesystem.entryName(entry)
+    }
+}
+
 private enum AgentFilesystem {
     static func ensureDirectory(_ url: URL) throws {
         let components = url.pathComponents.filter { $0 != "/" }
@@ -836,7 +866,8 @@ private enum AgentFilesystem {
         guard fstat(fd, &final) == 0, identity(info) == identity(final) else { throw AgentWorkError.message("Git metadata changed while reading.") }
         return data
     }
-    static func discover(_ root: URL, owner: AgentWorkOwner) throws -> [(URL, AgentWorkOwner)] {
+    static func discover(_ root: URL, owner: AgentWorkOwner,
+                         directoryReader: AgentDirectoryReader = AgentDirectoryReader()) throws -> [(URL, AgentWorkOwner)] {
         if !exists(root) { return [] }
         var results: [(URL, AgentWorkOwner)] = [], visits = 0
         func visit(_ url: URL, depth: Int) throws {
@@ -850,8 +881,7 @@ private enum AgentFilesystem {
             guard depth > 0 else { return }
             let copied = dup(fd); guard copied >= 0, let stream = fdopendir(copied) else { if copied >= 0 { close(copied) }; return }
             defer { closedir(stream) }
-            while let entry = readdir(stream) {
-                let name = entryName(entry)
+            while let name = try directoryReader.nextName(in: stream) {
                 guard name != ".", name != ".." else { continue }
                 var child = stat()
                 guard fstatat(fd, name, &child, AT_SYMLINK_NOFOLLOW) == 0, child.st_uid == getuid(),
@@ -862,7 +892,8 @@ private enum AgentFilesystem {
         try visit(root, depth: 2)
         return results
     }
-    static func snapshot(_ url: URL, rootReference: FileIdentity? = nil, exactTrash: Bool = false) throws -> AgentTreeSnapshot {
+    static func snapshot(_ url: URL, rootReference: FileIdentity? = nil, exactTrash: Bool = false,
+                         directoryReader: AgentDirectoryReader = AgentDirectoryReader()) throws -> AgentTreeSnapshot {
         let rootFD: Int32
         if exactTrash {
             try validateAncestors(url)
@@ -890,11 +921,13 @@ private enum AgentFilesystem {
             guard let stream = fdopendir(copied) else { close(copied); partial = true; return }
             defer { closedir(stream) }
             var names: [String] = []
-            while let entry = readdir(stream) {
-                let name = entryName(entry)
-                if name != ".", name != ".." { names.append(name) }
-                if names.count > 100_000 { partial = true; break }
-            }
+            do {
+                while let name = try directoryReader.nextName(in: stream) {
+                    if name != ".", name != ".." { names.append(name) }
+                    if names.count > 100_000 { partial = true; break }
+                }
+            } catch is CancellationError { throw CancellationError() }
+            catch { partial = true }
             for name in names.sorted() {
                 try Task.checkCancellation()
                 guard nodes < 100_000, ContinuousClock.now < deadline else { partial = true; break }

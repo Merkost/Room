@@ -19,7 +19,7 @@ final class AgentWorkModel {
     private(set) var grantedLocations: Set<String> = []
 
     @ObservationIgnored private let engine: AgentWorkEngine
-    @ObservationIgnored private let fileAccess = RoomFileAccess.shared
+    @ObservationIgnored private let fileAccess: RoomFileAccess
     @ObservationIgnored private var scanTask: Task<Void, Never>?
     @ObservationIgnored private var verifyTask: Task<Void, Never>?
     @ObservationIgnored private var generation = UUID()
@@ -39,7 +39,29 @@ final class AgentWorkModel {
         !reviewLocations.isEmpty && reviewLocations.allSatisfy { grantedLocations.contains($0.path) }
     }
 
-    init(engine: AgentWorkEngine? = nil) { self.engine = engine ?? AgentWorkEngine() }
+    init(engine: AgentWorkEngine? = nil, access: RoomFileAccess = .shared) {
+        self.engine = engine ?? AgentWorkEngine()
+        self.fileAccess = access
+    }
+
+    /// A cancelled scan intentionally publishes no Core verification candidates.
+    /// Unrelated report issues do not invalidate a complete item's candidate.
+    func verificationUnavailableReason(for item: AgentWorkItem) -> String? {
+        guard let report else { return "Scan worktrees before checking a remote." }
+        guard !report.cancelled else { return "This scan was stopped. Rescan worktrees before checking a remote." }
+        guard let current = report.items.first(where: { $0.id == item.id }) else {
+            return "This worktree is absent from the latest results. Rescan worktrees before checking its remote."
+        }
+        guard let head = current.head, !head.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return "This worktree’s commit could not be inspected. Rescan worktrees before checking its remote."
+        }
+        guard item.head == head else { return "The worktree results changed. Rescan worktrees before checking its remote." }
+        return nil
+    }
+
+    func canVerify(_ item: AgentWorkItem) -> Bool {
+        !isWorking && !isScanning && verifyingID == nil && verificationUnavailableReason(for: item) == nil
+    }
 
     func scan() {
         guard !isScanning, !isWorking, verifyingID == nil else { return }
@@ -80,6 +102,11 @@ final class AgentWorkModel {
 
     func verify(_ item: AgentWorkItem) {
         guard !isWorking, !isScanning, verifyingID == nil else { return }
+        if let reason = verificationUnavailableReason(for: item) {
+            statusMessage = reason
+            return
+        }
+        statusMessage = nil
         verifyingID = item.id
         let token = generation
         let scopes = beginReadAccess()
@@ -93,6 +120,9 @@ final class AgentWorkModel {
             }
             self.verifyingID = nil
             self.verifyTask = nil
+            if result.state == .notChecked {
+                self.statusMessage = "These results cannot be verified. Rescan worktrees, then check the remote again."
+            }
         }
     }
 

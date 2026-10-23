@@ -175,6 +175,57 @@ struct DeveloperResourcesEngineTests {
         }
         #expect(DRVersions.distributionURL("https://example.com/gradle-8.9-bin.zip\\") == nil)
     }
+
+    @Test("A resource moved after measurement retains its bytes but reports incomplete evidence")
+    func unavailableResourceAtFinalValidation() async throws {
+        for role in ["android", "gradle"] {
+            let f = try DeveloperFixture()
+            defer { f.remove() }
+            let approved: URL, resource: URL, contents: URL
+            let request: DeveloperResourcesRequest
+            if role == "android" {
+                approved = try f.directory("avds")
+                resource = try f.directory("avds/Pixel.avd")
+                _ = try f.write("avds/Pixel.avd/config.ini", "target=android-35\n")
+                contents = try f.write("avds/Pixel.avd/userdata.img", "owned device state")
+                request = DeveloperResourcesRequest(approvedFolders: [approved], avdRoots: [approved])
+            } else {
+                approved = try f.directory("gradle-home")
+                resource = try f.directory("gradle-home/caches/9.1")
+                _ = try f.directory("gradle-home/wrapper/dists")
+                contents = try f.write("gradle-home/caches/9.1/data.bin", "owned cached state")
+                request = DeveloperResourcesRequest(approvedFolders: [approved], gradleHomes: [approved])
+            }
+            let originalData = try Data(contentsOf: contents)
+            let expectedLogicalBytes = try FileManager.default.contentsOfDirectory(at: resource, includingPropertiesForKeys: nil)
+                .reduce(Int64(0)) { total, url in
+                    let info = try FileManager.default.attributesOfItem(atPath: url.path)
+                    return total + ((info[.size] as? NSNumber)?.int64Value ?? 0)
+                }
+            let moved = f.url("moved-resource")
+            let renamed = Mutex(false)
+            let report = await DeveloperResourcesEngine().scan(request: request) { update in
+                guard update.phase == "Verifying resource", update.currentPath == resource.path else { return }
+                renamed.withLock { done in
+                    guard !done else { return }
+                    do { try FileManager.default.moveItem(at: resource, to: moved); done = true }
+                    catch { Issue.record("Owned resource could not be moved at the final-validation boundary: \(error)") }
+                }
+            }
+            #expect(renamed.withLock { $0 })
+            #expect(report.isPartial && !report.cancelled)
+            #expect(report.issues.contains { $0.url.path == resource.path && $0.message.contains("became unavailable") })
+            if role == "android" {
+                let item = try #require(report.androidDevices.first)
+                #expect(item.isPartial && item.logicalBytes == expectedLogicalBytes)
+            } else {
+                let item = try #require(report.gradleResources.first)
+                #expect(item.isPartial && item.logicalBytes == expectedLogicalBytes)
+            }
+            #expect(!FileManager.default.fileExists(atPath: resource.path))
+            #expect(try Data(contentsOf: moved.appendingPathComponent(contents.lastPathComponent)) == originalData)
+        }
+    }
 }
 
 private struct DeveloperFixture: Sendable {

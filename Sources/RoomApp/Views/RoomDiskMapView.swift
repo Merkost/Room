@@ -3,111 +3,86 @@ import SwiftUI
 
 struct RoomDiskMapView: View {
     @Bindable var insights: RoomInsightsModel
-    @AppStorage("RoomMotionEnabled") private var motionEnabled = true
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var selectedItem: DiskMapItem?
+    var motion = RoomMotionPolicy()
+    @State private var selectedItem: RoomDiskItemSelection?
     @State private var showingIssues = false
-    @State private var showingAll = false
     @State private var showingAllFindings = false
-    @State private var filter = RoomDiskFilter.all
-
-    private var animation: Animation? { motionEnabled && !reduceMotion ? .smooth(duration: 0.24) : nil }
-
-    private var appleIntelligenceSettingsHelp: String {
-        #if ROOM_APP_STORE
-        "Open Apple Intelligence settings for supported on-device analysis. Local rules remain available."
-        #else
-        "Open Apple Intelligence settings. Local models use an existing runtime and model on this Mac."
-        #endif
-    }
+    @State private var visibleItemLimit = 100
+    private var browser: RoomDiskBrowserState { insights.diskBrowserState }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .center, spacing: 20) {
-                    headerIdentity
-                    Spacer(minLength: 12)
-                    headerActions
-                }
-                VStack(alignment: .leading, spacing: 16) {
-                    headerIdentity
-                    headerActions
-                }
-            }
-
-
+        VStack(alignment: .leading, spacing: RoomSpace.section) {
+            RoomPageHeader(title: "Disk map", subtitle: "Explore allocated space. Hidden files included.") { headerActions }
+            navigation
             if let report = insights.diskReport {
                 reportContents(report)
             } else if insights.isScanningDisk {
-                scanProgress.frame(maxWidth: .infinity, minHeight: 260)
+                scanProgress.frame(maxWidth: .infinity, minHeight: 300)
             } else {
-                VStack(spacing: 16) {
-                    Image(systemName: "square.grid.3x3.square")
-                        .font(.system(size: 36, weight: .light)).foregroundStyle(.secondary)
-                    Text("Start with a folder.").font(RoomType.heading(20))
-                    Text("Hidden files included. Your files stay in place.")
-                        .font(.system(size: 14)).foregroundStyle(.secondary)
+                RoomEmptyState(title: "Start with a folder", message: "A read-only map shows which folders and files take space.", systemImage: "square.grid.3x3.square") {
+                    Button("Choose folder") { insights.chooseDiskFolder() }.buttonStyle(.glassProminent)
                 }
-                .frame(maxWidth: .infinity, minHeight: 260)
-                .padding(20)
-                .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+            if let message = insights.diskStatusMessage {
+                RoomStatusNotice(message: message, tone: .information)
             }
         }
-        .animation(animation, value: insights.diskReport?.id)
-        .animation(animation, value: filter)
-        .animation(animation, value: showingAllFindings)
-        .onChange(of: insights.diskReport?.url.path) { _, _ in
-            filter = .all
-            showingAll = false
-            showingAllFindings = false
-        }
-        .sheet(item: $selectedItem) { item in
-            RoomDiskItemSheet(item: item, insights: insights)
+        .animation(motion.selection, value: browser.scope)
+        .animation(motion.selection, value: browser.category)
+        .animation(motion.disclosure, value: showingAllFindings)
+        .onChange(of: insights.diskReport?.id) { _, _ in visibleItemLimit = 100; showingAllFindings = false }
+        .onChange(of: browser.query) { _, _ in visibleItemLimit = 100 }
+        .onChange(of: browser.listMode) { _, _ in visibleItemLimit = 100 }
+        .sheet(item: $selectedItem) { selection in
+            RoomDiskItemSheet(item: selection.item, scanID: selection.scanID,
+                             isPartial: selection.isPartial, insights: insights)
         }
         .sheet(isPresented: $showingIssues) {
             RoomScanIssuesSheet(issues: insights.diskReport?.issues.map { "\($0.url.path): \($0.message)" } ?? [])
         }
     }
 
-    private var headerIdentity: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Text("Disk map").font(RoomType.heading(24))
-            if let url = insights.diskURL, insights.diskReport == nil {
-                Label(url.lastPathComponent.isEmpty ? url.path : url.lastPathComponent, systemImage: "folder")
-                    .font(.system(size: 13)).foregroundStyle(.secondary)
-                    .lineLimit(1).truncationMode(.middle).help(url.path)
-                    .accessibilityLabel("Current folder: \(url.path)")
-            } else if insights.diskReport == nil {
-                Text("Map a folder, including its hidden files.")
-                    .font(.system(size: 13)).foregroundStyle(.secondary)
-            } else {
-                Text("Locally allocated space, by folder.")
-                    .font(.system(size: 13)).foregroundStyle(.secondary)
-            }
-        }
-    }
-
     private var headerActions: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: RoomSpace.small) {
             accessMenu
-            Button { insights.chooseDiskFolder() } label: {
-                Label(insights.diskURL == nil ? "Choose folder" : "Change folder", systemImage: "folder")
-            }
-            .buttonStyle(.glass).controlSize(.large).disabled(insights.isScanningDisk)
-            .accessibilityIdentifier("RoomDiskChangeFolderButton")
+            Button { insights.chooseDiskFolder() } label: { Label("Change folder", systemImage: "folder") }
+                .buttonStyle(.glass).controlSize(.large)
+                .accessibilityIdentifier("RoomDiskChangeFolderButton")
             Button {
                 if insights.isScanningDisk { insights.cancelDiskScan() }
-                else if let url = insights.diskURL { insights.scanDisk(url: url) }
-                else { insights.scanHome() }
+                else { insights.rescanDisk() }
             } label: {
-                Label(insights.isScanningDisk ? "Stop scan" : insights.diskURL == nil ? "Choose home folder" : "Rescan",
-                      systemImage: insights.isScanningDisk ? "stop.fill" : insights.diskURL == nil ? "house" : "magnifyingglass")
-                    .font(.system(size: 13, weight: .medium))
+                Label(insights.isScanningDisk ? "Stop scan" : insights.diskURL == nil ? "Scan home" : "Rescan",
+                      systemImage: insights.isScanningDisk ? "stop.fill" : "arrow.clockwise")
             }
             .buttonStyle(.glassProminent).controlSize(.large)
             .keyboardShortcut("r", modifiers: .command)
             .accessibilityIdentifier("RoomDiskScanButton")
-        }.fixedSize(horizontal: true, vertical: false)
+        }
+    }
+
+    private var navigation: some View {
+        HStack(spacing: RoomSpace.small) {
+            Button { insights.diskGoBack() } label: { Image(systemName: "chevron.left") }
+                .disabled(!insights.canGoBack).help("Back to saved map").accessibilityLabel("Back to saved map")
+                .keyboardShortcut("[", modifiers: .command)
+                .accessibilityIdentifier("RoomDiskBackButton")
+            Button { insights.diskGoForward() } label: { Image(systemName: "chevron.right") }
+                .disabled(!insights.canGoForward).help("Forward to saved map").accessibilityLabel("Forward to saved map")
+                .keyboardShortcut("]", modifiers: .command)
+                .accessibilityIdentifier("RoomDiskForwardButton")
+            Button { insights.diskGoUp() } label: { Image(systemName: "arrow.up") }
+                .disabled(insights.diskURL == nil || insights.diskURL?.path == "/")
+                .help("Inspect parent folder").accessibilityLabel("Inspect parent folder")
+            if let url = insights.diskURL { RoomPathLabel(path: url.path, lineLimit: 1) }
+            else { Text("Choose a folder to inspect").font(RoomTypography.body).foregroundStyle(.secondary) }
+            Spacer(minLength: RoomSpace.small)
+            if insights.diskURL != nil {
+                Button { insights.revealDiskRoot() } label: { Image(systemName: "arrow.up.forward") }
+                    .help("Show folder in Finder").accessibilityLabel("Show folder in Finder")
+            }
+        }
+        .buttonStyle(.glass).controlSize(.regular)
     }
 
     private var accessMenu: some View {
@@ -115,358 +90,297 @@ struct RoomDiskMapView: View {
             if !insights.accessFolders.isEmpty {
                 Section("Saved folders") {
                     ForEach(insights.accessFolders) { folder in
-                        Button { insights.scanDisk(url: folder.url) } label: { Label(folder.name, systemImage: "folder") }
+                        Button { insights.scanDisk(url: folder.url) } label: {
+                            Label((folder.url.path as NSString).abbreviatingWithTildeInPath, systemImage: "folder")
+                        }
+                        .help(folder.url.path).accessibilityLabel(folder.url.path)
                     }
                 }
             }
             Button("Add folder access…", systemImage: "folder.badge.plus") { insights.chooseAccessFolder() }
             #if ROOM_APP_STORE
-            if !insights.hasRememberedHomeAccess {
-                Button("Remember home folder…", systemImage: "house") { insights.chooseHomeAccess() }
-            }
+            if !insights.hasRememberedHomeAccess { Button("Remember home folder…", systemImage: "house") { insights.chooseHomeAccess() } }
             #else
             Button("Full Disk Access…", systemImage: "lock.shield") { insights.openPrivacySettings() }
             #endif
-        } label: {
-            Image(systemName: "folder.badge.gearshape")
-        }
-        .menuStyle(.borderlessButton).fixedSize()
+        } label: { Image(systemName: "folder.badge.gearshape") }
+        .menuStyle(.button).buttonStyle(.glass).controlSize(.large)
         .help("Saved folder access").accessibilityLabel("Saved folder access")
     }
 
     private func reportContents(_ report: DiskMapReport) -> some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .firstTextBaseline, spacing: 20) {
-                RoomByteMetric(bytes: filter.total(in: report), maximumSize: 40)
-                VStack(alignment: .trailing, spacing: 6) {
-                    Text(filter == .all ? "\(report.fileCount.formatted()) \(report.fileCount == 1 ? "file" : "files")" : filter.title)
-                        .font(.system(size: 14))
-                    Text(report.isPartial ? "Partial measurement" : "Allocated on disk")
-                        .font(.system(size: 12)).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: RoomSpace.section) {
+            HStack(alignment: .bottom, spacing: RoomSpace.section) {
+                RoomMetric(label: browser.category?.title ?? "Allocated on disk", bytes: browser.total(in: report),
+                    lowerBound: report.isPartial)
+                VStack(alignment: .trailing, spacing: RoomSpace.small) {
+                    Text("\(report.fileCount.formatted()) \(report.fileCount == 1 ? "file" : "files") measured").font(RoomTypography.body)
+                    Text("Measured \(report.scannedAt, style: .relative) ago").font(RoomTypography.caption).foregroundStyle(.secondary)
+                    if !report.issues.isEmpty {
+                        Button("\(report.issues.count) scan notes") { showingIssues = true }.buttonStyle(.plain)
+                            .font(RoomTypography.caption)
+                    }
                 }
-                .fixedSize()
+                .fixedSize(horizontal: true, vertical: false)
             }
-            HStack(spacing: 12) {
-                Button { insights.diskGoUp() } label: { Image(systemName: "arrow.up") }
-                    .buttonStyle(.glass).help("Scan parent folder").accessibilityLabel("Scan parent folder")
-                    .disabled(insights.isScanningDisk || report.url.path == "/")
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(report.url.lastPathComponent.isEmpty ? "Macintosh HD" : report.url.lastPathComponent)
-                        .font(.system(size: 14, weight: .medium)).lineLimit(1)
-                    Text(report.url.path).font(.system(size: 12)).foregroundStyle(.secondary)
-                        .lineLimit(1).truncationMode(.middle)
-                }
-                Spacer()
-                Button { insights.revealDiskRoot() } label: { Image(systemName: "arrow.up.forward") }
-                    .buttonStyle(.glass).help("Show folder in Finder").accessibilityLabel("Show folder in Finder")
+            if report.isPartial {
+                RoomStatusNotice(message: report.cancelled ? "Stopped scan. Sizes are lower bounds." : "Some locations could not be fully measured. Sizes are lower bounds.", tone: .warning)
             }
-
-            if !report.categories.isEmpty { categoryStrip(report) }
-            filterBar(report)
-
-            if insights.isScanningDisk {
-                scanProgress.frame(height: 280)
-            } else if filter.total(in: report) > 0 {
-                RoomTreemap(entries: entries(in: report), open: open)
+            categoryStrip(report)
+            browserControls
+            let mapEntries = entries(in: report)
+            if !mapEntries.isEmpty {
+                RoomTreemap(entries: mapEntries, open: open)
                     .frame(height: 300)
-                    .id(report.url.path + filter.id)
-                    .transition(.opacity.combined(with: .scale(scale: reduceMotion ? 1 : 0.985)))
             } else {
-                ContentUnavailableView("No matching space", systemImage: filter.symbol,
-                    description: Text(filter == .all ? "No locally allocated files were measured." : "Try another filter."))
-                    .frame(height: 220)
-            }
-
-            HStack(alignment: .top, spacing: 16) {
-                Label(filter.mapNote, systemImage: "info.circle")
-                Spacer(minLength: 0)
-                if !report.issues.isEmpty {
-                    Button("\(report.issues.count) scan \(report.issues.count == 1 ? "note" : "notes")") { showingIssues = true }.buttonStyle(.plain)
+                RoomEmptyState(title: "No matching allocated space", message: "The filters apply to this folder’s measured contents.", systemImage: "line.3.horizontal.decrease") {
+                    if browser.scope != .all || browser.category != nil || !browser.query.isEmpty {
+                        Button("Reset filters") { insights.diskBrowserState = RoomDiskBrowserState() }.buttonStyle(.glass)
+                    }
                 }
             }
-            .font(.system(size: 12)).foregroundStyle(.secondary)
-
-            if let status = insights.statusMessage {
-                Text(status).font(.system(size: 13)).foregroundStyle(.secondary)
+            HStack(alignment: .top, spacing: RoomSpace.standard) {
+                Text(mapNote).font(RoomTypography.caption).foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                Label("Saved measurement · Rescan to refresh", systemImage: "clock")
+                    .font(RoomTypography.caption).foregroundStyle(.secondary)
             }
-            reviewSection(report)
             itemList(report)
+            reviewSection(report)
         }
     }
 
     private func categoryStrip(_ report: DiskMapReport) -> some View {
         let summaries = report.categories.filter { $0.allocatedBytes > 0 }.sorted { $0.allocatedBytes > $1.allocatedBytes }
-        return VStack(alignment: .leading, spacing: 10) {
-            GeometryReader { geometry in
-                HStack(spacing: 2) {
-                    ForEach(summaries) { summary in
-                        Button { toggleCategory(summary.category) } label: {
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(RoomStoragePalette.color(summary.category))
-                                .opacity(filter == .all || filter == .category(summary.category) ? 1 : 0.35)
-                                .frame(width: max(0, (geometry.size.width - CGFloat(max(0, summaries.count - 1)) * 2) *
-                                       CGFloat(Double(summary.allocatedBytes) / Double(max(1, report.allocatedBytes)))))
-                        }
-                        .buttonStyle(.plain)
-                        .help("\(summary.category.title): \(RoomFormat.bytes(summary.allocatedBytes))")
-                        .accessibilityLabel("Filter \(summary.category.title), \(RoomFormat.bytes(summary.allocatedBytes))")
-                    }
+        return VStack(alignment: .leading, spacing: RoomSpace.compact) {
+            if !summaries.isEmpty {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Folder breakdown").font(RoomTypography.captionEmphasis)
+                    Spacer(minLength: RoomSpace.small)
+                    Text("Before filters").font(RoomTypography.caption).foregroundStyle(.secondary)
                 }
-            }
-            .frame(height: 13)
-            ScrollView(.horizontal) {
-                HStack(spacing: 19) {
-                    ForEach(summaries) { summary in
-                        Button { toggleCategory(summary.category) } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: summary.category.symbol)
-                                Text(summary.category.title)
-                                Text(RoomFormat.bytes(summary.allocatedBytes)).foregroundStyle(.secondary)
+                GeometryReader { geometry in
+                    HStack(spacing: 2) {
+                        ForEach(summaries) { summary in
+                            Button { toggleCategory(summary.category) } label: {
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(RoomStoragePalette.color(summary.category))
+                                    .opacity(browser.category == nil || browser.category == summary.category ? 1 : 0.3)
+                                    .frame(width: max(0, (geometry.size.width - CGFloat(max(0, summaries.count - 1)) * 2) *
+                                        CGFloat(Double(summary.allocatedBytes) / Double(max(1, report.allocatedBytes)))))
                             }
-                            .font(.system(size: 12, weight: filter == .category(summary.category) ? .semibold : .regular))
-                            .padding(.vertical, 4)
-                            .contentShape(Rectangle())
+                            .buttonStyle(.plain)
+                            .help("Entire folder · \(summary.category.title): \(RoomFormat.bytes(summary.allocatedBytes)) before filters")
+                            .accessibilityLabel("Filter \(summary.category.title), \(RoomFormat.bytes(summary.allocatedBytes)) in the entire folder before filters")
                         }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(filter == .category(summary.category) ? .primary : .secondary)
+                    }
+                }.frame(height: 12)
+            }
+            ScrollView(.horizontal) {
+                HStack(spacing: RoomSpace.standard) {
+                    Button("All categories") { insights.diskBrowserState.category = nil }
+                        .foregroundStyle(browser.category == nil ? .primary : .secondary)
+                    ForEach(summaries) { summary in
+                        Button { toggleCategory(summary.category) } label: {
+                            Label(summary.category.title, systemImage: summary.category.symbol)
+                        }
+                        .foregroundStyle(browser.category == summary.category ? .primary : .secondary)
+                        .help("\(RoomFormat.bytes(summary.allocatedBytes)) in the entire folder before filters")
                     }
                 }
+                .font(RoomTypography.caption).buttonStyle(.plain).padding(.vertical, RoomSpace.micro)
             }
             .scrollIndicators(.hidden)
         }
     }
 
-    private func toggleCategory(_ category: StorageCategory) {
-        filter = filter == .category(category) ? .all : .category(category)
+    private var browserControls: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: RoomSpace.standard) { scopePicker; searchField }
+            VStack(alignment: .leading, spacing: RoomSpace.compact) { scopePicker; searchField }
+        }
     }
 
-    private func filterBar(_ report: DiskMapReport) -> some View {
-        HStack(spacing: 8) {
-            filterButton(.all)
-            filterButton(.hidden)
-            filterButton(.large)
-            Spacer(minLength: 12)
-            if case .category(let category) = filter {
-                Label(category.title, systemImage: category.symbol)
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
-            } else if filter == .hidden {
-                Text("\(report.hiddenFileCount.formatted()) hidden \(report.hiddenFileCount == 1 ? "file" : "files")")
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
-            } else if filter == .large {
-                Text("Items ≥ 1 GB").font(.system(size: 12)).foregroundStyle(.secondary)
+    private var scopePicker: some View {
+        Picker("File scope", selection: $insights.diskBrowserState.scope) {
+            ForEach(RoomDiskScope.allCases) { Label($0.rawValue, systemImage: $0.symbol).tag($0) }
+        }
+        .pickerStyle(.segmented).labelsHidden().frame(width: 260)
+        .accessibilityIdentifier("RoomDiskScopePicker")
+    }
+
+    private var searchField: some View {
+        HStack(spacing: RoomSpace.small) {
+            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+            TextField("Search measured items", text: $insights.diskBrowserState.query)
+                .textFieldStyle(.plain).font(RoomTypography.body)
+                .accessibilityLabel("Search measured items")
+                .accessibilityIdentifier("RoomDiskSearchField")
+            if !browser.query.isEmpty {
+                Button { insights.diskBrowserState.query = "" } label: { Image(systemName: "xmark.circle.fill") }
+                    .buttonStyle(.plain).foregroundStyle(.secondary).accessibilityLabel("Clear search")
             }
         }
-        .controlSize(.small)
+        .padding(.horizontal, RoomSpace.compact).padding(.vertical, RoomSpace.small)
+        .background(RoomSurface.group, in: RoundedRectangle(cornerRadius: RoomRadius.control))
+        .frame(minWidth: 200, maxWidth: .infinity)
     }
 
-    @ViewBuilder private func filterButton(_ option: RoomDiskFilter) -> some View {
-        if filter == option {
-            Button { filter = option } label: { Label(option.title, systemImage: option.symbol) }
-                .buttonStyle(.glassProminent)
-        } else {
-            Button { filter = option } label: { Label(option.title, systemImage: option.symbol) }
-                .buttonStyle(.glass)
+    private func toggleCategory(_ category: StorageCategory) {
+        insights.diskBrowserState.category = browser.category == category ? nil : category
+    }
+
+    private var mapNote: String {
+        switch browser.scope {
+        case .all: "Tile area shows matching allocated bytes in each immediate item. Open a folder to explore."
+        case .hidden: "Hidden allocated bytes in each item, including matching hidden descendants."
+        case .large: "Matching bytes within immediate items of at least 1 GB, including folder totals."
         }
     }
 
     private func entries(in report: DiskMapReport) -> [RoomMapEntry] {
-        let sorted = report.children.filter { filter.bytes(in: $0) > 0 }
-            .sorted { filter.bytes(in: $0) > filter.bytes(in: $1) }
-        let leading = Array(sorted.prefix(10))
-        var entries = leading.map {
-            RoomMapEntry(id: $0.id, name: $0.name, bytes: filter.bytes(in: $0), item: $0,
-                         category: filter.category ?? $0.category)
-        }
-        let remainder = max(0, filter.total(in: report) - leading.reduce(Int64(0)) { $0 + filter.bytes(in: $1) })
-        if remainder > 0 {
-            entries.append(RoomMapEntry(id: "room-map-other", name: "Other", bytes: remainder, item: nil, category: nil))
-        }
-        return entries
+        let matches = browser.items(in: report, mode: .contents).filter { browser.bytes(in: $0) > 0 }
+            .sorted { browser.bytes(in: $0) > browser.bytes(in: $1) }
+        let leading = Array(matches.prefix(12))
+        var result = leading.map { RoomMapEntry(id: $0.id, name: $0.name, bytes: browser.bytes(in: $0), item: $0, category: browser.category ?? $0.category) }
+        let remainder = matches.dropFirst(12).reduce(Int64(0)) { $0 + browser.bytes(in: $1) }
+        if remainder > 0 { result.append(RoomMapEntry(id: "room-map-other", name: "Other measured items", bytes: remainder, item: nil, category: nil)) }
+        return result
     }
 
     private func open(_ item: DiskMapItem) {
         if item.isDirectory { insights.scanDisk(url: item.url) }
-        else { selectedItem = item }
+        else { inspect(item) }
+    }
+
+    private func inspect(_ item: DiskMapItem) {
+        guard let report = insights.diskReport else { return }
+        selectedItem = RoomDiskItemSelection(item: item, scanID: report.id, isPartial: report.isPartial)
+    }
+
+    private func itemList(_ report: DiskMapReport) -> some View {
+        let items = browser.items(in: report)
+        return VStack(alignment: .leading, spacing: RoomSpace.standard) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: RoomSpace.standard) { listModePicker; Spacer(minLength: 12); sortPicker }
+                VStack(alignment: .leading, spacing: RoomSpace.compact) { listModePicker; sortPicker }
+            }
+            if items.isEmpty {
+                RoomStatusNotice(message: browser.listMode == .largest ? "No match among the scan’s largest 100 files. Folder contents remains available above." : "No measured items match these filters. Reset a filter or search another name.", systemImage: "magnifyingglass")
+            } else {
+                LazyVStack(spacing: 0) {
+                    ForEach(Array(items.prefix(visibleItemLimit))) { item in
+                        Button { inspect(item) } label: {
+                            HStack(spacing: RoomSpace.compact) {
+                                Image(systemName: item.isDirectory ? "folder" : item.category.symbol)
+                                    .foregroundStyle(.secondary).frame(width: 20)
+                                VStack(alignment: .leading, spacing: RoomSpace.micro) {
+                                    Text(item.name).font(RoomTypography.bodyEmphasis).lineLimit(1).truncationMode(.middle)
+                                    if browser.listMode == .largest {
+                                        Text(item.url.deletingLastPathComponent().path).font(RoomTypography.caption)
+                                            .foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                                    }
+                                }
+                                if item.isHidden { Image(systemName: "eye.slash").font(RoomTypography.caption).foregroundStyle(.secondary) }
+                                Spacer(minLength: RoomSpace.compact)
+                                Text(RoomFormat.bytes(browser.bytes(in: item))).font(RoomTypography.body).monospacedDigit().foregroundStyle(.secondary)
+                                Image(systemName: "chevron.right").font(RoomTypography.meta).foregroundStyle(.tertiary)
+                            }
+                            .padding(RoomSpace.compact).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        Divider().padding(.leading, 44)
+                    }
+                }
+                if items.count > visibleItemLimit {
+                    Button("Show next \(min(100, items.count - visibleItemLimit)) items") { visibleItemLimit += 100 }
+                        .buttonStyle(.plain).font(RoomTypography.body)
+                }
+            }
+            Text(browser.listMode == .largest ? "Searches the scan’s retained largest 100 files. Folder contents lists immediate children." : "Searches immediate folder contents. Open a folder to search inside it.")
+                .font(RoomTypography.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private var listModePicker: some View {
+        Picker("Item list", selection: $insights.diskBrowserState.listMode) {
+            ForEach(RoomDiskListMode.allCases) { Text($0.rawValue).tag($0) }
+        }
+        .pickerStyle(.segmented).labelsHidden().frame(width: 280)
+        .accessibilityIdentifier("RoomDiskListModePicker")
+    }
+
+    private var sortPicker: some View {
+        Picker("Sort", selection: $insights.diskBrowserState.sort) {
+            ForEach(RoomDiskSort.allCases) { Text($0.rawValue).tag($0) }
+        }
+        .pickerStyle(.menu).fixedSize()
+        .accessibilityIdentifier("RoomDiskSortPicker")
     }
 
     @ViewBuilder private func reviewSection(_ report: DiskMapReport) -> some View {
         if let analysis = insights.analysisReport, analysis.scanID == report.id {
-            let findings = analysis.findings.filter { filter.includes($0.item, category: $0.category) }
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(spacing: 12) {
-                    Label("Smart review", systemImage: "sparkle.magnifyingglass")
-                        .font(.system(size: 15, weight: .semibold))
-                    Label(analysis.source == .onDevice ? analysis.availability.provider : "Rule-based",
-                          systemImage: analysis.source == .onDevice ?
-                            (analysis.availability.provider == "Apple Intelligence" ? "apple.intelligence" : "cpu") : "line.3.horizontal.decrease")
-                        .font(.system(size: 12)).foregroundStyle(.secondary)
-                        .help(analysis.source == .onDevice ?
-                              (analysis.availability.modelName.map { "\(analysis.availability.provider) · \($0)" } ?? analysis.availability.provider) : "Local metadata rules")
-                    Spacer(minLength: 8)
+            let findings = analysis.findings.filter { browser.matches($0.item) }
+            VStack(alignment: .leading, spacing: RoomSpace.standard) {
+                RoomSectionHeader(title: "Smart review", detail: analysis.source == .onDevice ? analysis.availability.provider : "Local rules") {
                     if insights.isAnalyzingStorage {
-                        ProgressView().controlSize(.mini)
+                        ProgressView().controlSize(.small)
                         Button("Stop") { insights.cancelStorageAnalysis() }.buttonStyle(.glass)
                     } else {
                         Button { insights.analyzeStorage() } label: { Label("Analyze", systemImage: "sparkles") }
                             .buttonStyle(.glass).disabled(insights.isScanningDisk)
                     }
                 }
-                HStack(alignment: .top, spacing: 12) {
-                    Text(insights.isAnalyzingStorage ? "Analyzing file metadata locally…" : (insights.analysisStatus ?? analysis.availability.reason))
-                        .font(.system(size: 12)).foregroundStyle(.secondary)
-                    Spacer(minLength: 8)
-                    if !analysis.availability.isAvailable && !insights.isAnalyzingStorage {
-                        Button { insights.openAppleIntelligenceSettings() } label: { Image(systemName: "gearshape") }
-                            .buttonStyle(.plain).foregroundStyle(.secondary)
-                            .help(appleIntelligenceSettingsHelp)
-                            .accessibilityLabel("Apple Intelligence settings")
-                    }
+                if insights.isAnalyzingStorage {
+                    RoomStatusNotice(message: "Analyzing metadata on this Mac…", systemImage: "sparkles")
+                } else if let message = insights.analysisStatus {
+                    Text(message).font(RoomTypography.caption).foregroundStyle(.secondary)
                 }
                 if findings.isEmpty {
-                    Text("No review items match this filter.").font(.system(size: 13)).foregroundStyle(.secondary)
+                    Text("No review items match these filters.").font(RoomTypography.body).foregroundStyle(.secondary)
                 } else {
                     ForEach(showingAllFindings ? findings : Array(findings.prefix(3))) { finding in
-                        reviewCard(finding)
+                        Button { inspect(finding.item) } label: {
+                            HStack(alignment: .top, spacing: RoomSpace.compact) {
+                                Image(systemName: finding.category.symbol).frame(width: 20).foregroundStyle(.secondary)
+                                VStack(alignment: .leading, spacing: RoomSpace.micro) {
+                                    Text(finding.item.name).font(RoomTypography.bodyEmphasis).lineLimit(1)
+                                    Text(finding.reason).font(RoomTypography.caption).foregroundStyle(.secondary).lineLimit(2)
+                                }
+                                Spacer(minLength: RoomSpace.small)
+                                RoomDispositionLabel(disposition: finding.disposition)
+                            }
+                            .padding(.vertical, RoomSpace.small).contentShape(Rectangle())
+                        }.buttonStyle(.plain).help(finding.reason)
                     }
                     if findings.count > 3 {
-                        Button(showingAllFindings ? "Show less" : "Review all \(findings.count)") { showingAllFindings.toggle() }
-                            .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(.secondary)
+                        Button(showingAllFindings ? "Show fewer" : "Review all \(findings.count)") { showingAllFindings.toggle() }
+                            .buttonStyle(.plain).font(RoomTypography.body)
                     }
                 }
-                Text(analysis.source == .onDevice ? "Metadata suggestions only. Protection is never relaxed; cleanup eligibility is checked separately." :
-                     "Metadata only. Review tags follow local rules. Cleanup eligibility is checked separately.")
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                if !analysis.availability.isAvailable && !insights.isAnalyzingStorage {
+                    Button("Apple Intelligence settings", systemImage: "gearshape") { insights.openAppleIntelligenceSettings() }
+                        .buttonStyle(.plain).font(RoomTypography.caption)
+                }
+                Text("Metadata suggestions do not authorize cleanup. Known cache locations can be reviewed in Clean.")
+                    .font(RoomTypography.caption).foregroundStyle(.secondary)
             }
-            .padding(.top, 8)
-        }
-    }
-
-    private func reviewCard(_ finding: StorageFinding) -> some View {
-        Button { selectedItem = finding.item } label: {
-            HStack(alignment: .top, spacing: 13) {
-                Image(systemName: finding.category.symbol)
-                    .font(.system(size: 18, weight: .regular)).foregroundStyle(.secondary)
-                    .frame(width: 23).padding(.top, 3)
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(alignment: .firstTextBaseline, spacing: 9) {
-                        Text(finding.item.name).font(.system(size: 14, weight: .medium))
-                            .lineLimit(1).truncationMode(.middle)
-                        RoomDispositionLabel(disposition: finding.disposition)
-                        Spacer(minLength: 8)
-                        Text(RoomFormat.bytes(finding.item.allocatedBytes))
-                            .font(.system(size: 14)).monospacedDigit().foregroundStyle(.secondary).fixedSize()
-                    }
-                    Text(finding.reason).font(.system(size: 12)).foregroundStyle(.secondary)
-                        .lineLimit(2).multilineTextAlignment(.leading)
-                }
-                Image(systemName: "chevron.right").font(.system(size: 10)).foregroundStyle(.secondary).padding(.top, 5)
-            }
-            .padding(16).frame(maxWidth: .infinity, alignment: .leading)
-            .background(.quaternary.opacity(0.28), in: RoundedRectangle(cornerRadius: 16))
-            .contentShape(RoundedRectangle(cornerRadius: 16))
-        }
-        .buttonStyle(.plain)
-        .help(finding.reason)
-    }
-
-    @ViewBuilder private func itemList(_ report: DiskMapReport) -> some View {
-        let candidates = showingAll ? report.children : report.largestFiles
-        let matching = candidates.filter { showingAll ? filter.bytes(in: $0) > 0 : filter.includes($0) }
-            .sorted { filter.bytes(in: $0) > filter.bytes(in: $1) }
-        let items = showingAll ? matching : Array(matching.prefix(3))
-        if !items.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Label(showingAll ? "Folder contents" : "Largest matching files", systemImage: showingAll ? "folder" : "doc")
-                        .font(.system(size: 14, weight: .medium))
-                    Spacer()
-                    Button(showingAll ? "Largest files" : "Folder contents") { showingAll.toggle() }
-                        .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(.secondary)
-                }
-                ForEach(items) { item in
-                    Button { selectedItem = item } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: item.isDirectory ? "folder" : item.category.symbol).foregroundStyle(.secondary)
-                            Text(item.name).font(.system(size: 14)).lineLimit(1).truncationMode(.middle)
-                            if item.isHidden { Image(systemName: "eye.slash").font(.system(size: 11)).foregroundStyle(.secondary) }
-                            Spacer()
-                            Text(RoomFormat.bytes(filter.bytes(in: item)))
-                                .font(.system(size: 14)).monospacedDigit().foregroundStyle(.secondary)
-                            Image(systemName: "chevron.right").font(.system(size: 10)).foregroundStyle(.secondary)
-                        }
-                        .padding(.vertical, 10).padding(.horizontal, 10).contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-                if !showingAll {
-                    Text("From the scan’s largest 100 files.").font(.system(size: 12)).foregroundStyle(.secondary)
-                }
-            }
-            .padding(.top, 8)
         }
     }
 
     private var scanProgress: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: RoomSpace.standard) {
             ProgressView().controlSize(.small)
-            Text("Finding the big pieces…").font(RoomType.heading(20))
-            Text("Measuring file sizes. Your files stay in place.").font(.system(size: 13)).foregroundStyle(.secondary)
+            Text("Measuring this folder").font(RoomTypography.sectionTitle)
             if let progress = insights.diskProgress {
-                Text("\(progress.visitedFiles.formatted()) files · \(RoomFormat.bytes(progress.allocatedBytes)) measured")
-                    .font(.system(size: 13)).foregroundStyle(.secondary)
-                Text(progress.currentName).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
-                    .frame(maxWidth: 440)
+                Text("\(progress.visitedFiles.formatted()) files · \(RoomFormat.bytes(progress.allocatedBytes))")
+                    .font(RoomTypography.body).monospacedDigit().foregroundStyle(.secondary)
+                RoomPathLabel(path: progress.currentName, lineLimit: 1).frame(maxWidth: 440)
             }
+            Text("Files stay in place.").font(RoomTypography.caption).foregroundStyle(.secondary)
             Button("Stop scan") { insights.cancelDiskScan() }.buttonStyle(.glass)
         }
         .frame(maxWidth: .infinity)
-    }
-}
-
-private enum RoomDiskFilter: Equatable {
-    case all, hidden, large, category(StorageCategory)
-    static let largeThreshold: Int64 = 1_000_000_000
-    var id: String {
-        switch self { case .all: "all"; case .hidden: "hidden"; case .large: "large"; case .category(let value): value.rawValue }
-    }
-    var title: String {
-        switch self { case .all: "All"; case .hidden: "Hidden"; case .large: "Large"; case .category(let value): value.title }
-    }
-    var symbol: String {
-        switch self { case .all: "square.grid.2x2"; case .hidden: "eye.slash"; case .large: "arrow.up.right.square"; case .category(let value): value.symbol }
-    }
-    var category: StorageCategory? { if case .category(let value) = self { value } else { nil } }
-    var mapNote: String {
-        switch self {
-        case .all: "Tile area = allocated size. Open a folder to look inside."
-        case .hidden: "Hidden bytes within each folder, including hidden descendants."
-        case .large: "Immediate items of at least 1 GB, including folder totals."
-        case .category: "Matching bytes within each folder. Open it to explore."
-        }
-    }
-    func bytes(in item: DiskMapItem) -> Int64 {
-        switch self {
-        case .all: item.allocatedBytes
-        case .hidden: item.hiddenAllocatedBytes
-        case .large: item.allocatedBytes >= Self.largeThreshold ? item.allocatedBytes : 0
-        case .category(let category): item.categoryAllocatedBytes[category] ?? 0
-        }
-    }
-    func total(in report: DiskMapReport) -> Int64 {
-        switch self {
-        case .all: report.allocatedBytes
-        case .hidden: report.hiddenAllocatedBytes
-        case .large: report.children.reduce(Int64(0)) { $0 + bytes(in: $1) }
-        case .category(let category): report.categories.first { $0.category == category }?.allocatedBytes ?? 0
-        }
-    }
-    func includes(_ item: DiskMapItem, category: StorageCategory? = nil) -> Bool {
-        switch self {
-        case .all: true
-        case .hidden: item.isHidden
-        case .large: item.allocatedBytes >= Self.largeThreshold
-        case .category(let selected): (category ?? item.category) == selected
-        }
     }
 }
 
@@ -499,8 +413,7 @@ private struct RoomTreemap: View {
     let entries: [RoomMapEntry]
     let open: (DiskMapItem) -> Void
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage("RoomMotionEnabled") private var motionEnabled = true
+    var motion = RoomMotionPolicy()
     @State private var hovered: String?
 
     var body: some View {
@@ -540,7 +453,7 @@ private struct RoomTreemap: View {
                         .overlay {
                             RoundedRectangle(cornerRadius: 14).strokeBorder(Color.primary.opacity(hovered == tile.id ? 0.2 : 0), lineWidth: 1.5)
                         }
-                        .scaleEffect(hovered == tile.id ? 0.985 : 1)
+                        .opacity(hovered == tile.id ? 0.88 : 1)
                     }
                     .buttonStyle(.plain).disabled(tile.entry.item == nil)
                     .offset(x: tile.rect.minX + 2.5, y: tile.rect.minY + 2.5)
@@ -549,7 +462,7 @@ private struct RoomTreemap: View {
                     .onHover { hovered = $0 ? tile.id : nil }
                 }
             }
-            .animation(motionEnabled && !reduceMotion ? .easeOut(duration: 0.16) : nil, value: hovered)
+            .animation(motion.selection, value: hovered)
         }
     }
 
@@ -616,54 +529,54 @@ private enum RoomMapLayout {
     }
 }
 
+private struct RoomDiskItemSelection: Identifiable {
+    let item: DiskMapItem
+    let scanID: UUID
+    let isPartial: Bool
+    var id: String { scanID.uuidString + ":" + item.id }
+}
+
 private struct RoomDiskItemSheet: View {
     let item: DiskMapItem
+    let scanID: UUID
+    let isPartial: Bool
     @Bindable var insights: RoomInsightsModel
     @Environment(\.dismiss) private var dismiss
     private var finding: StorageFinding? {
-        guard insights.analysisReport?.scanID == insights.diskReport?.id else { return nil }
+        guard insights.analysisReport?.scanID == scanID else { return nil }
         return insights.analysisReport?.findings.first { $0.item.id == item.id }
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            HStack(alignment: .top, spacing: 14) {
-                Image(systemName: item.isDirectory ? "folder" : item.category.symbol)
-                    .font(.system(size: 27, weight: .light)).foregroundStyle(.secondary)
-                VStack(alignment: .leading, spacing: 9) {
-                    Text(item.name).font(RoomType.heading(24)).lineLimit(2)
-                    HStack(spacing: 12) {
-                        Label(item.category.title, systemImage: item.category.symbol)
-                        if item.isHidden { Label("Hidden", systemImage: "eye.slash") }
-                    }
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
-                }
+        RoomSheetLayout(title: item.name, subtitle: item.category.title + (item.isHidden ? " · Hidden" : ""),
+                        width: 620, maxContentHeight: 390) {
+            RoomMetric(label: "Allocated on disk", bytes: item.allocatedBytes, lowerBound: isPartial)
+            Text("\(RoomFormat.bytes(item.logicalBytes)) measured logical size")
+                .font(RoomTypography.body).foregroundStyle(.secondary)
+            if isPartial {
+                RoomStatusNotice(message: "This scan was incomplete. Sizes are lower bounds.", tone: .warning)
             }
-            RoomByteMetric(bytes: item.allocatedBytes, maximumSize: 46)
-            Text("Allocated on disk · \(RoomFormat.bytes(item.logicalBytes)) logical size")
-                .font(.system(size: 13)).foregroundStyle(.secondary)
             if let finding {
-                VStack(alignment: .leading, spacing: 11) {
+                VStack(alignment: .leading, spacing: RoomSpace.compact) {
                     RoomDispositionLabel(disposition: finding.disposition)
-                    Text(finding.reason).font(.system(size: 13)).foregroundStyle(.secondary)
+                    Text(finding.reason).font(RoomTypography.body).foregroundStyle(.secondary)
                     Text(finding.source == .onDevice ? "On-device suggestion · existing protections stay in force" : "Review tag: local rules")
-                        .font(.system(size: 12)).foregroundStyle(.secondary)
+                        .font(RoomTypography.caption).foregroundStyle(.secondary)
                 }
             }
-            Text(item.url.path).font(.system(size: 12, design: .monospaced))
-                .foregroundStyle(.secondary).textSelection(.enabled)
-                .padding(16).frame(maxWidth: .infinity, alignment: .leading)
-                .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 14))
-            HStack {
-                Button { insights.reveal(item: item) } label: { Label("Show in Finder", systemImage: "folder") }.buttonStyle(.glass)
-                if item.isDirectory {
-                    Button("Look inside") { insights.scanDisk(url: item.url); dismiss() }.buttonStyle(.glass)
-                }
-                Spacer()
-                Button("Done") { dismiss() }.buttonStyle(.glassProminent).keyboardShortcut(.defaultAction)
+            RoomPathLabel(path: item.url.path, label: "Location")
+        } actions: {
+            Button { insights.reveal(item: item) } label: { Label("Show in Finder", systemImage: "folder") }
+                .roomAction(.secondary)
+            if item.isDirectory {
+                Button("Look inside") { insights.scanDisk(url: item.url); dismiss() }.roomAction(.secondary)
             }
-            .controlSize(.large)
+            if finding?.disposition == .cache {
+                Button("Review in Clean") { insights.requestCleanReview(path: item.url.path); dismiss() }
+                    .roomAction(.secondary)
+            }
+            Spacer()
+            Button("Done") { dismiss() }.roomAction(.primary).keyboardShortcut(.defaultAction)
         }
-        .padding(32).frame(width: 580)
     }
 }

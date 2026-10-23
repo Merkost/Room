@@ -81,6 +81,31 @@ struct StorageAnalysisTests {
             #expect(finding.disposition == expected)
         }
     }
+
+    @Test("Private system roots and descendants are protected without capturing temporary or near-prefix folders")
+    func privateSystemBoundaries() throws {
+        let fixture = AnalysisFixture()
+        let protectedPaths = ["/private/etc", "/private/etc/services.bin",
+                              "/private/var/db", "/private/var/db/metadata.bin", "/private/ETC/config.bin"]
+        let reviewPaths = ["/private/tmp", "/private/tmp/work.bin",
+                           "/private/etc-other", "/private/var/db-copy", "/private/var/database"]
+        let items = (protectedPaths + reviewPaths).map { path in
+            let url = URL(fileURLWithPath: path)
+            return DiskMapItem(url: url, name: url.lastPathComponent, isDirectory: !path.hasSuffix(".bin"),
+                allocatedBytes: 4_096, logicalBytes: 4_096, fileCount: 1)
+        }
+        let report = StorageAnalyzer.analyze(report: fixture.report(items), configuration: fixture.configuration)
+        #expect(report.findings.count == items.count)
+        for path in protectedPaths {
+            let finding = try #require(report.findings.first { $0.item.url.path == path })
+            #expect(finding.disposition == .protected)
+            #expect(finding.reason.contains("System-managed data"))
+        }
+        for path in reviewPaths {
+            let finding = try #require(report.findings.first { $0.item.url.path == path })
+            #expect(finding.disposition == .review)
+        }
+    }
 }
 
 struct AnalysisFixture: Sendable {
