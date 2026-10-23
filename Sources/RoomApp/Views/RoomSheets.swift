@@ -10,79 +10,39 @@ struct RoomReviewSheet: View {
         #if ROOM_APP_STORE
         RoomStoreCacheReviewSheet(model: model)
         #else
-        VStack(alignment: .leading, spacing: 24) {
-            RoomSheetHeading(title: "Make a little room.", subtitle: "Review the caches you’ve selected.")
-
-            HStack(alignment: .firstTextBaseline) {
-                Text(RoomFormat.bytes(model.selectedBytes))
-                    .font(RoomType.figure(40))
-                    .tracking(-1.5)
-                Spacer()
-                Text("\(sources.count) \(sources.count == 1 ? "source" : "sources")")
-                    .font(.system(size: 14))
-                    .foregroundStyle(.secondary)
-            }
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    ForEach(sources) { source in
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Text(source.name).font(.system(size: 14, weight: .medium))
-                                Spacer()
-                                Text(RoomFormat.bytes(source.eligibleBytes)).font(.system(size: 14)).monospacedDigit()
-                            }
-                            Text(source.notes)
-                                .font(.system(size: 13))
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
+        RoomSheetLayout(title: "Review cleanup", subtitle: "Only selected eligible items will move to Trash.", width: 580,
+                        feedback: model.errorMessage) {
+            RoomMetric(label: "Selected", bytes: model.selectedBytes)
+            ForEach(sources) { source in
+                VStack(alignment: .leading, spacing: RoomSpace.small) {
+                    HStack(alignment: .firstTextBaseline, spacing: RoomSpace.standard) {
+                        Text(source.name).font(RoomTypography.bodyEmphasis)
+                        Spacer(minLength: RoomSpace.compact)
+                        Text(RoomFormat.bytes(model.selectedBytes(for: source.id)))
+                            .font(RoomTypography.body).monospacedDigit().fixedSize()
                     }
+                    Text("\(model.selectedCount(for: source.id)) selected \(model.selectedCount(for: source.id) == 1 ? "item" : "items")")
+                        .font(RoomTypography.caption).foregroundStyle(.secondary)
+                    Text(source.notes).font(RoomTypography.body).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 3)
             }
-            .frame(maxHeight: 250)
-            .scrollIndicators(.visible)
-
-            Label {
-                Text("Caches may rebuild. Items stay recoverable in Trash; disk space is released when Trash is emptied.")
-                    .font(.system(size: 13))
-                    .fixedSize(horizontal: false, vertical: true)
-            } icon: {
-                Image(systemName: "arrow.uturn.backward")
-                    .font(.system(size: 15))
-            }
-            .foregroundStyle(.secondary)
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 16))
-
-            HStack(spacing: 12) {
-                Button("Cancel") { dismiss() }
-                    .buttonStyle(.glass)
-                    .keyboardShortcut(.cancelAction)
-                Spacer()
-                if model.isWorking { ProgressView().controlSize(.small) }
-                Button {
-                    Task {
-                        await model.cleanSelected()
-                        dismiss()
-                    }
-                } label: {
-                    Label(model.isWorking ? "Moving…" : "Move to Trash", systemImage: "trash")
-                        .padding(.horizontal, 8)
-                }
-                .buttonStyle(.glassProminent)
-                .keyboardShortcut(.defaultAction)
+            RoomStatusNotice(title: "Recoverable in Trash", message: "Caches may rebuild. Space is released when you empty Trash in Finder.", systemImage: "arrow.uturn.backward")
+        } actions: {
+            Button("Cancel") { model.errorMessage = nil; dismiss() }.roomAction(.secondary).keyboardShortcut(.cancelAction)
+            Spacer()
+            if model.isWorking { ProgressView().controlSize(.small) }
+            Button {
+                Task { await model.cleanSelected(); dismiss() }
+            } label: { Label(model.isWorking ? "Moving…" : "Move to Trash", systemImage: "trash") }
+                .roomAction(.primary).keyboardShortcut(.defaultAction)
                 .disabled(sources.isEmpty || model.isScanning || model.isWorking)
-            }
-            .controlSize(.large)
-            .disabled(model.isWorking)
         }
-        .padding(32)
-        .frame(width: 550)
+        .disabled(model.isWorking)
         .interactiveDismissDisabled(model.isWorking)
+        .onChange(of: model.isScanning) { _, scanning in
+            if scanning && !model.isWorking { dismiss() }
+        }
         #endif
     }
 }
@@ -91,139 +51,119 @@ struct RoomSourceSheet: View {
     let source: RoomSource
     @Bindable var model: RoomViewModel
     @Environment(\.dismiss) private var dismiss
+    @State private var showCleanupItems = false
+    @State private var candidateQuery = ""
 
     private var heldBytes: Int64 { max(0, source.bytes - source.eligibleBytes) }
-    private func measured(_ bytes: Int64) -> String {
-        (source.isPartial ? "≥ " : "") + RoomFormat.bytes(bytes)
+    private var candidates: [RoomCleanupCandidate] { model.cleanupCandidates(for: source.id) }
+    private var matchingCandidates: [RoomCleanupCandidate] {
+        candidates.filter { candidateQuery.isEmpty || ($0.name + " " + $0.path).localizedCaseInsensitiveContains(candidateQuery) }
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            RoomSheetHeading(title: source.name, subtitle: source.subtitle)
-
-            HStack(alignment: .firstTextBaseline, spacing: 24) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(RoomFormat.bytes(source.eligibleBytes))
-                        .font(RoomType.figure(34))
-                        .tracking(-1)
-                    Text("Clearable").font(.system(size: 13)).foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 0)
-                VStack(alignment: .trailing, spacing: 5) {
-                    Text(measured(source.bytes)).font(RoomType.figure(22))
-                    Text("Found").font(.system(size: 13)).foregroundStyle(.secondary)
-                }
-                VStack(alignment: .trailing, spacing: 5) {
-                    Text(measured(heldBytes)).font(RoomType.figure(22))
-                    Text("Held").font(.system(size: 13)).foregroundStyle(.secondary)
-                }
+        RoomSheetLayout(title: source.name, subtitle: source.subtitle, width: 600, maxContentHeight: 390) {
+            HStack(alignment: .top, spacing: RoomSpace.section) {
+                RoomMetric(label: "Selected", bytes: model.selectedBytes(for: source.id), maximumSize: 34)
+                RoomMetric(label: "Clearable", bytes: source.eligibleBytes, maximumSize: 22)
+                RoomMetric(label: "Held", bytes: heldBytes, maximumSize: 22, lowerBound: source.isPartial)
             }
-            .monospacedDigit()
-            .accessibilityElement(children: .combine)
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    if source.isPartial {
-                        Label("Partial measurement. Unverified items stay held.", systemImage: "info.circle")
-                            .font(.system(size: 13))
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    if !source.largestEntries.isEmpty {
-                        VStack(alignment: .leading, spacing: 12) {
-                            HStack {
-                                Text("Largest measured items").font(.system(size: 14, weight: .medium))
-                                Spacer()
-                                if source.entryCount > source.largestEntries.count {
-                                    Text("\(source.largestEntries.count) of \(source.entryCount)")
-                                        .font(.system(size: 12)).foregroundStyle(.secondary)
-                                }
-                            }
-                            ForEach(source.largestEntries, id: \.path) { entry in
-                                VStack(alignment: .leading, spacing: 4) {
-                                    HStack(alignment: .firstTextBaseline, spacing: 16) {
-                                        Text(entry.name)
-                                            .font(.system(size: 13, weight: .medium))
-                                            .lineLimit(1)
-                                            .truncationMode(.middle)
-                                        Spacer(minLength: 0)
-                                        Text(RoomFormat.bytes(entry.bytes))
-                                            .font(.system(size: 13)).monospacedDigit()
-                                            .foregroundStyle(.secondary)
-                                            .fixedSize()
-                                    }
-                                    Text(entry.reason ?? (source.isPartial ? "Measured; verification incomplete" : "Clearable after review"))
-                                        .font(.system(size: 12)).foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
-                                .help(entry.path + (entry.reason.map { "\n" + $0 } ?? ""))
-                                .accessibilityElement(children: .combine)
+            Text("\(source.isPartial ? "At least " : "")\(RoomFormat.bytes(source.bytes)) measured on disk")
+                .font(RoomTypography.caption).foregroundStyle(.secondary)
+            if source.isPartial {
+                RoomStatusNotice(message: "Partial measurement. Unverified items stay held.", systemImage: "info.circle")
+            }
+            if !candidates.isEmpty { cleanupItems }
+            if !source.largestEntries.isEmpty { largestItems }
+            if !source.heldReasons.isEmpty {
+                DisclosureGroup("Why items are held") {
+                    VStack(alignment: .leading, spacing: RoomSpace.compact) {
+                        ForEach(source.heldReasons, id: \.reason) { held in
+                            HStack(alignment: .top, spacing: RoomSpace.standard) {
+                                Text(held.reason).font(RoomTypography.body)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Spacer(minLength: RoomSpace.small)
+                                VStack(alignment: .trailing, spacing: RoomSpace.micro) {
+                                    Text(RoomFormat.bytes(held.bytes)).monospacedDigit()
+                                    Text("\(held.count) \(held.count == 1 ? "item" : "items")").foregroundStyle(.secondary)
+                                }.font(RoomTypography.caption).fixedSize()
                             }
                         }
-                    }
-
-                    if !source.heldReasons.isEmpty {
-                        DisclosureGroup("Why items are held") {
-                            VStack(alignment: .leading, spacing: 12) {
-                                ForEach(source.heldReasons, id: \.reason) { held in
-                                    HStack(alignment: .top, spacing: 16) {
-                                        Text(held.reason)
-                                            .font(.system(size: 13))
-                                            .fixedSize(horizontal: false, vertical: true)
-                                        Spacer(minLength: 0)
-                                        VStack(alignment: .trailing, spacing: 3) {
-                                            Text(RoomFormat.bytes(held.bytes)).monospacedDigit()
-                                            Text("\(held.count) \(held.count == 1 ? "item" : "items")").foregroundStyle(.secondary)
-                                        }
-                                        .font(.system(size: 12))
-                                        .fixedSize()
-                                    }
-                                }
-                            }
-                            .padding(.top, 10)
-                        }
-                        .font(.system(size: 13, weight: .medium))
-                    }
-
-                    DisclosureGroup("Locations") {
-                        Text(source.path)
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.top, 10)
-                    }
-                    .font(.system(size: 13, weight: .medium))
-
-                    DisclosureGroup("Cleanup rules") {
-                        Text(source.notes)
-                            .font(.system(size: 13))
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(.top, 10)
-                    }
-                    .font(.system(size: 13, weight: .medium))
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(16)
+                    }.padding(.top, RoomSpace.compact)
+                }.font(RoomTypography.bodyEmphasis)
             }
-            .frame(maxHeight: 310)
-            .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 16))
-
-            HStack {
-                Button { model.reveal(source: source) } label: { Label("Show in Finder", systemImage: "folder") }
-                    .buttonStyle(.glass)
-                Spacer()
-                Button("Done") { dismiss() }
-                    .buttonStyle(.glassProminent)
-                    .keyboardShortcut(.defaultAction)
-            }
-            .controlSize(.large)
+            DisclosureGroup("Locations") {
+                RoomPathLabel(path: source.path, lineLimit: 8).padding(.top, RoomSpace.compact)
+            }.font(RoomTypography.bodyEmphasis)
+            DisclosureGroup("Cleanup rules") {
+                Text(source.notes).font(RoomTypography.body).foregroundStyle(.secondary)
+                    .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, RoomSpace.compact)
+            }.font(RoomTypography.bodyEmphasis)
+        } actions: {
+            Button { model.reveal(source: source) } label: { Label("Show in Finder", systemImage: "folder") }.roomAction(.secondary)
+            Spacer()
+            Button("Done") { dismiss() }.roomAction(.primary).keyboardShortcut(.defaultAction)
         }
-        .padding(28)
-        .frame(width: 580)
+    }
+
+    private var cleanupItems: some View {
+        DisclosureGroup(isExpanded: $showCleanupItems) {
+            VStack(alignment: .leading, spacing: RoomSpace.compact) {
+                if candidates.count > 12 {
+                    TextField("Find a cleanup item", text: $candidateQuery).textFieldStyle(.roundedBorder)
+                        .accessibilityLabel("Find a cleanup item")
+                }
+                LazyVStack(alignment: .leading, spacing: RoomSpace.micro) {
+                    ForEach(matchingCandidates) { candidate in
+                        HStack(spacing: RoomSpace.compact) {
+                            Toggle(candidate.name, isOn: Binding(
+                                get: { model.isEntrySelected(candidate.id, sourceID: source.id) },
+                                set: { _ in model.toggleEntrySelection(id: candidate.id, sourceID: source.id) }))
+                                .toggleStyle(.checkbox).font(RoomTypography.body)
+                                .lineLimit(1).truncationMode(.middle)
+                                .accessibilityLabel("Select \(candidate.name)")
+                            Spacer(minLength: RoomSpace.small)
+                            Text(RoomFormat.bytes(candidate.bytes)).font(RoomTypography.caption)
+                                .monospacedDigit().foregroundStyle(.secondary).fixedSize()
+                        }
+                        .padding(.vertical, 6).help(candidate.path)
+                    }
+                }
+                .disabled(!model.canEditSelection)
+                if matchingCandidates.isEmpty {
+                    Text("No matching eligible items.").font(RoomTypography.caption).foregroundStyle(.secondary)
+                }
+            }.padding(.top, RoomSpace.compact)
+        } label: {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Choose cleanup items").font(RoomTypography.bodyEmphasis)
+                Spacer()
+                Text("\(model.selectedCount(for: source.id)) of \(candidates.count)")
+                    .font(RoomTypography.caption).foregroundStyle(.secondary).monospacedDigit()
+            }
+        }
+        .accessibilityIdentifier("RoomCleanupItemSelection")
+    }
+
+    private var largestItems: some View {
+        VStack(alignment: .leading, spacing: RoomSpace.compact) {
+            RoomSectionHeader(title: "Largest measured items", detail: source.entryCount > source.largestEntries.count ? "\(source.largestEntries.count) of \(source.entryCount)" : nil)
+            ForEach(source.largestEntries, id: \.path) { entry in
+                VStack(alignment: .leading, spacing: RoomSpace.micro) {
+                    HStack(alignment: .firstTextBaseline, spacing: RoomSpace.standard) {
+                        Text(entry.name).font(RoomTypography.bodyEmphasis).lineLimit(1).truncationMode(.middle)
+                        Spacer(minLength: RoomSpace.small)
+                        Text(RoomFormat.bytes(entry.bytes)).font(RoomTypography.body)
+                            .monospacedDigit().foregroundStyle(.secondary).fixedSize()
+                    }
+                    Text(entry.reason ?? (source.isPartial ? "Measured; verification incomplete" : "Clearable after review"))
+                        .font(RoomTypography.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .help(entry.path + (entry.reason.map { "\n" + $0 } ?? ""))
+                .accessibilityElement(children: .combine)
+            }
+        }
     }
 }
 
@@ -231,7 +171,7 @@ struct RoomSettingsSheet: View {
     @Bindable var model: RoomViewModel
     @Bindable var insights: RoomInsightsModel
     let showWelcome: () -> Void
-    @AppStorage("RoomAppearance") private var appearance = "dark"
+    @AppStorage("RoomAppearance") private var appearance = "system"
     @AppStorage("RoomMotionEnabled") private var motionEnabled = true
     @AppStorage("RoomMenuBarEnabled") private var menuBarEnabled = true
     @AppStorage("RoomMenuBarMetric") private var monitorMetric = RoomMonitorMetric.memory.rawValue
@@ -241,89 +181,75 @@ struct RoomSettingsSheet: View {
     private let about = RoomAboutInformation()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            RoomSheetHeading(title: "Settings", subtitle: "Appearance, menu bar, and folder access.")
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    settingsSection("Appearance", symbol: "circle.lefthalf.filled") {
-                        HStack {
-                            Text("Theme").font(.system(size: 13))
-                            Spacer()
-                            Picker("Appearance", selection: $appearance) {
-                                Text("System").tag("system")
-                                Text("Light").tag("light")
-                                Text("Dark").tag("dark")
-                            }.pickerStyle(.segmented).labelsHidden().frame(width: 230)
-                        }
-                        Toggle("Gentle motion", isOn: $motionEnabled).font(.system(size: 13)).toggleStyle(.switch)
-                            .accessibilityHint("Always respects Reduce Motion on your Mac")
-                        Text("Motion follows your Mac’s accessibility settings.")
-                            .font(.system(size: 12)).foregroundStyle(.secondary)
-                    }
-                    settingsSection("Menu bar", symbol: "menubar.rectangle") {
-                        Toggle("Show monitor", isOn: $menuBarEnabled).font(.system(size: 13)).toggleStyle(.switch)
-                        HStack {
-                            Text("Menu bar value").font(.system(size: 13))
-                            Spacer()
-                            Picker("Menu bar value", selection: $monitorMetric) {
-                                ForEach(RoomMonitorMetric.allCases) { Text($0.title).tag($0.rawValue) }
-                            }.pickerStyle(.segmented).labelsHidden().frame(width: 200)
-                                .accessibilityIdentifier("RoomSettingsMonitorMetric")
-                        }.disabled(!menuBarEnabled)
-                        Toggle("Memory pressure colors", isOn: $showPressure).font(.system(size: 13)).toggleStyle(.switch)
-                            .disabled(!menuBarEnabled)
-                        Toggle("Swap details", isOn: $showSwap).font(.system(size: 13)).toggleStyle(.switch)
-                            .disabled(!menuBarEnabled)
-                    }
-                    RoomFolderAccessSection(insights: insights)
-                    settingsSection("About", symbol: "info.circle") {
-                        HStack(spacing: 15) {
-                            Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 54, height: 54)
-                                .accessibilityHidden(true)
-                            VStack(alignment: .leading, spacing: 5) {
-                                Text(about.name).font(RoomType.heading(18))
-                                Text(about.versionLabel).font(.system(size: 12)).foregroundStyle(.secondary)
-                                    .accessibilityIdentifier("RoomAboutVersion")
-                                #if ROOM_APP_STORE
-                                Text("Mac App Store edition").font(.system(size: 12)).foregroundStyle(.secondary)
-                                #endif
-                            }
-                        }
-                        let links = RoomAppLinks()
-                        HStack(spacing: 20) {
-                            if let url = links.support {
-                                Link(destination: url) { Label("Support", systemImage: "questionmark.circle") }
-                                    .accessibilityIdentifier("RoomSupportLink")
-                            }
-                            if let url = links.privacy {
-                                Link(destination: url) { Label("Privacy", systemImage: "hand.raised") }
-                                    .accessibilityIdentifier("RoomPrivacyLink")
-                            }
-                        }.font(.system(size: 13))
-                        Button(action: showWelcome) { Label("Welcome to Room", systemImage: "sparkle") }
-                            .buttonStyle(.plain).font(.system(size: 13)).accessibilityIdentifier("RoomReplayOnboarding")
-                        Text("Reviewed cache moves stay recoverable in Trash until you empty it.")
-                            .font(.system(size: 12)).foregroundStyle(.secondary)
+        RoomSheetLayout(title: "Settings", subtitle: "Appearance, menu bar, and folder access.", width: 600, maxContentHeight: 420) {
+            settingsSection("Appearance", symbol: "circle.lefthalf.filled") {
+                HStack {
+                    Text("Theme").font(RoomTypography.body)
+                    Spacer()
+                    Picker("Appearance", selection: $appearance) {
+                        Text("System").tag("system")
+                        Text("Light").tag("light")
+                        Text("Dark").tag("dark")
+                    }.pickerStyle(.segmented).labelsHidden().frame(width: 230)
+                }
+                Toggle("Gentle motion", isOn: $motionEnabled).font(RoomTypography.body).toggleStyle(.switch)
+                    .accessibilityHint("Always respects Reduce Motion on your Mac")
+            }
+            settingsSection("Menu bar", symbol: "menubar.rectangle") {
+                Toggle("Show monitor", isOn: $menuBarEnabled).font(RoomTypography.body).toggleStyle(.switch)
+                HStack {
+                    Text("Menu bar value").font(RoomTypography.body)
+                    Spacer()
+                    Picker("Menu bar value", selection: $monitorMetric) {
+                        ForEach(RoomMonitorMetric.allCases) { Text($0.title).tag($0.rawValue) }
+                    }.pickerStyle(.segmented).labelsHidden().frame(width: 200)
+                        .accessibilityIdentifier("RoomSettingsMonitorMetric")
+                }.disabled(!menuBarEnabled)
+                Toggle("Memory pressure colors", isOn: $showPressure).font(RoomTypography.body).toggleStyle(.switch)
+                    .disabled(!menuBarEnabled)
+                Toggle("Swap details", isOn: $showSwap).font(RoomTypography.body).toggleStyle(.switch)
+                    .disabled(!menuBarEnabled)
+            }
+            RoomFolderAccessSection(insights: insights)
+            settingsSection("About", symbol: "info.circle") {
+                HStack(spacing: RoomSpace.standard) {
+                    Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 54, height: 54)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: RoomSpace.micro) {
+                        Text(about.name).font(RoomTypography.sectionTitle)
+                        Text(about.versionLabel).font(RoomTypography.caption).foregroundStyle(.secondary)
+                            .accessibilityIdentifier("RoomAboutVersion")
+                        #if ROOM_APP_STORE
+                        Text("Mac App Store edition").font(RoomTypography.caption).foregroundStyle(.secondary)
+                        #endif
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 4)
-            }.frame(maxHeight: 380).scrollIndicators(.hidden)
-            HStack {
-                Button { model.openTrash() } label: { Label("Open Trash", systemImage: "trash") }.buttonStyle(.glass)
-                Spacer()
-                Button("Done") { dismiss() }.buttonStyle(.glassProminent).keyboardShortcut(.defaultAction)
-            }.controlSize(.large)
-        }.padding(28).frame(width: 560)
+                let links = RoomAppLinks()
+                HStack(spacing: RoomSpace.section) {
+                    if let url = links.support {
+                        Link(destination: url) { Label("Support", systemImage: "questionmark.circle") }
+                            .accessibilityIdentifier("RoomSupportLink")
+                    }
+                    if let url = links.privacy {
+                        Link(destination: url) { Label("Privacy", systemImage: "hand.raised") }
+                            .accessibilityIdentifier("RoomPrivacyLink")
+                    }
+                }.font(RoomTypography.body)
+                Button(action: showWelcome) { Label("Welcome to Room", systemImage: "sparkle") }
+                    .roomAction(.quiet).font(RoomTypography.body).accessibilityIdentifier("RoomReplayOnboarding")
+            }
+        } actions: {
+            Button { model.openTrash() } label: { Label("Open Trash", systemImage: "trash") }.roomAction(.secondary)
+            Spacer()
+            Button("Done") { dismiss() }.roomAction(.primary).keyboardShortcut(.defaultAction)
+        }
     }
 
     private func settingsSection<Content: View>(_ title: String, symbol: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Label(title, systemImage: symbol).font(.system(size: 15, weight: .semibold))
+        RoomContentGroup {
+            Label(title, systemImage: symbol).font(RoomTypography.sectionTitle).accessibilityAddTraits(.isHeader)
             VStack(alignment: .leading, spacing: 14, content: content)
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
 
@@ -332,117 +258,121 @@ struct RoomProtectedSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            RoomSheetHeading(title: "Your work stays.", subtitle: "These locations are excluded from cleanup.")
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    ForEach(model.protectedSources) { source in
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Label(source.name, systemImage: "lock")
-                                    .font(.system(size: 14, weight: .medium))
-                                Spacer()
-                                Text(RoomFormat.bytes(source.bytes))
-                                    .font(.system(size: 13))
-                                    .foregroundStyle(.secondary)
-                                    .monospacedDigit()
-                                Button { model.revealProtected(source: source) } label: { Image(systemName: "arrow.up.forward") }
-                                    .buttonStyle(.plain)
-                                    .help("Show \(source.name) in Finder")
-                                    .accessibilityLabel("Show \(source.name) in Finder")
-                            }
-                            Text(source.reason).font(.system(size: 13)).foregroundStyle(.secondary)
-                            Text(source.path)
-                                .font(.system(size: 12, design: .monospaced))
-                                .foregroundStyle(.secondary)
-                                .textSelection(.enabled)
+        RoomSheetLayout(title: "Your work stays", subtitle: "These locations are excluded from cleanup.") {
+            LazyVStack(alignment: .leading, spacing: RoomSpace.section) {
+                ForEach(model.protectedSources) { source in
+                    VStack(alignment: .leading, spacing: RoomSpace.small) {
+                        HStack(alignment: .firstTextBaseline, spacing: RoomSpace.compact) {
+                            Label(source.name, systemImage: "lock").font(RoomTypography.bodyEmphasis)
+                            Spacer(minLength: RoomSpace.small)
+                            Text(RoomFormat.bytes(source.bytes)).font(RoomTypography.body).foregroundStyle(.secondary).monospacedDigit()
+                            Button { model.revealProtected(source: source) } label: { Image(systemName: "arrow.up.forward") }
+                                .roomAction(.quiet).help("Show \(source.name) in Finder")
+                                .accessibilityLabel("Show \(source.name) in Finder")
                         }
+                        Text(source.reason).font(RoomTypography.body).foregroundStyle(.secondary)
+                        RoomPathLabel(path: source.path, lineLimit: 4)
                     }
                 }
-                .padding(.vertical, 4)
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxHeight: 360)
-            HStack { Spacer(); Button("Done") { dismiss() }.buttonStyle(.glassProminent).keyboardShortcut(.defaultAction) }
-                .controlSize(.large)
+        } actions: {
+            Spacer()
+            Button("Done") { dismiss() }.roomAction(.primary).keyboardShortcut(.defaultAction)
         }
-        .padding(32)
-        .frame(width: 580)
     }
 }
 
 private struct RoomFolderAccessSection: View {
     @Bindable var insights: RoomInsightsModel
+    @State private var showingAll = false
+    @State private var renewingID: String?
+    private let access = RoomFileAccess.shared
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 13) {
-            HStack {
-                Label("Folder access", systemImage: "folder.badge.gearshape")
-                    .font(.system(size: 15, weight: .semibold))
-                Spacer()
-                Button { insights.chooseAccessFolder() } label: { Image(systemName: "plus") }
-                    .buttonStyle(.glass).help("Choose a folder to save access")
-                    .accessibilityLabel("Choose a folder to save access")
+        RoomContentGroup {
+            RoomSectionHeader(title: "Folder access") {
+                Button { insights.chooseAccessFolder() } label: { Label("Add folder", systemImage: "plus") }
+                    .roomAction(.secondary).disabled(renewingID != nil)
+                    .help("Choose a folder to save read-only access")
             }
-            if insights.accessFolders.isEmpty {
-                Text("Choose folders Room can revisit.")
-                    .font(.system(size: 13)).foregroundStyle(.secondary)
+            if access.folders.isEmpty {
+                Text("Choose folders Room can revisit.").font(RoomTypography.body).foregroundStyle(.secondary)
             } else {
-                ScrollView {
-                    VStack(spacing: 12) {
-                        ForEach(insights.accessFolders) { folder in
-                            HStack(spacing: 12) {
-                                Image(systemName: "folder").foregroundStyle(.secondary)
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(folder.name).font(.system(size: 13, weight: .medium)).lineLimit(1)
-                                    Text(folder.url.path).font(.system(size: 12)).foregroundStyle(.secondary)
-                                        .lineLimit(1).truncationMode(.middle)
-                                }
-                                Spacer()
-                                Button { insights.forgetAccessFolder(id: folder.id) } label: { Image(systemName: "minus.circle") }
-                                    .buttonStyle(.plain).foregroundStyle(.secondary)
-                                    .help("Forget saved access to \(folder.name)")
-                                    .accessibilityLabel("Forget saved access to \(folder.name)")
-                            }
+                LazyVStack(alignment: .leading, spacing: RoomSpace.compact) {
+                    ForEach(Array(access.folders.prefix(showingAll ? .max : 4))) { folder in
+                        HStack(spacing: RoomSpace.compact) {
+                            Image(systemName: "folder").foregroundStyle(.secondary).accessibilityHidden(true)
+                            RoomPathLabel(path: folder.url.path, label: folder.name, lineLimit: 1)
+                            Button { insights.forgetAccessFolder(id: folder.id) } label: { Image(systemName: "minus.circle") }
+                                .roomAction(.quiet).foregroundStyle(.secondary).disabled(renewingID != nil)
+                                .help("Forget saved access to \(folder.name)")
+                                .accessibilityLabel("Forget saved access to \(folder.name)")
                         }
                     }
                 }
-                .frame(height: min(140, CGFloat(insights.accessFolders.count) * 47))
+                if access.folders.count > 4 {
+                    Button(showingAll ? "Show fewer folders" : "Show all \(access.folders.count) folders") { showingAll.toggle() }
+                        .roomAction(.quiet).font(RoomTypography.caption)
+                }
+            }
+            if !access.unavailableFolders.isEmpty {
+                Divider()
+                Text("Needs attention").font(RoomTypography.bodyEmphasis).accessibilityAddTraits(.isHeader)
+                ForEach(access.unavailableFolders) { folder in
+                    VStack(alignment: .leading, spacing: RoomSpace.small) {
+                        HStack(alignment: .top, spacing: RoomSpace.compact) {
+                            Image(systemName: "folder.badge.questionmark").foregroundStyle(.secondary).accessibilityHidden(true)
+                            VStack(alignment: .leading, spacing: RoomSpace.micro) {
+                                Text(folder.name).font(RoomTypography.bodyEmphasis)
+                                Text(folder.reason).font(RoomTypography.caption).foregroundStyle(.secondary)
+                                if let path = folder.path { RoomPathLabel(path: path, lineLimit: 2) }
+                            }.frame(maxWidth: .infinity, alignment: .leading)
+                            if renewingID == folder.id { ProgressView().controlSize(.small) }
+                            Button("Renew") { renew(folder) }.roomAction(.secondary).disabled(renewingID != nil)
+                                .accessibilityLabel("Renew access to \(folder.name)")
+                            Button { access.forget(id: folder.id) } label: { Image(systemName: "minus.circle") }
+                                .roomAction(.quiet).foregroundStyle(.secondary).disabled(renewingID != nil)
+                                .help("Forget unavailable access to \(folder.name)")
+                                .accessibilityLabel("Forget unavailable access to \(folder.name)")
+                        }
+                    }
+                }
             }
             #if ROOM_APP_STORE
             if insights.hasRememberedHomeAccess {
                 Label("Home folder access remembered", systemImage: "checkmark.circle")
-                    .font(.system(size: 13)).foregroundStyle(.secondary)
+                    .font(RoomTypography.caption).foregroundStyle(.secondary)
             } else {
-                Button { insights.chooseHomeAccess() } label: {
-                    Label("Remember home folder", systemImage: "house")
-                }
-                .buttonStyle(.glass)
-                .accessibilityIdentifier("RoomRememberHomeFolderButton")
+                Button { insights.chooseHomeAccess() } label: { Label("Remember home folder", systemImage: "house") }
+                    .roomAction(.secondary).disabled(renewingID != nil)
+                    .accessibilityIdentifier("RoomRememberHomeFolderButton")
             }
-            Text("One read approval covers accessible subfolders and hidden files. macOS can still protect locations; other volumes need separate approval. Changes require a reviewed write grant.")
-                .font(.system(size: 12)).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            Text("Read approval covers accessible subfolders and hidden files. macOS can still protect locations. Other volumes need separate approval; changes need reviewed write access.")
+                .font(RoomTypography.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             #else
-            VStack(alignment: .leading, spacing: 10) {
-                Button { insights.openPrivacySettings() } label: {
-                    Label("Open Full Disk Access", systemImage: "lock.shield")
-                }
-                .buttonStyle(.glass)
-                .accessibilityIdentifier("RoomFullDiskAccessButton")
-                Text("Enable Room in macOS settings to inspect protected locations. Folder approvals stay remembered; macOS controls access.")
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            Button { insights.openPrivacySettings() } label: { Label("Open Full Disk Access", systemImage: "lock.shield") }
+                .roomAction(.secondary).accessibilityIdentifier("RoomFullDiskAccessButton")
+            Text("macOS controls protected locations. Saved folder approvals provide read access; changes require separate review.")
+                .font(RoomTypography.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             #endif
-            if let note = insights.accessNote {
-                Text(note).font(.system(size: 12)).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            if let note = access.note {
+                RoomStatusNotice(message: note)
             }
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func renew(_ folder: RoomUnavailableAccessFolder) {
+        renewingID = folder.id
+        Task {
+            defer { renewingID = nil }
+            let initial = folder.path.map { URL(fileURLWithPath: $0, isDirectory: true) }
+            guard let approved = await RoomNativeFolderPicker.shared.choose(
+                title: "Renew folder access",
+                message: "Choose the original folder to renew read-only access. Choosing a different folder replaces this saved entry. No files will move.",
+                prompt: "Renew Access", initialURL: initial) else { return }
+            do { try access.renew(id: folder.id, approvedURL: approved) }
+            catch { access.setNote("Access could not be renewed. Review this entry and choose the folder again.") }
+        }
     }
 }
 
@@ -451,79 +381,103 @@ struct RoomScanIssuesSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            RoomSheetHeading(title: "A few scan notes.", subtitle: "The rest of your results are still available.")
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    ForEach(Array(issues.enumerated()), id: \.offset) { _, issue in
-                        Text(issue).font(.system(size: 13)).textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
+        RoomSheetLayout(title: "Scan notes", subtitle: "The rest of your results are still available.") {
+            LazyVStack(alignment: .leading, spacing: RoomSpace.standard) {
+                ForEach(Array(issues.enumerated()), id: \.offset) { _, issue in
+                    RoomStatusNotice(message: issue, systemImage: "info.circle")
                 }
             }
-            .frame(maxHeight: 340)
-            HStack { Spacer(); Button("Done") { dismiss() }.buttonStyle(.glassProminent).keyboardShortcut(.defaultAction) }
-                .controlSize(.large)
+        } actions: {
+            Spacer()
+            Button("Done") { dismiss() }.roomAction(.primary).keyboardShortcut(.defaultAction)
         }
-        .padding(32)
-        .frame(width: 570)
     }
 }
 
 struct RoomActivityView: View {
     @Bindable var model: RoomViewModel
+    #if !ROOM_APP_STORE
+    @Bindable var agentWork: AgentWorkModel
+    @State private var filter = RoomActivityFilter.all
+    #endif
     #if ROOM_APP_STORE
     @State private var restoreReview: RoomActivity?
     #endif
+    @State private var isLoadingHistory = true
+
+    private var showsCaches: Bool {
+        #if ROOM_APP_STORE
+        true
+        #else
+        filter != .worktrees
+        #endif
+    }
+    private var hasVisibleRecords: Bool {
+        #if ROOM_APP_STORE
+        !model.activity.isEmpty
+        #else
+        (showsCaches && !model.activity.isEmpty) || (filter != .caches && !agentWork.receipts.isEmpty)
+        #endif
+    }
+    private var introduction: String {
+        #if ROOM_APP_STORE
+        "Review cleanup records and restore items still in Trash."
+        #else
+        "Cache cleanups and worktree recovery, in one place."
+        #endif
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Activity")
-                        .font(RoomType.heading(24))
-                    Text("Your cleanup history. Restore anything still in Trash.")
-                        .font(.system(size: 14)).foregroundStyle(.secondary)
-                }
-                Spacer()
+        VStack(alignment: .leading, spacing: RoomSpace.section) {
+            RoomPageHeader(title: "Activity", subtitle: introduction) {
                 Button { model.openTrash() } label: { Label("Open Trash", systemImage: "trash") }
-                    .buttonStyle(.glass)
-                    .controlSize(.large)
+                    .roomAction(.secondary).controlSize(.large)
             }
-
-            if model.activity.isEmpty {
-                ContentUnavailableView {
-                    Label("No cleanup history", systemImage: "clock.arrow.circlepath")
-                } description: {
-                    Text("Caches you move to Trash will appear here.")
-                }
-                .frame(maxWidth: .infinity, minHeight: 240)
+            #if !ROOM_APP_STORE
+            Picker("Activity type", selection: $filter) {
+                ForEach(RoomActivityFilter.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            }.pickerStyle(.segmented).labelsHidden().frame(width: 300)
+                .accessibilityLabel("Activity type").accessibilityIdentifier("RoomActivityTypePicker")
+            #endif
+            if isLoadingHistory {
+                ProgressView("Reading activity…").controlSize(.small).frame(maxWidth: .infinity, minHeight: 180)
+            } else if !hasVisibleRecords {
+                historyEmptyState
             } else {
-                VStack(alignment: .leading, spacing: 20) {
-                    ForEach(model.activity) { record in
-                        RoomActivityRow(record: record, isWorking: model.isWorking || model.isScanning) {
-                            #if ROOM_APP_STORE
-                            restoreReview = record
-                            #else
-                            Task { await model.restore(record: record) }
-                            #endif
+                if showsCaches && !model.activity.isEmpty {
+                    RoomSectionHeader(title: "Caches", detail: "\(model.activity.count)")
+                    LazyVStack(alignment: .leading, spacing: RoomSpace.standard) {
+                        ForEach(model.activity) { record in
+                            RoomActivityRow(record: record, isWorking: model.isWorking || model.isScanning) {
+                                #if ROOM_APP_STORE
+                                restoreReview = record
+                                #else
+                                Task { await model.restore(record: record) }
+                                #endif
+                            }
                         }
                     }
                 }
+                #if !ROOM_APP_STORE
+                if filter != .caches && !agentWork.receipts.isEmpty { RoomAgentHistoryView(model: agentWork) }
+                #endif
             }
-
-            Text("Disk space is released when you empty Trash in Finder.")
-                .font(.system(size: 13)).foregroundStyle(.secondary)
+            if model.statusMessage == nil {
+                RoomStatusNotice(message: "Disk space is released when you empty Trash in Finder.", systemImage: "trash")
+            }
             if model.isScanning {
-                Label("Cache scan in progress. Stop it in Clean to restore now.", systemImage: "magnifyingglass")
-                    .font(.system(size: 13)).foregroundStyle(.secondary)
+                RoomStatusNotice(message: "Cache scan in progress. Stop it in Clean to restore caches now.", systemImage: "magnifyingglass")
             }
             if let message = model.statusMessage, !message.isEmpty {
-                Text(message)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                    .accessibilityAddTraits(.updatesFrequently)
+                RoomStatusNotice(message: message).accessibilityAddTraits(.updatesFrequently)
             }
+        }
+        .task {
+            await model.refreshHistory()
+            #if !ROOM_APP_STORE
+            await agentWork.refreshHistory()
+            #endif
+            isLoadingHistory = false
         }
         #if ROOM_APP_STORE
         .sheet(item: $restoreReview, onDismiss: { model.discardStoreReview() }) { record in
@@ -531,7 +485,26 @@ struct RoomActivityView: View {
         }
         #endif
     }
+
+    @ViewBuilder private var historyEmptyState: some View {
+        #if ROOM_APP_STORE
+        RoomEmptyState(title: "No cleanup history", message: "Reviewed cache moves and recovery records appear here.", systemImage: "clock.arrow.circlepath")
+        #else
+        switch filter {
+        case .all:
+            RoomEmptyState(title: "No cleanup history", message: "Reviewed cache and worktree moves appear here, with their recovery records.", systemImage: "clock.arrow.circlepath")
+        case .caches:
+            RoomEmptyState(title: "No cache activity", message: "Caches you move to Trash will appear here.", systemImage: "trash")
+        case .worktrees:
+            RoomEmptyState(title: "No worktree activity", message: "Reviewed worktree moves and recovery records appear here.", systemImage: "point.3.connected.trianglepath.dotted")
+        }
+        #endif
+    }
 }
+
+#if !ROOM_APP_STORE
+private enum RoomActivityFilter: String, CaseIterable { case all = "All", caches = "Caches", worktrees = "Worktrees" }
+#endif
 
 private struct RoomActivityRow: View {
     let record: RoomActivity
@@ -540,24 +513,24 @@ private struct RoomActivityRow: View {
     @State private var expanded = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 15) {
-            HStack(spacing: 18) {
+        RoomContentGroup {
+            HStack(spacing: RoomSpace.standard) {
                 Image(systemName: record.canRestore ? "trash" : "arrow.uturn.backward")
                     .font(.system(size: 21)).foregroundStyle(.secondary)
                     .frame(width: 30)
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(record.title).font(.system(size: 14, weight: .medium))
+                    Text(record.title).font(RoomTypography.bodyEmphasis)
                     Text(record.date.formatted(date: .abbreviated, time: .shortened))
-                        .font(.system(size: 12)).foregroundStyle(.secondary)
+                        .font(RoomTypography.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 5) {
-                    Text(RoomFormat.bytes(record.bytes)).font(.system(size: 14)).monospacedDigit()
+                    Text(RoomFormat.bytes(record.bytes)).font(RoomTypography.body).monospacedDigit()
                     Text("\(record.itemCount) \(record.itemCount == 1 ? "item" : "items") · \(record.restoredCount) restored")
-                        .font(.system(size: 12)).foregroundStyle(.secondary)
+                        .font(RoomTypography.caption).foregroundStyle(.secondary)
                 }
                 Button("Restore", action: restore)
-                    .buttonStyle(.glass)
+                    .roomAction(.secondary)
                     .controlSize(.large)
                     .disabled(!record.canRestore || isWorking)
             }
@@ -567,37 +540,24 @@ private struct RoomActivityRow: View {
                     ForEach(record.details) { item in
                         VStack(alignment: .leading, spacing: 4) {
                             HStack {
-                                Text(item.name).font(.system(size: 13, weight: .medium))
+                                Text(item.name).font(RoomTypography.bodyEmphasis)
                                 Spacer()
                                 if item.isRestored {
-                                    Text("Restored").font(.system(size: 12)).foregroundStyle(.secondary)
+                                    Text("Restored").font(RoomTypography.caption).foregroundStyle(.secondary)
                                 }
                             }
-                            Text(item.message).font(.system(size: 12)).foregroundStyle(.secondary)
-                            Text(item.path).font(.system(size: 12, design: .monospaced)).foregroundStyle(.secondary).textSelection(.enabled)
+                            Text(item.message).font(RoomTypography.caption).foregroundStyle(.secondary)
+                            RoomPathLabel(path: item.path, lineLimit: 4)
                         }
                     }
                 }
                 .padding(.top, 12)
             } label: {
                 Text(record.errorCount > 0 ? "Review \(record.errorCount) \(record.errorCount == 1 ? "issue" : "issues") and item details" : "Item details")
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                    .font(RoomTypography.caption).foregroundStyle(.secondary)
             }
             .padding(.leading, 48)
         }
-        .padding(16)
-        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-    }
-}
-
-struct RoomSheetHeading: View {
-    let title: String
-    let subtitle: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            Text(title).font(RoomType.heading(24))
-            Text(subtitle).font(.system(size: 14)).foregroundStyle(.secondary)
-        }
+        .accessibilityElement(children: .contain)
     }
 }

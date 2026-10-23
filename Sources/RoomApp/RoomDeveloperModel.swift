@@ -32,6 +32,7 @@ final class RoomDeveloperModel {
     private struct RoleRecord: Codable, Equatable { let role: RoomDeveloperFolderRole; let folderID: String }
     private let access: RoomFileAccess
     private let defaults: UserDefaults
+    @ObservationIgnored private let sampleActivity: @Sendable () async -> DeveloperActivitySnapshot
     @ObservationIgnored private let scanResources: @Sendable (DeveloperResourcesRequest, (@Sendable (DeveloperResourcesProgress) -> Void)?) async -> DeveloperResourcesReport
     private let key = "RoomDeveloperFolderRoles"
     private var records: [RoleRecord]
@@ -44,8 +45,12 @@ final class RoomDeveloperModel {
     var errorMessage: String?
 
     init(access: RoomFileAccess = .shared, defaults: UserDefaults = .standard,
-         scanner: (@Sendable (DeveloperResourcesRequest, (@Sendable (DeveloperResourcesProgress) -> Void)?) async -> DeveloperResourcesReport)? = nil) {
+         scanner: (@Sendable (DeveloperResourcesRequest, (@Sendable (DeveloperResourcesProgress) -> Void)?) async -> DeveloperResourcesReport)? = nil,
+         activitySampler: (@Sendable () async -> DeveloperActivitySnapshot)? = nil) {
         self.access = access; self.defaults = defaults
+        if let activitySampler { self.sampleActivity = activitySampler }
+        else if scanner != nil { self.sampleActivity = { .unknown } }
+        else { self.sampleActivity = { await DeveloperResourcesEngine.activitySnapshot() } }
         let engine = DeveloperResourcesEngine()
         self.scanResources = scanner ?? { request, progress in await engine.scan(request: request, progress: progress) }
         records = defaults.data(forKey: key).flatMap { try? JSONDecoder().decode([RoleRecord].self, from: $0) } ?? []
@@ -56,8 +61,15 @@ final class RoomDeveloperModel {
             access.folders.first(where: { $0.id == record.folderID }).map { RoomDeveloperLocation(role: record.role, folder: $0) }
         }
     }
+    /// Exact saved bookmarks only; assigning one role never infers another scope.
+    func reusableFolders(for role: RoomDeveloperFolderRole) -> [RoomAccessFolder] {
+        let attached = Set(records.filter { $0.role == role }.map(\.folderID))
+        return access.folders.filter { !attached.contains($0.id) }.sorted {
+            $0.url.path == $1.url.path ? $0.id < $1.id : $0.url.path < $1.url.path
+        }
+    }
     var canScan: Bool { !locations.isEmpty && !isChoosingFolder }
-    var accessRevision: [String] { access.folders.map(\.id).sorted() }
+    var accessRevision: [String] { access.folders.map { $0.id + ":" + $0.url.path }.sorted() }
     var totalBytes: Int64 {
         guard let report else { return 0 }
         return RoomDeveloperPresentation.sum(report.androidDevices.map(\.allocatedBytes) + report.gradleResources.map(\.allocatedBytes))
@@ -94,7 +106,8 @@ final class RoomDeveloperModel {
     func attach(role: RoomDeveloperFolderRole, to folderID: String) {
         guard !isScanning, access.folders.contains(where: { $0.id == folderID }) else { return }
         let record = RoleRecord(role: role, folderID: folderID)
-        if !records.contains(record) { records.append(record); persist() }
+        guard !records.contains(record) else { return }
+        records.append(record); persist()
         report = nil
     }
 
@@ -114,23 +127,30 @@ final class RoomDeveloperModel {
         guard canScan, !isScanning else { return }
         let current = locations
         let approved = Dictionary(grouping: current.map(\.folder.url), by: \.path).compactMap { $0.value.first }
-        let request = DeveloperResourcesRequest(approvedFolders: approved,
-            avdRoots: current.filter { $0.role == .android }.map(\.folder.url),
-            gradleHomes: current.filter { $0.role == .gradle }.map(\.folder.url),
-            projectRoots: current.filter { $0.role == .project }.map(\.folder.url))
         let token = UUID(); generation = token
         isScanning = true; errorMessage = nil; progress = "Preparing review…"
         let scanner = scanResources
+        let activitySampler = sampleActivity
         task = Task { [weak self] in
             let scopes = approved.filter { $0.startAccessingSecurityScopedResource() }
             defer { scopes.forEach { $0.stopAccessingSecurityScopedResource() } }
+            let activity = await activitySampler()
+            guard let self, self.generation == token else { return }
+            guard !Task.isCancelled else {
+                self.isScanning = false; self.task = nil; self.progress = "Stopped · no resource scan started"
+                return
+            }
+            let request = DeveloperResourcesRequest(approvedFolders: approved,
+                avdRoots: current.filter { $0.role == .android }.map(\.folder.url),
+                gradleHomes: current.filter { $0.role == .gradle }.map(\.folder.url),
+                projectRoots: current.filter { $0.role == .project }.map(\.folder.url), activity: activity)
             let result = await scanner(request) { [weak self] update in
                 Task { @MainActor [weak self] in
                     guard let self, self.generation == token else { return }
                     self.progress = "\(update.phase) · \(update.inspectedCount.formatted()) items"
                 }
             }
-            guard let self, self.generation == token else { return }
+            guard self.generation == token else { return }
             self.report = result; self.isScanning = false; self.task = nil
             self.progress = result.cancelled ? "Stopped · partial review" : (result.isPartial ? "Partial review" : "Review complete")
         }

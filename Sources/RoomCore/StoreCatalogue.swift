@@ -5,7 +5,8 @@ extension CacheConfiguration {
     /// A sandboxed catalogue is built only from explicitly approved physical
     /// folders. Construction never enumerates a directory or probes a known
     /// cache path outside those approvals. Unknown selected data is inspect-only.
-    public static func store(approvedFolders: [URL], userHome: URL) -> CacheConfiguration {
+    public static func store(approvedFolders: [URL], userHome: URL,
+                             npmContinuation: String? = nil) -> CacheConfiguration {
         let home = userHome.roomLexicallyNormalized
         guard userHome.isFileURL, home.path != "/" else {
             return CacheConfiguration(roots: [], homeDirectory: home,
@@ -63,8 +64,11 @@ extension CacheConfiguration {
         let protected = base.protectedLocations.filter { location in
             folders.contains { StoreFolderBoundary.contains(location.url, in: $0) }
         }
+        var npmDiscovery: NPMDiscoveryCoverage? = nil
         #if ROOM_APP_STORE
-        let npm = StoreNPMCatalogue.discover(approvedFolders: folders, userHome: home)
+        let npm = StoreNPMCatalogue.discover(approvedFolders: folders, userHome: home,
+                                             continuation: npmContinuation)
+        npmDiscovery = npm.coverage
         issues.append(contentsOf: npm.issues)
         // The mutable parent remains visible as inventory. Only independently
         // verified immutable leaves have the exception; no index/tmp bucket can move.
@@ -96,7 +100,46 @@ extension CacheConfiguration {
                 inspectionNodeLimit: 25_000, inspectionTimeLimit: 2))
         }
         return CacheConfiguration(roots: roots, protectedLocations: protected,
-            homeDirectory: home, inspectionIssues: issues, readAccessRoots: folders)
+            homeDirectory: home, inspectionIssues: issues, readAccessRoots: folders,
+            npmDiscovery: npmDiscovery)
+    }
+
+    /// Reconstructs only exact known npm parents after the native recovery review
+    /// has approved them. Recovery must not depend on which discovery page would
+    /// currently contain a receipt's bucket. This does not discover children,
+    /// accept an ancestor in place of a bucket, or preserve old cleanup IDs.
+    /// CacheEngine still authenticates the persisted receipt, parents, contents,
+    /// exact Trash item and destination immediately before returning anything.
+    public static func storeRecovery(approvedParentFolders: [URL], userHome: URL) -> CacheConfiguration {
+        let home = userHome.roomLexicallyNormalized
+        guard userHome.isFileURL, home.path != "/" else {
+            return CacheConfiguration(roots: [], homeDirectory: home,
+                inspectionIssues: [ScanIssue(url: home, message: "Choose a valid user home before reviewing recovery access.")],
+                readAccessRoots: [])
+        }
+        let base = home.appendingPathComponent(".npm/_cacache/content-v2/sha512", isDirectory: true)
+        var issues: [ScanIssue] = []
+        var roots: [String: CacheRoot] = [:]
+        for supplied in approvedParentFolders {
+            let folder = supplied.roomLexicallyNormalized
+            guard supplied.isFileURL,
+                  folder.deletingLastPathComponent().deletingLastPathComponent().path == base.path,
+                  let prefixes = NPMContentPolicy.bucketPrefixes(folder),
+                  StoreFolderBoundary.isPhysicalOwnedDirectory(folder, requireSafePermissions: true) else {
+                issues.append(ScanIssue(url: folder, message: "Recovery needs the exact original physical npm SHA512 bucket. Broad folders, linked folders, unsafe permissions and other locations cannot replace this approval."))
+                continue
+            }
+            // Do not collapse these parents beneath an existing broad read
+            // bookmark or apply discovery's 32-folder / 256-bucket page limits.
+            roots[folder.path] = CacheRoot(id: "store-npm-sha512-\(prefixes.0)-\(prefixes.1)",
+                title: "npm downloads · \(prefixes.0)/\(prefixes.1)", subtitle: folder.path,
+                symbol: "shippingbox", category: "developer", url: folder,
+                consequence: NPMContentPolicy.consequence, minimumAge: NPMContentPolicy.minimumAge,
+                inspectionNodeLimit: 4_096, inspectionTimeLimit: 8, contentValidation: .npmSHA512)
+        }
+        let exactRoots = roots.values.sorted { $0.url.path < $1.url.path }
+        return CacheConfiguration(roots: exactRoots, homeDirectory: home,
+            inspectionIssues: issues, readAccessRoots: exactRoots.map(\.url))
     }
 }
 
@@ -105,7 +148,7 @@ private enum StoreFolderBoundary {
         child.path == parent.path || child.path.hasPrefix(parent.path + "/")
     }
 
-    static func isPhysicalOwnedDirectory(_ url: URL) -> Bool {
+    static func isPhysicalOwnedDirectory(_ url: URL, requireSafePermissions: Bool = false) -> Bool {
         var fd = open("/", O_SEARCH | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         guard fd >= 0 else { return false }
         defer { close(fd) }
@@ -117,5 +160,6 @@ private enum StoreFolderBoundary {
         var info = stat()
         return fstat(fd, &info) == 0 && info.st_uid == getuid()
             && info.st_mode & UInt16(S_IFMT) == UInt16(S_IFDIR)
+            && (!requireSafePermissions || info.st_mode & 0o022 == 0)
     }
 }

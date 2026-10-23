@@ -53,6 +53,10 @@ public struct MemoryReport: Identifiable, Sendable {
 public actor MemoryEngine {
     public init() { }
 
+    /// Retain enough exact PIDs for app/resource attribution; presentation owns
+    /// its top-N list. The cap bounds observations without inventing app totals.
+    public static let processSampleLimit = 4_096
+
     public func scan() async -> MemoryReport {
         let scannedAt = Date()
         var issues: [String] = []
@@ -177,7 +181,7 @@ public actor MemoryEngine {
             return MemoryProcess(id: pid, name: name, residentBytes: kibibytes * 1024)
         }.sorted {
             $0.residentBytes == $1.residentBytes ? $0.id < $1.id : $0.residentBytes > $1.residentBytes
-        }.prefix(12).map { $0 }
+        }.prefix(processSampleLimit).map { $0 }
     }
 
     static func recommendations(pressure: MemoryPressure, totalBytes: Int64,

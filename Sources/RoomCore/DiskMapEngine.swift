@@ -14,11 +14,13 @@ public struct DiskMapItem: Identifiable, Equatable, Sendable {
     public let modifiedAt: Date?
     public let categoryAllocatedBytes: [StorageCategory: Int64]
     public let hiddenAllocatedBytes: Int64
+    public let hiddenCategoryAllocatedBytes: [StorageCategory: Int64]
 
     public init(url: URL, name: String, isDirectory: Bool, allocatedBytes: Int64,
                 logicalBytes: Int64, fileCount: Int, category: StorageCategory? = nil,
                 isHidden: Bool? = nil, modifiedAt: Date? = nil,
-                categoryAllocatedBytes: [StorageCategory: Int64] = [:], hiddenAllocatedBytes: Int64 = 0) {
+                categoryAllocatedBytes: [StorageCategory: Int64] = [:], hiddenAllocatedBytes: Int64 = 0,
+                hiddenCategoryAllocatedBytes: [StorageCategory: Int64] = [:]) {
         self.id = url.path
         self.url = url
         self.name = name
@@ -31,6 +33,7 @@ public struct DiskMapItem: Identifiable, Equatable, Sendable {
         self.modifiedAt = modifiedAt
         self.categoryAllocatedBytes = categoryAllocatedBytes
         self.hiddenAllocatedBytes = hiddenAllocatedBytes
+        self.hiddenCategoryAllocatedBytes = hiddenCategoryAllocatedBytes
     }
 }
 
@@ -56,16 +59,19 @@ public struct DiskMapReport: Identifiable, Equatable, Sendable {
     public let hiddenAllocatedBytes: Int64
     public let hiddenLogicalBytes: Int64
     public let hiddenFileCount: Int
+    public let hiddenCategoryAllocatedBytes: [StorageCategory: Int64]
 
     public init(id: UUID, url: URL, scannedAt: Date, children: [DiskMapItem], largestFiles: [DiskMapItem],
                 allocatedBytes: Int64, logicalBytes: Int64, fileCount: Int, issues: [ScanIssue],
                 cancelled: Bool, isPartial: Bool, categories: [StorageCategorySummary] = [],
-                hiddenAllocatedBytes: Int64 = 0, hiddenLogicalBytes: Int64 = 0, hiddenFileCount: Int = 0) {
+                hiddenAllocatedBytes: Int64 = 0, hiddenLogicalBytes: Int64 = 0, hiddenFileCount: Int = 0,
+                hiddenCategoryAllocatedBytes: [StorageCategory: Int64] = [:]) {
         self.id = id; self.url = url; self.scannedAt = scannedAt; self.children = children
         self.largestFiles = largestFiles; self.allocatedBytes = allocatedBytes; self.logicalBytes = logicalBytes
         self.fileCount = fileCount; self.issues = issues; self.cancelled = cancelled; self.isPartial = isPartial
         self.categories = categories; self.hiddenAllocatedBytes = hiddenAllocatedBytes
         self.hiddenLogicalBytes = hiddenLogicalBytes; self.hiddenFileCount = hiddenFileCount
+        self.hiddenCategoryAllocatedBytes = hiddenCategoryAllocatedBytes
     }
 }
 
@@ -178,7 +184,7 @@ private struct DiskMapWalker {
                 return StorageCategorySummary(category: category, allocatedBytes: counts.allocatedBytes,
                     logicalBytes: counts.logicalBytes, fileCount: counts.fileCount)
             }, hiddenAllocatedBytes: measured.hiddenAllocatedBytes, hiddenLogicalBytes: measured.hiddenLogicalBytes,
-            hiddenFileCount: measured.hiddenFileCount)
+            hiddenFileCount: measured.hiddenFileCount, hiddenCategoryAllocatedBytes: measured.hiddenCategories)
     }
 
     private mutating func scanDirectory(_ descriptor: Int32, url: URL, expected: DiskMetadata,
@@ -294,7 +300,8 @@ private struct DiskMapWalker {
         DiskMapItem(url: url, name: url.lastPathComponent, isDirectory: isDirectory,
             allocatedBytes: totals.allocatedBytes, logicalBytes: totals.logicalBytes, fileCount: totals.fileCount,
             isHidden: isHidden, modifiedAt: modifiedAt,
-            categoryAllocatedBytes: totals.categories.mapValues(\.allocatedBytes), hiddenAllocatedBytes: totals.hiddenAllocatedBytes)
+            categoryAllocatedBytes: totals.categories.mapValues(\.allocatedBytes), hiddenAllocatedBytes: totals.hiddenAllocatedBytes,
+            hiddenCategoryAllocatedBytes: totals.hiddenCategories)
     }
 
     private mutating func recordIssue(_ url: URL, _ message: String) {
@@ -346,18 +353,20 @@ private struct DiskTotals {
     var hiddenAllocatedBytes: Int64 = 0
     var hiddenLogicalBytes: Int64 = 0
     var hiddenFileCount: Int = 0
+    var hiddenCategories: [StorageCategory: Int64] = [:]
 
     static func file(allocatedBytes: Int64, logicalBytes: Int64, category: StorageCategory, isHidden: Bool) -> DiskTotals {
         DiskTotals(allocatedBytes: allocatedBytes, logicalBytes: logicalBytes, fileCount: 1,
             categories: [category: DiskCategoryTotals(allocatedBytes: allocatedBytes, logicalBytes: logicalBytes, fileCount: 1)],
             hiddenAllocatedBytes: isHidden ? allocatedBytes : 0, hiddenLogicalBytes: isHidden ? logicalBytes : 0,
-            hiddenFileCount: isHidden ? 1 : 0)
+            hiddenFileCount: isHidden ? 1 : 0, hiddenCategories: isHidden ? [category: allocatedBytes] : [:])
     }
 
     mutating func add(_ other: DiskTotals) {
         allocatedBytes += other.allocatedBytes; logicalBytes += other.logicalBytes; fileCount += other.fileCount
         hiddenAllocatedBytes += other.hiddenAllocatedBytes; hiddenLogicalBytes += other.hiddenLogicalBytes
         hiddenFileCount += other.hiddenFileCount
+        for (category, bytes) in other.hiddenCategories { hiddenCategories[category, default: 0] += bytes }
         for (category, counts) in other.categories {
             var current = categories[category] ?? DiskCategoryTotals()
             current.allocatedBytes += counts.allocatedBytes; current.logicalBytes += counts.logicalBytes

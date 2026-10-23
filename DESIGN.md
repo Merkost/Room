@@ -24,7 +24,24 @@ Memory leads with measured usage, actual pressure, and the refresh action. Compr
 
 Disk Map gives the largest area to the actual folder map. Keep one clear folder context, labeled Scan/Rescan/Stop, category evidence, and hidden-file controls. Developer resources group related rows, align sizes to one trailing edge, and expose uncertainty about use and project references.
 
-Navigation uses stable targets. Keep the product identity, five destinations, and settings aligned without duplicate enclosures. The menu-bar popup uses the same type, spacing, metric meanings, and action hierarchy as the app.
+Navigation uses stable targets: Clean, Memory, Disk Map, Activity, Developer, and Agent work in the direct edition. Store has the first five. Number shortcuts follow their visual order. Keep the product identity, destinations, and settings aligned without duplicate enclosures. The menu-bar popup uses the same type, spacing, metric meanings, and action hierarchy as the app.
+
+## Shared components
+
+`Sources/RoomApp/DesignSystem` is the presentation source of truth. Reuse its semantic roles rather than adding a second token scale or a screen-specific version of a shared component.
+
+| Component | Contract |
+| --- | --- |
+| `RoomTypography`, `RoomSpace`, `RoomRadius`, `RoomSurface` | Native system typography, a 4–28 pt spacing scale, semantic opaque working surfaces, and accessible selection/hover treatment. |
+| `RoomPageHeader`, `RoomSectionHeader` | One heading with contextual actions; stack complete groups before labels compress. Expose heading semantics. |
+| `RoomMetric`, `RoomByteMetric` | Keep value/unit together, distinguish unavailable from zero, and expose lower-bound measurements visually and to accessibility. |
+| `RoomContentGroup`, `RoomPathLabel` | Group related work with a 16 pt inset. Paths remain selectable and fully available to accessibility. |
+| `RoomStatusNotice`, `RoomEmptyState` | Consistent feedback, a clear explanation, and a useful next action. Meaning never depends on color alone. |
+| `RoomSheetLayout` | Fixed heading and native action footer around one scrollable body. Preserve default/cancel keys and operation-specific dismissal guards. |
+| `RoomSelectionCheckbox` | Native off/on/mixed state and keyboard focus. Choosing a mixed source selects all eligible items; a full source can be cleared. |
+| `roomAction`, `RoomMotionPolicy` | Native primary/secondary/quiet actions. App motion preference and system Reduce Motion jointly govern custom transitions. |
+
+Domain-specific maps, charts, emulator graphics, and repository evidence remain purpose-built. They consume shared roles without being forced into a generic card. A selected item retains its original scan identity and partial status; an open sheet must not silently inherit evidence from another scan.
 
 ## Interaction and truth
 

@@ -188,7 +188,9 @@ public enum StorageAnalyzer {
         for system in ["/System", "/Library", "/bin", "/sbin", "/usr", "/private"] where contains(url, in: URL(fileURLWithPath: system)) {
             // User-selected fixture/private paths are not automatically OS state;
             // protect actual system subtrees rather than all /private/tmp work.
-            if system == "/private", !lower.hasPrefix("/private/var/db/") && !lower.hasPrefix("/private/etc/") { continue }
+            if system == "/private",
+               !contains(URL(fileURLWithPath: lower), in: URL(fileURLWithPath: "/private/var/db")) &&
+               !contains(URL(fileURLWithPath: lower), in: URL(fileURLWithPath: "/private/etc")) { continue }
             return "System-managed data. Keep it protected and use macOS or the owning app to manage it."
         }
         let home = configuration.homeDirectory

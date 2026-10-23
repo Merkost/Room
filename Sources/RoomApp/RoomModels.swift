@@ -1,6 +1,11 @@
 import Foundation
 
-enum RoomDestination: Hashable { case clean, memory, disk, developer, activity }
+enum RoomDestination: Hashable {
+    case clean, memory, disk, developer, activity
+    #if !ROOM_APP_STORE
+    case agentWork
+    #endif
+}
 
 enum RoomCacheScanScope: String, CaseIterable, Identifiable, Sendable {
     case full, quick
@@ -21,6 +26,15 @@ struct RoomSourceEntry: Identifiable, Sendable {
     let path: String
     let bytes: Int64
     let reason: String?
+}
+
+/// A real eligible unit from the completed engine report. Presentation never
+/// invents cleanup identifiers or promotes an inspection-only entry.
+struct RoomCleanupCandidate: Identifiable, Sendable {
+    let id: UUID
+    let name: String
+    let path: String
+    let bytes: Int64
 }
 
 enum RoomCategory: String, CaseIterable, Identifiable, Sendable {

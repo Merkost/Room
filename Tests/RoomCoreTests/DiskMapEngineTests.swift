@@ -387,3 +387,39 @@ private final class DiskMutationState: Sendable {
     }
     func record(_ error: String) { state.withLock { $0.error = error } }
 }
+
+@Suite("Hidden category intersections")
+struct DiskHiddenCategoryTests {
+    @Test("Hidden and category filters use measured intersections, including hidden descendants")
+    func hiddenCategoriesRemainIndependent() async throws {
+        let root = URL(fileURLWithPath: "/private/tmp/Room-HiddenCategory-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+        func file(_ path: String, count: Int) throws -> URL {
+            let url = root.appendingPathComponent(path)
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data(repeating: 0x52, count: count).write(to: url)
+            return url
+        }
+        func allocated(_ url: URL) throws -> Int64 {
+            var value = stat()
+            #expect(lstat(url.path, &value) == 0)
+            return Int64(value.st_blocks) * 512
+        }
+        let first = try file(".hidden/notes.md", count: 8192)
+        let second = try file("mixed/.draft.md", count: 12288)
+        let hiddenArchive = try file("mixed/.download.zip", count: 20480)
+        _ = try file("mixed/archive.zip", count: 16384)
+        _ = try file("mixed/photo.png", count: 24576)
+        let report = await DiskMapEngine().scan(url: root)
+        #expect(!report.isPartial)
+        #expect(report.hiddenCategoryAllocatedBytes[.documents] == (try allocated(first) + allocated(second)))
+        #expect(report.hiddenCategoryAllocatedBytes[.archives] == (try allocated(hiddenArchive)))
+        #expect(report.hiddenCategoryAllocatedBytes[.media] == nil)
+        #expect(report.hiddenCategoryAllocatedBytes.values.reduce(0, +) == report.hiddenAllocatedBytes)
+        let mixed = try #require(report.children.first { $0.name == "mixed" })
+        #expect(mixed.hiddenCategoryAllocatedBytes[.documents] == (try allocated(second)))
+        #expect(mixed.hiddenCategoryAllocatedBytes[.archives] == (try allocated(hiddenArchive)))
+        #expect(mixed.hiddenCategoryAllocatedBytes.values.reduce(0, +) == mixed.hiddenAllocatedBytes)
+    }
+}

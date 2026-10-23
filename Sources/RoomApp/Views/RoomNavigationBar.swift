@@ -10,18 +10,23 @@ struct RoomNavigationBar: View {
     @Namespace private var selectionGlass
     @FocusState private var focusedDestination: RoomDestination?
     @State private var hoveredDestination: RoomDestination?
+    var motion = RoomMotionPolicy()
 
     private var selectionAnimation: Animation? {
-        motionEnabled && !reduceMotion ? .smooth(duration: 0.22) : nil
+        motion.selection
     }
     private var items: [NavigationItem] {
-        [
-            NavigationItem(destination: .clean, title: "Clean", symbol: "sparkles", shortcut: "1"),
+        var result = [
+            NavigationItem(destination: .clean, title: "Clean", symbol: "internaldrive", shortcut: "1"),
             NavigationItem(destination: .memory, title: "Memory", symbol: "memorychip", shortcut: "2"),
             NavigationItem(destination: .disk, title: "Disk Map", symbol: "square.grid.2x2", shortcut: "3"),
-            NavigationItem(destination: .developer, title: "Developer", symbol: "shippingbox", shortcut: "5"),
-            NavigationItem(destination: .activity, title: "Activity", symbol: "clock.arrow.circlepath", shortcut: "4")
+            NavigationItem(destination: .activity, title: "Activity", symbol: "clock.arrow.circlepath", shortcut: "4"),
+            NavigationItem(destination: .developer, title: "Developer", symbol: "shippingbox", shortcut: "5")
         ]
+        #if !ROOM_APP_STORE
+        result.append(NavigationItem(destination: .agentWork, title: "Agent work", symbol: "point.3.connected.trianglepath.dotted", shortcut: "6"))
+        #endif
+        return result
     }
 
     var body: some View {
@@ -53,10 +58,10 @@ struct RoomNavigationBar: View {
         return Button { select(item.destination) } label: {
             HStack(spacing: 6) {
                 if presentation != .labelsOnly {
-                    Image(systemName: item.symbol).font(.system(size: 13, weight: .medium)).frame(width: 16)
+                    Image(systemName: item.symbol).font(RoomTypography.bodyEmphasis).frame(width: 16)
                 }
                 if presentation != .iconsOnly {
-                    Text(item.title).font(.system(size: 12, weight: .medium)).lineLimit(1)
+                    Text(item.title).font(RoomTypography.captionEmphasis).lineLimit(1)
                 }
             }
             .foregroundStyle(selected ? .primary : .secondary)
@@ -126,6 +131,9 @@ private struct NavigationItem: Identifiable {
         case .disk: "disk"
         case .developer: "developer"
         case .activity: "activity"
+        #if !ROOM_APP_STORE
+        case .agentWork: "agentWork"
+        #endif
         }
     }
 }

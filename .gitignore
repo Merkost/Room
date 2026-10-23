@@ -21,5 +21,6 @@ docs/*
 !docs/ARCHITECTURE.md
 !docs/RELEASE.md
 !docs/APP_STORE.md
+!docs/INTERFACE-REVIEW.md
 xcuserdata/
 *.xcuserstate

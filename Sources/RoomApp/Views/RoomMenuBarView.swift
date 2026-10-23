@@ -9,8 +9,7 @@ struct RoomMenuBarView: View {
     @AppStorage("RoomMenuBarMetric") private var metric = RoomMonitorMetric.memory.rawValue
     @AppStorage("RoomMonitorShowPressure") private var showPressure = true
     @AppStorage("RoomMonitorShowSwap") private var showSwap = true
-    @AppStorage("RoomMotionEnabled") private var motionEnabled = true
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    var motion = RoomMotionPolicy()
     private var selectedMetric: RoomMonitorMetric { RoomMonitorMetric(rawValue: metric) ?? .memory }
     private var memory: RoomMonitorPresentation {
         let report = insights.memoryReport
@@ -26,13 +25,20 @@ struct RoomMenuBarView: View {
         #endif
         return "Scan caches"
     }
+    private var cacheUnavailableReason: String? {
+        guard !cacheModel.canScan else { return nil }
+        #if ROOM_APP_STORE
+        if cacheModel.isPreparingStoreReview { return "Folder checks are in progress. Scan when this review is ready." }
+        #endif
+        return "Finish the current file operation or folder approval before scanning."
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: RoomSpace.standard) {
+            HStack(spacing: RoomSpace.compact) {
                 RoomMark().fill(.secondary, style: FillStyle(eoFill: true))
                     .frame(width: 19, height: 19).accessibilityHidden(true)
-                Text("Room").font(.system(size: 16, weight: .semibold))
+                Text("Room").font(RoomTypography.sectionTitle)
                 Spacer()
                 if insights.isScanningMemory { ProgressView().controlSize(.small) }
                 Button {
@@ -47,7 +53,7 @@ struct RoomMenuBarView: View {
             .pickerStyle(.segmented).labelsHidden()
             .accessibilityIdentifier("RoomMonitorMetricPicker")
 
-            VStack(spacing: 18) {
+            VStack(spacing: RoomSpace.standard) {
                 if selectedMetric == .memory {
                     memoryCard
                     Divider()
@@ -64,7 +70,7 @@ struct RoomMenuBarView: View {
             if memoryActions.selectedCount > 0 {
                 Button { show(.memory) } label: {
                     Label("\(memoryActions.selectedCount) selected for review", systemImage: "checkmark.circle")
-                        .font(.system(size: 13)).foregroundStyle(.secondary)
+                        .font(RoomTypography.body).foregroundStyle(.secondary)
                 }.buttonStyle(.plain)
             }
             #endif
@@ -77,12 +83,25 @@ struct RoomMenuBarView: View {
                 Spacer(minLength: 0)
                 Button("Open Room") { openRoom() }.buttonStyle(.glassProminent)
             }.controlSize(.regular)
-            if let date = insights.memoryReport?.scannedAt {
-                Text("Updated \(date, style: .relative) ago").font(.system(size: 12)).foregroundStyle(.secondary)
+            if let reason = cacheUnavailableReason {
+                RoomStatusNotice(message: reason, systemImage: "clock")
+            }
+            HStack(alignment: .firstTextBaseline, spacing: RoomSpace.compact) {
+                if let date = insights.memoryReport?.scannedAt {
+                    Text("Memory sampled \(date, style: .relative) ago")
+                        .font(RoomTypography.caption).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                Button { show(.settings) } label: {
+                    Label("Settings", systemImage: "slider.horizontal.3")
+                        .font(RoomTypography.caption)
+                }
+                .buttonStyle(.plain).fixedSize()
+                .accessibilityIdentifier("RoomMonitorSettingsButton")
             }
         }
         .padding(20).frame(width: 332)
-        .animation(motionEnabled && !reduceMotion ? .smooth(duration: 0.22) : nil, value: selectedMetric)
+        .animation(motion.selection, value: selectedMetric)
         .task {
             memoryActions.refresh(from: insights.memoryReport)
             if insights.memoryReport == nil { insights.scanMemory() }
@@ -104,32 +123,33 @@ struct RoomMenuBarView: View {
                 }.frame(width: 42, height: 42).accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
-                        Text("Memory").font(.system(size: 14, weight: .medium))
+                        Text("Memory").font(RoomTypography.bodyEmphasis)
                         Spacer()
-                        if memory.fraction != nil { Text(memory.value).font(.system(size: 14, weight: .medium)).monospacedDigit() }
+                        if memory.fraction != nil { Text(memory.value).font(RoomTypography.bodyEmphasis).monospacedDigit() }
                     }
                     if let report = insights.memoryReport, memory.fraction != nil {
                         Text("of \(RoomFormat.memoryBytes(report.totalBytes)) physical RAM")
-                            .font(.system(size: 12)).foregroundStyle(.secondary)
+                            .font(RoomTypography.caption).foregroundStyle(.secondary)
                         if showPressure {
                             HStack(spacing: 6) {
                                 Circle().fill(memory.tone.color).frame(width: 5, height: 5)
                                 Text(RoomMonitorPresentation.pressureTitle(report.pressure))
-                            }.font(.system(size: 12)).foregroundStyle(memory.tone.color)
+                            }.font(RoomTypography.caption).foregroundStyle(.primary)
                         }
                         if showSwap {
                             Text(RoomMonitorPresentation.measuredSwap(report).map { "\(RoomFormat.memoryBytes($0)) swap used" } ?? "Swap unavailable")
-                                .font(.system(size: 12)).monospacedDigit().foregroundStyle(memory.tone.color)
+                                .font(RoomTypography.caption).monospacedDigit().foregroundStyle(.secondary)
                         }
                     } else {
                         Text(insights.isScanningMemory ? "Reading your Mac…" : "Measurement unavailable")
-                            .font(.system(size: 12)).foregroundStyle(.secondary)
+                            .font(RoomTypography.caption).foregroundStyle(.secondary)
                     }
                 }
-                Image(systemName: "chevron.right").font(.system(size: 11, weight: .medium)).foregroundStyle(.tertiary)
+                Image(systemName: "chevron.right").font(RoomTypography.meta).foregroundStyle(.tertiary)
             }.contentShape(Rectangle())
         }
-        .buttonStyle(.plain).accessibilityLabel("Open memory overview").accessibilityValue(memory.detail)
+        .buttonStyle(.plain).accessibilityElement(children: .ignore)
+        .accessibilityLabel("Open memory overview").accessibilityValue(memory.detail)
     }
 
     private var storageCard: some View {
@@ -139,18 +159,19 @@ struct RoomMenuBarView: View {
                     .frame(width: 42, height: 42).foregroundStyle(.secondary)
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
-                        Text("Startup disk").font(.system(size: 14, weight: .medium))
+                        Text("Startup disk").font(RoomTypography.bodyEmphasis)
                         Spacer()
-                        if storage.fraction != nil { Text(storage.value).font(.system(size: 14, weight: .medium)).monospacedDigit() }
+                        if storage.fraction != nil { Text(storage.value).font(RoomTypography.bodyEmphasis).monospacedDigit() }
                     }
                     Text(storage.fraction == nil ? "Free space unavailable" : "available")
-                        .font(.system(size: 12)).foregroundStyle(.secondary)
+                        .font(RoomTypography.caption).foregroundStyle(.secondary)
                     if let fraction = storage.fraction { ProgressView(value: fraction).tint(.secondary).controlSize(.small) }
                 }
-                Image(systemName: "chevron.right").font(.system(size: 11, weight: .medium)).foregroundStyle(.tertiary)
+                Image(systemName: "chevron.right").font(RoomTypography.meta).foregroundStyle(.tertiary)
             }.contentShape(Rectangle())
         }
-        .buttonStyle(.plain).accessibilityLabel("Open Disk Map").accessibilityValue(storage.detail)
+        .buttonStyle(.plain).accessibilityElement(children: .ignore)
+        .accessibilityLabel("Open Disk Map").accessibilityValue(storage.detail)
     }
     private func show(_ destination: RoomInsightDestination) { insights.requestedDestination = destination; openRoom() }
 }

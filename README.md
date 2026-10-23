@@ -36,7 +36,11 @@ Cache cleanup holds unknown files, credentials, installed resources, and project
 
 As of 22 October 2026, **Store 1.0.0 (5)** has been distribution-signed, uploaded, processed, and attached in App Store Connect. The English listing, six screenshots, and a 26-second native app preview are attached. Apple confirmed **Waiting for Review** on 22 October 2026. **Direct 1.8.0 (13)** passed its release build and native Scan/Stop checks. The website will show public Store availability after release.
 
-Fresh tests passed for both editions: **186 Direct tests** and **171 Store tests**. Native Store 5 cleanup, Quit/relaunch, a fresh recovery write grant, and exact-byte Restore passed using disposable data. See [release evidence and boundaries](docs/RELEASE.md).
+At that 22 October checkpoint, **186 Direct tests** and **171 Store tests** passed. Native Store 5 cleanup, Quit/relaunch, a fresh recovery write grant, and exact-byte Restore passed using disposable data. See [release evidence and boundaries](docs/RELEASE.md).
+
+## Development
+
+**Direct 1.9.0 (14)** and **Store 1.1.0 (6)** are unreleased interface-system candidates. On 23 October 2026, 222 Direct tests and 219 Store tests passed, together with both optimized builds. See the [interface review](docs/INTERFACE-REVIEW.md) for the shared native components, screen changes, regression coverage, and remaining native acceptance. These candidates are separate from the dated release evidence above.
 
 ## Build
 
@@ -54,7 +58,7 @@ swift test
 ROOM_EDITION=store swift test
 ```
 
-The build scripts produce local candidates. Store distribution uses the separate [archive/export workflow](scripts/STORE-ARCHIVE.md) and requires the publisher’s signing assets. Tests use isolated fixtures; some exercise macOS Trash with their own temporary files.
+The build scripts produce local candidates. Store distribution uses the separate [archive/export workflow](scripts/STORE-ARCHIVE.md) and requires the publisher’s signing assets. Tests use isolated fixtures; some exercise macOS Trash with their own temporary files. A read-only memory sanity check also samples the host.
 
 ## Design and architecture
 

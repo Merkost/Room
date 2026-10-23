@@ -6,12 +6,75 @@ import Foundation
 public actor DeveloperResourcesEngine {
     public init() { }
 
+    /// Reads the same bounded cwd/open-file evidence used by worktree review.
+    /// Incomplete coverage is never converted into an unused-resource verdict.
+    public static func activitySnapshot() async -> DeveloperActivitySnapshot {
+        #if ROOM_APP_STORE
+        return .unknown
+        #else
+        do {
+            let sample = try await AgentProcesses.read()
+            let groups = Dictionary(grouping: sample.paths, by: \.pid)
+            let processes = groups.keys.sorted().prefix(4_096).compactMap { pid -> DeveloperResourceProcess? in
+                guard let paths = groups[pid], let first = paths.first else { return nil }
+                return DeveloperResourceProcess(processID: pid, name: first.name, paths: paths.map(\.url))
+            }
+            return DeveloperActivitySnapshot(processes: processes, isComplete: sample.complete && groups.count <= 4_096
+                && !groups.values.contains(where: { $0.count > 256 }))
+        } catch { return .unknown }
+        #endif
+    }
+
     public func scan(request: DeveloperResourcesRequest,
                      progress: (@Sendable (DeveloperResourcesProgress) -> Void)? = nil) async -> DeveloperResourcesReport {
+        let roles = [!request.projectRoots.isEmpty, !request.avdRoots.isEmpty, !request.gradleHomes.isEmpty].filter { $0 }.count
+        guard roles > 1, request.limits.maximumNodes >= roles, request.limits.maximumResources >= roles else {
+            return await scanPhase(request: request, progress: progress)
+        }
+        // Each selected role receives a reserved share. A large projects tree
+        // cannot consume the Android/Gradle portions of the bounded review.
+        let limits = DeveloperResourcesLimits(maximumNodes: max(1, request.limits.maximumNodes / roles),
+            maximumDepth: request.limits.maximumDepth, maximumResources: max(1, request.limits.maximumResources / roles),
+            maximumFileBytes: request.limits.maximumFileBytes, timeLimit: request.limits.timeLimit / Double(roles))
+        var phases: [DeveloperResourcesRequest] = []
+        if !request.projectRoots.isEmpty {
+            phases.append(DeveloperResourcesRequest(approvedFolders: request.approvedFolders,
+                projectRoots: request.projectRoots, activity: request.activity, limits: limits))
+        }
+        if !request.avdRoots.isEmpty {
+            phases.append(DeveloperResourcesRequest(approvedFolders: request.approvedFolders,
+                avdRoots: request.avdRoots, activity: request.activity, limits: limits))
+        }
+        if !request.gradleHomes.isEmpty {
+            phases.append(DeveloperResourcesRequest(approvedFolders: request.approvedFolders,
+                gradleHomes: request.gradleHomes, activity: request.activity, limits: limits))
+        }
+        let id = UUID(), date = Date()
+        var avds: [AndroidVirtualDeviceResource] = [], gradle: [GradleDeveloperResource] = []
+        var wrappers: [GradleProjectWrapper] = [], issues: [ScanIssue] = []
+        var partial = false
+        for phase in phases {
+            if Task.isCancelled { break }
+            let report = await scanPhase(request: phase, knownWrappers: wrappers, progress: progress)
+            avds.append(contentsOf: report.androidDevices)
+            gradle.append(contentsOf: report.gradleResources)
+            wrappers = report.projectWrappers
+            issues.append(contentsOf: report.issues)
+            partial = partial || report.isPartial
+        }
+        return DeveloperResourcesReport(id: id, scannedAt: date,
+            androidDevices: avds.sorted { $0.allocatedBytes > $1.allocatedBytes },
+            gradleResources: gradle.sorted { $0.allocatedBytes > $1.allocatedBytes },
+            projectWrappers: wrappers, issues: Array(issues.prefix(384)), cancelled: Task.isCancelled,
+            isPartial: partial || Task.isCancelled)
+    }
+
+    private func scanPhase(request: DeveloperResourcesRequest, knownWrappers: [GradleProjectWrapper] = [],
+                           progress: (@Sendable (DeveloperResourcesProgress) -> Void)? = nil) async -> DeveloperResourcesReport {
         let id = UUID(), date = Date()
         let budget = DRBudget(request.limits)
         var avds: [AndroidVirtualDeviceResource] = [], gradle: [GradleDeveloperResource] = []
-        var wrappers: [GradleProjectWrapper] = []
+        var wrappers = knownWrappers
         var approvals: [URL] = []
         for supplied in request.approvedFolders.prefix(64) {
             let url = supplied.roomLexicallyNormalized
@@ -60,7 +123,8 @@ public actor DeveloperResourcesEngine {
                 for url in candidates where seenAVDs.insert(url.path).inserted {
                     try budget.resource()
                     update("Android devices", url)
-                    do { avds.append(try androidDevice(url, request: request, budget: budget)) }
+                    do { avds.append(try androidDevice(url, request: request, budget: budget,
+                        verificationProgress: { update("Verifying resource", url) })) }
                     catch is CancellationError { throw CancellationError() }
                     catch is DRStop { throw DRStop.limit }
                     catch { budget.note(url, "This AVD could not be inspected safely. Linked or inaccessible directories are skipped.") }
@@ -93,7 +157,8 @@ public actor DeveloperResourcesEngine {
                             if kind == .distribution, distribution == nil { continue }
                             let version = kind == .distribution ? distribution?.version : DRVersions.version(url.lastPathComponent)
                             let type = kind == .distribution ? distribution?.type : nil
-                            let measured = try DRFiles.measure(url, budget: budget)
+                            let measured = try DRFiles.measure(url, budget: budget,
+                                beforeFinalValidation: { update("Verifying resource", url) })
                             let matches = version.map { value in wrappers.filter {
                                 $0.version == value && (kind != .distribution || $0.distributionType == type)
                             } } ?? []
@@ -129,7 +194,8 @@ public actor DeveloperResourcesEngine {
                 || gradle.contains(where: \.isPartial) || wrappers.contains(where: \.isPartial))
     }
 
-    private func androidDevice(_ url: URL, request: DeveloperResourcesRequest, budget: DRBudget) throws -> AndroidVirtualDeviceResource {
+    private func androidDevice(_ url: URL, request: DeveloperResourcesRequest, budget: DRBudget,
+                               verificationProgress: () -> Void) throws -> AndroidVirtualDeviceResource {
         _ = try DRFiles.directory(url)
         var config: [String: String] = [:], configPartial = false
         let configURL = url.appendingPathComponent("config.ini")
@@ -140,7 +206,7 @@ public actor DeveloperResourcesEngine {
         } catch is CancellationError { throw CancellationError() }
         catch is DRStop { throw DRStop.limit }
         catch { configPartial = true; budget.note(configURL, "AVD configuration is missing, malformed, changed or exceeds the bounded read size. Some device details are unknown.") }
-        let measured = try DRFiles.measure(url, budget: budget)
+        let measured = try DRFiles.measure(url, budget: budget, beforeFinalValidation: verificationProgress)
         let name = String(url.lastPathComponent.dropLast(4))
         let api = DRProperties.androidAPI(config["target"]) ?? DRProperties.androidAPI(config["image.sysdir.1"])
         let hardware = [config["hw.device.manufacturer"], config["hw.device.name"]].compactMap { $0 }.joined(separator: " ")
@@ -291,7 +357,7 @@ private enum DRFiles {
         guard let text = String(bytes: bytes, encoding: .utf8), !text.contains("\0") else { throw DRReadError.malformed }
         return text
     }
-    static func measure(_ url: URL, budget: DRBudget) throws -> DRMeasurement {
+    static func measure(_ url: URL, budget: DRBudget, beforeFinalValidation: () -> Void = {}) throws -> DRMeasurement {
         var result = DRMeasurement(), seen: Set<String> = []
         var latest: Date?
         let root = try directory(url)
@@ -320,7 +386,9 @@ private enum DRFiles {
         catch is CancellationError { throw CancellationError() }
         catch is DRStop { result.partial = true }
         catch { result.partial = true; budget.note(url, "Resource measurement was incomplete.") }
-        if let after = try? directory(url), !same(root, after) { result.partial = true; budget.note(url, "The resource changed while it was measured.") }
+        beforeFinalValidation()
+        let unchanged = (try? directory(url)).map { same(root, $0) } == true
+        if !unchanged { result.partial = true; budget.note(url, "The resource changed or became unavailable while it was measured.") }
         if let latest {
             result.evidence.append(DeveloperResourceEvidence(kind: .filesystemChanged, label: "Latest measured file change", url: url, date: latest,
                 uncertainty: "File modification is not a last-launch or last-build timestamp."))

@@ -25,6 +25,12 @@ public actor CacheEngine {
     private var activeScan: UUID?
     private var receipts: [ActivityReceipt] = []
 
+    /// Returns only metadata already resolved by this engine. Disk inspection
+    /// can reuse the same policy without probing a second catalogue of paths.
+    public func resolvedInspectionConfiguration() -> CacheConfiguration? {
+        resolvedConfiguration
+    }
+
     public init(configuration: CacheConfiguration = .standard, activityDirectory: URL? = nil) {
         self.resolvedConfiguration = configuration
         self.configurationProvider = nil

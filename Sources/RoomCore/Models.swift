@@ -247,6 +247,24 @@ public struct ProtectedLocation: Sendable {
     }
 }
 
+/// Coverage of one bounded Store npm discovery batch. This describes prefix
+/// discovery, not verified objects or a completed scan of every approved file.
+public struct NPMDiscoveryCoverage: Sendable, Equatable {
+    /// Existing physical prefix buckets inspected in this batch, including empty buckets.
+    public let inspectedBuckets: Int
+    public let hasMore: Bool
+    /// Opaque, versioned continuation bound to the same approved physical scope.
+    public let nextCursor: String?
+    public let scopeID: String
+
+    public init(inspectedBuckets: Int, hasMore: Bool, nextCursor: String?, scopeID: String) {
+        self.inspectedBuckets = inspectedBuckets
+        self.hasMore = hasMore
+        self.nextCursor = nextCursor
+        self.scopeID = scopeID
+    }
+}
+
 public struct CacheConfiguration: Sendable {
     public let roots: [CacheRoot]
     public let protectedLocations: [ProtectedLocation]
@@ -259,17 +277,20 @@ public struct CacheConfiguration: Sendable {
     /// nil preserves the direct edition's implicit catalogue. Store catalogues
     /// use an explicit (possibly empty) list, including for volume metadata.
     public let readAccessRoots: [URL]?
+    /// nil outside a relevant Store npm scope; continuations are caller-owned.
+    public let npmDiscovery: NPMDiscoveryCoverage?
 
     public init(roots: [CacheRoot], protectedLocations: [ProtectedLocation] = [],
                 homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
                 inspectionIssues: [ScanIssue] = [], readAccessRoots: [URL]? = nil,
-                protectedMeasurementExclusions: [URL] = []) {
+                protectedMeasurementExclusions: [URL] = [], npmDiscovery: NPMDiscoveryCoverage? = nil) {
         self.roots = roots
         self.protectedLocations = protectedLocations
         self.protectedMeasurementExclusions = protectedMeasurementExclusions.map(\.roomLexicallyNormalized)
         self.homeDirectory = homeDirectory.roomLexicallyNormalized
         self.inspectionIssues = inspectionIssues
         self.readAccessRoots = readAccessRoots?.map(\.roomLexicallyNormalized)
+        self.npmDiscovery = npmDiscovery
     }
 }
 

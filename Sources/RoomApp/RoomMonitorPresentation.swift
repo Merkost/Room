@@ -14,6 +14,9 @@ enum RoomPressureTone: Equatable {
     init(_ pressure: MemoryPressure) {
         switch pressure { case .unknown: self = .neutral; case .normal: self = .normal; case .elevated: self = .elevated; case .critical: self = .critical }
     }
+    var title: String {
+        switch self { case .neutral: "Unavailable"; case .normal: "Normal"; case .elevated: "Elevated"; case .critical: "High" }
+    }
     var color: Color {
         switch self { case .neutral: .secondary; case .normal: .green; case .elevated: .orange; case .critical: .red }
     }

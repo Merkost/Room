@@ -9,9 +9,7 @@ struct RoomRootView: View {
     @Bindable var agentWork: AgentWorkModel
     #endif
     @AppStorage("RoomOnboardingVersion") private var onboardingVersion = 0
-    @AppStorage("RoomAppearance") private var appearance = "dark"
-    @AppStorage("RoomMotionEnabled") private var motionEnabled = true
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage("RoomAppearance") private var appearance = "system"
     @State private var developer = RoomDeveloperModel()
     @State private var destination = RoomDestination.clean
     @State private var sheet: RoomSheet?
@@ -19,8 +17,10 @@ struct RoomRootView: View {
     @State private var category: RoomCategory?
     @State private var sourceFilter: RoomSourceFilter = .all
     @State private var query = ""
+    @State private var requestedReviewPath: String?
+    var motion = RoomMotionPolicy()
 
-    private var animate: Animation? { motionEnabled && !reduceMotion ? .smooth(duration: 0.24) : nil }
+    private var animate: Animation? { motion.selection }
     private var selectedCount: Int { model.sources.filter { model.selection.contains($0.id) && $0.isAvailable }.count }
     private var matchingSources: [RoomSource] {
         model.sources.filter { source in
@@ -50,137 +50,241 @@ struct RoomRootView: View {
             else if let url = insights.diskURL { insights.scanDisk(url: url) }
         case .developer: if developer.isScanning { developer.stop() } else { developer.scan() }
         case .activity: break
+        #if !ROOM_APP_STORE
+        case .agentWork: if agentWork.isScanning || agentWork.verifyingID != nil { agentWork.stop() } else { agentWork.scan() }
+        #endif
         }
     }
 
     var body: some View {
+        presentedWorkspace
+            .task { await prepareInitialPresentation() }
+            .onChange(of: developer.accessRevision) { _, _ in developer.accessChanged() }
+            .onChange(of: model.configurationRevision, initial: true) { _, _ in
+                insights.updateCacheConfiguration(model.inspectionConfiguration)
+            }
+            .onChange(of: insights.requestedCleanPath) { _, path in handleCleanReviewRequest(path) }
+            .onChange(of: model.lastScanned) { _, date in resolvePendingCleanReview(scannedAt: date) }
+            #if ROOM_APP_STORE
+            .onChange(of: model.storeAccessRevision) { _, _ in model.storeAccessChanged() }
+            #endif
+            .onChange(of: insights.requestedDestination, initial: true) { _, requested in
+                handleInsightDestination(requested)
+            }
+    }
+
+    private var presentedWorkspace: some View {
+        workspace
+            .animation(animate, value: destination)
+            .animation(animate, value: expanded)
+            .animation(animate, value: category)
+            .sheet(item: $sheet) { selected in sheetContent(for: selected) }
+            .alert("Room couldn’t complete that", isPresented: isShowingError) {
+                Button("OK") { model.errorMessage = nil }
+            } message: { Text(model.errorMessage ?? "") }
+    }
+
+    private var workspace: some View {
         ZStack {
             RoomAmbientBackground()
             ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    switch destination {
-                    case .clean:
-                        overview
-                            .transition(.opacity.combined(with: .offset(y: reduceMotion ? 0 : 8)))
-                    case .memory:
-                        #if ROOM_APP_STORE
-                        RoomMemoryView(insights: insights, memoryActions: memoryActions)
-                            .transition(.opacity.combined(with: .offset(y: reduceMotion ? 0 : 8)))
-                        #else
-                        RoomMemoryView(insights: insights, memoryActions: memoryActions, agentWork: agentWork)
-                            .transition(.opacity.combined(with: .offset(y: reduceMotion ? 0 : 8)))
-                        #endif
-                    case .disk:
-                        RoomDiskMapView(insights: insights)
-                            .transition(.opacity.combined(with: .offset(y: reduceMotion ? 0 : 8)))
-                    case .developer:
-                        RoomDeveloperView(model: developer)
-                            .transition(.opacity.combined(with: .offset(y: reduceMotion ? 0 : 6)))
-                    case .activity:
-                        RoomActivityView(model: model)
-                            .transition(.opacity.combined(with: .offset(y: reduceMotion ? 0 : 8)))
-                    }
-                }
-                .padding(.horizontal, 28)
-                .padding(.top, 24)
-                .padding(.bottom, 28)
-                .frame(maxWidth: 1120)
-                .frame(maxWidth: .infinity)
+                VStack(alignment: .leading, spacing: 24) { pageContent }
+                    .padding(.horizontal, 28)
+                    .padding(.top, 24)
+                    .padding(.bottom, 28)
+                    .frame(maxWidth: 1120)
+                    .frame(maxWidth: .infinity)
             }
             .scrollIndicators(.hidden)
+            // Each destination opens at its heading instead of inheriting another
+            // task's long history or process-list scroll offset.
+            .id(destination)
         }
         .frame(minWidth: 800, minHeight: 650)
         .preferredColorScheme(colorScheme)
-        .toolbar {
-            ToolbarItem(placement: .navigation) {
-                HStack(spacing: 6) {
-                    RoomMark().fill(.primary, style: FillStyle(eoFill: true))
-                        .frame(width: 24, height: 24)
-                        .accessibilityHidden(true)
-                    Text("Room").font(RoomType.heading(15))
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .accessibilityElement(children: .combine)
-            }
-            .sharedBackgroundVisibility(.hidden)
-            ToolbarItem(placement: .principal) {
-                RoomNavigationBar(selection: $destination)
-            }
-            .sharedBackgroundVisibility(.hidden)
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button { sheet = .settings } label: { Image(systemName: "slider.horizontal.3") }
-                    .help("Settings")
-                    .accessibilityLabel("Settings")
-                    .keyboardShortcut(",", modifiers: .command)
-            }
-        }
-        .animation(animate, value: destination)
-        .animation(animate, value: expanded)
-        .animation(animate, value: category)
-        .animation(animate, value: model.selectedBytes)
-        .animation(animate, value: model.totalBytes)
-        .animation(animate, value: model.isScanning)
-        .sheet(item: $sheet) { selected in
-            switch selected {
-            case .review: RoomReviewSheet(model: model)
-            case .source(let source): RoomSourceSheet(source: source, model: model)
-            case .settings: RoomSettingsSheet(model: model, insights: insights, showWelcome: { sheet = .welcome })
-            case .welcome:
-                RoomOnboardingView { onboardingVersion = 1; sheet = nil }
-            case .protectedSources: RoomProtectedSheet(model: model)
-            case .scanIssues: RoomScanIssuesSheet(issues: model.scanIssues)
-            }
-        }
-        .alert("Room couldn’t complete that", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) {
-            Button("OK") { model.errorMessage = nil }
-        } message: { Text(model.errorMessage ?? "") }
-        .task {
-            if onboardingVersion < 1 { sheet = .welcome }
-            await model.refreshHistory()
-        }
-        .onChange(of: developer.accessRevision) { _, _ in developer.accessChanged() }
-        #if ROOM_APP_STORE
-        .onChange(of: model.storeAccessRevision) { _, _ in model.storeAccessChanged() }
+        .toolbar { toolbarContent }
+    }
+
+    @ViewBuilder private var pageContent: some View {
+        switch destination {
+        case .clean:
+            overview.transition(motion.pageTransition)
+        case .memory:
+            #if ROOM_APP_STORE
+            RoomMemoryView(insights: insights, memoryActions: memoryActions)
+                .transition(motion.pageTransition)
+            #else
+            RoomMemoryView(insights: insights, memoryActions: memoryActions, agentWork: agentWork,
+                           onShowAgentWork: showAgentWork)
+                .transition(motion.pageTransition)
+            #endif
+        case .disk:
+            RoomDiskMapView(insights: insights).transition(motion.pageTransition)
+        case .developer:
+            RoomDeveloperView(model: developer).transition(motion.pageTransition)
+        case .activity:
+            #if ROOM_APP_STORE
+            RoomActivityView(model: model).transition(motion.pageTransition)
+            #else
+            RoomActivityView(model: model, agentWork: agentWork).transition(motion.pageTransition)
+            #endif
+        #if !ROOM_APP_STORE
+        case .agentWork:
+            RoomAgentWorkView(model: agentWork, memoryReport: insights.memoryReport, onShowActivity: showActivity)
+                .transition(motion.pageTransition)
         #endif
-        .onChange(of: insights.requestedDestination, initial: true) { _, requested in
-            guard let requested else { return }
-            switch requested {
-            case .clean: destination = .clean
-            case .memory: destination = .memory
-            case .disk: destination = .disk
-            }
-            insights.requestedDestination = nil
         }
+    }
+
+    @ToolbarContentBuilder private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .navigation) {
+            HStack(spacing: 6) {
+                RoomMark().fill(.primary, style: FillStyle(eoFill: true))
+                    .frame(width: 24, height: 24)
+                    .accessibilityHidden(true)
+                Text("Room").font(RoomType.heading(15))
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .accessibilityElement(children: .combine)
+        }
+        .sharedBackgroundVisibility(.hidden)
+        ToolbarItem(placement: .principal) { RoomNavigationBar(selection: $destination) }
+            .sharedBackgroundVisibility(.hidden)
+        ToolbarItemGroup(placement: .primaryAction) {
+            Button { sheet = .settings } label: { Image(systemName: "slider.horizontal.3") }
+                .help("Settings")
+                .accessibilityLabel("Settings")
+                .keyboardShortcut(",", modifiers: .command)
+        }
+    }
+
+    @ViewBuilder private func sheetContent(for selected: RoomSheet) -> some View {
+        switch selected {
+        case .review: RoomReviewSheet(model: model)
+        case .source(let source): sourceSheet(for: source)
+        case .settings: RoomSettingsSheet(model: model, insights: insights, showWelcome: showWelcome)
+        case .welcome: RoomOnboardingView(onFinish: finishOnboarding)
+        case .protectedSources: RoomProtectedSheet(model: model)
+        case .scanIssues: RoomScanIssuesSheet(issues: model.scanIssues)
+        }
+    }
+
+    @ViewBuilder private func sourceSheet(for snapshot: RoomSource) -> some View {
+        if !model.isScanning, let current = model.sources.first(where: { $0.id == snapshot.id }) {
+            RoomSourceSheet(source: current, model: model)
+        } else {
+            RoomSheetLayout(title: snapshot.name,
+                            subtitle: model.isScanning ? "Measuring this source again" : "Source no longer in these results") {
+                RoomStatusNotice(message: model.isScanning
+                    ? "The previous measurements are being replaced. Item selection returns when the new scan finishes."
+                    : "This source is absent from the latest scan. Its previous cleanup selection is no longer available.")
+                RoomPathLabel(path: snapshot.path)
+            } actions: {
+                Spacer()
+                Button("Done") { sheet = nil }
+                    .roomAction(.primary)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+    }
+
+    private var isShowingError: Binding<Bool> {
+        Binding(get: { model.errorMessage != nil && sheet == nil }, set: { if !$0 { model.errorMessage = nil } })
+    }
+
+    private func prepareInitialPresentation() async {
+        if onboardingVersion < 1 { sheet = .welcome }
+        await model.refreshHistory()
+    }
+
+    private func showWelcome() { sheet = .welcome }
+    private func showActivity() { destination = .activity }
+    #if !ROOM_APP_STORE
+    private func showAgentWork() { destination = .agentWork }
+    #endif
+
+    private func finishOnboarding(_ task: RoomOnboardingTask?) {
+        onboardingVersion = 1
+        switch task {
+        case .storage: destination = .clean
+        case .memory: destination = .memory
+        case .disk: destination = .disk
+        case .developer: destination = .developer
+        case nil: break
+        }
+        sheet = nil
+    }
+
+    private func handleCleanReviewRequest(_ path: String?) {
+        guard let path else { return }
+        requestedReviewPath = path
+        destination = .clean
+        category = nil
+        sourceFilter = .all
+        query = ""
+        if let source = model.source(containing: path) {
+            sheet = .source(source)
+            requestedReviewPath = nil
+        }
+        insights.requestedCleanPath = nil
+    }
+
+    private func resolvePendingCleanReview(scannedAt date: Date?) {
+        guard date != nil, destination == .clean, let path = requestedReviewPath,
+              let source = model.source(containing: path) else { return }
+        sheet = .source(source)
+        requestedReviewPath = nil
+    }
+
+    private func handleInsightDestination(_ requested: RoomInsightDestination?) {
+        guard let requested else { return }
+        switch requested {
+        case .clean: destination = .clean
+        case .memory: destination = .memory
+        case .disk: destination = .disk
+        case .settings: sheet = .settings
+        }
+        insights.requestedDestination = nil
     }
 
     private var overview: some View {
         VStack(alignment: .leading, spacing: 24) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(model.isScanning ? "Measuring storage" : "Storage overview")
-                    .font(RoomType.heading(24))
-                    .tracking(-0.4)
-                Text(heroSubtitle)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            RoomPageHeader(title: model.isScanning ? "Measuring storage" : "Storage overview", subtitle: heroSubtitle) {
+                scanActions
             }
-
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .center, spacing: 12) {
-                    scanScopePicker
-                    Spacer(minLength: 16)
-                    scanActions
-                }
-                VStack(alignment: .leading, spacing: 12) {
-                    scanScopePicker
-                    scanActions
+            scanScopePicker
+            if model.isScopeChangePending, let measuredScope = model.resultsScope {
+                RoomStatusNotice(title: "\(measuredScope.title) results", message: "The measurements below belong to the previous scope. Run \(model.scanScope.title.lowercased()) to update them before cleanup.", tone: .information)
+            }
+            if let path = requestedReviewPath {
+                RoomContentGroup {
+                    RoomStatusNotice(title: "Find its cleanup source", message: "Scan known sources to check this item’s actual eligibility. Suggestions never authorize a change.", systemImage: "arrow.turn.down.right")
+                    RoomPathLabel(path: path)
+                    Button("Dismiss") { requestedReviewPath = nil }.buttonStyle(.plain)
                 }
             }
 
             if model.lastScanned != nil || !model.sources.isEmpty {
                 storageSummary
             }
+            #if ROOM_APP_STORE
+            if !model.isScanning, let coverage = model.npmDiscovery {
+                RoomContentGroup {
+                    RoomSectionHeader(title: "npm prefix review", detail: "Batch \(model.npmBatchNumber)") {
+                        if coverage.hasMore {
+                            Button("Next npm batch") { model.continueNPMScan() }
+                                .buttonStyle(.glass)
+                                .disabled(!model.canScan)
+                                .accessibilityIdentifier("RoomNPMContinueButton")
+                                .help("Replaces the current scan and selection with the next bounded prefix batch. No files move.")
+                        }
+                    }
+                    Text("\(coverage.inspectedBuckets) prefix folders inspected in this batch. \(coverage.hasMore ? "More prefixes remain. The next batch replaces these results and their selection." : "Prefix discovery reached the end of this approved scope.") Object verification and inspection limits still apply.")
+                        .font(RoomTypography.caption).foregroundStyle(.secondary)
+                }
+            }
+            #endif
 
             if model.isScanning {
                 VStack(alignment: .leading, spacing: 8) {
@@ -193,7 +297,7 @@ struct RoomRootView: View {
                             .truncationMode(.middle)
                             .help(model.currentScanPath)
                     }
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                    .font(RoomTypography.caption).foregroundStyle(.secondary)
                     ProgressView(value: model.scanProgress).tint(.secondary)
                 }
                 .accessibilityElement(children: .combine)
@@ -232,11 +336,11 @@ struct RoomRootView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .font(.system(size: 12))
+            .font(RoomTypography.caption)
 
             if let message = model.statusMessage, !message.isEmpty, !model.isScanning {
                 Text(message)
-                    .font(.system(size: 13))
+                    .font(RoomTypography.body)
                     .foregroundStyle(.secondary)
                     .accessibilityAddTraits(.updatesFrequently)
             }
@@ -244,50 +348,25 @@ struct RoomRootView: View {
     }
 
     private var storageSummary: some View {
-        HStack(alignment: .center, spacing: 24) {
-            VStack(alignment: .leading, spacing: 7) {
-                Text(model.isScanning ? "Measured so far" : "Measured storage")
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
-                HStack(alignment: .firstTextBaseline, spacing: 5) {
-                    if model.hasPartialMeasurements {
-                        Text("≥").font(RoomType.figure(24)).foregroundStyle(.secondary)
-                    }
-                    RoomByteMetric(bytes: model.totalBytes, maximumSize: 38)
-                }
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("\(model.hasPartialMeasurements ? "At least " : "")\(RoomFormat.bytes(model.totalBytes)) measured across scanned storage locations")
+        RoomContentGroup {
+            HStack(alignment: .center, spacing: RoomSpace.section) {
+                RoomMetric(label: model.isScanning ? "Measured so far" : "Measured storage", bytes: model.totalBytes,
+                           lowerBound: model.hasPartialMeasurements)
+                summaryMetric("Clearable", bytes: model.clearableBytes)
+                summaryMetric("Held", bytes: model.heldBytes, lowerBound: model.hasPartialMeasurements)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            Divider().frame(height: 44)
-            summaryMetric("Clearable", bytes: model.clearableBytes)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            Divider().frame(height: 44)
-            summaryMetric("Held", bytes: model.heldBytes, lowerBound: model.hasPartialMeasurements)
-                .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(20)
-        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private func summaryMetric(_ title: String, bytes: Int64, lowerBound: Bool = false) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title)
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-            Text("\(lowerBound ? "≥ " : "")\(RoomFormat.bytes(bytes))")
-                .font(RoomType.figure(24))
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-        }
-        .accessibilityElement(children: .combine)
+        RoomMetric(label: title, bytes: bytes, maximumSize: 22, lowerBound: lowerBound)
     }
 
     @ViewBuilder private var scanScopePicker: some View {
         #if ROOM_APP_STORE
         HStack(spacing: 12) {
             Label(model.approvedStoreFolderCount == 0 ? "No folders approved" : "\(model.approvedStoreFolderCount) approved \(model.approvedStoreFolderCount == 1 ? "folder" : "folders")", systemImage: "folder.badge.checkmark")
-                .font(.system(size: 12)).foregroundStyle(.secondary)
+                .font(RoomTypography.caption).foregroundStyle(.secondary)
                 .fixedSize()
             Button("Manage access") { sheet = .settings }
                 .buttonStyle(.glass).controlSize(.large)
@@ -302,7 +381,7 @@ struct RoomRootView: View {
         .pickerStyle(.segmented)
         .controlSize(.large)
         .labelsHidden()
-        .font(.system(size: 13, weight: .medium))
+        .font(RoomTypography.bodyEmphasis)
         .frame(width: 228)
         .frame(minHeight: 36)
         .accessibilityLabel("Scan scope")
@@ -316,11 +395,10 @@ struct RoomRootView: View {
         HStack(alignment: .center, spacing: 10) {
             Button(action: refreshCurrentView) {
                 Label(scanButtonTitle, systemImage: model.isScanning ? "stop.fill" : "magnifyingglass")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(RoomTypography.bodyEmphasis)
                     .padding(.horizontal, 4)
             }
-            .buttonStyle(.glassProminent)
-            .tint(.accentColor)
+            .roomAction(model.canReviewCleanup ? .secondary : .primary)
             .controlSize(.large)
             .frame(minHeight: 36)
             .disabled(!model.canScan)
@@ -330,10 +408,10 @@ struct RoomRootView: View {
             if model.canReviewCleanup {
                 Button { sheet = .review } label: {
                     Label("Review \(RoomFormat.bytes(model.selectedBytes))", systemImage: "arrow.right")
-                        .font(.system(size: 13, weight: .medium))
+                        .font(RoomTypography.bodyEmphasis)
                         .padding(.horizontal, 4)
                 }
-                .buttonStyle(.glass)
+                .roomAction(.primary)
                 .controlSize(.large)
                 .frame(minHeight: 36)
                 .keyboardShortcut(.return, modifiers: .command)
@@ -379,27 +457,32 @@ struct RoomRootView: View {
             }
             .padding(.bottom, 2)
 
+            if !model.sources.isEmpty {
+                HStack(spacing: RoomSpace.compact) {
+                    Text("\(model.selectedEntryIDs.count) \(model.selectedEntryIDs.count == 1 ? "item" : "items") selected")
+                        .font(RoomTypography.caption).foregroundStyle(.secondary).monospacedDigit()
+                    Spacer(minLength: 12)
+                    Button("Select eligible") { model.selectRecommended() }.buttonStyle(.plain)
+                    Button("Deselect all") { model.clearSelection() }.buttonStyle(.plain)
+                }
+                .font(RoomTypography.caption)
+                .disabled(!model.canEditSelection)
+            }
+
             if model.sources.isEmpty {
                 sourceEmptyState
             } else if visibleSources.isEmpty {
-                HStack(spacing: 12) {
-                    Image(systemName: "line.3.horizontal.decrease").foregroundStyle(.secondary)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("No matching sources").font(.system(size: 14, weight: .medium))
-                        Text(sourceFilter == .clearable ? "Open Held to see why files are protected." : "Try another category or filter.")
-                            .font(.system(size: 13)).foregroundStyle(.secondary)
-                    }
-                    Spacer(minLength: 0)
+                RoomEmptyState(title: "No matching sources", message: sourceFilter == .clearable ? "Open Held to see why files are protected." : "Try another category or filter.", systemImage: "line.3.horizontal.decrease") {
+                    Button("Reset filters") { query = ""; category = nil; sourceFilter = .all }.buttonStyle(.glass)
                 }
-                .padding(20)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 16))
             } else {
                 LazyVStack(spacing: 2) {
                     ForEach(visibleSources) { source in
                         RoomSourceRow(source: source,
                                       selected: model.selection.contains(source.id),
-                                      disabled: model.isScanning || model.isPartialScan || model.isWorking,
+                                      partiallySelected: model.partiallySelectedSource(source.id),
+                                      selectedCount: model.selectedCount(for: source.id),
+                                      disabled: !model.canEditSelection,
                                       toggle: { model.toggleSelection(id: source.id) },
                                       inspect: { sheet = .source(source) })
                     }
@@ -413,10 +496,10 @@ struct RoomRootView: View {
                     HStack(spacing: 6) {
                         Text(expanded ? "Show less" : "Show all \(model.sources.count) sources")
                         Image(systemName: "chevron.down")
-                            .font(.system(size: 11, weight: .medium))
+                            .font(RoomTypography.meta)
                             .rotationEffect(.degrees(expanded ? 180 : 0))
                     }
-                    .font(.system(size: 12))
+                    .font(RoomTypography.caption)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
@@ -428,10 +511,10 @@ struct RoomRootView: View {
 
     private var sourceSectionTitle: some View {
         HStack(alignment: .firstTextBaseline, spacing: 7) {
-            Text("Sources").font(.system(size: 16, weight: .semibold))
+            Text("Sources").font(RoomTypography.sectionTitle).accessibilityAddTraits(.isHeader)
             if !model.sources.isEmpty {
                 Text(matchingSources.count == model.sources.count ? "\(model.sources.count)" : "\(matchingSources.count) of \(model.sources.count)")
-                    .font(.system(size: 12)).foregroundStyle(.secondary).monospacedDigit()
+                    .font(RoomTypography.caption).foregroundStyle(.secondary).monospacedDigit()
             }
         }
         .fixedSize()
@@ -455,24 +538,10 @@ struct RoomRootView: View {
     }
 
     private var sourceEmptyState: some View {
-        HStack(alignment: .center, spacing: 14) {
-            Image(systemName: model.isScanning ? "magnifyingglass" : "externaldrive")
-                .font(.system(size: 23, weight: .regular))
-                .foregroundStyle(.secondary)
-                .frame(width: 30)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 5) {
-                Text(model.isScanning ? "Preparing locations" : model.isPartialScan ? "Scan again to finish" : model.lastScanned == nil ? "Ready for a scan" : "No sources measured")
-                    .font(.system(size: 14, weight: .medium))
-                Text(model.isScanning ? "Results appear as each source is measured." : model.lastScanned == nil ? "A scan measures storage before you review any changes." : "Check scan notes for access or inspection limits.")
-                    .font(.system(size: 13)).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(20)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        RoomEmptyState(
+            title: model.isScanning ? "Preparing locations" : model.isPartialScan ? "Scan again to finish" : model.lastScanned == nil ? "Ready for a scan" : "No sources measured",
+            message: model.isScanning ? "Results appear as each source is measured." : model.lastScanned == nil ? "A scan measures storage before you review any changes." : "Check scan notes for access or inspection limits.",
+            systemImage: model.isScanning ? "magnifyingglass" : "externaldrive")
     }
 
     private var sourceSearch: some View {
@@ -483,7 +552,7 @@ struct RoomRootView: View {
                 .frame(width: 130)
                 .accessibilityLabel("Find a cache source")
         }
-        .font(.system(size: 13))
+        .font(RoomTypography.body)
         .padding(.horizontal, 10).padding(.vertical, 7)
         .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
         .overlay { RoundedRectangle(cornerRadius: 8).strokeBorder(Color.primary.opacity(0.12), lineWidth: 1) }
@@ -495,11 +564,8 @@ struct RoomRootView: View {
             ForEach(RoomCategory.allCases) { item in
                 Button(item.title) { category = item }
             }
-            Divider()
-            Button("Select recommended") { model.selectRecommended() }
-            Button("Deselect all") { model.clearSelection() }
         } label: {
-            Text(category?.title ?? "All categories").font(.system(size: 13))
+            Text(category?.title ?? "All categories").font(RoomTypography.body)
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
@@ -511,6 +577,8 @@ struct RoomRootView: View {
 private struct RoomSourceRow: View {
     let source: RoomSource
     let selected: Bool
+    let partiallySelected: Bool
+    let selectedCount: Int
     let disabled: Bool
     let toggle: () -> Void
     let inspect: () -> Void
@@ -524,11 +592,10 @@ private struct RoomSourceRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Toggle(source.name, isOn: Binding(get: { selected }, set: { _ in toggle() }))
-                .toggleStyle(.checkbox)
-                .labelsHidden()
-                .disabled(disabled || source.isInspectionOnly || !source.isAvailable)
-                .accessibilityLabel("Select \(source.name)")
+            RoomSelectionCheckbox(state: partiallySelected ? .mixed : selected ? .on : .off,
+                                  label: "\(source.name), \(selectedCount) of \(source.selectableCount) eligible items selected",
+                                  isEnabled: !disabled && !source.isInspectionOnly && source.isAvailable,
+                                  action: toggle)
                 .frame(width: 18)
                 .help(source.blockedReason ?? (source.isInspectionOnly ? "This source is available for inspection only." : source.isAvailable ? "Include this source in the cleanup review." : "This source is held and cannot be selected."))
 
@@ -541,12 +608,12 @@ private struct RoomSourceRow: View {
                 HStack(alignment: .center, spacing: 20) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(source.name)
-                            .font(.system(size: 14, weight: .medium))
+                            .font(RoomTypography.bodyEmphasis)
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                             .truncationMode(.middle)
                         Text(source.subtitle)
-                            .font(.system(size: 12))
+                            .font(RoomTypography.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
@@ -554,18 +621,18 @@ private struct RoomSourceRow: View {
 
                     VStack(alignment: .trailing, spacing: 4) {
                         Text("\(source.isPartial ? "≥ " : "")\(RoomFormat.bytes(source.bytes))")
-                            .font(.system(size: 14, weight: .medium))
+                            .font(RoomTypography.bodyEmphasis)
                             .monospacedDigit()
                             .foregroundStyle(.primary)
                         Text(statusLabel)
-                            .font(.system(size: 12))
+                            .font(RoomTypography.caption)
                             .foregroundStyle(.secondary)
                     }
                     .frame(minWidth: 112, alignment: .trailing)
                     .fixedSize(horizontal: true, vertical: false)
 
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(RoomTypography.meta)
                         .foregroundStyle(.secondary)
                         .opacity(hovering ? 1 : 0.65)
                 }
@@ -574,11 +641,11 @@ private struct RoomSourceRow: View {
             }
             .buttonStyle(.plain)
             .help(source.blockedReason ?? source.subtitle)
-            .accessibilityLabel("Inspect \(source.name), \(RoomFormat.bytes(source.bytes)) measured, \(statusLabel)")
+            .accessibilityLabel("Inspect \(source.name), \(source.isPartial ? "at least " : "")\(RoomFormat.bytes(source.bytes)) measured, \(statusLabel)")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(selected ? Color.accentColor.opacity(0.065) : hovering ? Color.primary.opacity(0.045) : Color.clear, in: RoundedRectangle(cornerRadius: 12))
+        .background(selected ? RoomSurface.selection : hovering ? RoomSurface.hover : Color.clear, in: RoundedRectangle(cornerRadius: RoomRadius.row))
         .onHover { hovering = $0 }
         .contextMenu {
             Button("Inspect source", action: inspect)
