@@ -45,15 +45,20 @@ struct RoomPocketMarkTests {
         await RoomPocketMarkTests.canLoadSVG()
     })
     func hollowMarkMatchesTheSVG() throws {
+        // AppKit rasterises the SVG at a lower fidelity than Core Graphics at small sizes
+        // (about 4.4% mean alpha difference at 32 px, 0.6% at 256 px, converging), so the
+        // geometry is compared at 256 px where antialiasing no longer dominates.
+        let pixels = 256
         let image = try #require(NSImage(contentsOf: Self.svgURL))
-        image.size = NSSize(width: 64, height: 64)
+        let canvas = Double(pixels) * 64 / 48
+        image.size = NSSize(width: canvas, height: canvas)
         // The template uses the board's 8 8 48 48 viewBox, cropping the
         // resource's 0 0 64 64 canvas without changing its geometry.
-        let reference = try alpha(image: image, source: NSRect(x: 8, y: 8, width: 48, height: 48))
-        let hollow = try alpha(fill: 0)
+        let unit = canvas / 64
+        let reference = try alpha(image: image, pixels: pixels,
+            source: NSRect(x: 8 * unit, y: 8 * unit, width: 48 * unit, height: 48 * unit))
+        let hollow = try alpha(image: RoomPocketMark.image(fill: 0, pointSize: 16), pixels: pixels)
         let differences = zip(reference.joined(), hollow.joined()).map { abs($0 - $1) }
-        // AppKit's SVG and Core Graphics paths may antialias boundary pixels
-        // differently; compare their alpha coverage within one percent overall.
         #expect(differences.reduce(0, +) / Double(differences.count) <= 0.01)
     }
 
@@ -73,8 +78,7 @@ struct RoomPocketMarkTests {
         try alpha(image: RoomPocketMark.image(fill: fill, pointSize: 16))
     }
 
-    private func alpha(image: NSImage, source: NSRect = .zero) throws -> [[Double]] {
-        let pixels = 32
+    private func alpha(image: NSImage, pixels: Int = 32, source: NSRect = .zero) throws -> [[Double]] {
         let representation = try #require(NSBitmapImageRep(
             bitmapDataPlanes: nil, pixelsWide: pixels, pixelsHigh: pixels,
             bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
