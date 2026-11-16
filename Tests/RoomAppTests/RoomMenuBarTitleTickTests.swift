@@ -15,12 +15,12 @@ struct RoomMenuBarTitleTickTests {
         #expect(titles.allSatisfy { $0.hasSuffix(" GB") })
     }
 
-    @Test func diskTicksKeepTheFreeSuffix() {
-        let titles = RoomMenuBarTitleTick.titles(from: "41 GB free", to: "50 GB free",
+    @Test func diskTicksCountTheNumberAlone() {
+        let titles = RoomMenuBarTitleTick.titles(from: "41 GB", to: "50 GB",
                                                previousMode: .disk, mode: .disk, locale: english)
         #expect(titles.count == 8)
-        #expect(titles.first == "44 GB free")
-        #expect(titles.last == "50 GB free")
+        #expect(titles.first == "44 GB")
+        #expect(titles.last == "50 GB")
     }
 
     @Test func decimalTenthsAnimateInBothDirections() {
@@ -40,7 +40,7 @@ struct RoomMenuBarTitleTickTests {
     @Test func firstValueAndModeChangesSwapImmediately() {
         #expect(RoomMenuBarTitleTick.titles(from: "16.2 GB", to: "24.8 GB",
                                           previousMode: nil, mode: .memory, locale: english).isEmpty)
-        #expect(RoomMenuBarTitleTick.titles(from: "16.2 GB", to: "41 GB free",
+        #expect(RoomMenuBarTitleTick.titles(from: "16.2 GB", to: "41 GB",
                                           previousMode: .memory, mode: .disk, locale: english).isEmpty)
     }
 

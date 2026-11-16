@@ -58,8 +58,11 @@ nonisolated struct RoomMenuBarFormat: Sendable {
 
 nonisolated enum RoomMenuBarPresentation {
     static func make(_ i: RoomMenuBarInput, format f: RoomMenuBarFormat) -> RoomMenuBarOutput {
-        // MB-5: no icon and no value would leave an invisible item, so the mark stays.
-        let icon: RoomMenuBarIconMode = (i.value == .none && i.icon == .none) ? .mark : i.icon
+        // D-MB-14: RAM and storage get their own symbols (memorychip, internaldrive); two metrics or none have no single
+        // symbol, so the Room mark stands in. MB-5: no icon and no value would leave an invisible item, so the mark stays.
+        var icon: RoomMenuBarIconMode = i.icon
+        if icon == .symbol, i.value == .both || i.value == .none { icon = .mark }
+        if i.value == .none, icon == .none { icon = .mark }
 
         let usesMemory = i.value != .disk       // memory, both and none (icon only) read memory
         let usesDisk = i.value != .memory       // disk, both and none read the disk
@@ -95,7 +98,7 @@ nonisolated enum RoomMenuBarPresentation {
         let title: String
         switch i.value {
         case .memory: title = memoryTitle
-        case .disk: title = diskKnown ? "\(diskNumber) free" : "—"
+        case .disk: title = diskNumber                     // the number alone: the storage symbol says what it is
         case .both: title = "\(memoryTitle) · \(diskNumber)"
         case .none: title = ""
         }

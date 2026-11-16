@@ -34,7 +34,7 @@ nonisolated enum RoomMenuBarSettings {
 
         var input = RoomMenuBarInput(
             value: value,
-            icon: defaults.string(forKey: iconKey).flatMap(RoomMenuBarIconMode.init(rawValue:)) ?? .mark,
+            icon: defaults.string(forKey: iconKey).flatMap(RoomMenuBarIconMode.init(rawValue:)) ?? .symbol,
             tintOnlyWhenNeeded: defaults.object(forKey: tintOnlyWhenNeededKey) as? Bool ?? true,
             goalBytes: goalBytes(in: defaults))
 

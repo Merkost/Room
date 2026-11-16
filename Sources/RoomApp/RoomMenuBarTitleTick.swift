@@ -44,8 +44,7 @@ nonisolated enum RoomMenuBarTitleTick {
         guard !numberText.isEmpty,
               let numberRange = title.range(of: numberText, options: .anchored) else { return nil }
         let suffix = String(title[numberRange.upperBound...])
-        guard suffix.first?.isWhitespace == true,
-              mode != .disk || suffix.hasSuffix(" free") else { return nil }
+        guard suffix.first?.isWhitespace == true else { return nil }
 
         var allowed = CharacterSet.decimalDigits
         allowed.formUnion(CharacterSet(charactersIn: formatter.decimalSeparator + formatter.groupingSeparator))

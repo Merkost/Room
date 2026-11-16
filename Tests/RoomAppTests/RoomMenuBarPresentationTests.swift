@@ -42,7 +42,7 @@ struct RoomMenuBarPresentationTests {
 
     @Test func diskBelowGoalHasHalfPocketAndExplainsShortfall() {
         let belowGoal = disk(41)
-        #expect(belowGoal.title == "41 GB free" && belowGoal.pocketFill == 0.5 && belowGoal.tint == .elevated)
+        #expect(belowGoal.title == "41 GB" && belowGoal.pocketFill == 0.5 && belowGoal.tint == .elevated)
         #expect(belowGoal.accessibilityValue == "41 GB free, 9 GB under your 50 GB goal")
     }
 
@@ -54,7 +54,7 @@ struct RoomMenuBarPresentationTests {
 
     @Test func shapeAndTintFollowTheirIndependentRules() {
         let metGoal = disk(312)
-        #expect(metGoal.pocketFill == 0 && metGoal.tint == .none && metGoal.title == "312 GB free")
+        #expect(metGoal.pocketFill == 0 && metGoal.tint == .none && metGoal.title == "312 GB")
         let elevatedWhenNeeded = memory(24.8, .elevated) { $0.tintOnlyWhenNeeded = true }
         #expect(elevatedWhenNeeded.pocketFill == 0.5)
         let alwaysTintedNormal = memory(16.2, .normal) { $0.tintOnlyWhenNeeded = false }
@@ -85,6 +85,20 @@ struct RoomMenuBarPresentationTests {
         let symbol = memory(16.2, .normal) { $0.icon = .symbol }
         let belowGoal = disk(41)
         #expect(symbol.symbolName == "memorychip" && belowGoal.symbolName == "internaldrive")
+    }
+
+    @Test func ramAndStorageEachGetTheirOwnSymbol() {
+        // D-MB-14: Value Memory shows the chip, Value Disk the drive; Both and None have no single symbol, so the Room mark stays.
+        let ram = memory(16.2, .normal) { $0.icon = .symbol }
+        let storage = RoomMenuBarPresentation.make(
+            RoomMenuBarInput(value: .disk, icon: .symbol, diskFreeBytes: 41 * gb, goalBytes: 50 * gb), format: format)
+        let both = RoomMenuBarPresentation.make(
+            RoomMenuBarInput(value: .both, icon: .symbol, memoryUsedBytes: 16_200_000_000, memoryTotalBytes: 32 * gb,
+                             pressure: .normal, diskFreeBytes: 312 * gb, goalBytes: 50 * gb), format: format)
+        let iconOnly = memory(24.8, .elevated) { $0.value = .none; $0.icon = .symbol }
+        #expect(ram.icon == .symbol && ram.symbolName == "memorychip")
+        #expect(storage.icon == .symbol && storage.symbolName == "internaldrive" && storage.title == "41 GB")
+        #expect(both.icon == .mark && iconOnly.icon == .mark && iconOnly.pocketFill == 0.5)
     }
 
     @Test func missingDataIsNeverPresentedAsZero() {
@@ -149,7 +163,7 @@ struct RoomMenuBarPresentationTests {
         #expect(scenario(.normal).pocketFill == 0 && scenario(.normal).title == "16.2 GB")
         #expect(scenario(.elevated).pocketFill == 0.5 && scenario(.elevated).tint == .elevated)
         #expect(scenario(.critical).pocketFill == 1 && scenario(.critical).tint == .critical)
-        #expect(scenario(.diskBelowGoal).title == "41 GB free" && scenario(.diskBelowGoal).pocketFill == 0.5)
+        #expect(scenario(.diskBelowGoal).title == "41 GB" && scenario(.diskBelowGoal).pocketFill == 0.5)
         #expect(scenario(.iconOnlyElevated).title == "" && scenario(.iconOnlyElevated).pocketFill == 0.5)
         #expect(scenario(.bothElevatedBelowGoal).title == "24.8 GB · 41 GB")
         #expect(RoomDebugMenuBarScenario.live.apply(to: RoomMenuBarInput()) == RoomMenuBarInput())

@@ -34,7 +34,7 @@ struct RoomMenuBarSettingsTests {
             defaults.set(true, forKey: "RoomMonitorShowSwap")
             let result = input(defaults, report: report())
             #expect(result.value == .disk)
-            #expect(result.icon == .mark && result.tintOnlyWhenNeeded)
+            #expect(result.icon == .symbol && result.tintOnlyWhenNeeded)
             #expect(result.pressure == .elevated)
             #expect(result.diskFreeBytes == 312 * gb && result.goalBytes == 50 * gb)
             #expect(RoomMenuBarSettings.showSwap(in: defaults))
@@ -80,14 +80,14 @@ struct RoomMenuBarSettingsTests {
             defaults.set("invalid", forKey: "RoomMenuBarValue")
             defaults.set("invalid", forKey: "RoomMenuBarIcon")
             let result = input(defaults)
-            #expect(result.value == .memory && result.icon == .mark)
+            #expect(result.value == .memory && result.icon == .symbol)
         }
     }
 
     @Test func absentKeysUseTheNewDefaults() throws {
         try withDefaults { defaults in
             let result = input(defaults, report: report())
-            #expect(result.value == .memory && result.icon == .mark && result.tintOnlyWhenNeeded)
+            #expect(result.value == .memory && result.icon == .symbol && result.tintOnlyWhenNeeded)
             #expect(result.goalBytes == 50_000_000_000)
             #expect(!RoomMenuBarSettings.showSwap(in: defaults))
         }
