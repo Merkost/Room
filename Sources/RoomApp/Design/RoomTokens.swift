@@ -1,0 +1,337 @@
+// RoomTokens: the only place in RoomApp where fonts, sizes, colours, radii and timings are literals.
+// Spec: 02-FOUNDATIONS.md. Typechecked standalone with:
+//   swiftc -typecheck -swift-version 6 -default-isolation MainActor -target arm64-apple-macos26.0 RoomTokens.swift
+import AppKit
+import SwiftUI
+
+// MARK: - Colour helper
+
+extension Color {
+    /// A colour with one value for light (aqua) and one for dark (darkAqua) appearance.
+    /// Increase Contrast picks the same pair; contrast is already >= 4.5:1 for text roles (15-ACCESSIBILITY.md).
+    static func room(light: UInt32, dark: UInt32, alphaLight: Double = 1, alphaDark: Double = 1, name: String) -> Color {
+        Color(nsColor: NSColor(name: NSColor.Name(name)) { appearance in
+            let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            return NSColor(roomHex: isDark ? dark : light, alpha: isDark ? alphaDark : alphaLight)
+        })
+    }
+}
+
+extension NSColor {
+    convenience init(roomHex hex: UInt32, alpha: Double = 1) {
+        self.init(srgbRed: CGFloat((hex >> 16) & 0xFF) / 255,
+                  green: CGFloat((hex >> 8) & 0xFF) / 255,
+                  blue: CGFloat(hex & 0xFF) / 255,
+                  alpha: CGFloat(alpha))
+    }
+}
+
+enum RoomTokens {
+
+    // MARK: Type ladder 40 / 22 / 15 / 13 / 12 / 11
+    enum Typography {
+        /// Tier 1: the Overview answer and the one hero figure per screen. Regular weight, tabular.
+        static let hero = Font.system(size: 40, weight: .regular).monospacedDigit()
+        /// Sibling figures (Caches found, Kept safe), Memory pressure word next to the pocket.
+        static let figure = Font.system(size: 22, weight: .regular).monospacedDigit()
+        /// Toolbar titles, chapter headings (semibold) and the quiet greeting / goal sentence (regular).
+        static let title = Font.system(size: 15, weight: .semibold)
+        static let lead = Font.system(size: 15, weight: .regular)
+        /// Section headings inside a screen.
+        static let section = Font.system(size: 13, weight: .semibold)
+        static let body = Font.system(size: 13, weight: .regular)
+        static let bodyStrong = Font.system(size: 13, weight: .medium)
+        static let numeric = Font.system(size: 13, weight: .regular).monospacedDigit()
+        static let caption = Font.system(size: 12, weight: .regular)
+        static let captionNumeric = Font.system(size: 12, weight: .regular).monospacedDigit()
+        /// Functional text floor (DESIGN.md): ticks, key caps, plan labels. Never smaller.
+        static let micro = Font.system(size: 11, weight: .regular)
+        /// SF Mono only for paths and versions.
+        static let path = Font.system(size: 11.5, weight: .regular, design: .monospaced)
+        static let version = Font.system(size: 12, weight: .regular, design: .monospaced)
+        /// Unit attached to a figure, on its baseline: 0.4 x figure size, minimum 14 (RoomByteMetric rule).
+        static func unit(for figureSize: CGFloat) -> Font { .system(size: max(14, figureSize * 0.4), weight: .regular) }
+        /// Tracking: -0.5 for 40 pt, -0.2 for 22 pt, 0 below.
+        static func tracking(for size: CGFloat) -> CGFloat { size >= 30 ? -0.5 : size >= 20 ? -0.2 : 0 }
+    }
+
+    // MARK: Spacing (pt). Calm is the default density; Compact is v2's spacing.
+    enum Space {
+        static let tight: CGFloat = 6
+        static let row: CGFloat = 8
+        static let inner: CGFloat = 12
+        static let group: CGFloat = 16
+        /// Breath tokens (board decision 25).
+        static let breath1: CGFloat = 24   // inside a chapter
+        static let breath2: CGFloat = 40   // between groups; Calm gutter
+        static let breath3: CGFloat = 64   // reserved: Settings, onboarding
+        static let breath4: CGFloat = 96   // between chapters
+        static let measure: CGFloat = 560  // text measure and plan width (Calm)
+    }
+
+    enum Density: String, CaseIterable, Codable, Sendable {
+        case calm, compact
+        var gutter: CGFloat { self == .calm ? 40 : 24 }
+        var topInset: CGFloat { self == .calm ? 24 : 16 }
+        var betweenGroups: CGFloat { self == .calm ? 40 : 24 }
+        var insideChapter: CGFloat { self == .calm ? 24 : 16 }
+        var betweenChapters: CGFloat { self == .calm ? 96 : 40 }
+        var planSize: CGSize { self == .calm ? CGSize(width: 560, height: 288) : CGSize(width: 460, height: 236) }
+        var chartHeight: CGFloat { self == .calm ? 200 : 180 }
+        /// Minimum height of the Overview first screen (keeps the fold where the board measured it).
+        var firstScreenMinHeight: CGFloat { self == .calm ? 588 : 0 }
+    }
+
+    // MARK: Radii (concentric: outer = inner + padding)
+    enum Radius {
+        static let tile: CGFloat = 5
+        static let field: CGFloat = 6
+        static let row: CGFloat = 8
+        static let card: CGFloat = 10
+        static let group: CGFloat = 12
+        static let popover: CGFloat = 16
+        static let sheet: CGFloat = 20
+        static let planRoom: CGFloat = 3
+        static let plan: CGFloat = 11
+    }
+
+    // MARK: Identity
+    enum Ink {
+        static let graphite = Color.room(light: 0x222527, dark: 0xF3F5F6, name: "room.ink")
+        static let secondary = Color.room(light: 0x5B6266, dark: 0xA3A9AC, name: "room.ink2")
+        static let iconGraphite = Color(nsColor: NSColor(roomHex: 0x222527))  // icon tile, both modes
+    }
+
+    enum Surface {
+        static let canvas = Color.room(light: 0xF3F5F6, dark: 0x17191A, name: "room.canvas")
+        static let group = Color.room(light: 0xFFFFFF, dark: 0x202325, name: "room.group")
+        static let track = Color.room(light: 0xE3E7E9, dark: 0x2C3033, name: "room.track")
+        static let used = Color.room(light: 0x4A5257, dark: 0x9AA3A8, name: "room.used")
+        static let hover = Color.room(light: 0x222527, dark: 0xF3F5F6, alphaLight: 0.045, alphaDark: 0.05, name: "room.hover")
+        static let press = Color.room(light: 0x222527, dark: 0xF3F5F6, alphaLight: 0.09, alphaDark: 0.10, name: "room.press")
+        static let line = Color.room(light: 0x222527, dark: 0xF3F5F6, alphaLight: 0.10, alphaDark: 0.09, name: "room.line")
+        static let line2 = Color.room(light: 0x222527, dark: 0xF3F5F6, alphaLight: 0.16, alphaDark: 0.16, name: "room.line2")
+        static let hatch = Color.room(light: 0x222527, dark: 0xF3F5F6, alphaLight: 0.16, alphaDark: 0.16, name: "room.hatch")
+    }
+
+    // MARK: Accent (Customise: four options). fill = filled button and data; text = links and selected text.
+    enum Accent: String, CaseIterable, Codable, Sendable {
+        case teal, graphite, harbour, berry
+        var title: String { rawValue.capitalized }
+        var fill: Color {
+            switch self {
+            case .teal: .room(light: 0x3D7482, dark: 0x37717F, name: "room.accent.teal.fill")
+            case .graphite: .room(light: 0x3A4146, dark: 0x596167, name: "room.accent.graphite.fill")
+            case .harbour: .room(light: 0x3A6491, dark: 0x3A6289, name: "room.accent.harbour.fill")
+            case .berry: .room(light: 0x8A4766, dark: 0x84476A, name: "room.accent.berry.fill")
+            }
+        }
+        var text: Color {
+            switch self {
+            case .teal: .room(light: 0x3D7482, dark: 0x7FB5C3, name: "room.accent.teal.text")
+            case .graphite: .room(light: 0x3A4146, dark: 0xD2D8DB, name: "room.accent.graphite.text")
+            case .harbour: .room(light: 0x3A6491, dark: 0x8DB4DD, name: "room.accent.harbour.text")
+            case .berry: .room(light: 0x8A4766, dark: 0xDDA6C0, name: "room.accent.berry.text")
+            }
+        }
+        /// 10 % (light) / 14 % (dark) wash of the text step: selection, lamp, hover on accent rows.
+        var wash: Color {
+            switch self {
+            case .teal: .room(light: 0x3D7482, dark: 0x7FB5C3, alphaLight: 0.10, alphaDark: 0.14, name: "room.accent.teal.wash")
+            case .graphite: .room(light: 0x3A4146, dark: 0xD2D8DB, alphaLight: 0.10, alphaDark: 0.14, name: "room.accent.graphite.wash")
+            case .harbour: .room(light: 0x3A6491, dark: 0x8DB4DD, alphaLight: 0.10, alphaDark: 0.14, name: "room.accent.harbour.wash")
+            case .berry: .room(light: 0x8A4766, dark: 0xDDA6C0, alphaLight: 0.10, alphaDark: 0.14, name: "room.accent.berry.wash")
+            }
+        }
+    }
+
+    // MARK: Status: memory pressure and the free-space goal only. Never used for data series.
+    enum Status {
+        static let normal = Color.room(light: 0x2E7D4F, dark: 0x5CC08A, name: "room.status.normal")
+        static let elevated = Color.room(light: 0xA3590A, dark: 0xF0A040, name: "room.status.elevated")
+        static let critical = Color.room(light: 0xC4242A, dark: 0xFF6B66, name: "room.status.critical")
+        static let elevatedWash = Color.room(light: 0xA3590A, dark: 0xF0A040, alphaLight: 0.09, alphaDark: 0.12, name: "room.status.elevated.wash")
+    }
+
+    // MARK: Data: the seven kinds. fill = tiles and plan rooms (labels sit on them); mark = dots, thin bars, sparklines.
+    enum Kind: String, CaseIterable, Codable, Sendable {
+        case developer, media, documents, apps, archives, system, hidden
+        var fill: Color {
+            switch self {
+            case .developer: .room(light: 0xA9CBD4, dark: 0x2E5560, name: "room.kind.dev.fill")
+            case .media: .room(light: 0xBACFB2, dark: 0x3C5236, name: "room.kind.media.fill")
+            case .documents: .room(light: 0xB9C4DA, dark: 0x38455E, name: "room.kind.docs.fill")
+            case .apps: .room(light: 0xDCCDA6, dark: 0x58492C, name: "room.kind.apps.fill")
+            case .archives: .room(light: 0xDDBBA9, dark: 0x5C3F33, name: "room.kind.arch.fill")
+            case .system: .room(light: 0xCBD0D3, dark: 0x3A3F43, name: "room.kind.sys.fill")
+            case .hidden: .room(light: 0xCCBCD3, dark: 0x4A3C52, name: "room.kind.hid.fill")
+            }
+        }
+        var mark: Color {
+            switch self {
+            case .developer: .room(light: 0x2E8AA0, dark: 0x4FA9BF, name: "room.kind.dev.mark")
+            case .media: .room(light: 0x5F9150, dark: 0x7DB06C, name: "room.kind.media.mark")
+            case .documents: .room(light: 0x5F7DBB, dark: 0x7E9BD8, name: "room.kind.docs.mark")
+            case .apps: .room(light: 0x9A8A14, dark: 0xBFAE3A, name: "room.kind.apps.mark")
+            case .archives: .room(light: 0xCE5660, dark: 0xE87C86, name: "room.kind.arch.mark")
+            case .system: .room(light: 0x7F8990, dark: 0x98A2A8, name: "room.kind.sys.mark")
+            case .hidden: .room(light: 0x9670AE, dark: 0xB28DCB, name: "room.kind.hid.mark")
+            }
+        }
+        static let tileInk = Color.room(light: 0x222527, dark: 0xF3F5F6, name: "room.tile.ink")
+        static let tileInk2 = Color.room(light: 0x3E4448, dark: 0xC5CCD0, name: "room.tile.ink2")
+    }
+
+    // MARK: Motion values (the environment value in RoomMotion folds in Gentle motion + Reduce Motion)
+    enum Motion {
+        static let quick = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.12)
+        static let standard = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.20)
+        static let exit = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.12)
+        static let page = Animation.spring(response: 0.32, dampingFraction: 1)
+        static let settle = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.24)
+        static let success = Animation.spring(response: 0.28, dampingFraction: 0.7)  // the only overshoot
+        static let fade = Animation.easeOut(duration: 0.15)                          // Reduce Motion fallback
+        static let count: TimeInterval = 0.32
+        static let stagger: TimeInterval = 0.03
+        static let settleStagger: TimeInterval = 0.07
+        static let maxStaggered = 12
+        static let tooltipDelay: TimeInterval = 0.5
+        static let pressScale: CGFloat = 0.96
+
+        // Board v4 tokens (room-design-v4/src/10-body.html:243-248). Values shared with RoomPure.
+        /// Motion.roll: label in 180 ms, out 140 ms, ease-out, 100 % travel; odometer 260 ms per column.
+        static let rollIn = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.18)
+        static let rollOut = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.14)
+        static let odometerColumn = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.26)
+        /// Motion.trace: the pill's dash, one lap per 1.4 s, linear, 22 % of the outline. Only while a scan runs.
+        static let traceLap: TimeInterval = 1.4
+        static let traceDashFraction: CGFloat = 0.22
+        /// Motion.coast: spring without overshoot whose response grows with distance, 0.26 … 0.62 s.
+        static func coast(distanceGB: Double) -> Animation {
+            .spring(response: min(0.62, 0.26 + abs(distanceGB) * 0.003), dampingFraction: 1)
+        }
+        /// Motion.morph: Your week range / mode morph, 340 ms ease-in-out cubic.
+        static let morph = Animation.timingCurve(0.65, 0, 0.35, 1, duration: 0.34)
+        /// Motion.wake: parameters live in RoomPure (34 pt, τ 150 ms, gain 1.2, ring 0.42 pt/ms); the drawn ring lasts 650 ms.
+        static let ringDrawn: TimeInterval = 0.65
+        /// Pill width spring and history stack spring (both without overshoot).
+        static let pillWidth = Animation.spring(response: 0.26, dampingFraction: 1)
+        static let stackApart = Animation.spring(response: 0.32, dampingFraction: 1)
+        static func stackDelay(_ index: Int) -> TimeInterval { 0.06 + 0.04 * Double(index) }
+        /// Small controls (B4 d41, d42): inline confirm armed 4 s, Undo 8 s; list skeleton hold 560 ms, rows 260 ms, 60 ms apart.
+        static let confirmArmed: TimeInterval = 4
+        static let undoWindow: TimeInterval = 8
+        static let skeletonHold: TimeInterval = 0.56
+        static let skeletonRow = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.26)
+        static let skeletonStagger: TimeInterval = 0.06
+        /// Sidebar collapse: labels 100 ms, then the panel 220 ms starting at 110 ms.
+        static let sidebarLabels = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.10)
+        static let sidebarPanel = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.22).delay(0.11)
+        /// Make room: stage 1 lift 260 ms, 16 ms per dot; stage 2 lights 640 ms per dot, 60 ms apart.
+        static let liftDuration: TimeInterval = 0.26, liftPerDot: TimeInterval = 0.016
+        static let lightDuration: TimeInterval = 0.64, lightPerDot: TimeInterval = 0.06
+        /// Hide: 22 ms per character; hold 280 ms to peek.
+        static let hidePerCharacter: TimeInterval = 0.022, peekHold: TimeInterval = 0.28
+    }
+
+    /// Dot plan drawing (board v4 `planDotsSVG`): radius from pitch, free rings, dimming.
+    enum Dots {
+        static let radiusFactor: CGFloat = 0.15, minRadius: CGFloat = 2.4, maxRadius: CGFloat = 3.6
+        static let freeRingStroke: CGFloat = 1.2
+        static let freeRingOpacity: Double = 0.8           // Ink.secondary at 80 %: 3.7:1 light, 5.2:1 dark
+        static let dimmedOpacity: Double = 0.18            // other kinds while one is lit
+        static let quietLabels = 3                         // the three largest rooms keep a label
+        static let quietLabelMinSize = CGSize(width: 64, height: 22)
+        static let lampFalloff: CGFloat = 110              // label opacity 1.25 − d / 110
+        static let blueprintGridFactor: CGFloat = 0.5      // unmeasured grid at half pitch
+        static let blueprintWall: TimeInterval = 0.36, blueprintFill: TimeInterval = 0.30
+    }
+
+    // MARK: Performance budgets (18-BUILD-PLAN-AND-TESTS.md gate G7)
+    enum Budget {
+        static let frameMilliseconds: Double = 8.3        // 120 Hz ProMotion; 16.7 is the hard ceiling
+        static let maxDots = 320
+        static let maxCanvasTiles = 600
+        static let idleCPUPercent: Double = 0.5
+        static let residentMegabytes: Double = 150
+    }
+}
+
+// MARK: - Motion environment
+
+/// Resolved once per window from `@AppStorage("RoomMotionEnabled")` and `accessibilityReduceMotion`.
+struct RoomMotionPolicy: Equatable, Sendable {
+    var gentleMotion: Bool
+    var reduceMotion: Bool
+    /// Full motion only when both allow it.
+    var isFull: Bool { gentleMotion && !reduceMotion }
+    /// Spatial animation, or the 150 ms fade fallback, or nothing (nil = instant).
+    func animation(_ full: Animation, fallback: Animation? = RoomTokens.Motion.fade) -> Animation? {
+        isFull ? full : fallback
+    }
+}
+
+private struct RoomMotionKey: EnvironmentKey {
+    static let defaultValue = RoomMotionPolicy(gentleMotion: true, reduceMotion: false)
+}
+
+extension EnvironmentValues {
+    var roomMotion: RoomMotionPolicy {
+        get { self[RoomMotionKey.self] }
+        set { self[RoomMotionKey.self] = newValue }
+    }
+}
+
+/// Applied once at each scene root (main window, Settings, popover hosting view).
+struct RoomMotionRoot: ViewModifier {
+    @AppStorage("RoomMotionEnabled") private var gentle = true
+    @Environment(\.accessibilityReduceMotion) private var reduce
+    func body(content: Content) -> some View {
+        content.environment(\.roomMotion, RoomMotionPolicy(gentleMotion: gentle, reduceMotion: reduce))
+    }
+}
+
+// MARK: - Button styles (no inline tints anywhere else)
+
+struct RoomPressStyle: ButtonStyle {
+    @Environment(\.roomMotion) private var motion
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed && motion.isFull ? RoomTokens.Motion.pressScale : 1)
+            .opacity(configuration.isPressed && !motion.isFull ? 0.7 : 1)
+            .animation(motion.isFull ? RoomTokens.Motion.quick : nil, value: configuration.isPressed)
+    }
+}
+
+extension View {
+    /// The one filled button per context: native prominent glass in the accent fill.
+    func roomPrimary(_ accent: RoomTokens.Accent) -> some View {
+        buttonStyle(.glassProminent).tint(accent.fill).controlSize(.large)
+    }
+    /// Secondary actions: ordinary glass.
+    func roomSecondary() -> some View { buttonStyle(.glass).controlSize(.large) }
+    /// Quiet links ("See what is using space", "Your week ›"): plain, accent text step, 24 pt hit target.
+    func roomLink(_ accent: RoomTokens.Accent) -> some View {
+        buttonStyle(RoomPressStyle()).foregroundStyle(accent.text).frame(minHeight: 24).contentShape(Rectangle())
+    }
+}
+
+// MARK: - Accent environment (set once per scene root from @AppStorage("RoomAccent"))
+
+private struct RoomAccentKey: EnvironmentKey {
+    static let defaultValue = RoomTokens.Accent.teal
+}
+
+extension EnvironmentValues {
+    var roomAccent: RoomTokens.Accent {
+        get { self[RoomAccentKey.self] }
+        set { self[RoomAccentKey.self] = newValue }
+    }
+}
+
+struct RoomAccentRoot: ViewModifier {
+    @AppStorage("RoomAccent") private var accent = RoomTokens.Accent.teal
+    func body(content: Content) -> some View {
+        content.environment(\.roomAccent, accent).tint(accent.fill)
+    }
+}
