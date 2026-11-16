@@ -41,12 +41,21 @@ nonisolated enum RoomPocketMark {
         return { x, y in CGPoint(x: r.minX + (x - 8) * s, y: r.maxY - (y - 8) * s) }
     }
 
-    /// fill: 0 hollow, 0.5 half (elevated or below goal), 1 full (critical). Template: AppKit tints it.
-    static func image(fill: Double, pointSize: CGFloat = 16) -> NSImage {
+    /// fill: 0 hollow, 0.5 half (elevated or below goal), 1 full (critical).
+    /// Without a tint the image is a template and the menu bar draws it in its own label colour.
+    /// With a tint it is a coloured, non-template image: macOS ignores `NSStatusBarButton.contentTintColor`
+    /// on template images (measured on macOS 26+: a template tinted `.systemOrange` still draws black),
+    /// so the colour has to be in the image. The drawing handler runs again for each appearance and resolves
+    /// the dynamic colour for it, so a light and a dark menu bar each get their own step.
+    static func image(fill: Double, pointSize: CGFloat = 16, tint: NSColor? = nil) -> NSImage {
         let size = NSSize(width: pointSize, height: pointSize)
         let image = NSImage(size: size, flipped: false) { rect in
             guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
-            ctx.setFillColor(NSColor.black.cgColor)
+            var color = NSColor.black.cgColor
+            NSAppearance.currentDrawing().performAsCurrentDrawingAppearance {
+                color = (tint ?? NSColor.black).cgColor
+            }
+            ctx.setFillColor(color)
             ctx.addPath(outerPath(in: rect)); ctx.fillPath()      // the solid soft square
             // Erase the part of the pocket that is not filled yet, from the top down to the fill line. Erasing leaves every
             // edge anti-aliased once; filling a clipped rectangle over a hollow mark double-counts the pocket's edge pixels
@@ -64,7 +73,7 @@ nonisolated enum RoomPocketMark {
             }
             return true
         }
-        image.isTemplate = true
+        image.isTemplate = tint == nil
         image.accessibilityDescription = "Room"
         return image
     }

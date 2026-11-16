@@ -41,6 +41,27 @@ struct RoomPocketMarkTests {
             && full[31].allSatisfy { $0 < 0.05 })
     }
 
+    @Test func tintedMarkIsAColouredNonTemplateImage() throws {
+        // macOS ignores contentTintColor on a status item's template image, so the colour must be drawn into the image.
+        let tint = NSColor(srgbRed: 0xC4 / 255, green: 0x24 / 255, blue: 0x2A / 255, alpha: 1)
+        let image = RoomPocketMark.image(fill: 1, pointSize: 16, tint: tint)
+        #expect(!image.isTemplate)
+        let representation = try #require(NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: 32, pixelsHigh: 32, bitsPerSample: 8, samplesPerPixel: 4,
+            hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
+        let context = try #require(NSGraphicsContext(bitmapImageRep: representation))
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        NSGraphicsContext.current = context
+        image.draw(in: NSRect(x: 0, y: 0, width: 32, height: 32), from: .zero, operation: .sourceOver, fraction: 1)
+        let centre = try #require(representation.colorAt(x: 16, y: 16)?.usingColorSpace(.sRGB))
+        #expect(abs(centre.redComponent - 0xC4 / 255) < 0.02
+            && abs(centre.greenComponent - 0x24 / 255) < 0.02
+            && abs(centre.blueComponent - 0x2A / 255) < 0.02
+            && centre.alphaComponent > 0.99)
+        #expect(RoomPocketMark.image(fill: 1).isTemplate)
+    }
+
     @Test(.enabled("NSImage cannot load Resources/RoomMark.svg on this system") {
         await RoomPocketMarkTests.canLoadSVG()
     })

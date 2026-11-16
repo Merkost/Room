@@ -21,8 +21,18 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
     private var titleTask: Task<Void, Never>?
     private var fillTask: Task<Void, Never>?
     private var displayedPocketFill: Double = 0
-    private lazy var pocketImages = Dictionary(uniqueKeysWithValues:
-        RoomMenuBarMotion.cachedFills.map { ($0, RoomPocketMark.image(fill: $0, pointSize: 16)) })
+    private var displayedTint: RoomMenuBarTint = .none
+    private var pocketImageCache: [String: NSImage] = [:]
+
+    /// One image per (fill, tint), built on first use. The tint is baked into the image because macOS ignores
+    /// `contentTintColor` on a status item's template image; an untinted image stays a template.
+    private func pocketImage(fill: Double, tint: RoomMenuBarTint) -> NSImage {
+        let key = "\(fill)/\(tint)"
+        if let cached = pocketImageCache[key] { return cached }
+        let image = RoomPocketMark.image(fill: fill, pointSize: 16, tint: tintColor(tint))
+        pocketImageCache[key] = image
+        return image
+    }
     private var preferencesObserver: NSObjectProtocol?
 
 #if DEBUG
@@ -64,7 +74,7 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
             item.isVisible = true
             statusItem = item
             if let button = item.button {
-                button.image = pocketImages[0]
+                button.image = pocketImage(fill: 0, tint: .none)
                 button.imagePosition = .imageLeading
                 button.imageHugsTitle = true
                 button.font = NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .medium)
@@ -190,7 +200,6 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
             animatePocket(to: output, button: button)
         } else {
             applyImage(output, button: button)
-            button.contentTintColor = tintColor(output.tint)
         }
         button.toolTip = output.toolTip
         button.setAccessibilityLabel("Room")
@@ -221,13 +230,23 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
     }
 
     private func applyImage(_ output: RoomMenuBarOutput, button: NSStatusBarButton) {
+        button.contentTintColor = nil   // ignored on template images by macOS; colour lives in the image instead
+        displayedTint = output.tint
         switch output.icon {
         case .mark:
-            button.image = pocketImages[output.pocketFill]
+            button.image = pocketImage(fill: output.pocketFill, tint: output.tint)
             displayedPocketFill = output.pocketFill
         case .symbol:
-            let image = NSImage(systemSymbolName: output.symbolName, accessibilityDescription: "Room")
-            image?.isTemplate = true
+            var image = NSImage(systemSymbolName: output.symbolName, accessibilityDescription: "Room")
+            if let color = tintColor(output.tint) {
+                var resolved = color
+                button.effectiveAppearance.performAsCurrentDrawingAppearance {
+                    resolved = color.usingColorSpace(.sRGB) ?? color
+                }
+                image = image?.withSymbolConfiguration(.init(paletteColors: [resolved]))
+            } else {
+                image?.isTemplate = true
+            }
             image?.size = NSSize(width: 16, height: 16)
             button.image = image
         case .none:
@@ -243,13 +262,12 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
                 catch { return }
                 guard !Task.isCancelled, let self, let button else { return }
                 if fill != self.displayedPocketFill {
-                    button.image = self.pocketImages[fill]
+                    button.image = self.pocketImage(fill: fill, tint: self.displayedTint)
                     self.displayedPocketFill = fill
                 }
             }
             guard !Task.isCancelled, let self, let button else { return }
             self.applyImage(output, button: button)
-            button.contentTintColor = self.tintColor(output.tint)
         }
     }
 
