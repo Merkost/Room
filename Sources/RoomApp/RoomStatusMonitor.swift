@@ -14,8 +14,25 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
     private var statusItem: NSStatusItem?
     private var observationGeneration = UUID()
     private var isEnabled = false
-    private var lastAccessibilityValue: String?
+    private var announcer = RoomMenuBarAnnouncer()
+    private var lastOutput: RoomMenuBarOutput?
+    private var lastValueMode: RoomMenuBarValueMode?
+    private var lastMotionAllowed: Bool?
+    private var titleTask: Task<Void, Never>?
+    private var fillTask: Task<Void, Never>?
+    private var displayedPocketFill: Double = 0
+    private lazy var pocketImages = Dictionary(uniqueKeysWithValues:
+        RoomMenuBarMotion.cachedFills.map { ($0, RoomPocketMark.image(fill: $0, pointSize: 16)) })
     private var preferencesObserver: NSObjectProtocol?
+
+#if DEBUG
+    let debugMenuBarState = RoomDebugMenuBarState()
+
+    func setDebugMenuBarScenario(_ scenario: RoomDebugMenuBarScenario) {
+        debugMenuBarState.scenario = scenario
+        updateButton()
+    }
+#endif
 
     init(insights: RoomInsightsModel, memoryActions: MemoryActionsModel,
          cacheModel: RoomViewModel, openRoom: @escaping () -> Void) {
@@ -47,18 +64,15 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
             item.isVisible = true
             statusItem = item
             if let button = item.button {
-                let image = NSImage(systemSymbolName: "memorychip", accessibilityDescription: "Room")
-                image?.isTemplate = true
-                image?.size = NSSize(width: 16, height: 16)
-                button.image = image
+                button.image = pocketImages[0]
                 button.imagePosition = .imageLeading
                 button.imageHugsTitle = true
-                button.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+                button.font = NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .medium)
                 button.target = self
                 button.action = #selector(toggleMonitor(_:))
                 button.identifier = NSUserInterfaceItemIdentifier("RoomMemoryMonitorStatusButton")
                 button.setAccessibilityIdentifier("RoomMemoryMonitorStatusButton")
-                button.setAccessibilityLabel("Room memory monitor")
+                button.setAccessibilityLabel("Room")
             }
             preferencesObserver = NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
                 Task { @MainActor [weak self] in self?.updateButton() }
@@ -66,6 +80,10 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
             insights.beginMonitoring()
             observeMemory(generation: observationGeneration)
         } else {
+            titleTask?.cancel()
+            titleTask = nil
+            fillTask?.cancel()
+            fillTask = nil
             if let preferencesObserver { NotificationCenter.default.removeObserver(preferencesObserver) }
             preferencesObserver = nil
             popover.performClose(nil)
@@ -76,7 +94,11 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
                 NSStatusBar.system.removeStatusItem(item)
             }
             statusItem = nil
-            lastAccessibilityValue = nil
+            announcer = RoomMenuBarAnnouncer()
+            lastOutput = nil
+            lastValueMode = nil
+            lastMotionAllowed = nil
+            displayedPocketFill = 0
         }
     }
 
@@ -97,8 +119,7 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
             popover.performClose(sender)
             return
         }
-        let motionEnabled = UserDefaults.standard.object(forKey: "RoomMotionEnabled") as? Bool ?? true
-        popover.animates = motionEnabled && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        popover.animates = allowsMotion
         switch UserDefaults.standard.string(forKey: "RoomAppearance") {
         case "dark": popover.appearance = NSAppearance(named: .darkAqua)
         case "light": popover.appearance = NSAppearance(named: .aqua)
@@ -136,37 +157,108 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
 
     private func updateButton() {
         guard let button = statusItem?.button else { return }
-        let defaults = UserDefaults.standard
-        let metric = RoomMonitorMetric(rawValue: defaults.string(forKey: "RoomMenuBarMetric") ?? "memory") ?? .memory
-        let showPressure = defaults.object(forKey: "RoomMonitorShowPressure") as? Bool ?? true
-        let showSwap = defaults.object(forKey: "RoomMonitorShowSwap") as? Bool ?? true
-        let presentation: RoomMonitorPresentation
-        if metric == .storage {
-            presentation = .storage(total: insights.diskCapacityBytes, available: insights.diskAvailableBytes)
+        let liveInput = RoomMenuBarSettings.makeInput(defaults: .standard, memoryReport: insights.memoryReport,
+            diskCapacityBytes: insights.diskCapacityBytes, diskAvailableBytes: insights.diskAvailableBytes)
+#if DEBUG
+        let input = debugMenuBarState.scenario.apply(to: liveInput)
+#else
+        let input = liveInput
+#endif
+        // The pure presentation invokes these formatters synchronously here on MainActor.
+        let format = RoomMenuBarFormat(
+            memory: { bytes in MainActor.assumeIsolated { RoomFormat.memoryBytes(bytes) } },
+            disk: { bytes in MainActor.assumeIsolated { RoomFormat.bytes(bytes) } })
+        let output = RoomMenuBarPresentation.make(input, format: format)
+        let motionAllowed = allowsMotion
+        guard output != lastOutput || input.value != lastValueMode || motionAllowed != lastMotionAllowed else { return }
+
+        titleTask?.cancel()
+        titleTask = nil
+        fillTask?.cancel()
+        fillTask = nil
+        let previousOutput = lastOutput
+        let previousMode = lastValueMode
+        lastOutput = output
+        lastValueMode = input.value
+        lastMotionAllowed = motionAllowed
+
+        updateTitle(output.title, mode: input.value, previousMode: previousMode,
+                    button: button, animated: motionAllowed)
+        button.imagePosition = output.icon == .none ? .noImage : output.title.isEmpty ? .imageOnly : .imageLeading
+        if motionAllowed, previousOutput?.icon == .mark, output.icon == .mark,
+           displayedPocketFill != output.pocketFill {
+            animatePocket(to: output, button: button)
         } else {
-            let report = insights.memoryReport
-            presentation = .memory(total: report?.totalBytes ?? 0, used: report?.usedBytes ?? 0,
-                available: report?.availableBytes ?? 0, pressure: report?.pressure ?? .unknown,
-                swap: report.flatMap(RoomMonitorPresentation.measuredSwap), showPressure: showPressure, showSwap: showSwap)
+            applyImage(output, button: button)
+            button.contentTintColor = tintColor(output.tint)
         }
-        let image = NSImage(systemSymbolName: metric.symbol, accessibilityDescription: metric.title)
-        image?.isTemplate = true
-        image?.size = NSSize(width: 16, height: 16)
-        button.image = image
-        button.title = presentation.value
-        switch presentation.tone {
-        case .neutral: button.contentTintColor = nil
-        case .normal: button.contentTintColor = .systemGreen
-        case .elevated: button.contentTintColor = .systemOrange
-        case .critical: button.contentTintColor = .systemRed
-        }
-        let value = presentation.detail
-        button.toolTip = "Room · \(value)"
-        button.setAccessibilityLabel("Room \(metric.title) monitor")
-        button.setAccessibilityValue(value)
-        if lastAccessibilityValue != value {
-            lastAccessibilityValue = value
+        button.toolTip = output.toolTip
+        button.setAccessibilityLabel("Room")
+        button.setAccessibilityValue(output.accessibilityValue)
+        if announcer.shouldAnnounce(output.announcementKey) {
             NSAccessibility.post(element: button, notification: .valueChanged)
+        }
+    }
+
+    private var allowsMotion: Bool {
+        let enabled = UserDefaults.standard.object(forKey: "RoomMotionEnabled") as? Bool ?? true
+        return enabled && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
+
+    private func updateTitle(_ title: String, mode: RoomMenuBarValueMode,
+                             previousMode: RoomMenuBarValueMode?, button: NSStatusBarButton, animated: Bool) {
+        let titles = animated ? RoomMenuBarTitleTick.titles(from: button.title, to: title,
+            previousMode: previousMode, mode: mode) : []
+        guard !titles.isEmpty else { button.title = title; return }
+        titleTask = Task { @MainActor [weak button] in
+            for title in titles {
+                do { try await Task.sleep(for: .seconds(RoomMenuBarMotion.tickDuration / Double(RoomMenuBarMotion.tickSteps))) }
+                catch { return }
+                guard !Task.isCancelled, let button else { return }
+                button.title = title
+            }
+        }
+    }
+
+    private func applyImage(_ output: RoomMenuBarOutput, button: NSStatusBarButton) {
+        switch output.icon {
+        case .mark:
+            button.image = pocketImages[output.pocketFill]
+            displayedPocketFill = output.pocketFill
+        case .symbol:
+            let image = NSImage(systemSymbolName: output.symbolName, accessibilityDescription: "Room")
+            image?.isTemplate = true
+            image?.size = NSSize(width: 16, height: 16)
+            button.image = image
+        case .none:
+            button.image = nil
+        }
+    }
+
+    private func animatePocket(to output: RoomMenuBarOutput, button: NSStatusBarButton) {
+        let frames = RoomMenuBarMotion.fillFrames(from: displayedPocketFill, to: output.pocketFill)
+        fillTask = Task { @MainActor [weak self, weak button] in
+            for fill in frames {
+                do { try await Task.sleep(for: .seconds(RoomMenuBarMotion.fillDuration / Double(RoomMenuBarMotion.fillFrameCount))) }
+                catch { return }
+                guard !Task.isCancelled, let self, let button else { return }
+                if fill != self.displayedPocketFill {
+                    button.image = self.pocketImages[fill]
+                    self.displayedPocketFill = fill
+                }
+            }
+            guard !Task.isCancelled, let self, let button else { return }
+            self.applyImage(output, button: button)
+            button.contentTintColor = self.tintColor(output.tint)
+        }
+    }
+
+    private func tintColor(_ tint: RoomMenuBarTint) -> NSColor? {
+        switch tint {
+        case .none: nil
+        case .normal: RoomTokens.Status.normalAppKit
+        case .elevated: RoomTokens.Status.elevatedAppKit
+        case .critical: RoomTokens.Status.criticalAppKit
         }
     }
 }

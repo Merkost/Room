@@ -8,7 +8,7 @@ struct RoomMenuBarView: View {
     let openRoom: () -> Void
     @AppStorage("RoomMenuBarMetric") private var metric = RoomMonitorMetric.memory.rawValue
     @AppStorage("RoomMonitorShowPressure") private var showPressure = true
-    @AppStorage("RoomMonitorShowSwap") private var showSwap = true
+    @AppStorage("RoomMonitorShowSwap") private var showSwap = false
     @AppStorage("RoomMotionEnabled") private var motionEnabled = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var selectedMetric: RoomMonitorMetric { RoomMonitorMetric(rawValue: metric) ?? .memory }

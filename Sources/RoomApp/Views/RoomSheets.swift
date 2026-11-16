@@ -236,7 +236,7 @@ struct RoomSettingsSheet: View {
     @AppStorage("RoomMenuBarEnabled") private var menuBarEnabled = true
     @AppStorage("RoomMenuBarMetric") private var monitorMetric = RoomMonitorMetric.memory.rawValue
     @AppStorage("RoomMonitorShowPressure") private var showPressure = true
-    @AppStorage("RoomMonitorShowSwap") private var showSwap = true
+    @AppStorage("RoomMonitorShowSwap") private var showSwap = false
     @Environment(\.dismiss) private var dismiss
     private let about = RoomAboutInformation()
 
