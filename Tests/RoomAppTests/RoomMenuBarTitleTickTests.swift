@@ -10,7 +10,7 @@ struct RoomMenuBarTitleTickTests {
         let titles = RoomMenuBarTitleTick.titles(from: "16.2 GB", to: "24.8 GB",
                                                previousMode: .memory, mode: .memory, locale: english)
         #expect(titles.count == 8)
-        #expect(titles.first == "19 GB")
+        #expect(titles.first == "19.0 GB")
         #expect(titles.last == "24.8 GB")
         #expect(titles.allSatisfy { $0.hasSuffix(" GB") })
     }
@@ -21,6 +21,12 @@ struct RoomMenuBarTitleTickTests {
         #expect(titles.count == 8)
         #expect(titles.first == "44 GB")
         #expect(titles.last == "50 GB")
+    }
+
+    @Test func framesKeepOneNumberOfDecimalsSoTheItemDoesNotChangeWidth() {
+        let titles = RoomMenuBarTitleTick.titles(from: "16.2 GB", to: "24.8 GB",
+                                               previousMode: .memory, mode: .memory, locale: english)
+        #expect(titles.allSatisfy { $0.split(separator: " ")[0].split(separator: ".").last?.count == 1 })
     }
 
     @Test func decimalTenthsAnimateInBothDirections() {
@@ -63,7 +69,7 @@ struct RoomMenuBarTitleTickTests {
                                                previousMode: .memory, mode: .memory,
                                                locale: Locale(identifier: "de_DE"))
         #expect(titles.count == 8)
-        #expect(titles.first == "1.219 GB")
+        #expect(titles.first == "1.219,0 GB")
         #expect(titles.last == "1.224,8 GB")
     }
 

@@ -36,7 +36,7 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
     private var preferencesObserver: NSObjectProtocol?
 
 #if DEBUG
-    let debugMenuBarState = RoomDebugMenuBarState()
+    let debugMenuBarState = RoomDebugMenuBarState.shared
 
     func setDebugMenuBarScenario(_ scenario: RoomDebugMenuBarScenario) {
         debugMenuBarState.scenario = scenario
@@ -204,7 +204,10 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
         button.toolTip = output.toolTip
         button.setAccessibilityLabel("Room")
         button.setAccessibilityValue(output.accessibilityValue)
-        if announcer.shouldAnnounce(output.announcementKey) {
+        // Until a first measurement arrives the key is the "unavailable" placeholder; letting it use up the
+        // first-value exemption would announce a pressure that was already there at launch (D-MB-8).
+        let hasMeasurement = input.memoryUsedBytes != nil || input.diskFreeBytes != nil
+        if hasMeasurement, announcer.shouldAnnounce(output.announcementKey) {
             NSAccessibility.post(element: button, notification: .valueChanged)
         }
     }

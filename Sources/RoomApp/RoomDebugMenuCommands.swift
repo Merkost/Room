@@ -4,6 +4,8 @@ import SwiftUI
 
 @Observable
 final class RoomDebugMenuBarState {
+    /// One state shared by the menu and the status item, so the menu can observe it before the monitor exists.
+    static let shared = RoomDebugMenuBarState()
     var scenario: RoomDebugMenuBarScenario = .live
 }
 
@@ -15,7 +17,7 @@ struct RoomDebugMenuCommands: Commands {
             Menu("Menu bar state") {
                 ForEach(RoomDebugMenuBarScenario.allCases, id: \.self) { scenario in
                     Toggle(scenario.menuTitle, isOn: Binding(
-                        get: { (monitor()?.debugMenuBarState.scenario ?? .live) == scenario },
+                        get: { RoomDebugMenuBarState.shared.scenario == scenario },
                         set: { selected in
                             if selected { monitor()?.setDebugMenuBarScenario(scenario) }
                         }))

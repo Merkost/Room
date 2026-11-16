@@ -22,8 +22,10 @@ nonisolated enum RoomMenuBarTitleTick {
             target = target > start ? target.nextUp : target.nextDown
         }
         let values = RoomMenuBarMotion.tickValues(from: start, to: target)
-        formatter.minimumFractionDigits = 0
-        formatter.maximumFractionDigits = max(1, max(old.fractionDigits, new.fractionDigits))
+        // A fixed number of decimals, so the digits (and the item) do not change width while the figure counts.
+        let digits = max(old.fractionDigits, new.fractionDigits)
+        formatter.minimumFractionDigits = digits
+        formatter.maximumFractionDigits = digits
         return values.enumerated().map { index, value in
             index == values.count - 1 ? to : (formatter.string(from: NSNumber(value: value)) ?? to) + new.suffix
         }

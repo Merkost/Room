@@ -8,6 +8,7 @@ nonisolated enum RoomMenuBarSettings {
     static let iconKey = "RoomMenuBarIcon"
     static let tintOnlyWhenNeededKey = "RoomMenuBarTintOnlyWhenNeeded"
     static let goalBytesKey = "RoomGoalBytes"
+    static let showSwapDefault = false
     static let showSwapKey = "RoomMonitorShowSwap"
 
     static let defaultGoalBytes: Int64 = 50_000_000_000
@@ -20,7 +21,7 @@ nonisolated enum RoomMenuBarSettings {
     }
 
     static func showSwap(in defaults: UserDefaults) -> Bool {
-        defaults.object(forKey: showSwapKey) as? Bool ?? false
+        defaults.object(forKey: showSwapKey) as? Bool ?? showSwapDefault
     }
 
     static func makeInput(defaults: UserDefaults, memoryReport: MemoryReport?,

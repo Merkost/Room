@@ -29,6 +29,15 @@ struct RoomPocketMarkTests {
         #expect(count(hollow) { $0 > 0.96 } < 400)
     }
 
+    @Test func halfPocketFillsFromTheBottomUp() throws {
+        // At 32 px: row 10 / column 16 sits in the pocket's upper slot, row 21 / column 11 in its lower arm.
+        // Half full keeps the lower arm solid and erases the upper slot; hollow erases both; full keeps both.
+        let hollow = try alpha(fill: 0), half = try alpha(fill: 0.5), full = try alpha(fill: 1)
+        #expect(hollow[10][16] < 0.05 && hollow[21][11] < 0.05)
+        #expect(half[10][16] < 0.05 && half[21][11] > 0.96)
+        #expect(full[10][16] > 0.96 && full[21][11] > 0.96)
+    }
+
     @Test func halfPocketHasACleanFillLine() throws {
         let half = try alpha(fill: 0.5)
         #expect(centrePartial(half) <= 4)
