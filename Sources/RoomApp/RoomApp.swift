@@ -46,6 +46,9 @@ struct RoomApp: App {
         .windowToolbarStyle(.unified)
         .windowBackgroundDragBehavior(.enabled)
         .commands {
+            #if DEBUG
+            RoomDebugMenuCommands(monitor: { delegate.statusMonitor })
+            #endif
             CommandGroup(replacing: .newItem) { }
             CommandGroup(after: .appInfo) {
                 Button("Show Monitor") { delegate.statusMonitor?.showMonitor() }
