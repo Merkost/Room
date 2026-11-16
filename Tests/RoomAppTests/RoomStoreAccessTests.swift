@@ -67,7 +67,9 @@ struct RoomStoreAccessTests {
                 try FileManager.default.moveItem(at: source, to: destination)
                 return destination
             })
-        let model = RoomViewModel(engine: engine)
+        let defaults = try #require(UserDefaults(suiteName: fixture.root.lastPathComponent))
+        defer { defaults.removePersistentDomain(forName: fixture.root.lastPathComponent) }
+        let model = RoomViewModel(engine: engine, cachesCheckStore: RoomCachesCheckStore(defaults: defaults))
         model.scan()
         for _ in 0..<200 where model.isScanning { try await Task.sleep(for: .milliseconds(10)) }
         #expect(!model.isScanning)

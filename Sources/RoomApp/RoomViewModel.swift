@@ -6,6 +6,7 @@ import RoomCore
 @Observable
 @MainActor
 final class RoomViewModel {
+    let cachesCheckStore: RoomCachesCheckStore
     private(set) var sources: [RoomSource] = []
     private(set) var protectedSources: [RoomProtectedSource] = []
     private(set) var selection: Set<String> = []
@@ -79,7 +80,8 @@ final class RoomViewModel {
     }
     var canReviewCleanup: Bool { report != nil && !isScanning && !isPartialScan && !isWorking && selectedBytes > 0 }
 
-    init(engine: CacheEngine? = nil) {
+    init(engine: CacheEngine? = nil, cachesCheckStore: RoomCachesCheckStore = RoomCachesCheckStore()) {
+        self.cachesCheckStore = cachesCheckStore
         #if ROOM_APP_STORE
         let initialEngine = engine ?? Self.makeStoreEngine(approvedFolders: RoomFileAccess.shared.folders.map(\.url))
         #else
@@ -181,6 +183,10 @@ final class RoomViewModel {
             self.isPartialScan = false
             self.scanProgress = 1
             self.apply(result, selectInitially: true)
+            if let at = self.lastScanned {
+                self.cachesCheckStore.save(RoomCachesCheck(at: at, bytes: self.clearableBytes,
+                                                           partial: self.hasPartialMeasurements))
+            }
             self.statusMessage = completionMessage
             await self.refreshHistory()
         }

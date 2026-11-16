@@ -5,20 +5,33 @@ import SwiftUI
 @main
 struct RoomApp: App {
     @NSApplicationDelegateAdaptor(RoomApplicationDelegate.self) private var delegate
-    @State private var model = RoomViewModel()
+    @State private var model: RoomViewModel
     @State private var insights = RoomInsightsModel()
     @State private var memoryActions = MemoryActionsModel()
+    @State private var rooms: RoomRoomsModel
     #if !ROOM_APP_STORE
-    @State private var agentWork = AgentWorkModel()
+    @State private var agentWork: AgentWorkModel
     #endif
     @AppStorage("RoomMenuBarEnabled") private var menuBarEnabled = true
     @Environment(\.openWindow) private var openWindow
 
+    init() {
+        let cacheModel = RoomViewModel()
+        _model = State(initialValue: cacheModel)
+        #if ROOM_APP_STORE
+        _rooms = State(initialValue: RoomRoomsModel(isWorking: { cacheModel.isWorking }))
+        #else
+        let agentModel = AgentWorkModel()
+        _agentWork = State(initialValue: agentModel)
+        _rooms = State(initialValue: RoomRoomsModel(isWorking: { cacheModel.isWorking || agentModel.isWorking }))
+        #endif
+    }
+
     @ViewBuilder private var rootView: some View {
         #if ROOM_APP_STORE
-        RoomRootView(model: model, insights: insights, memoryActions: memoryActions)
+        RoomRootView(model: model, insights: insights, memoryActions: memoryActions, rooms: rooms)
         #else
-        RoomRootView(model: model, insights: insights, memoryActions: memoryActions, agentWork: agentWork)
+        RoomRootView(model: model, insights: insights, memoryActions: memoryActions, rooms: rooms, agentWork: agentWork)
         #endif
     }
 
@@ -31,8 +44,7 @@ struct RoomApp: App {
                     #if !ROOM_APP_STORE
                     delegate.agentWork = agentWork
                     #endif
-                    delegate.configureMonitor(insights: insights, memoryActions: memoryActions,
-                                              cacheModel: model, enabled: menuBarEnabled) {
+                    delegate.configureMonitor(insights: insights, cacheModel: model, rooms: rooms, enabled: menuBarEnabled) {
                         openWindow(id: "room")
                         NSApp.activate()
                     }
@@ -81,14 +93,13 @@ final class RoomApplicationDelegate: NSObject, NSApplicationDelegate {
     }
     private(set) var statusMonitor: RoomStatusMonitor?
 
-    func configureMonitor(insights: RoomInsightsModel, memoryActions: MemoryActionsModel,
-                          cacheModel: RoomViewModel, enabled: Bool, openRoom: @escaping () -> Void) {
+    func configureMonitor(insights: RoomInsightsModel, cacheModel: RoomViewModel,
+                          rooms: RoomRoomsModel, enabled: Bool, openRoom: @escaping () -> Void) {
         if let statusMonitor {
             statusMonitor.updateOpenRoom(openRoom)
             statusMonitor.setEnabled(enabled)
         } else {
-            let monitor = RoomStatusMonitor(insights: insights, memoryActions: memoryActions,
-                                            cacheModel: cacheModel, openRoom: openRoom)
+            let monitor = RoomStatusMonitor(insights: insights, cacheModel: cacheModel, rooms: rooms, openRoom: openRoom)
             statusMonitor = monitor
             monitor.setEnabled(enabled)
         }

@@ -9,7 +9,7 @@ struct RoomViewModelTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let model = RoomViewModel(engine: CacheEngine(configuration: fixture.configuration,
-            activityDirectory: fixture.directory.appendingPathComponent("activity")))
+            activityDirectory: fixture.directory.appendingPathComponent("activity")), cachesCheckStore: fixture.cachesCheckStore)
         model.scan()
         try await waitForScan(model)
         let source = try #require(model.sources.first)
@@ -33,7 +33,7 @@ struct RoomViewModelTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let model = RoomViewModel(engine: CacheEngine(configuration: fixture.configuration,
-            activityDirectory: fixture.directory.appendingPathComponent("activity")))
+            activityDirectory: fixture.directory.appendingPathComponent("activity")), cachesCheckStore: fixture.cachesCheckStore)
         model.scan()
         try await waitForScan(model)
         #expect(model.sources.first?.name == "Codex")
@@ -50,7 +50,7 @@ struct RoomViewModelTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let model = RoomViewModel(engine: CacheEngine(configuration: fixture.configuration,
-            activityDirectory: fixture.directory.appendingPathComponent("activity")))
+            activityDirectory: fixture.directory.appendingPathComponent("activity")), cachesCheckStore: fixture.cachesCheckStore)
         model.scan()
         try await waitForScan(model)
         let previousID = try #require(model.sources.first?.id)
@@ -76,7 +76,7 @@ struct RoomViewModelTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let model = RoomViewModel(engine: CacheEngine(configuration: fixture.configuration,
-            activityDirectory: fixture.directory.appendingPathComponent("activity")))
+            activityDirectory: fixture.directory.appendingPathComponent("activity")), cachesCheckStore: fixture.cachesCheckStore)
         #expect(model.scanScope == .full)
         #expect(model.canScan)
         #expect(!model.canReviewCleanup)
@@ -108,7 +108,7 @@ struct RoomViewModelTests {
         let scan = await engine.scan()
         let receipt = await engine.clean(entryIDs: Set(scan.eligibleEntries.map(\.id)))
         #expect(receipt.trashedCount == 1)
-        let model = RoomViewModel(engine: engine)
+        let model = RoomViewModel(engine: engine, cachesCheckStore: fixture.cachesCheckStore)
         await model.refreshHistory()
         #expect(model.activity.first?.id == receipt.id)
         model.setScanScope(.quick)
@@ -143,7 +143,7 @@ struct RoomViewModelTests {
                 url: yarnCache, consequence: "Downloaded packages")
         ], homeDirectory: fixture.directory)
         let model = RoomViewModel(engine: CacheEngine(configuration: configuration,
-            activityDirectory: fixture.directory.appendingPathComponent("activity")))
+            activityDirectory: fixture.directory.appendingPathComponent("activity")), cachesCheckStore: fixture.cachesCheckStore)
         model.scan()
         try await waitForScan(model)
         let npm = try #require(model.sources.first { $0.id == "npm" })
@@ -166,7 +166,7 @@ struct RoomViewModelTests {
                 category: "developer", url: fixture.cache, consequence: reason, cleanupPolicy: .inspectOnly(reason))
         ], homeDirectory: fixture.directory)
         let model = RoomViewModel(engine: CacheEngine(configuration: configuration,
-            activityDirectory: fixture.directory.appendingPathComponent("activity")))
+            activityDirectory: fixture.directory.appendingPathComponent("activity")), cachesCheckStore: fixture.cachesCheckStore)
         model.scan()
         try await waitForScan(model)
         let source = try #require(model.sources.first)
@@ -214,5 +214,12 @@ private struct Fixture {
         ], homeDirectory: root)
     }
 
-    func remove() { try? FileManager.default.removeItem(at: directory) }
+    @MainActor var cachesCheckStore: RoomCachesCheckStore {
+        RoomCachesCheckStore(defaults: UserDefaults(suiteName: directory.lastPathComponent)!)
+    }
+
+    func remove() {
+        UserDefaults(suiteName: directory.lastPathComponent)?.removePersistentDomain(forName: directory.lastPathComponent)
+        try? FileManager.default.removeItem(at: directory)
+    }
 }
