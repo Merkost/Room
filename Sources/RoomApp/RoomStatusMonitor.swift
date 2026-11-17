@@ -54,7 +54,6 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
             case "settings", "settings:menubar", "settings:folders", "settings:about":
                 let rawTab = request.split(separator: ":").dropFirst().first.map(String.init) ?? "general"
                 guard let tab = RoomSettingsTab(rawValue: rawTab), let self else { return }
-                UserDefaults.standard.set(tab.rawValue, forKey: "RoomSettingsTab")
                 self.insights.requestedSettingsTab = tab
                 self.insights.requestedSettings = true
             default: break

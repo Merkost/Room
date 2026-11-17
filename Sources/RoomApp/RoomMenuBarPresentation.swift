@@ -74,25 +74,45 @@ extension RoomMenuBarFormat {
 
     nonisolated static func liveMemory(_ bytes: Int64, locale: Locale = .current) -> String {
         if bytes <= 0 { return "0 KB" }
-        let gib = Double(bytes) / 1_073_741_824
-        if gib >= 1 { return trimmed(gib, decimals: 1, locale: locale) + " GB" }
-        return String(format: "%.0f", locale: locale, Double(bytes) / 1_048_576) + " MB"
+        let mib = (Double(bytes) / 1_048_576).rounded()
+        // Pick the unit after rounding: 1,023.6 MiB is "1 GB", not "1,024 MB".
+        if mib < 1_024 { return whole(max(mib, 1), locale: locale) + " MB" }
+        return trimmed(Double(bytes) / 1_073_741_824, decimals: 1, locale: locale) + " GB"
     }
 
     nonisolated static func liveDisk(_ bytes: Int64, locale: Locale = .current) -> String {
         if bytes <= 0 { return "0 KB" }
         let value = Double(bytes)
-        if value >= 1e12 { return trimmed(value / 1e12, decimals: 1, locale: locale) + " TB" }
-        if value >= 1e10 { return String(format: "%.0f", locale: locale, value / 1e9) + " GB" }
-        if value >= 1e9 { return trimmed(value / 1e9, decimals: 1, locale: locale) + " GB" }
-        return String(format: "%.0f", locale: locale, value / 1e6) + " MB"
+        if value >= 1e12 || (value / 1e9).rounded() >= 1_000 { return trimmed(value / 1e12, decimals: 1, locale: locale) + " TB" }
+        if value >= 1e10 { return whole((value / 1e9).rounded(), locale: locale) + " GB" }
+        if value >= 1e9 {
+            let tenths = (value / 1e8).rounded() / 10
+            // 9.96 GB rounds to 10.0: show it as a whole figure, like the 10 GB and up rule.
+            return tenths >= 10 ? whole(tenths, locale: locale) + " GB" : trimmed(tenths, decimals: 1, locale: locale) + " GB"
+        }
+        let mb = (value / 1e6).rounded()
+        return mb >= 1_000 ? "1 GB" : whole(max(mb, 1), locale: locale) + " MB"
+    }
+
+    /// A whole number without grouping separators, in the locale's own digits.
+    private nonisolated static func whole(_ value: Double, locale: Locale) -> String {
+        let formatter = NumberFormatter()
+        formatter.locale = locale
+        formatter.numberStyle = .none
+        formatter.usesGroupingSeparator = false
+        formatter.maximumFractionDigits = 0
+        return formatter.string(from: NSNumber(value: value)) ?? String(Int(value))
     }
 
     private nonisolated static func trimmed(_ value: Double, decimals: Int, locale: Locale) -> String {
-        var text = String(format: "%.\(decimals)f", locale: locale, value)
-        let separator = locale.decimalSeparator ?? "."
-        if text.hasSuffix(separator + "0") { text.removeLast(separator.count + 1) }
-        return text
+        let formatter = NumberFormatter()
+        formatter.locale = locale
+        formatter.numberStyle = .decimal
+        formatter.usesGroupingSeparator = false
+        formatter.minimumFractionDigits = 0
+        formatter.maximumFractionDigits = decimals
+        formatter.roundingMode = .halfEven
+        return formatter.string(from: NSNumber(value: value)) ?? String(format: "%.\(decimals)f", value)
     }
 }
 

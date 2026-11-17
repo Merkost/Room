@@ -250,6 +250,29 @@ struct RoomMenuBarLiveFormatTests {
         #expect(RoomMenuBarFormat.liveDisk(640_000_000, locale: us) == "640 MB")
     }
 
+    @Test func theUnitIsChosenAfterRounding() {
+        #expect(RoomMenuBarFormat.liveDisk(999_600_000_000, locale: us) == "1 TB")
+        #expect(RoomMenuBarFormat.liveDisk(999_400_000_000, locale: us) == "999 GB")
+        #expect(RoomMenuBarFormat.liveDisk(1_000_000_000_000, locale: us) == "1 TB")
+        #expect(RoomMenuBarFormat.liveDisk(999_700_000, locale: us) == "1 GB")
+        #expect(RoomMenuBarFormat.liveMemory(1_073_000_000, locale: us) == "1023 MB")
+        #expect(RoomMenuBarFormat.liveMemory(1_073_300_000, locale: us) == "1 GB")
+        #expect(RoomMenuBarFormat.liveMemory(1_073_741_824, locale: us) == "1 GB")
+        #expect(RoomMenuBarFormat.liveMemory(-5, locale: us) == "0 KB")
+    }
+
+    @Test func largeFiguresHaveNoGroupingSeparator() {
+        #expect(RoomMenuBarFormat.liveDisk(312_000_000_000, locale: us) == "312 GB")
+        #expect(RoomMenuBarFormat.liveDisk(25_000_000_000_000, locale: us) == "25 TB")
+        #expect(RoomMenuBarFormat.liveMemory(600_000_000, locale: us) == "572 MB")
+    }
+
+    @Test func nativeDigitsKeepTheirTrailingZeroTrimmed() {
+        let arabic = Locale(identifier: "ar_EG")
+        let text = RoomMenuBarFormat.liveMemory(17_179_869_184, locale: arabic)  // exactly 16 GiB
+        #expect(text.hasSuffix(" GB") && !text.contains("٫"))
+    }
+
     @Test func decimalSeparatorFollowsTheLocale() {
         let german = Locale(identifier: "de_DE")
         #expect(RoomMenuBarFormat.liveMemory(41_370_000_000, locale: german) == "38,5 GB")

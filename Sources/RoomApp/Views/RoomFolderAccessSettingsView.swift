@@ -41,14 +41,15 @@ struct RoomFolderAccessSettingsView: View {
                                     RoomFolderRowHover { folderRow(folder) }
                                     if folder.id != folders.last?.id { Divider() }
                                 }
-                                .transition(.opacity.combined(with: .move(edge: .top)))
+                                // Reduce Motion: no travel (opacity only).
+                                .transition(motion.isFull ? .opacity.combined(with: .move(edge: .top)) : .opacity)
                             }
                         }
                     }
                     .scrollDisabled(false)   // the list scrolls even though the tab itself never does
                     .frame(height: min(RoomTokens.Settings.folderListMaximumHeight,
                         CGFloat(folders.count) * RoomTokens.Settings.folderRowHeight))
-                    .animation(motion.animation(RoomTokens.Motion.settle), value: folders.map(\.id))
+                    .animation(motion.animation(RoomTokens.Motion.settle, fallback: nil), value: folders.map(\.id))
                 }
             }
 
@@ -102,12 +103,7 @@ struct RoomFolderAccessSettingsView: View {
                 .multilineTextAlignment(.trailing).fixedSize(horizontal: true, vertical: false)
                 .contentTransition(.opacity)
                 .animation(motion.animation(RoomTokens.Motion.standard), value: status.text)
-            if status.isReadable {
-                if let savedID = folder.savedID {
-                    Button("Remove") { insights.forgetAccessFolder(id: savedID) }
-                        .accessibilityLabel("Remove access to \(folder.name)").transition(.opacity)
-                }
-            } else {
+            if status == .protectedByMacOS {
                 Button("Allow…") {
                     #if ROOM_APP_STORE
                     insights.chooseAccessFolder()
@@ -116,6 +112,11 @@ struct RoomFolderAccessSettingsView: View {
                     #endif
                 }
                 .accessibilityLabel("Allow access to \(folder.name)")
+            }
+            // A saved folder can always be forgotten, readable or not (a stale or locked one most of all).
+            if let savedID = folder.savedID {
+                Button("Remove") { insights.forgetAccessFolder(id: savedID) }
+                    .accessibilityLabel("Remove access to \(folder.name)").transition(.opacity)
             }
         }
         .frame(minHeight: RoomTokens.Settings.folderRowHeight)

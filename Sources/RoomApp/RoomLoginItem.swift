@@ -38,7 +38,8 @@ final class RoomLoginItemModel {
             else { try service.unregister() }
             refreshStatus()
         } catch {
-            self.enabled = false
+            // Show what the system says, not what was asked: a failed unregister leaves Room opening at login.
+            self.enabled = service.status == .enabled
             requiresApproval = service.status == .requiresApproval
             errorMessage = "Room couldn't change this. Try again in System Settings."
         }

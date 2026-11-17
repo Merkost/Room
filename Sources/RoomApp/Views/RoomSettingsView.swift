@@ -108,7 +108,7 @@ private struct RoomGeneralSettingsView: View {
                     (Text("Keep ") + Text("\(goalBytes / 1_000_000_000)").bold() + Text(" GB free"))
                         .monospacedDigit()
                         .contentTransition(.numericText(value: Double(goalBytes)))
-                        .animation(motion.animation(RoomTokens.Motion.standard), value: goalBytes)
+                        .animation(motion.animation(RoomTokens.Motion.standard, fallback: nil), value: goalBytes)
                 }
                 .fixedSize(horizontal: true, vertical: false)
                 .accessibilityIdentifier("RoomSettingsFreeSpaceGoal")

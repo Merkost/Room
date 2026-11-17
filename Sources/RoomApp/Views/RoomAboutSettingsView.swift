@@ -19,6 +19,7 @@ struct RoomAboutSettingsView: View {
     }
 
     var body: some View {
+        let madeRoom = RoomMadeRoom.summary(activities: model.activity)
         Form {
             Section {
                 HStack(alignment: .top, spacing: RoomTokens.Space.breath1) {
@@ -60,13 +61,13 @@ struct RoomAboutSettingsView: View {
                 }
             }
 
-            if let summary = RoomMadeRoom.summary(activities: model.activity) {
+            if let summary = madeRoom {
                 Section {
                     HStack(alignment: .firstTextBaseline, spacing: RoomTokens.Space.inner) {
                         Text(RoomFormat.bytes(summary.bytes)).font(RoomTokens.Typography.madeRoom)
                             .fixedSize()
                             .contentTransition(.numericText(value: Double(summary.bytes)))
-                            .animation(motion.animation(RoomTokens.Motion.standard), value: summary.bytes)
+                            .animation(motion.animation(RoomTokens.Motion.standard, fallback: nil), value: summary.bytes)
                         Text(summary.caption).font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -93,7 +94,7 @@ struct RoomAboutSettingsView: View {
         }
         .formStyle(.grouped).scrollDisabled(true)
         .fixedSize(horizontal: false, vertical: true)
-        .animation(motion.animation(RoomTokens.Motion.settle), value: RoomMadeRoom.summary(activities: model.activity) != nil)
+        .animation(motion.animation(RoomTokens.Motion.settle), value: madeRoom != nil)
         .task { await model.refreshHistory() }
     }
 }

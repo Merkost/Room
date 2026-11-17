@@ -2,8 +2,9 @@ import AppKit
 
 /// One stateless drawing path for the status item and the Settings preview.
 /// The image stays dynamic until it is drawn, so each menu bar resolves its own ink.
-@MainActor
-enum RoomMenuBarStackedItem {
+/// `nonisolated` on purpose: AppKit may run an image's drawing handler on any thread, and a main-actor closure traps there
+/// (reproduced: SIGTRAP at `_dispatch_assert_queue_fail` when the image is drawn from a global queue).
+nonisolated enum RoomMenuBarStackedItem {
     nonisolated struct LineFrames: Equatable, Sendable {
         let symbol: CGRect
         let figure: CGRect
@@ -36,12 +37,18 @@ enum RoomMenuBarStackedItem {
             lines: lineFrames)
     }
 
+    @MainActor
     static func image(for output: RoomMenuBarOutput, pocketFill: Double? = nil, height: CGFloat = 22) -> NSImage {
+        image(for: output, pocketTint: tintColor(output.tint), pocketFill: pocketFill, height: height)
+    }
+
+    /// The tint is resolved by the caller on the main actor; everything the drawing handler touches is thread-agnostic.
+    static func image(for output: RoomMenuBarOutput, pocketTint: NSColor?, pocketFill: Double? = nil,
+                      height: CGFloat = 22) -> NSImage {
         let geometry = frames(for: output, height: height)
         let lines = output.stackedLines ?? []
         let font = NSFont.monospacedDigitSystemFont(ofSize: 10.5, weight: .medium)
         let fill = pocketFill ?? output.pocketFill
-        let pocketTint = tintColor(output.tint)
         let image = NSImage(size: geometry.size, flipped: false) { _ in
             NSAppearance.currentDrawing().performAsCurrentDrawingAppearance {
                 // Resolve inside the handler; creating one image must not bind it to
@@ -53,8 +60,8 @@ enum RoomMenuBarStackedItem {
                 }
                 for (line, frames) in zip(lines, geometry.lines) {
                     if let symbol = NSImage(systemSymbolName: line.symbolName, accessibilityDescription: nil)?
-                        .withSymbolConfiguration(.init(pointSize: 9, weight: .medium))?
-                        .withSymbolConfiguration(.init(paletteColors: [ink])) {
+                        .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 9, weight: .medium)
+                            .applying(.init(paletteColors: [ink]))) {
                         symbol.isTemplate = false
                         let scale = min(frames.symbol.width / symbol.size.width, frames.symbol.height / symbol.size.height)
                         let size = CGSize(width: symbol.size.width * scale, height: symbol.size.height * scale)
@@ -75,7 +82,8 @@ enum RoomMenuBarStackedItem {
         return image
     }
 
-    private static func tintColor(_ tint: RoomMenuBarTint) -> NSColor? {
+    @MainActor
+    static func tintColor(_ tint: RoomMenuBarTint) -> NSColor? {
         switch tint {
         case .none: nil
         case .normal: RoomTokens.Status.normalAppKit

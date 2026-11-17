@@ -16,13 +16,22 @@ struct RoomFolderAccessSettingsTests {
         #expect(status.isReadable)
     }
 
-    @Test func unreadablePathReportsProtectedByMacOS() {
+    @Test func missingPathReportsFolderNotFound() {
         let missing = FileManager.default.temporaryDirectory
             .appendingPathComponent("RoomFolderAccessMissing-\(UUID().uuidString)", isDirectory: true)
         let status = RoomFolderAccessStatus.status(for: missing)
-        #expect(!FileManager.default.isReadableFile(atPath: missing.path))
-        #expect(status == .protectedByMacOS)
-        #expect(status.text == "Protected by macOS")
-        #expect(!status.isReadable)
+        #expect(status == .missing && status.text == "Folder not found" && !status.isReadable)
+    }
+
+    @Test func lockedFolderReportsProtectedByMacOS() throws {
+        let folder = URL(fileURLWithPath: "/private/tmp/RoomFolderAccessLocked-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: folder.path)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: folder.path)
+            try? FileManager.default.removeItem(at: folder)
+        }
+        let status = RoomFolderAccessStatus.status(for: folder)
+        #expect(status == .protectedByMacOS && status.text == "Protected by macOS" && !status.isReadable)
     }
 }

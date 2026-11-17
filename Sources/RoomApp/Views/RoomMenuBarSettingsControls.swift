@@ -61,7 +61,7 @@ struct RoomMenuBarSettingsControls: View {
                     }
                 }
             }
-            .animation(motion.animation(RoomTokens.Motion.standard), value: input.value)
+            .animation(motion.animation(RoomTokens.Motion.standard, fallback: nil), value: input.value)
         }
         .padding(.top, 18).padding(.bottom, 18).padding(.horizontal, 40)
         .font(RoomTokens.Typography.body)

@@ -169,6 +169,55 @@ struct RoomMenuBarPreviewTests {
             diskFreeBytes: 312_000_000_000, goalBytes: 50_000_000_000)
     }
 
+    /// The Settings grid draws exactly these two layers, never `.all`. Counting only `.all` once let a blank strip through.
+    @Test(arguments: [NSAppearance.Name.aqua, .darkAqua], [RoomMenuBarLayoutMode.inline, .stacked])
+    func theLayersSettingsActuallyDrawAreNotBlank(_ appearance: NSAppearance.Name, _ layout: RoomMenuBarLayoutMode) throws {
+        var input = RoomMenuBarInput(value: .both, icon: .mark,
+            memoryUsedBytes: 16_200_000_000, memoryTotalBytes: 32_000_000_000, pressure: .normal,
+            diskFreeBytes: 312_000_000_000, goalBytes: 50_000_000_000)
+        input.layout = layout
+        let fixed = RoomMenuBarPreview.make(input: input, format: RoomMenuBarPreview.settingsFormat,
+            appearance: appearance, width: 280, layers: .surfaceAndClock)
+        let item = RoomMenuBarPreview.make(input: input, format: RoomMenuBarPreview.settingsFormat,
+            appearance: appearance, width: 280, layers: .itemOnly)
+        let fixedBitmap = try #require(fixed.image.representations.first as? NSBitmapImageRep)
+        let itemBitmap = try #require(item.image.representations.first as? NSBitmapImageRep)
+        let frames = RoomMenuBarPreview.frames(for: item.output, width: 280)
+        let surface = try #require(fixedBitmap.colorAt(x: 1, y: 1)?.usingColorSpace(.sRGB))
+
+        func differing(_ rect: CGRect, in bitmap: NSBitmapImageRep, from surface: NSColor) throws -> Int {
+            var count = 0
+            for px in Int(rect.minX * 2)..<Int(rect.maxX * 2) {
+                for py in Int((24 - rect.maxY) * 2)..<Int((24 - rect.minY) * 2) {
+                    let color = try #require(bitmap.colorAt(x: px, y: py)?.usingColorSpace(.sRGB))
+                    if abs(color.redComponent - surface.redComponent) > 0.25 { count += 1 }
+                }
+            }
+            return count
+        }
+        func opaque(_ rect: CGRect, in bitmap: NSBitmapImageRep) throws -> Int {
+            var count = 0
+            for px in Int(rect.minX * 2)..<Int(rect.maxX * 2) {
+                for py in Int((24 - rect.maxY) * 2)..<Int((24 - rect.minY) * 2) {
+                    if try #require(bitmap.colorAt(x: px, y: py)).alphaComponent > 0.5 { count += 1 }
+                }
+            }
+            return count
+        }
+
+        // Surface and clock: an opaque strip with the clock inked on it, and nothing of the item.
+        #expect(try opaque(CGRect(x: 0, y: 0, width: 280, height: 24), in: fixedBitmap) == 280 * 2 * 48)
+        #expect(try differing(frames.clock, in: fixedBitmap, from: surface) > 20)
+        let itemFrame = try #require(frames.title)
+        #expect(try differing(itemFrame, in: fixedBitmap, from: surface) == 0)
+
+        // Item only: transparent everywhere except the item (pocket mark and figures), and no clock.
+        #expect(try opaque(frames.clock, in: itemBitmap) == 0)
+        #expect(try opaque(itemFrame, in: itemBitmap) > 80)
+        #expect(try opaque(try #require(frames.icon), in: itemBitmap) > 20)
+        #expect(try #require(itemBitmap.colorAt(x: 2, y: 2)).alphaComponent == 0)
+    }
+
     private func bytes(_ bitmap: NSBitmapImageRep) throws -> Data {
         let pointer = try #require(bitmap.bitmapData)
         return Data(bytes: pointer, count: bitmap.bytesPerRow * bitmap.pixelsHigh)

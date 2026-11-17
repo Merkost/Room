@@ -128,13 +128,14 @@ struct RoomLoginItemTests {
     }
 
     @Test(arguments: [false, true])
-    func errorsLeaveSwitchOffAndShowRecoveryMessage(_ initiallyEnabled: Bool) {
+    func errorsShowTheRealStatusAndTheRecoveryMessage(_ initiallyEnabled: Bool) {
         let service = FakeRoomLoginItem()
         service.status = initiallyEnabled ? .enabled : .notRegistered
         service.shouldThrow = true
         let model = RoomLoginItemModel(service: service)
         model.setEnabled(!initiallyEnabled)
-        #expect(!model.enabled)
+        // The switch tells the truth: a failed register stays off, a failed unregister stays on.
+        #expect(model.enabled == initiallyEnabled)
         #expect(model.errorMessage == "Room couldn't change this. Try again in System Settings.")
     }
 
