@@ -10,6 +10,7 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
     private let cacheModel: RoomViewModel
     private let rooms: RoomRoomsModel
     private var openRoom: () -> Void
+    private var openSettings: () -> Void
     private let popover = NSPopover()
     private var statusItem: NSStatusItem?
     private var observationGeneration = UUID()
@@ -43,15 +44,19 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
         updateButton()
     }
 
-    /// Debug builds only: `ROOM_DEBUG_OPEN=popover` or `settings` opens that surface shortly after launch, so it can be
-    /// looked at (and screenshotted) without clicking the menu bar. Never in a release build.
+    /// Debug builds only: open `popover` or `settings[:menubar|:folders|:about]` shortly after launch.
     private func applyDebugLaunchRequest() {
         guard let request = ProcessInfo.processInfo.environment["ROOM_DEBUG_OPEN"] else { return }
         Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(3))
             switch request {
             case "popover": self?.showMonitor()
-            case "settings": self?.insights.requestedSettings = true
+            case "settings", "settings:menubar", "settings:folders", "settings:about":
+                let rawTab = request.split(separator: ":").dropFirst().first.map(String.init) ?? "general"
+                guard let tab = RoomSettingsTab(rawValue: rawTab), let self else { return }
+                UserDefaults.standard.set(tab.rawValue, forKey: "RoomSettingsTab")
+                self.insights.requestedSettingsTab = tab
+                self.insights.requestedSettings = true
             default: break
             }
         }
@@ -59,26 +64,35 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
 #endif
 
     init(insights: RoomInsightsModel, cacheModel: RoomViewModel,
-         rooms: RoomRoomsModel, openRoom: @escaping () -> Void) {
+         rooms: RoomRoomsModel, openRoom: @escaping () -> Void, openSettings: @escaping () -> Void) {
         self.insights = insights
         self.cacheModel = cacheModel
         self.rooms = rooms
         self.openRoom = openRoom
+        self.openSettings = openSettings
         super.init()
         popover.behavior = .transient
         popover.delegate = self
         let hosting = NSHostingController(rootView:
-            RoomMenuBarView(insights: insights, cacheModel: cacheModel, rooms: rooms) { [weak self] in
+            RoomMenuBarView(insights: insights, cacheModel: cacheModel, rooms: rooms, openRoom: { [weak self] in
                 self?.openMainWindow()
-            }
+            }, showSettings: { [weak self] in
+                self?.popover.performClose(nil)
+                self?.openSettings()
+                NSApp.activate()
+            })
             .modifier(RoomMotionRoot())
             .modifier(RoomAccentRoot())
         )
         hosting.sizingOptions = [.preferredContentSize]
         popover.contentViewController = hosting
+        #if DEBUG
+        applyDebugLaunchRequest()
+        #endif
     }
 
     func updateOpenRoom(_ action: @escaping () -> Void) { openRoom = action }
+    func updateOpenSettings(_ action: @escaping () -> Void) { openSettings = action }
 
     func setEnabled(_ enabled: Bool) {
         if !enabled { rooms.cancelMeasurement() }
@@ -106,9 +120,6 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
             }
             insights.beginMonitoring()
             observeMemory(generation: observationGeneration)
-            #if DEBUG
-            applyDebugLaunchRequest()
-            #endif
         } else {
             titleTask?.cancel()
             titleTask = nil

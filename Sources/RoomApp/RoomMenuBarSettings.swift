@@ -3,6 +3,13 @@ import RoomCore
 
 /// Reads legacy preferences until a control writes its replacement key.
 nonisolated enum RoomMenuBarSettings {
+    nonisolated enum Control: Hashable, Sendable {
+        case show, value, icon, colour, swap, pinnedRoom
+    }
+
+    static let controlOrder: [Control] = [.show, .value, .icon, .colour, .swap, .pinnedRoom]
+    static let iconOrder: [RoomMenuBarIconMode] = [.mark, .symbol, .none]
+
     static let valueKey = "RoomMenuBarValue"
     static let legacyMetricKey = "RoomMenuBarMetric"
     static let iconKey = "RoomMenuBarIcon"

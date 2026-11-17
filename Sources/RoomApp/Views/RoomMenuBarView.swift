@@ -7,6 +7,7 @@ struct RoomMenuBarView: View {
     @Bindable var cacheModel: RoomViewModel
     @Bindable var rooms: RoomRoomsModel
     let openRoom: () -> Void
+    let showSettings: () -> Void
     @AppStorage(RoomMenuBarSettings.showSwapKey) private var showSwap = RoomMenuBarSettings.showSwapDefault
     @AppStorage(RoomMenuBarSettings.goalBytesKey) private var storedGoal = Int(RoomMenuBarSettings.defaultGoalBytes)
     @Environment(\.roomMotion) private var motion
@@ -208,8 +209,7 @@ struct RoomMenuBarView: View {
     func openCaches() { open(.clean) }
 
     func openSettings() {
-        insights.requestedSettings = true
-        openRoom()
+        showSettings()
     }
 
     func openPinnedRoom() {

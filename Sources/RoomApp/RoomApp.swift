@@ -14,6 +14,7 @@ struct RoomApp: App {
     #endif
     @AppStorage("RoomMenuBarEnabled") private var menuBarEnabled = true
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
 
     init() {
         let cacheModel = RoomViewModel()
@@ -44,10 +45,10 @@ struct RoomApp: App {
                     #if !ROOM_APP_STORE
                     delegate.agentWork = agentWork
                     #endif
-                    delegate.configureMonitor(insights: insights, cacheModel: model, rooms: rooms, enabled: menuBarEnabled) {
+                    delegate.configureMonitor(insights: insights, cacheModel: model, rooms: rooms, enabled: menuBarEnabled, openRoom: {
                         openWindow(id: "room")
                         NSApp.activate()
-                    }
+                    }, openSettings: { openSettings() })
                 }
                 .onChange(of: menuBarEnabled, initial: true) { _, enabled in
                     delegate.statusMonitor?.setEnabled(enabled)
@@ -75,6 +76,12 @@ struct RoomApp: App {
                 Button("Open Trash") { model.openTrash() }
             }
         }
+        Settings {
+            RoomSettingsView(model: model, insights: insights, rooms: rooms)
+                .modifier(RoomMotionRoot())
+                .modifier(RoomAccentRoot())
+        }
+        .windowResizability(.contentSize)
 
     }
 }
@@ -94,12 +101,15 @@ final class RoomApplicationDelegate: NSObject, NSApplicationDelegate {
     private(set) var statusMonitor: RoomStatusMonitor?
 
     func configureMonitor(insights: RoomInsightsModel, cacheModel: RoomViewModel,
-                          rooms: RoomRoomsModel, enabled: Bool, openRoom: @escaping () -> Void) {
+                          rooms: RoomRoomsModel, enabled: Bool, openRoom: @escaping () -> Void,
+                          openSettings: @escaping () -> Void) {
         if let statusMonitor {
             statusMonitor.updateOpenRoom(openRoom)
+            statusMonitor.updateOpenSettings(openSettings)
             statusMonitor.setEnabled(enabled)
         } else {
-            let monitor = RoomStatusMonitor(insights: insights, cacheModel: cacheModel, rooms: rooms, openRoom: openRoom)
+            let monitor = RoomStatusMonitor(insights: insights, cacheModel: cacheModel, rooms: rooms,
+                openRoom: openRoom, openSettings: openSettings)
             statusMonitor = monitor
             monitor.setEnabled(enabled)
         }

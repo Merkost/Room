@@ -4,6 +4,19 @@ import Testing
 
 @Suite("Menu bar bitmap previews") @MainActor
 struct RoomMenuBarPreviewTests {
+    @Test func settingsSamplesDisplayTheSpecifiedDecimalFigures() {
+        let scenarios = RoomMenuBarPreviewScenarios.inputs(from: RoomMenuBarInput(
+            value: .both, icon: .mark, goalBytes: 50_000_000_000))
+        let normal = RoomMenuBarPreview.make(input: scenarios.normal,
+            format: RoomMenuBarPreview.settingsFormat, appearance: .aqua)
+        let elevated = RoomMenuBarPreview.make(input: scenarios.elevated,
+            format: RoomMenuBarPreview.settingsFormat, appearance: .darkAqua)
+        #expect(normal.output.title == "16.2 GB · 312 GB")
+        #expect(elevated.output.title == "24.8 GB · 41 GB")
+        #expect(normal.output.accessibilityValue.contains("16.2 GB memory used of 32 GB"))
+        #expect(elevated.output.accessibilityValue.contains("24.8 GB memory used of 32 GB"))
+    }
+
     @Test(arguments: RoomMenuBarValueMode.allCases)
     func previewUsesTheRealTitleAndIcon(_ value: RoomMenuBarValueMode) {
         let input = RoomMenuBarInput(value: value, icon: .symbol,

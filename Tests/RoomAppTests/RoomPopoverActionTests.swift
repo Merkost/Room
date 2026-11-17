@@ -13,7 +13,7 @@ struct RoomPopoverActionTests {
         let wasScanning = fixture.cache.isScanning
         var opened = 0
         let view = RoomMenuBarView(insights: fixture.insights, cacheModel: fixture.cache,
-                                   rooms: fixture.rooms, openRoom: { opened += 1 })
+                                   rooms: fixture.rooms, openRoom: { opened += 1 }, showSettings: {})
         view.openCaches()
         #expect(fixture.cache.isScanning == wasScanning)
         #expect(fixture.insights.requestedDestination == .clean && opened == 1)
@@ -23,14 +23,16 @@ struct RoomPopoverActionTests {
         #expect(!fixture.cache.isScanning)
     }
 
-    @Test func gearRequestsSettingsAndOpensWindow() throws {
+    @Test func gearOpensSettingsWithoutOpeningMainWindow() throws {
         let fixture = try PopoverActionFixture()
         defer { fixture.remove() }
         var opened = false
+        var settingsOpened = false
         let view = RoomMenuBarView(insights: fixture.insights, cacheModel: fixture.cache,
-                                   rooms: fixture.rooms, openRoom: { opened = true })
+                                   rooms: fixture.rooms, openRoom: { opened = true }, showSettings: { settingsOpened = true })
         view.openSettings()
-        #expect(opened && fixture.insights.requestedSettings)
+        #expect(settingsOpened && !opened)
+        #expect(!fixture.insights.requestedSettings)
         #expect(!fixture.cache.isScanning)
     }
 
@@ -41,7 +43,7 @@ struct RoomPopoverActionTests {
         let url = try #require(fixture.rooms.pinnedURL)
         var opened = false
         let view = RoomMenuBarView(insights: fixture.insights, cacheModel: fixture.cache,
-                                   rooms: fixture.rooms, openRoom: { opened = true })
+                                   rooms: fixture.rooms, openRoom: { opened = true }, showSettings: {})
         view.openPinnedRoom()
         #expect(opened && fixture.insights.requestedDestination == .disk)
         #expect(fixture.insights.diskURL == url)

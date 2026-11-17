@@ -8,6 +8,18 @@ struct RoomMenuBarPreview {
     let output: RoomMenuBarOutput
     let image: NSImage
 
+    /// The fixed Settings samples are decimal gigabytes, matching their captioned figures.
+    nonisolated static let settingsFormat = RoomMenuBarFormat(
+        memory: { decimalGigabytes($0, decimals: 1) },
+        disk: { decimalGigabytes($0, decimals: 0) })
+
+    nonisolated private static func decimalGigabytes(_ bytes: Int64, decimals: Int) -> String {
+        var number = String(format: "%.*f", locale: Locale(identifier: "en_US_POSIX"),
+            decimals, Double(bytes) / 1_000_000_000)
+        if number.hasSuffix(".0") { number.removeLast(2) }
+        return number + " GB"
+    }
+
     static func make(input: RoomMenuBarInput, format: RoomMenuBarFormat,
                      appearance: NSAppearance.Name, width: CGFloat = 320) -> Self {
         let output = RoomMenuBarPresentation.make(input, format: format)
