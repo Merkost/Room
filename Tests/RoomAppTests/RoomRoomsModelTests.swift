@@ -292,14 +292,14 @@ private actor RoomsMeasurementGate {
     }
 
     func waitForStarts(_ count: Int) async {
-        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
-        while requests.count < count, ContinuousClock.now < deadline { await Task.yield() }
+        let deadline = ContinuousClock.now.advanced(by: .seconds(15))
+        while requests.count < count, ContinuousClock.now < deadline { try? await Task.sleep(for: .milliseconds(10)) }
         #expect(requests.count >= count)
     }
 
     func waitForCancellation(_ index: Int) async {
-        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
-        while !cancellationNotices.contains(index), ContinuousClock.now < deadline { await Task.yield() }
+        let deadline = ContinuousClock.now.advanced(by: .seconds(15))
+        while !cancellationNotices.contains(index), ContinuousClock.now < deadline { try? await Task.sleep(for: .milliseconds(10)) }
         #expect(cancellationNotices.contains(index))
     }
 
@@ -314,7 +314,8 @@ private actor RoomsMeasurementGate {
 }
 
 @MainActor private func roomsWaitUntil(_ condition: () -> Bool) async {
-    let deadline = ContinuousClock.now.advanced(by: .seconds(3))
-    while !condition(), ContinuousClock.now < deadline { await Task.yield() }
+    // Sleep, do not yield: the measurer runs at utility priority and starves under load (a yield loop spins the CPU it waits for).
+    let deadline = ContinuousClock.now.advanced(by: .seconds(15))
+    while !condition(), ContinuousClock.now < deadline { try? await Task.sleep(for: .milliseconds(10)) }
     #expect(condition())
 }

@@ -35,17 +35,39 @@ struct RoomRoomMeasurerTests {
         #expect(await RoomRoomMeasurer().measure(url: missing) == .unavailable)
     }
 
-    @Test func diskMapIssuesProduceAPartialReadOnlyMeasurement() async throws {
+    private func scratchDirectory() throws -> URL {
         let directory = URL(fileURLWithPath: "/private/tmp/Room-Measurer-" + UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        return directory
+    }
+
+    @Test func skippedSymbolicLinksDoNotMakeTheMeasurementPartial() async throws {
+        let directory = try scratchDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let source = directory.appendingPathComponent("fixture.bin")
         let data = Data(repeating: 0x52, count: 8192)
         try data.write(to: source)
         try FileManager.default.createSymbolicLink(at: directory.appendingPathComponent("linked-file"), withDestinationURL: source)
         let measurement = await RoomRoomMeasurer().measure(url: directory)
+        guard case let .measured(point) = measurement else { Issue.record("Expected a measurement"); return }
+        // A symbolic link is excluded by design, not unreadable: the size is exact and "since Monday" stays available.
+        #expect(point.bytes > 0 && !point.partial)
+        #expect(try Data(contentsOf: source) == data)
+    }
+
+    @Test func anUnreadableSubfolderMakesTheMeasurementAPartialLowerBound() async throws {
+        let directory = try scratchDirectory()
+        let locked = directory.appendingPathComponent("locked", isDirectory: true)
+        try FileManager.default.createDirectory(at: locked, withIntermediateDirectories: false)
+        try Data(repeating: 0x41, count: 4096).write(to: locked.appendingPathComponent("hidden.bin"))
+        try Data(repeating: 0x42, count: 8192).write(to: directory.appendingPathComponent("open.bin"))
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: locked.path)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: locked.path)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let measurement = await RoomRoomMeasurer().measure(url: directory)
         guard case let .measured(point) = measurement else { Issue.record("Expected a measured lower bound"); return }
         #expect(point.bytes > 0 && point.partial)
-        #expect(try Data(contentsOf: source) == data)
     }
 }

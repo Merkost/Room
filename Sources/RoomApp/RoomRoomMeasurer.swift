@@ -45,6 +45,6 @@ nonisolated struct RoomRoomMeasurer: Sendable {
               FileManager.default.isReadableFile(atPath: url.path) else { return .unavailable }
         let report = await DiskMapEngine().scan(url: url)
         return .measured(RoomSizePoint(at: report.scannedAt, bytes: report.allocatedBytes,
-            partial: report.isPartial || !report.issues.isEmpty || report.cancelled))
+            partial: report.cancelled || report.unreadableItemCount > 0))
     }
 }
