@@ -22,9 +22,7 @@ struct RoomMenuBarView: View {
             diskCapacityBytes: insights.diskCapacityBytes,
             swapBytes: insights.memoryReport.flatMap(RoomMonitorPresentation.measuredSwap), showSwap: showSwap,
             caches: cacheModel.cachesCheckStore.check, room: rooms.state,
-            format: RoomMenuBarFormat(
-                memory: { bytes in MainActor.assumeIsolated { RoomFormat.memoryBytes(bytes) } },
-                disk: { bytes in MainActor.assumeIsolated { RoomFormat.bytes(bytes) } }),
+            format: RoomMenuBarFormat.live,
             formatSize: RoomFormat.bytes)
     }
 

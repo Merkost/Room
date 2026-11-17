@@ -64,6 +64,38 @@ nonisolated struct RoomMenuBarFormat: Sendable {
     }
 }
 
+extension RoomMenuBarFormat {
+    /// What the status item and the popover show. Memory in binary gigabytes like Activity Monitor with one decimal
+    /// ("38.5 GB", "48 GB"; the system formatter gave "38.53 GB"). Free disk in decimal gigabytes like Finder: whole from
+    /// 10 GB up ("312 GB"), one decimal below ("4.2 GB"), terabytes with one decimal ("1.2 TB").
+    static let live = RoomMenuBarFormat(
+        memory: { liveMemory($0) },
+        disk: { liveDisk($0) })
+
+    nonisolated static func liveMemory(_ bytes: Int64, locale: Locale = .current) -> String {
+        if bytes <= 0 { return "0 KB" }
+        let gib = Double(bytes) / 1_073_741_824
+        if gib >= 1 { return trimmed(gib, decimals: 1, locale: locale) + " GB" }
+        return String(format: "%.0f", locale: locale, Double(bytes) / 1_048_576) + " MB"
+    }
+
+    nonisolated static func liveDisk(_ bytes: Int64, locale: Locale = .current) -> String {
+        if bytes <= 0 { return "0 KB" }
+        let value = Double(bytes)
+        if value >= 1e12 { return trimmed(value / 1e12, decimals: 1, locale: locale) + " TB" }
+        if value >= 1e10 { return String(format: "%.0f", locale: locale, value / 1e9) + " GB" }
+        if value >= 1e9 { return trimmed(value / 1e9, decimals: 1, locale: locale) + " GB" }
+        return String(format: "%.0f", locale: locale, value / 1e6) + " MB"
+    }
+
+    private nonisolated static func trimmed(_ value: Double, decimals: Int, locale: Locale) -> String {
+        var text = String(format: "%.\(decimals)f", locale: locale, value)
+        let separator = locale.decimalSeparator ?? "."
+        if text.hasSuffix(separator + "0") { text.removeLast(separator.count + 1) }
+        return text
+    }
+}
+
 nonisolated enum RoomMenuBarPresentation {
     static func make(_ i: RoomMenuBarInput, format f: RoomMenuBarFormat) -> RoomMenuBarOutput {
         // D-MB-14: RAM and storage get their own symbols (memorychip, internaldrive); two metrics or none have no single

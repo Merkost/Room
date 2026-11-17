@@ -116,18 +116,15 @@ private struct RoomGeneralSettingsView: View {
 
             RoomSettingsFormRow("Motion", hint: "Follows Reduce Motion in System Settings.") {
                 // Spec 13 §3.1: disabled and off while Reduce Motion is on, with the sentence below.
-                Toggle("Gentle motion", isOn: reduceMotion ? .constant(false) : $motionEnabled).toggleStyle(.switch)
-                    .fixedSize(horizontal: true, vertical: false)
+                RoomSettingsSwitch(title: "Gentle motion", isOn: reduceMotion ? .constant(false) : $motionEnabled)
                     .disabled(reduceMotion)
                     .accessibilityHint("Follows Reduce Motion in System Settings.")
             }
 
             RoomSettingsFormRow("Login") {
                 VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
-                    Toggle("Open Room at login", isOn: Binding(
+                    RoomSettingsSwitch(title: "Open Room at login", isOn: Binding(
                         get: { loginItem.enabled }, set: { loginItem.setEnabled($0) }))
-                        .toggleStyle(.switch)
-                        .fixedSize(horizontal: true, vertical: false)
                     if let approval = loginItem.approvalHint {
                         hint(approval).transition(.opacity)
                         Button("Open Login Items…") { RoomLoginItemModel.openLoginItems() }.transition(.opacity)

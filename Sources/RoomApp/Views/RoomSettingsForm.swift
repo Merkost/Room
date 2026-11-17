@@ -29,3 +29,21 @@ struct RoomSettingsFormRow<Content: View>: View {
         }
     }
 }
+
+/// The board's `tgl` + label: the switch first, then its words (a long label wraps beside the switch, never before it).
+@MainActor
+struct RoomSettingsSwitch: View {
+    let title: String
+    @Binding var isOn: Bool
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Toggle(title, isOn: $isOn).toggleStyle(.switch).labelsHidden()
+                .fixedSize()
+            Text(title)
+                .fixedSize(horizontal: false, vertical: true)
+                .onTapGesture { isOn.toggle() }
+                .accessibilityHidden(true)
+        }
+    }
+}

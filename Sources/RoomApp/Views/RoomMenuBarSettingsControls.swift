@@ -87,8 +87,12 @@ struct RoomMenuBarSettingsControls: View {
         switch control {
         case .show:
             RoomSettingsFormRow("Show in menu bar") {
-                Toggle("Show in menu bar", isOn: $enabled).toggleStyle(.switch).labelsHidden()
-                    .fixedSize(horizontal: true, vertical: false)
+                HStack(spacing: 8) {
+                    Toggle("Show in menu bar", isOn: $enabled).toggleStyle(.switch).labelsHidden().fixedSize()
+                    Text(enabled ? "On" : "Off").foregroundStyle(.secondary)
+                        .contentTransition(.opacity)
+                        .animation(fade, value: enabled)
+                }
             }
         case .value:
             RoomSettingsFormRow("Value") {
@@ -127,13 +131,11 @@ struct RoomMenuBarSettingsControls: View {
             }
         case .colour:
             RoomSettingsFormRow("Colour", hint: "The pocket fills either way, so colour is never the only signal.") {
-                Toggle("Only when pressure rises or space is below goal", isOn: $tintOnlyWhenNeeded)
-                    .toggleStyle(.switch)
+                RoomSettingsSwitch(title: "Only when pressure rises or space is below goal", isOn: $tintOnlyWhenNeeded)
             }
         case .swap:
             RoomSettingsFormRow("Swap") {
-                Toggle("Show swap in the popover", isOn: $showSwap).toggleStyle(.switch)
-                    .fixedSize(horizontal: true, vertical: false)
+                RoomSettingsSwitch(title: "Show swap in the popover", isOn: $showSwap)
             }
         case .pinnedRoom:
             RoomSettingsFormRow("Pinned Room") {

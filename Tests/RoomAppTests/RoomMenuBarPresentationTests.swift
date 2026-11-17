@@ -227,3 +227,32 @@ struct RoomMenuBarPresentationTests {
     }
 #endif
 }
+
+@Suite("Menu bar live figures")
+struct RoomMenuBarLiveFormatTests {
+    private let us = Locale(identifier: "en_US")
+
+    @Test func memoryIsBinaryGigabytesWithOneDecimal() {
+        #expect(RoomMenuBarFormat.liveMemory(41_370_000_000, locale: us) == "38.5 GB")
+        #expect(RoomMenuBarFormat.liveMemory(51_539_607_552, locale: us) == "48 GB")
+        #expect(RoomMenuBarFormat.liveMemory(17_395_000_000, locale: us) == "16.2 GB")
+        #expect(RoomMenuBarFormat.liveMemory(536_870_912, locale: us) == "512 MB")
+        #expect(RoomMenuBarFormat.liveMemory(0, locale: us) == "0 KB")
+    }
+
+    @Test func diskIsWholeGigabytesFromTenUpAndOneDecimalBelow() {
+        #expect(RoomMenuBarFormat.liveDisk(312_400_000_000, locale: us) == "312 GB")
+        #expect(RoomMenuBarFormat.liveDisk(41_600_000_000, locale: us) == "42 GB")
+        #expect(RoomMenuBarFormat.liveDisk(9_940_000_000, locale: us) == "9.9 GB")
+        #expect(RoomMenuBarFormat.liveDisk(9_960_000_000, locale: us) == "10 GB")
+        #expect(RoomMenuBarFormat.liveDisk(4_000_000_000, locale: us) == "4 GB")
+        #expect(RoomMenuBarFormat.liveDisk(1_240_000_000_000, locale: us) == "1.2 TB")
+        #expect(RoomMenuBarFormat.liveDisk(640_000_000, locale: us) == "640 MB")
+    }
+
+    @Test func decimalSeparatorFollowsTheLocale() {
+        let german = Locale(identifier: "de_DE")
+        #expect(RoomMenuBarFormat.liveMemory(41_370_000_000, locale: german) == "38,5 GB")
+        #expect(RoomMenuBarFormat.liveMemory(51_539_607_552, locale: german) == "48 GB")
+    }
+}

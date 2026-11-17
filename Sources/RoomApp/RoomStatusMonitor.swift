@@ -209,9 +209,7 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
         let input = liveInput
 #endif
         // The pure presentation invokes these formatters synchronously here on MainActor.
-        let format = RoomMenuBarFormat(
-            memory: { bytes in MainActor.assumeIsolated { RoomFormat.memoryBytes(bytes) } },
-            disk: { bytes in MainActor.assumeIsolated { RoomFormat.bytes(bytes) } })
+        let format = RoomMenuBarFormat.live
         let output = RoomMenuBarPresentation.make(input, format: format)
         let motionAllowed = allowsMotion
         guard output != lastOutput || input.value != lastValueMode || motionAllowed != lastMotionAllowed else { return }
