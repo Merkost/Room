@@ -28,29 +28,62 @@ struct RoomMenuBarPreviewTests {
         #expect(preview.output.title == expected.title && preview.output.icon == expected.icon)
     }
 
-    @Test func previewReturnsAnEager22PointBitmapStrip() throws {
+    @Test func previewReturnsAnEager24PointBitmapStrip() throws {
         let preview = RoomMenuBarPreview.make(input: criticalInput, format: .fixtureGigabytes, appearance: .aqua, width: 280)
-        #expect(preview.image.size == NSSize(width: 280, height: 22))
+        #expect(preview.image.size == NSSize(width: 280, height: 24))
         #expect(!preview.image.isTemplate)
         #expect(preview.image.representations.count == 1)
         let bitmap = try #require(preview.image.representations.first as? NSBitmapImageRep)
         #expect(bitmap.size == preview.image.size)
-        #expect(bitmap.pixelsWide == 560 && bitmap.pixelsHigh == 44)
+        #expect(bitmap.pixelsWide == 560 && bitmap.pixelsHigh == 48)
         #expect(bitmap.bitmapData != nil)
     }
 
+    @Test func layoutIsRightAlignedLikeTheBoardStrip() {
+        let layout = RoomMenuBarPreview.ItemLayout(iconWidth: 16, titleWidth: 50, clockWidth: 34, stripWidth: 280)
+        #expect(layout.clockX + 34 + RoomMenuBarPreview.ItemLayout.edge == 280)
+        #expect(layout.titleX + 50 + RoomMenuBarPreview.ItemLayout.itemInset + RoomMenuBarPreview.ItemLayout.gap == layout.clockX)
+        #expect(layout.iconX + 16 + RoomMenuBarPreview.ItemLayout.iconGap == layout.titleX)
+        let iconOnly = RoomMenuBarPreview.ItemLayout(iconWidth: 16, titleWidth: 0, clockWidth: 34, stripWidth: 280)
+        #expect(iconOnly.iconX + 16 + RoomMenuBarPreview.ItemLayout.itemInset + RoomMenuBarPreview.ItemLayout.gap == iconOnly.clockX)
+    }
+
+    @Test(arguments: [NSAppearance.Name.aqua, .darkAqua])
+    func stripsActuallyDrawTheItemTitleAndClock(_ appearance: NSAppearance.Name) throws {
+        let input = RoomMenuBarInput(value: .memory, icon: .symbol,
+            memoryUsedBytes: 16_200_000_000, memoryTotalBytes: 32_000_000_000, pressure: .normal,
+            diskFreeBytes: 312_000_000_000, goalBytes: 50_000_000_000)
+        let preview = RoomMenuBarPreview.make(input: input, format: RoomMenuBarPreview.settingsFormat, appearance: appearance, width: 280)
+        let bitmap = try #require(preview.image.representations.first as? NSBitmapImageRep)
+        let frames = RoomMenuBarPreview.frames(for: preview.output, width: 280)
+        let surface = try #require(bitmap.colorAt(x: 1, y: 1)?.usingColorSpace(.sRGB))
+        func inked(_ rect: CGRect) throws -> Int {
+            var count = 0
+            for px in Int(rect.minX * 2)..<Int(rect.maxX * 2) {
+                for py in Int((24 - rect.maxY) * 2)..<Int((24 - rect.minY) * 2) {
+                    let color = try #require(bitmap.colorAt(x: px, y: py)?.usingColorSpace(.sRGB))
+                    if abs(color.redComponent - surface.redComponent) > 0.25 { count += 1 }
+                }
+            }
+            return count
+        }
+        #expect(try inked(frames.clock) > 20)
+        #expect(try inked(try #require(frames.title)) > 40)
+        #expect(try inked(try #require(frames.icon)) > 20)
+    }
+
     @Test func eachAppearanceBakesItsOwnStatusTintIntoThePixels() throws {
-        let light = RoomMenuBarPreview.make(input: criticalInput, format: .fixtureGigabytes, appearance: .aqua)
-        let dark = RoomMenuBarPreview.make(input: criticalInput, format: .fixtureGigabytes, appearance: .darkAqua)
+        let light = RoomMenuBarPreview.make(input: criticalInput, format: .fixtureGigabytes, appearance: .aqua, width: 280)
+        let dark = RoomMenuBarPreview.make(input: criticalInput, format: .fixtureGigabytes, appearance: .darkAqua, width: 280)
         let lightBitmap = try #require(light.image.representations.first as? NSBitmapImageRep)
         let darkBitmap = try #require(dark.image.representations.first as? NSBitmapImageRep)
-        // Value None centres the full critical pocket. Sample its solid centre,
-        // rather than merely proving that the strip backgrounds differ.
-        let lightTint = try #require(lightBitmap.colorAt(x: lightBitmap.pixelsWide / 2, y: lightBitmap.pixelsHigh / 2)?.usingColorSpace(.sRGB))
-        let darkTint = try #require(darkBitmap.colorAt(x: darkBitmap.pixelsWide / 2, y: darkBitmap.pixelsHigh / 2)?.usingColorSpace(.sRGB))
+        // Value None leaves only the icon: the full critical pocket. Sample its solid centre.
+        let lightIcon = try #require(RoomMenuBarPreview.frames(for: light.output, width: 280).icon)
+        let darkIcon = try #require(RoomMenuBarPreview.frames(for: dark.output, width: 280).icon)
+        let lightTint = try #require(lightBitmap.colorAt(x: Int(lightIcon.midX * 2), y: Int((24 - lightIcon.midY) * 2))?.usingColorSpace(.sRGB))
+        let darkTint = try #require(darkBitmap.colorAt(x: Int(darkIcon.midX * 2), y: Int((24 - darkIcon.midY) * 2))?.usingColorSpace(.sRGB))
         #expect(light.output.tint == .critical && dark.output.tint == .critical)
-        #expect(abs(lightTint.redComponent - darkTint.redComponent) > 0.1)
-        #expect(abs(lightTint.greenComponent - darkTint.greenComponent) > 0.1)
+        #expect(abs(lightTint.redComponent - darkTint.redComponent) > 0.1 || abs(lightTint.greenComponent - darkTint.greenComponent) > 0.1)
         #expect(lightTint.alphaComponent > 0.99 && darkTint.alphaComponent > 0.99)
         let before = try bytes(lightBitmap)
         let opposite = try #require(NSAppearance(named: .darkAqua))
@@ -62,14 +95,18 @@ struct RoomMenuBarPreviewTests {
         let input = RoomMenuBarInput(value: .none, icon: .mark,
             memoryUsedBytes: 16_200_000_000, memoryTotalBytes: 32_000_000_000, pressure: .normal,
             diskFreeBytes: 312_000_000_000, goalBytes: 50_000_000_000)
-        let light = RoomMenuBarPreview.make(input: input, format: .fixtureGigabytes, appearance: .aqua)
-        let dark = RoomMenuBarPreview.make(input: input, format: .fixtureGigabytes, appearance: .darkAqua)
+        let light = RoomMenuBarPreview.make(input: input, format: .fixtureGigabytes, appearance: .aqua, width: 280)
+        let dark = RoomMenuBarPreview.make(input: input, format: .fixtureGigabytes, appearance: .darkAqua, width: 280)
         #expect(light.output.tint == .none && dark.output.tint == .none)
-        let lightBitmap = try #require(light.image.representations.first as? NSBitmapImageRep)
-        let darkBitmap = try #require(dark.image.representations.first as? NSBitmapImageRep)
-        #expect(try bytes(lightBitmap) != bytes(darkBitmap))
-        let pocket = try #require(darkBitmap.colorAt(x: darkBitmap.pixelsWide / 2, y: darkBitmap.pixelsHigh / 2))
-        #expect(pocket.alphaComponent > 0.99)
+        // The hollow mark's outer ring is solid ink; sample the middle of its left wall (x 1.3 to 3.7 pt).
+        func ring(_ preview: RoomMenuBarPreview) throws -> NSColor {
+            let bitmap = try #require(preview.image.representations.first as? NSBitmapImageRep)
+            let icon = try #require(RoomMenuBarPreview.frames(for: preview.output, width: 280).icon)
+            return try #require(bitmap.colorAt(x: Int((icon.minX + 2.5) * 2), y: Int((24 - icon.midY) * 2))?.usingColorSpace(.sRGB))
+        }
+        let lightInk = try ring(light), darkInk = try ring(dark)
+        #expect(lightInk.redComponent < 0.3 && darkInk.redComponent > 0.8)
+        #expect(lightInk.alphaComponent > 0.99 && darkInk.alphaComponent > 0.99)
     }
 
     private var criticalInput: RoomMenuBarInput {

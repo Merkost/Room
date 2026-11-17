@@ -13,8 +13,7 @@ struct RoomMenuBarSettingsControls: View {
     @AppStorage(RoomMenuBarSettings.tintOnlyWhenNeededKey) private var tintOnlyWhenNeeded = true
     @AppStorage(RoomMenuBarSettings.showSwapKey) private var showSwap = RoomMenuBarSettings.showSwapDefault
     @AppStorage(RoomMenuBarSettings.goalBytesKey) private var storedGoal = Int(RoomMenuBarSettings.defaultGoalBytes)
-    @AppStorage("RoomMotionEnabled") private var motionEnabled = true
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.roomMotion) private var motion
     @Environment(\.roomAccent) private var accent
 
     private var input: RoomMenuBarInput {
@@ -33,14 +32,8 @@ struct RoomMenuBarSettingsControls: View {
     private var icon: Binding<RoomMenuBarIconMode> {
         Binding(get: { input.icon }, set: { RoomMenuBarSettings.setIcon($0, in: .standard) })
     }
-    private var previewAnimation: Animation? {
-        motionEnabled && !reduceMotion ? RoomTokens.Motion.fade : nil
-    }
-    private var previewIdentity: String {
-        [input.value.rawValue, input.icon.rawValue, String(tintOnlyWhenNeeded),
-         String(storedGoal), String(enabled), String(showSwap), rooms.pinnedRoom?.id.uuidString ?? ""]
-            .joined(separator: "|")
-    }
+    /// Opacity only: the 150 ms fade is the board's rule for every change here, with or without Reduce Motion.
+    private var fade: Animation? { motion.animation(RoomTokens.Motion.fade) }
 
     var body: some View {
         Section {
@@ -48,20 +41,17 @@ struct RoomMenuBarSettingsControls: View {
                 Text("Preview. Left: normal. Right: pressure elevated. It changes as you choose.")
                     .font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                ZStack {
-                    previewGrid
-                        .id(previewIdentity)
-                        .transition(.opacity)
-                }
-                .opacity(enabled ? 1 : 0.45)
-                .allowsHitTesting(false)
-                .animation(previewAnimation, value: previewIdentity)
+                previewGrid
+                    .opacity(enabled ? 1 : 0.45)
+                    .allowsHitTesting(false)
+                    .animation(fade, value: enabled)
             }
         }
         Section {
             ForEach(RoomMenuBarSettings.controlOrder, id: \.self) { control in
                 controlView(control)
                     .disabled(control != .show && !enabled)
+                    .animation(fade, value: enabled)
             }
         }
         .font(RoomTokens.Typography.body)
@@ -129,18 +119,19 @@ struct RoomMenuBarSettingsControls: View {
                 Text("Pinned Room")
                 Spacer(minLength: 0)
                 if let room = rooms.pinnedRoom {
-                    Text(room.name).lineLimit(1).truncationMode(.middle)
-                    Text("·").foregroundStyle(RoomTokens.Ink.secondary)
+                    Text(room.name).lineLimit(1).truncationMode(.middle).transition(.opacity)
+                    Text("·").foregroundStyle(RoomTokens.Ink.secondary).transition(.opacity)
                     Button("Unpin") { rooms.unpin() }
-                        .buttonStyle(.plain).foregroundStyle(accent.text)
+                        .buttonStyle(.plain).foregroundStyle(accent.text).transition(.opacity)
                 } else {
                     Button("Pin a Folder…") {
                         NSApp.activate()
                         rooms.chooseFolder()
                     }
-                    .buttonStyle(.plain).foregroundStyle(accent.text)
+                    .buttonStyle(.plain).foregroundStyle(accent.text).transition(.opacity)
                 }
             }
+            .animation(fade, value: rooms.pinnedRoom?.id)
         }
     }
 
@@ -160,17 +151,32 @@ struct RoomMenuBarSettingsControls: View {
 private struct RoomMenuBarPreviewStrip: View {
     let input: RoomMenuBarInput
     let appearance: NSAppearance.Name
+    @Environment(\.roomMotion) private var motion
 
     var body: some View {
         GeometryReader { geometry in
+            let fixed = RoomMenuBarPreview.make(input: input, format: RoomMenuBarPreview.settingsFormat,
+                appearance: appearance, width: geometry.size.width, layers: .surfaceAndClock)
             let preview = RoomMenuBarPreview.make(input: input, format: RoomMenuBarPreview.settingsFormat,
-                appearance: appearance, width: geometry.size.width)
-            Image(nsImage: preview.image).renderingMode(.original)
-                .frame(width: geometry.size.width, height: 22)
-                .accessibilityLabel(appearance == .darkAqua ? "Dark menu bar preview" : "Light menu bar preview")
-                .accessibilityValue(preview.output.accessibilityValue)
+                appearance: appearance, width: geometry.size.width, layers: .itemOnly)
+            // The surface and the clock stay put; only the item cross-fades, and only when it changes (150 ms).
+            // Fading the whole strip dipped to the page colour half way (measured: +20 grey levels).
+            let identity = String(describing: preview.output)
+            ZStack {
+                Image(nsImage: fixed.image).renderingMode(.original)
+                    .frame(width: geometry.size.width, height: RoomMenuBarPreview.stripHeight)
+                ZStack {
+                    Image(nsImage: preview.image).renderingMode(.original)
+                        .frame(width: geometry.size.width, height: RoomMenuBarPreview.stripHeight)
+                        .id(identity)
+                        .transition(.opacity)
+                }
+                .animation(motion.animation(RoomTokens.Motion.fade), value: identity)
+            }
+            .accessibilityLabel(appearance == .darkAqua ? "Dark menu bar preview" : "Light menu bar preview")
+            .accessibilityValue(preview.output.accessibilityValue)
         }
-        .frame(height: 22)
+        .frame(height: RoomMenuBarPreview.stripHeight)
         .clipShape(RoundedRectangle(cornerRadius: RoomTokens.Radius.tile))
     }
 }

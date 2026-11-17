@@ -7,6 +7,7 @@ struct RoomFolderAccessSettingsView: View {
     @Bindable var insights: RoomInsightsModel
     @Environment(\.controlActiveState) private var controlActiveState
     @State private var accessRevision = 0
+    @Environment(\.roomMotion) private var motion
 
     private var folders: [RoomSettingsFolder] {
         var result = insights.accessFolders.map {
@@ -36,13 +37,18 @@ struct RoomFolderAccessSettingsView: View {
                     ScrollView {
                         LazyVStack(spacing: 0) {
                             ForEach(folders) { folder in
-                                folderRow(folder)
-                                if folder.id != folders.last?.id { Divider() }
+                                VStack(spacing: 0) {
+                                    RoomFolderRowHover { folderRow(folder) }
+                                    if folder.id != folders.last?.id { Divider() }
+                                }
+                                .transition(.opacity.combined(with: .move(edge: .top)))
                             }
                         }
                     }
+                    .scrollDisabled(false)   // the list scrolls even though the tab itself never does
                     .frame(height: min(RoomTokens.Settings.folderListMaximumHeight,
                         CGFloat(folders.count) * RoomTokens.Settings.folderRowHeight))
+                    .animation(motion.animation(RoomTokens.Motion.settle), value: folders.map(\.id))
                 }
             }
 
@@ -73,7 +79,7 @@ struct RoomFolderAccessSettingsView: View {
                 if let accessNote = insights.accessNote { note(accessNote) }
             }
         }
-        .formStyle(.grouped)
+        .formStyle(.grouped).scrollDisabled(true)
         .fixedSize(horizontal: false, vertical: true)
         .onChange(of: controlActiveState) { _, state in
             if state == .key { accessRevision += 1 }
@@ -94,10 +100,12 @@ struct RoomFolderAccessSettingsView: View {
             Text(status.text)
                 .font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
                 .multilineTextAlignment(.trailing).fixedSize(horizontal: true, vertical: false)
+                .contentTransition(.opacity)
+                .animation(motion.animation(RoomTokens.Motion.standard), value: status.text)
             if status.isReadable {
                 if let savedID = folder.savedID {
                     Button("Remove") { insights.forgetAccessFolder(id: savedID) }
-                        .accessibilityLabel("Remove access to \(folder.name)")
+                        .accessibilityLabel("Remove access to \(folder.name)").transition(.opacity)
                 }
             } else {
                 Button("Allow…") {
@@ -124,4 +132,21 @@ nonisolated private struct RoomSettingsFolder: Identifiable {
     let name: String
     let url: URL
     let savedID: String?
+}
+
+/// A 120 ms hover wash behind a row, the only hover affordance in Settings; none under Reduce Motion's instant rule is needed
+/// because it is opacity only.
+@MainActor
+private struct RoomFolderRowHover<Content: View>: View {
+    @ViewBuilder let content: Content
+    @State private var hovering = false
+    @Environment(\.roomMotion) private var motion
+
+    var body: some View {
+        content
+            .background(RoundedRectangle(cornerRadius: RoomTokens.Radius.tile, style: .continuous)
+                .fill(Color.primary.opacity(hovering ? 0.05 : 0)).padding(.horizontal, -6))
+            .onHover { hovering = $0 }
+            .animation(motion.animation(RoomTokens.Motion.quick), value: hovering)
+    }
 }

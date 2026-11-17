@@ -6,6 +6,7 @@ struct RoomAboutSettingsView: View {
     @Bindable var model: RoomViewModel
     @Bindable var insights: RoomInsightsModel
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.roomMotion) private var motion
     private let information = RoomAboutInformation()
     private let links = RoomAppLinks()
 
@@ -64,11 +65,14 @@ struct RoomAboutSettingsView: View {
                     HStack(alignment: .firstTextBaseline, spacing: RoomTokens.Space.inner) {
                         Text(RoomFormat.bytes(summary.bytes)).font(RoomTokens.Typography.madeRoom)
                             .fixedSize()
+                            .contentTransition(.numericText(value: Double(summary.bytes)))
+                            .animation(motion.animation(RoomTokens.Motion.standard), value: summary.bytes)
                         Text(summary.caption).font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     .accessibilityElement(children: .combine)
                 }
+                .transition(.opacity)
             }
 
             Section {
@@ -87,8 +91,9 @@ struct RoomAboutSettingsView: View {
                 }
             }
         }
-        .formStyle(.grouped)
+        .formStyle(.grouped).scrollDisabled(true)
         .fixedSize(horizontal: false, vertical: true)
+        .animation(motion.animation(RoomTokens.Motion.settle), value: RoomMadeRoom.summary(activities: model.activity) != nil)
         .task { await model.refreshHistory() }
     }
 }

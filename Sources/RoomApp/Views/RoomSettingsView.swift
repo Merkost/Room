@@ -13,6 +13,7 @@ struct RoomSettingsView: View {
     @SceneStorage("RoomSettingsTab") private var selectedTab = RoomSettingsTab.general.rawValue
     @AppStorage("RoomAppearance") private var appearance = "dark"
     @AppStorage("RoomMenuBarEnabled") private var menuBarEnabled = true
+    @Environment(\.roomMotion) private var motion
 
     private var colorScheme: ColorScheme? {
         switch appearance { case "light": .light; case "dark": .dark; default: nil }
@@ -21,7 +22,7 @@ struct RoomSettingsView: View {
     var body: some View {
         TabView(selection: $selectedTab) {
             VStack {
-                if selectedTab == RoomSettingsTab.general.rawValue { RoomGeneralSettingsView() }
+                if selectedTab == RoomSettingsTab.general.rawValue { RoomGeneralSettingsView().transition(.opacity) }
             }
             .tabItem { Label("General", systemImage: "gearshape") }
             .tag(RoomSettingsTab.general.rawValue)
@@ -31,8 +32,9 @@ struct RoomSettingsView: View {
                     Form {
                         RoomMenuBarSettingsControls(insights: insights, rooms: rooms, enabled: $menuBarEnabled)
                     }
-                    .formStyle(.grouped)
+                    .formStyle(.grouped).scrollDisabled(true)
                     .fixedSize(horizontal: false, vertical: true)
+                    .transition(.opacity)
                 }
             }
             .tabItem { Label("Menu Bar", systemImage: "menubar.rectangle") }
@@ -40,7 +42,7 @@ struct RoomSettingsView: View {
 
             VStack {
                 if selectedTab == RoomSettingsTab.folders.rawValue {
-                    RoomFolderAccessSettingsView(insights: insights)
+                    RoomFolderAccessSettingsView(insights: insights).transition(.opacity)
                 }
             }
             .tabItem { Label("Folder Access", systemImage: "folder.badge.gearshape") }
@@ -48,7 +50,7 @@ struct RoomSettingsView: View {
 
             VStack {
                 if selectedTab == RoomSettingsTab.about.rawValue {
-                    RoomAboutSettingsView(model: model, insights: insights)
+                    RoomAboutSettingsView(model: model, insights: insights).transition(.opacity)
                 }
             }
             .tabItem { Label("About", systemImage: "info.circle") }
@@ -56,6 +58,8 @@ struct RoomSettingsView: View {
         }
         .frame(width: RoomTokens.Settings.width)
         .fixedSize(horizontal: false, vertical: true)
+        // A tab's content fades in as the window settles to its height (240 ms, no travel); Reduce Motion: 150 ms fade.
+        .animation(motion.animation(RoomTokens.Motion.settle), value: selectedTab)
         .preferredColorScheme(colorScheme)
         .onAppear {
             if RoomSettingsTab(rawValue: selectedTab) == nil { selectedTab = RoomSettingsTab.general.rawValue }
@@ -76,6 +80,8 @@ private struct RoomGeneralSettingsView: View {
     @AppStorage(RoomMenuBarSettings.goalBytesKey) private var storedGoal = Int(RoomMenuBarSettings.defaultGoalBytes)
     @State private var loginItem = RoomLoginItemModel()
     @Environment(\.controlActiveState) private var controlActiveState
+    @Environment(\.roomMotion) private var motion
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var goalBytes: Int64 { RoomMenuBarSettings.clampGoalBytes(Int64(storedGoal)) }
 
@@ -99,6 +105,8 @@ private struct RoomGeneralSettingsView: View {
                     Stepper(onIncrement: incrementGoal, onDecrement: decrementGoal) {
                         (Text("Keep ") + Text("\(goalBytes / 1_000_000_000)").bold() + Text(" GB free"))
                             .monospacedDigit()
+                            .contentTransition(.numericText(value: Double(goalBytes)))
+                            .animation(motion.animation(RoomTokens.Motion.standard), value: goalBytes)
                     }
                     .accessibilityIdentifier("RoomSettingsFreeSpaceGoal")
                     hint("Below it, the Overview and the menu-bar icon turn amber.")
@@ -107,9 +115,11 @@ private struct RoomGeneralSettingsView: View {
 
             LabeledContent("Motion") {
                 VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
-                    Toggle("Gentle motion", isOn: $motionEnabled).toggleStyle(.switch)
-                        .accessibilityHint("Always respects Reduce Motion on your Mac.")
-                    hint("Always respects Reduce Motion on your Mac.")
+                    // Spec 13 §3.1: disabled and off while Reduce Motion is on, with the sentence below.
+                    Toggle("Gentle motion", isOn: reduceMotion ? .constant(false) : $motionEnabled).toggleStyle(.switch)
+                        .disabled(reduceMotion)
+                        .accessibilityHint("Follows Reduce Motion in System Settings.")
+                    hint("Follows Reduce Motion in System Settings.")
                 }
             }
 
@@ -119,14 +129,16 @@ private struct RoomGeneralSettingsView: View {
                         get: { loginItem.enabled }, set: { loginItem.setEnabled($0) }))
                         .toggleStyle(.switch)
                     if let approval = loginItem.approvalHint {
-                        hint(approval)
-                        Button("Open Login Items…") { RoomLoginItemModel.openLoginItems() }
+                        hint(approval).transition(.opacity)
+                        Button("Open Login Items…") { RoomLoginItemModel.openLoginItems() }.transition(.opacity)
                     }
-                    if let error = loginItem.errorMessage { hint(error) }
+                    if let error = loginItem.errorMessage { hint(error).transition(.opacity) }
                 }
+                .animation(motion.animation(RoomTokens.Motion.standard), value: loginItem.approvalHint)
+                .animation(motion.animation(RoomTokens.Motion.standard), value: loginItem.errorMessage)
             }
         }
-        .formStyle(.grouped)
+        .formStyle(.grouped).scrollDisabled(true)
         .fixedSize(horizontal: false, vertical: true)
         .onAppear { loginItem.refreshStatus() }
         .onChange(of: controlActiveState) { _, state in
