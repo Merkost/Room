@@ -78,6 +78,56 @@ struct RoomMenuBarPresentationTests {
         #expect(RoomMenuBarPresentation.make(both, format: format).pocketFill == 0.5)
     }
 
+    @Test(arguments: RoomMenuBarValueMode.allCases, RoomMenuBarLayoutMode.allCases)
+    func stackedLinesOnlyExistForBothInStackedLayout(value: RoomMenuBarValueMode,
+                                                    layout: RoomMenuBarLayoutMode) {
+        let input = RoomMenuBarInput(value: value, layout: layout,
+            memoryUsedBytes: 16_200_000_000, memoryTotalBytes: 32 * gb,
+            pressure: .normal, diskFreeBytes: 312 * gb, goalBytes: 50 * gb)
+        let output = RoomMenuBarPresentation.make(input, format: format)
+        #expect((output.stackedLines != nil) == (value == .both && layout == .stacked))
+    }
+
+    @Test func stackedFiguresMatchTheInlineFiguresAndKeepExistingPresentation() {
+        var input = RoomMenuBarInput(value: .both, icon: .symbol,
+            memoryUsedBytes: 16_200_000_000, memoryTotalBytes: 32 * gb,
+            pressure: .elevated, diskFreeBytes: 312 * gb, goalBytes: 50 * gb)
+        let inline = RoomMenuBarPresentation.make(input, format: format)
+        input.layout = .stacked
+        var stacked = RoomMenuBarPresentation.make(input, format: format)
+        input.value = .memory
+        let memory = RoomMenuBarPresentation.make(input, format: format)
+        input.value = .disk
+        let disk = RoomMenuBarPresentation.make(input, format: format)
+        #expect(stacked.stackedLines == [
+            RoomMenuBarStackedLine(symbolName: "memorychip", text: memory.title),
+            RoomMenuBarStackedLine(symbolName: "internaldrive", text: disk.title)
+        ])
+        #expect(stacked.title == "16.2 GB · 312 GB")
+        #expect(stacked.icon == .mark)
+        stacked.stackedLines = nil
+        #expect(stacked == inline)
+    }
+
+    @Test(arguments: [false, true], [false, true])
+    func stackedMissingMeasurementsStayOnTheirOwnLines(memoryKnown: Bool, diskKnown: Bool) {
+        let input = RoomMenuBarInput(value: .both, layout: .stacked,
+            memoryUsedBytes: memoryKnown ? 16_200_000_000 : nil,
+            memoryTotalBytes: memoryKnown ? 32 * gb : nil,
+            diskFreeBytes: diskKnown ? 312 * gb : nil)
+        let output = RoomMenuBarPresentation.make(input, format: format)
+        #expect(output.stackedLines == [
+            RoomMenuBarStackedLine(symbolName: "memorychip", text: memoryKnown ? "16.2 GB" : "—"),
+            RoomMenuBarStackedLine(symbolName: "internaldrive", text: diskKnown ? "312 GB" : "—")
+        ])
+    }
+
+    @Test func stackedMemoryWithoutItsTotalIsUnavailable() {
+        let input = RoomMenuBarInput(value: .both, layout: .stacked,
+            memoryUsedBytes: 16_200_000_000, memoryTotalBytes: 0, diskFreeBytes: 312 * gb)
+        #expect(RoomMenuBarPresentation.make(input, format: format).stackedLines?.first?.text == "—")
+    }
+
     @Test func iconModesKeepAnInvisibleItemImpossible() {
         #expect(RoomMenuBarPresentation.make(RoomMenuBarInput(value: .none, icon: .none), format: format).icon == .mark)
         let noIcon = memory(16.2, .normal) { $0.icon = .none }
@@ -166,6 +216,13 @@ struct RoomMenuBarPresentationTests {
         #expect(scenario(.diskBelowGoal).title == "41 GB" && scenario(.diskBelowGoal).pocketFill == 0.5)
         #expect(scenario(.iconOnlyElevated).title == "" && scenario(.iconOnlyElevated).pocketFill == 0.5)
         #expect(scenario(.bothElevatedBelowGoal).title == "24.8 GB · 41 GB")
+        #expect(scenario(.bothStacked).stackedLines == [
+            RoomMenuBarStackedLine(symbolName: "memorychip", text: "24.8 GB"),
+            RoomMenuBarStackedLine(symbolName: "internaldrive", text: "41 GB")
+        ])
+        var live = RoomMenuBarInput(layout: .stacked)
+        live.value = .both
+        #expect(RoomDebugMenuBarScenario.bothElevatedBelowGoal.apply(to: live).layout == .inline)
         #expect(RoomDebugMenuBarScenario.live.apply(to: RoomMenuBarInput()) == RoomMenuBarInput())
     }
 #endif

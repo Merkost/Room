@@ -65,10 +65,17 @@ struct RoomMenuBarPreview {
             let frames = Self.frames(for: output, width: size.width)
             if layers != .itemOnly { clock.draw(at: frames.clock.origin) }
             if layers != .surfaceAndClock {
-                if let iconFrame = frames.icon, let iconImage = icon(for: output, ink: ink) {
-                    iconImage.draw(in: iconFrame)
+                if output.stackedLines != nil, let textBlock = frames.title {
+                    let geometry = RoomMenuBarStackedItem.frames(for: output, height: stripHeight)
+                    RoomMenuBarStackedItem.image(for: output, height: stripHeight).draw(in:
+                        CGRect(x: textBlock.minX - geometry.textBlock.minX, y: 0,
+                            width: geometry.size.width, height: geometry.size.height))
+                } else {
+                    if let iconFrame = frames.icon, let iconImage = icon(for: output, ink: ink) {
+                        iconImage.draw(in: iconFrame)
+                    }
+                    if let titleFrame = frames.title { title.draw(at: titleFrame.origin) }
                 }
-                if let titleFrame = frames.title { title.draw(at: titleFrame.origin) }
             }
             // The pocket's image renderer erases its hollow portion. Restore
             // the strip surface underneath any pixels that drawing cleared.
@@ -101,6 +108,15 @@ struct RoomMenuBarPreview {
         -> (clock: CGRect, title: CGRect?, icon: CGRect?) {
         let attributes = textAttributes(ink: .black)
         let clockSize = NSAttributedString(string: clockText, attributes: attributes).size()
+        if output.stackedLines != nil {
+            let geometry = RoomMenuBarStackedItem.frames(for: output, height: stripHeight)
+            let clockX = width - ItemLayout.edge - ceil(clockSize.width)
+            let itemX = clockX - ItemLayout.gap - ItemLayout.itemInset - geometry.size.width
+            return (CGRect(x: clockX, y: ((stripHeight - clockSize.height) / 2).rounded(),
+                        width: ceil(clockSize.width), height: clockSize.height),
+                    geometry.textBlock.offsetBy(dx: itemX, dy: 0),
+                    geometry.pocket?.offsetBy(dx: itemX, dy: 0))
+        }
         let titleSize = output.title.isEmpty ? .zero : NSAttributedString(string: output.title, attributes: attributes).size()
         let layout = ItemLayout(iconWidth: output.icon == .none ? 0 : iconPoints,
             titleWidth: ceil(titleSize.width), clockWidth: ceil(clockSize.width), stripWidth: width)

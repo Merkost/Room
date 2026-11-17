@@ -29,10 +29,7 @@ struct RoomSettingsView: View {
 
             VStack {
                 if selectedTab == RoomSettingsTab.menubar.rawValue {
-                    Form {
-                        RoomMenuBarSettingsControls(insights: insights, rooms: rooms, enabled: $menuBarEnabled)
-                    }
-                    .formStyle(.grouped).scrollDisabled(true)
+                    RoomMenuBarSettingsControls(insights: insights, rooms: rooms, enabled: $menuBarEnabled)
                     .fixedSize(horizontal: false, vertical: true)
                     .transition(.opacity)
                 }
@@ -86,48 +83,51 @@ private struct RoomGeneralSettingsView: View {
     private var goalBytes: Int64 { RoomMenuBarSettings.clampGoalBytes(Int64(storedGoal)) }
 
     var body: some View {
-        Form {
-            Picker("Appearance", selection: $appearance) {
-                Text("System").tag("system")
-                Text("Light").tag("light")
-                Text("Dark").tag("dark")
-            }
-            .pickerStyle(.segmented)
-
-            Picker("Open on", selection: $openOn) {
-                Text("Overview").tag(RoomOpenOn.overview.rawValue)
-                Text("Last place I was").tag(RoomOpenOn.last.rawValue)
-            }
-            .pickerStyle(.segmented)
-
-            LabeledContent("Free-space goal") {
-                VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
-                    Stepper(onIncrement: incrementGoal, onDecrement: decrementGoal) {
-                        (Text("Keep ") + Text("\(goalBytes / 1_000_000_000)").bold() + Text(" GB free"))
-                            .monospacedDigit()
-                            .contentTransition(.numericText(value: Double(goalBytes)))
-                            .animation(motion.animation(RoomTokens.Motion.standard), value: goalBytes)
-                    }
-                    .accessibilityIdentifier("RoomSettingsFreeSpaceGoal")
-                    hint("Below it, the Overview and the menu-bar icon turn amber.")
+        Grid(alignment: .topLeading, horizontalSpacing: 16, verticalSpacing: 14) {
+            RoomSettingsFormRow("Appearance") {
+                Picker("Appearance", selection: $appearance) {
+                    Text("System").tag("system")
+                    Text("Light").tag("light")
+                    Text("Dark").tag("dark")
                 }
+                .pickerStyle(.segmented).labelsHidden()
+                .fixedSize(horizontal: true, vertical: false)
             }
 
-            LabeledContent("Motion") {
-                VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
-                    // Spec 13 §3.1: disabled and off while Reduce Motion is on, with the sentence below.
-                    Toggle("Gentle motion", isOn: reduceMotion ? .constant(false) : $motionEnabled).toggleStyle(.switch)
-                        .disabled(reduceMotion)
-                        .accessibilityHint("Follows Reduce Motion in System Settings.")
-                    hint("Follows Reduce Motion in System Settings.")
+            RoomSettingsFormRow("Open on") {
+                Picker("Open on", selection: $openOn) {
+                    Text("Overview").tag(RoomOpenOn.overview.rawValue)
+                    Text("Last place I was").tag(RoomOpenOn.last.rawValue)
                 }
+                .pickerStyle(.segmented).labelsHidden()
+                .fixedSize(horizontal: true, vertical: false)
             }
 
-            LabeledContent("Login") {
+            RoomSettingsFormRow("Free-space goal", hint: "Below it, the Overview and the menu-bar icon turn amber.") {
+                Stepper(onIncrement: incrementGoal, onDecrement: decrementGoal) {
+                    (Text("Keep ") + Text("\(goalBytes / 1_000_000_000)").bold() + Text(" GB free"))
+                        .monospacedDigit()
+                        .contentTransition(.numericText(value: Double(goalBytes)))
+                        .animation(motion.animation(RoomTokens.Motion.standard), value: goalBytes)
+                }
+                .fixedSize(horizontal: true, vertical: false)
+                .accessibilityIdentifier("RoomSettingsFreeSpaceGoal")
+            }
+
+            RoomSettingsFormRow("Motion", hint: "Follows Reduce Motion in System Settings.") {
+                // Spec 13 §3.1: disabled and off while Reduce Motion is on, with the sentence below.
+                Toggle("Gentle motion", isOn: reduceMotion ? .constant(false) : $motionEnabled).toggleStyle(.switch)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .disabled(reduceMotion)
+                    .accessibilityHint("Follows Reduce Motion in System Settings.")
+            }
+
+            RoomSettingsFormRow("Login") {
                 VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
                     Toggle("Open Room at login", isOn: Binding(
                         get: { loginItem.enabled }, set: { loginItem.setEnabled($0) }))
                         .toggleStyle(.switch)
+                        .fixedSize(horizontal: true, vertical: false)
                     if let approval = loginItem.approvalHint {
                         hint(approval).transition(.opacity)
                         Button("Open Login Items…") { RoomLoginItemModel.openLoginItems() }.transition(.opacity)
@@ -138,7 +138,7 @@ private struct RoomGeneralSettingsView: View {
                 .animation(motion.animation(RoomTokens.Motion.standard), value: loginItem.errorMessage)
             }
         }
-        .formStyle(.grouped).scrollDisabled(true)
+        .padding(.top, 18).padding(.bottom, 18).padding(.horizontal, 40)
         .fixedSize(horizontal: false, vertical: true)
         .onAppear { loginItem.refreshStatus() }
         .onChange(of: controlActiveState) { _, state in
@@ -157,7 +157,7 @@ private struct RoomGeneralSettingsView: View {
     }
 
     private func hint(_ text: String) -> some View {
-        Text(text).font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
+        Text(text).font(.system(size: 11)).foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
     }
 }

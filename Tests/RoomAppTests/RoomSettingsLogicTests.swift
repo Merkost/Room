@@ -25,7 +25,7 @@ struct RoomSettingsLogicTests {
     }
 
     @Test func previewUsesFixedMeasurementsAndKeepsPreferences() {
-        let input = RoomMenuBarInput(value: .both, icon: .symbol, tintOnlyWhenNeeded: false,
+        let input = RoomMenuBarInput(value: .both, layout: .stacked, icon: .symbol, tintOnlyWhenNeeded: false,
             memoryUsedBytes: 1, memoryTotalBytes: 2, pressure: .critical,
             diskFreeBytes: 3, goalBytes: 80_000_000_000)
         let scenarios = RoomMenuBarPreviewScenarios.inputs(from: input)
@@ -39,6 +39,7 @@ struct RoomSettingsLogicTests {
         #expect(scenarios.elevated.diskFreeBytes == 71_000_000_000)
         for scenario in [scenarios.normal, scenarios.elevated] {
             #expect(scenario.value == input.value)
+            #expect(scenario.layout == .stacked)
             #expect(scenario.icon == input.icon)
             #expect(scenario.tintOnlyWhenNeeded == input.tintOnlyWhenNeeded)
             #expect(scenario.goalBytes == input.goalBytes)

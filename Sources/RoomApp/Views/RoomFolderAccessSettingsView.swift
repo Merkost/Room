@@ -93,7 +93,7 @@ struct RoomFolderAccessSettingsView: View {
             Image(systemName: "folder").foregroundStyle(.secondary).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
                 Text(folder.name).font(RoomTokens.Typography.bodyStrong).lineLimit(1)
-                Text(folder.url.path).font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
+                Text(folder.url.path).font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
                     .lineLimit(1).truncationMode(.middle)
             }
             .frame(maxWidth: .infinity, alignment: .leading)

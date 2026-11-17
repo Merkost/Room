@@ -48,6 +48,60 @@ struct RoomMenuBarPreviewTests {
         #expect(iconOnly.iconX + 16 + RoomMenuBarPreview.ItemLayout.itemInset + RoomMenuBarPreview.ItemLayout.gap == iconOnly.clockX)
     }
 
+    @Test(arguments: RoomMenuBarIconMode.allCases)
+    func stackedFramesUseTheSharedTextBlockAndPocket(_ icon: RoomMenuBarIconMode) throws {
+        var input = RoomMenuBarInput(value: .both, icon: icon,
+            memoryUsedBytes: 16_200_000_000, memoryTotalBytes: 32_000_000_000, pressure: .normal,
+            diskFreeBytes: 312_000_000_000, goalBytes: 50_000_000_000)
+        input.layout = .stacked
+        let preview = RoomMenuBarPreview.make(input: input, format: .fixtureGigabytes, appearance: .aqua, width: 280)
+        let frames = RoomMenuBarPreview.frames(for: preview.output, width: 280)
+        let geometry = RoomMenuBarStackedItem.frames(for: preview.output, height: 24)
+        let text = try #require(frames.title)
+        #expect(text.size == geometry.textBlock.size)
+        #expect(text.midY == 12)
+        #expect(text.maxX + RoomMenuBarPreview.ItemLayout.itemInset + RoomMenuBarPreview.ItemLayout.gap == frames.clock.minX)
+        if icon == .none {
+            #expect(frames.icon == nil)
+        } else {
+            let pocket = try #require(frames.icon)
+            #expect(pocket.size == CGSize(width: 16, height: 16))
+            #expect(pocket.maxX + 5 == text.minX)
+            #expect(pocket.midY == text.midY)
+            #expect(preview.output.icon == .mark)
+        }
+    }
+
+    @Test(arguments: [NSAppearance.Name.aqua, .darkAqua])
+    func stackedPreviewDrawsBothLinesWithoutChangingTheStaticLayer(_ appearance: NSAppearance.Name) throws {
+        var input = RoomMenuBarInput(value: .both, icon: .mark,
+            memoryUsedBytes: 16_200_000_000, memoryTotalBytes: 32_000_000_000, pressure: .normal,
+            diskFreeBytes: 312_000_000_000, goalBytes: 50_000_000_000)
+        let inlineStatic = RoomMenuBarPreview.make(input: input, format: .fixtureGigabytes,
+            appearance: appearance, width: 280, layers: .surfaceAndClock)
+        input.layout = .stacked
+        let stackedStatic = RoomMenuBarPreview.make(input: input, format: .fixtureGigabytes,
+            appearance: appearance, width: 280, layers: .surfaceAndClock)
+        #expect(try bytes(try #require(inlineStatic.image.representations.first as? NSBitmapImageRep))
+            == bytes(try #require(stackedStatic.image.representations.first as? NSBitmapImageRep)))
+        let item = RoomMenuBarPreview.make(input: input, format: .fixtureGigabytes,
+            appearance: appearance, width: 280, layers: .itemOnly)
+        let bitmap = try #require(item.image.representations.first as? NSBitmapImageRep)
+        let text = try #require(RoomMenuBarPreview.frames(for: item.output, width: 280).title)
+        func inked(_ rect: CGRect) throws -> Int {
+            var count = 0
+            for x in Int(rect.minX * 2)..<Int(rect.maxX * 2) {
+                for y in Int((24 - rect.maxY) * 2)..<Int((24 - rect.minY) * 2) {
+                    if try #require(bitmap.colorAt(x: x, y: y)).alphaComponent > 0.5 { count += 1 }
+                }
+            }
+            return count
+        }
+        #expect(try inked(CGRect(x: text.minX, y: text.midY, width: text.width, height: text.height / 2)) > 40)
+        #expect(try inked(CGRect(x: text.minX, y: text.minY, width: text.width, height: text.height / 2)) > 40)
+        #expect(try #require(bitmap.colorAt(x: 2, y: 2)).alphaComponent == 0)
+    }
+
     @Test(arguments: [NSAppearance.Name.aqua, .darkAqua])
     func stripsActuallyDrawTheItemTitleAndClock(_ appearance: NSAppearance.Name) throws {
         let input = RoomMenuBarInput(value: .memory, icon: .symbol,

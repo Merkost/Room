@@ -5,7 +5,7 @@ import Testing
 @Suite("Menu bar controls")
 struct RoomMenuBarControlsTests {
     @Test func controlsFollowTheSettingsOrder() {
-        #expect(RoomMenuBarSettings.controlOrder == [.show, .value, .icon, .colour, .swap, .pinnedRoom])
+        #expect(RoomMenuBarSettings.controlOrder == [.show, .value, .layout, .icon, .colour, .swap, .pinnedRoom])
         #expect(RoomMenuBarSettings.iconOrder == [.mark, .symbol, .none])
     }
 

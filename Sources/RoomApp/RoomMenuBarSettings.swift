@@ -4,13 +4,14 @@ import RoomCore
 /// Reads legacy preferences until a control writes its replacement key.
 nonisolated enum RoomMenuBarSettings {
     nonisolated enum Control: Hashable, Sendable {
-        case show, value, icon, colour, swap, pinnedRoom
+        case show, value, layout, icon, colour, swap, pinnedRoom
     }
 
-    static let controlOrder: [Control] = [.show, .value, .icon, .colour, .swap, .pinnedRoom]
+    static let controlOrder: [Control] = [.show, .value, .layout, .icon, .colour, .swap, .pinnedRoom]
     static let iconOrder: [RoomMenuBarIconMode] = [.mark, .symbol, .none]
 
     static let valueKey = "RoomMenuBarValue"
+    static let layoutKey = "RoomMenuBarLayout"
     static let legacyMetricKey = "RoomMenuBarMetric"
     static let iconKey = "RoomMenuBarIcon"
     static let tintOnlyWhenNeededKey = "RoomMenuBarTintOnlyWhenNeeded"
@@ -64,6 +65,14 @@ nonisolated enum RoomMenuBarSettings {
         defaults.set(icon.rawValue, forKey: iconKey)
     }
 
+    static func layout(in defaults: UserDefaults) -> RoomMenuBarLayoutMode {
+        defaults.string(forKey: layoutKey).flatMap(RoomMenuBarLayoutMode.init(rawValue:)) ?? .inline
+    }
+
+    static func setLayout(_ layout: RoomMenuBarLayoutMode, in defaults: UserDefaults) {
+        defaults.set(layout.rawValue, forKey: layoutKey)
+    }
+
     static func showSwap(in defaults: UserDefaults) -> Bool {
         defaults.object(forKey: showSwapKey) as? Bool ?? showSwapDefault
     }
@@ -79,6 +88,7 @@ nonisolated enum RoomMenuBarSettings {
 
         var input = RoomMenuBarInput(
             value: value,
+            layout: layout(in: defaults),
             icon: defaults.string(forKey: iconKey).flatMap(RoomMenuBarIconMode.init(rawValue:)) ?? .symbol,
             tintOnlyWhenNeeded: defaults.object(forKey: tintOnlyWhenNeededKey) as? Bool ?? true,
             goalBytes: goalBytes(in: defaults))

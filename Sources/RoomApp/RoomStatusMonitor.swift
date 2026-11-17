@@ -226,11 +226,25 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
         lastValueMode = input.value
         lastMotionAllowed = motionAllowed
 
-        updateTitle(output.title, mode: input.value, previousMode: previousMode,
-                    button: button, animated: motionAllowed)
-        button.imagePosition = output.icon == .none ? .noImage : output.title.isEmpty ? .imageOnly : .imageLeading
+        if output.stackedLines != nil {
+            // The shared image owns both figures. Two lines swap at once rather than ticking.
+            button.title = ""
+            button.imagePosition = .imageOnly
+        } else {
+            updateTitle(output.title, mode: input.value, previousMode: previousMode,
+                        button: button, animated: motionAllowed)
+            button.imagePosition = output.icon == .none ? .noImage : output.title.isEmpty ? .imageOnly : .imageLeading
+        }
         if motionAllowed, previousOutput?.icon == .mark, output.icon == .mark,
            displayedPocketFill != output.pocketFill {
+            if output.stackedLines != nil {
+                // Show the new figures before the first fill frame, keeping the old tint until the end.
+                button.contentTintColor = nil
+                button.image = stackedImage(output, fill: displayedPocketFill, tint: displayedTint)
+            } else if previousOutput?.stackedLines != nil {
+                // Remove the composite as soon as the inline title returns.
+                button.image = pocketImage(fill: displayedPocketFill, tint: displayedTint)
+            }
             animatePocket(to: output, button: button)
         } else {
             applyImage(output, button: button)
@@ -269,6 +283,11 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
     private func applyImage(_ output: RoomMenuBarOutput, button: NSStatusBarButton) {
         button.contentTintColor = nil   // ignored on template images by macOS; colour lives in the image instead
         displayedTint = output.tint
+        if output.stackedLines != nil {
+            button.image = RoomMenuBarStackedItem.image(for: output)
+            displayedPocketFill = output.pocketFill
+            return
+        }
         switch output.icon {
         case .mark:
             button.image = pocketImage(fill: output.pocketFill, tint: output.tint)
@@ -291,6 +310,12 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
         }
     }
 
+    private func stackedImage(_ output: RoomMenuBarOutput, fill: Double, tint: RoomMenuBarTint) -> NSImage {
+        var frame = output
+        frame.tint = tint
+        return RoomMenuBarStackedItem.image(for: frame, pocketFill: fill)
+    }
+
     private func animatePocket(to output: RoomMenuBarOutput, button: NSStatusBarButton) {
         let frames = RoomMenuBarMotion.fillFrames(from: displayedPocketFill, to: output.pocketFill)
         fillTask = Task { @MainActor [weak self, weak button] in
@@ -299,7 +324,11 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
                 catch { return }
                 guard !Task.isCancelled, let self, let button else { return }
                 if fill != self.displayedPocketFill {
-                    button.image = self.pocketImage(fill: fill, tint: self.displayedTint)
+                    if output.stackedLines != nil {
+                        button.image = self.stackedImage(output, fill: fill, tint: self.displayedTint)
+                    } else {
+                        button.image = self.pocketImage(fill: fill, tint: self.displayedTint)
+                    }
                     self.displayedPocketFill = fill
                 }
             }
