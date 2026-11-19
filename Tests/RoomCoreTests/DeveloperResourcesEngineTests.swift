@@ -164,6 +164,112 @@ struct DeveloperResourcesEngineTests {
         #expect(noTime.isPartial)
     }
 
+    @Test func fixtureSubyKMPAndStandupbotJVM() async throws {
+        let f = try DeveloperFixture()
+        defer { f.remove() }
+        let projects = try f.directory("projects")
+        let sdk = try f.directory("sdk")
+        let konan = try f.directory("konan")
+        let gradle = try f.directory("gradle")
+        _ = try f.directory("gradle/caches")
+        _ = try f.write("projects/Suby/settings.gradle.kts", "rootProject.name = \"Suby\"")
+        _ = try f.write("projects/Suby/gradle/wrapper/gradle-wrapper.properties",
+                        "distributionUrl=https://example.invalid/gradle-8.9-bin.zip")
+        _ = try f.write("projects/Suby/gradle/libs.versions.toml", """
+            [versions]
+            k = "2.1.0"
+            n = "27.1.12297006"
+            [plugins]
+            kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "k" }
+            """)
+        _ = try f.write("projects/Suby/shared/build.gradle.kts", """
+            plugins { alias(libs.plugins.kotlin.multiplatform) }
+            kotlin { iosArm64() }
+            android { ndkVersion = libs.versions.n.get() }
+            """)
+        _ = try f.write("projects/Standup/build.gradle.kts", #"plugins { kotlin("jvm") version "2.0.21" }"#)
+        _ = try f.write("sdk/ndk/27.1.12297006/tool", "NDK")
+        _ = try f.write("konan/kotlin-native-prebuilt-macos-aarch64-2.1.0/tool", "native")
+        _ = try f.write("konan/kotlin-native-prebuilt-macos-aarch64-2.0.21/tool", "native")
+        _ = try f.write("gradle/wrapper/dists/gradle-8.9-bin/hash/archive", "Gradle")
+        _ = try f.write("gradle/wrapper/dists/gradle-7.6.4-bin/hash/archive", "old Gradle")
+
+        let report = await DeveloperResourcesEngine().scan(request: .init(
+            approvedFolders: [projects, sdk, konan, gradle], gradleHomes: [gradle],
+            projectRoots: [projects], sdkRoots: [sdk], konanRoots: [konan]))
+        #expect(report.projects.count == 2)
+        let suby = try #require(report.projects.first { $0.name == "Suby" })
+        let standup = try #require(report.projects.first { $0.name == "Standup" })
+        #expect(suby.pinsKonan && suby.ndk == "27.1.12297006" && suby.gradle?.version == "8.9")
+        #expect(!standup.pinsKonan && standup.kotlin == "2.0.21")
+        let summary = RoomDeveloperRooms.summarize(projects: report.projects, artifacts: report.toolchains,
+                                                    scanPartial: report.isPartial)
+        let row = try #require(summary.rows.first { $0.project.name == "Suby" })
+        #expect(row.segments.map(\.kind) == [.ndk, .kotlinNative, .gradle])
+        #expect(summary.orphans.contains { $0.artifact.version == "7.6.4-bin" })
+    }
+
+    @Test func localPropertiesNeverRead() async throws {
+        let f = try DeveloperFixture()
+        defer { f.remove() }
+        let project = try f.directory("projects/Project")
+        _ = try f.write("projects/Project/build.gradle.kts", "kotlin { iosArm64() }")
+        for name in ["local.properties", "gradle.properties", ".env", ".env.production"] {
+            #expect(mkfifo(project.appendingPathComponent(name).path, 0o600) == 0)
+        }
+        let report = await DeveloperResourcesEngine().scan(request: .init(
+            approvedFolders: [project], projectRoots: [project]))
+        #expect(report.projects.count == 1)
+        #expect(report.issues.isEmpty)
+    }
+
+    @Test func unapprovedRootNotInspected() async throws {
+        let f = try DeveloperFixture()
+        defer { f.remove() }
+        let approved = try f.directory("approved")
+        let outside = try f.directory("other")
+        _ = try f.write("other/ndk/99.0/tool", "not approved")
+        _ = try f.write("other/build.gradle.kts", "kotlin { iosArm64() }")
+        let report = await DeveloperResourcesEngine().scan(request: .init(
+            approvedFolders: [approved], projectRoots: [outside], sdkRoots: [outside]))
+        #expect(report.projects.isEmpty && report.toolchains.isEmpty)
+        #expect(report.issues.count == 2)
+        #expect(report.issues.allSatisfy { $0.url.path == outside.path })
+    }
+
+    @Test func derivedDataOutsideApprovalNotStatted() async throws {
+        let f = try DeveloperFixture()
+        defer { f.remove() }
+        let projects = try f.directory("projects")
+        let data = try f.directory("derived-data")
+        for (folder, workspace) in [("Inside", "projects/Gone.xcodeproj"), ("Outside", "other/Gone.xcodeproj")] {
+            let container = try f.directory("derived-data/" + folder)
+            let plist = try PropertyListSerialization.data(fromPropertyList: ["WorkspacePath": f.url(workspace).path],
+                                                           format: .binary, options: 0)
+            try plist.write(to: container.appendingPathComponent("info.plist"))
+        }
+        let report = await DeveloperResourcesEngine().scan(request: .init(
+            approvedFolders: [projects, data], derivedDataRoots: [data]))
+        let summary = RoomDeveloperRooms.summarize(projects: report.projects, artifacts: report.toolchains,
+                                                    scanPartial: report.isPartial)
+        let reasons = Dictionary(uniqueKeysWithValues: summary.orphans.map { ($0.artifact.version, $0.reason) })
+        #expect(reasons["Inside"] == .projectFolderGone)
+        #expect(reasons["Outside"] == .pinnedByNone)
+        #expect(report.toolchains.first { $0.version == "Outside" }?.workspacePresent == nil)
+    }
+
+    @Test func oversizeFileIsIssue() async throws {
+        let f = try DeveloperFixture()
+        defer { f.remove() }
+        let projects = try f.directory("projects")
+        let large = try f.write("projects/Project/build.gradle.kts",
+                                "ndkVersion = \"27.1.12297006\"\n" + String(repeating: "x", count: 262_145))
+        let report = await DeveloperResourcesEngine().scan(request: .init(approvedFolders: [projects],
+                                                                          projectRoots: [projects]))
+        #expect(report.isPartial)
+        #expect(report.issues.contains { $0.url == large })
+    }
+
     @Test("Version parsing handles release candidates and discards URL credentials and nonstandard filenames")
     func versions() {
         #expect(DRVersions.distribution("gradle-8.9-bin")?.version == "8.9")

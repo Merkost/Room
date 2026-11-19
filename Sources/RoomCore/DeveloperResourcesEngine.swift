@@ -12,6 +12,8 @@ public actor DeveloperResourcesEngine {
         let budget = DRBudget(request.limits)
         var avds: [AndroidVirtualDeviceResource] = [], gradle: [GradleDeveloperResource] = []
         var wrappers: [GradleProjectWrapper] = []
+        var projects: [String: DeveloperProject] = [:]
+        var toolchains: [DeveloperToolchainResource] = []
         var approvals: [URL] = []
         for supplied in request.approvedFolders.prefix(64) {
             let url = supplied.roomLexicallyNormalized
@@ -34,15 +36,18 @@ public actor DeveloperResourcesEngine {
             progress?(DeveloperResourcesProgress(phase: phase, inspectedCount: budget.nodes, currentPath: url.path))
         }
         do {
-            var searched: Set<String> = []
-            for supplied in request.projectRoots.prefix(32) {
+            var searched: [URL] = []
+            let projectRoots = request.projectRoots.prefix(32).sorted { $0.pathComponents.count < $1.pathComponents.count }
+            for supplied in projectRoots {
                 try budget.check()
-                guard let root = permitted(supplied), searched.insert(root.path).inserted else { continue }
-                update("Project wrappers", root)
-                do { try DRProjects.find(root, budget: budget, wrappers: &wrappers) }
+                guard let root = permitted(supplied),
+                      !searched.contains(where: { DRFiles.contains(root, in: $0) }) else { continue }
+                searched.append(root)
+                update("Project versions", root)
+                do { try DRProjects.find(root, budget: budget, wrappers: &wrappers, projects: &projects) }
                 catch is CancellationError { throw CancellationError() }
                 catch is DRStop { throw DRStop.limit }
-                catch { budget.note(root, "Project wrapper inspection was incomplete; no scripts or build configuration were executed.") }
+                catch { budget.note(root, "Project version inspection was incomplete. No builds were run.") }
                 await Task.yield()
             }
             var seenAVDs: Set<String> = []
@@ -114,19 +119,87 @@ public actor DeveloperResourcesEngine {
                 }
                 await Task.yield()
             }
+            let rootsByKind: [(RoomDevPinKind, [URL])] = [
+                (.derivedData, request.derivedDataRoots), (.ndk, request.sdkRoots), (.kotlinNative, request.konanRoots),
+            ]
+            var seenToolchains: Set<String> = []
+            for (kind, roots) in rootsByKind {
+                for supplied in roots.prefix(32) {
+                    try budget.check()
+                    guard let root = permitted(supplied) else { continue }
+                    update(kind.title, root)
+                    let location = kind == .ndk ? root.appendingPathComponent("ndk", isDirectory: true) : root
+                    try readToolchains(in: location, kind: kind, approvals: approvals, budget: budget,
+                                       seen: &seenToolchains, results: &toolchains)
+                    await Task.yield()
+                }
+            }
         } catch is CancellationError { }
         catch { budget.limited = true }
-        if request.projectRoots.count > 32 || request.avdRoots.count > 32 || request.gradleHomes.count > 32 {
+        if [request.projectRoots, request.avdRoots, request.gradleHomes, request.sdkRoots,
+            request.derivedDataRoots, request.konanRoots].contains(where: { $0.count > 32 }) {
             budget.note(approvals.first ?? URL(fileURLWithPath: "/"), "Each resource role is limited to its first 32 selected roots.")
         }
         if budget.limited { budget.note(approvals.first ?? URL(fileURLWithPath: "/"), "The bounded scan reached a time, depth, node or resource limit. Results and size measurements may be incomplete.") }
+        toolchains.append(contentsOf: gradle.compactMap { resource in
+            guard resource.kind == .distribution, let version = resource.version,
+                  let type = resource.distributionType else { return nil }
+            return DeveloperToolchainResource(path: resource.url.path, kind: .gradle, version: version + "-" + type,
+                                              gradleType: type, bytes: resource.allocatedBytes, partial: resource.isPartial)
+        })
         return DeveloperResourcesReport(id: id, scannedAt: date,
             androidDevices: avds.sorted { $0.allocatedBytes > $1.allocatedBytes },
             gradleResources: gradle.sorted { $0.allocatedBytes > $1.allocatedBytes },
             projectWrappers: wrappers.sorted { $0.propertiesURL.path < $1.propertiesURL.path },
+            projects: projects.values.sorted { $0.root < $1.root }, toolchains: toolchains,
             issues: budget.issues, cancelled: Task.isCancelled,
             isPartial: Task.isCancelled || budget.limited || !budget.issues.isEmpty || avds.contains(where: \.isPartial)
-                || gradle.contains(where: \.isPartial) || wrappers.contains(where: \.isPartial))
+                || gradle.contains(where: \.isPartial) || wrappers.contains(where: \.isPartial)
+                || toolchains.contains(where: \.partial))
+    }
+
+    private func readToolchains(in root: URL, kind: RoomDevPinKind, approvals: [URL], budget: DRBudget,
+                                seen: inout Set<String>, results: inout [DeveloperToolchainResource]) throws {
+        do {
+            for child in try DRFiles.children(root, budget: budget) {
+                try budget.check()
+                let version: String?
+                switch kind {
+                case .ndk: version = RoomDevParse.version(child.lastPathComponent)
+                case .kotlinNative: version = RoomDevParse.konan(child.lastPathComponent)
+                case .derivedData: version = child.lastPathComponent
+                case .gradle: return
+                }
+                guard let version, seen.insert(child.path).inserted else { continue }
+                do {
+                    guard DRFiles.isDirectory(try DRFiles.metadata(child)) else { continue }
+                    try budget.resource()
+                    let measured = try DRFiles.measure(child, budget: budget)
+                    var artifact = DeveloperToolchainResource(path: child.path, kind: kind, version: version,
+                                                              bytes: measured.allocated, partial: measured.partial)
+                    if kind == .derivedData {
+                        let info = child.appendingPathComponent("info.plist")
+                        do {
+                            if let raw = RoomDevParse.derivedDataWorkspace(try DRFiles.data(info, budget: budget,
+                                                                         limit: budget.limits.maximumProjectFileBytes)) {
+                                let workspace = URL(fileURLWithPath: raw).roomLexicallyNormalized
+                                artifact.workspacePath = workspace.path
+                                if approvals.contains(where: { DRFiles.contains(workspace, in: $0) }) {
+                                    artifact.workspacePresent = DRFiles.presence(workspace)
+                                }
+                            }
+                        } catch is CancellationError { throw CancellationError() }
+                        catch is DRStop { throw DRStop.limit }
+                        catch { /* This artifact has an unknown workspace. */ }
+                    }
+                    results.append(artifact)
+                } catch is CancellationError { throw CancellationError() }
+                catch is DRStop { throw DRStop.limit }
+                catch { budget.note(child, "This toolchain could not be measured safely.") }
+            }
+        } catch is CancellationError { throw CancellationError() }
+        catch is DRStop { throw DRStop.limit }
+        catch { budget.note(root, "This toolchain location is unavailable or cannot be read safely.") }
     }
 
     private func androidDevice(_ url: URL, request: DeveloperResourcesRequest, budget: DRBudget) throws -> AndroidVirtualDeviceResource {
@@ -208,7 +281,7 @@ private final class DRBudget {
     }
 }
 private enum DRStop: Error { case limit }
-private enum DRReadError: Error { case invalidRoot, unreadable, malformed, oversize, changed }
+private enum DRReadError: Error { case invalidRoot, missing, unreadable, malformed, oversize, changed }
 private struct DRMeasurement { var allocated: Int64 = 0; var logical: Int64 = 0; var partial = false; var evidence: [DeveloperResourceEvidence] = [] }
 
 private enum DRFiles {
@@ -226,8 +299,10 @@ private enum DRFiles {
         guard fd >= 0 else { throw DRReadError.unreadable }
         for component in url.pathComponents where component != "/" {
             let next = openat(fd, component, O_SEARCH | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+            let failure = errno
             close(fd)
-            guard next >= 0 else { throw DRReadError.unreadable }; fd = next
+            guard next >= 0 else { throw failure == ENOENT ? DRReadError.missing : DRReadError.unreadable }
+            fd = next
         }
         return fd
     }
@@ -269,27 +344,46 @@ private enum DRFiles {
         guard fstat(fd, &end) == 0, same(info, end) else { throw DRReadError.changed }
         return result.sorted { $0.lastPathComponent < $1.lastPathComponent }
     }
-    static func text(_ url: URL, budget: DRBudget) throws -> String {
+    static func presence(_ url: URL) -> Bool? {
+        do {
+            let parent = try openDirectory(url.deletingLastPathComponent())
+            defer { close(parent) }
+            var info = stat()
+            guard fstatat(parent, url.lastPathComponent, &info, AT_SYMLINK_NOFOLLOW) == 0 else {
+                return errno == ENOENT ? false : nil
+            }
+            return info.st_uid == getuid() && (isDirectory(info) || isRegular(info)) ? true : nil
+        } catch DRReadError.missing { return false }
+        catch { return nil }
+    }
+
+    static func text(_ url: URL, budget: DRBudget, limit: Int? = nil) throws -> String {
+        let bytes = try data(url, budget: budget, limit: limit ?? budget.limits.maximumFileBytes)
+        guard let text = String(data: bytes, encoding: .utf8), !text.contains("\0") else { throw DRReadError.malformed }
+        return text
+    }
+
+    static func data(_ url: URL, budget: DRBudget, limit: Int) throws -> Data {
         try budget.node()
         let parent = try openDirectory(url.deletingLastPathComponent()); defer { close(parent) }
         let fd = openat(parent, url.lastPathComponent, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
         guard fd >= 0 else { throw DRReadError.unreadable }; defer { close(fd) }
         var before = stat()
         guard fstat(fd, &before) == 0, before.st_uid == getuid(), isRegular(before), before.st_nlink == 1 else { throw DRReadError.unreadable }
-        guard before.st_size >= 0, before.st_size <= budget.limits.maximumFileBytes else { throw DRReadError.oversize }
-        var bytes: [UInt8] = [], chunk = [UInt8](repeating: 0, count: 8_192)
+        guard before.st_size >= 0, before.st_size <= limit else { throw DRReadError.oversize }
+        var bytes = Data(), chunk = [UInt8](repeating: 0, count: 8_192)
+        bytes.reserveCapacity(Int(before.st_size))
         while true {
             try budget.check()
             let count = Darwin.read(fd, &chunk, chunk.count)
             if count == 0 { break }
             if count < 0 { if errno == EINTR { continue }; throw DRReadError.unreadable }
             bytes.append(contentsOf: chunk.prefix(count))
-            guard bytes.count <= budget.limits.maximumFileBytes else { throw DRReadError.oversize }
+            guard bytes.count <= limit else { throw DRReadError.oversize }
         }
         var after = stat()
         guard fstat(fd, &after) == 0, same(before, after) else { throw DRReadError.changed }
-        guard let text = String(bytes: bytes, encoding: .utf8), !text.contains("\0") else { throw DRReadError.malformed }
-        return text
+        return bytes
     }
     static func measure(_ url: URL, budget: DRBudget) throws -> DRMeasurement {
         var result = DRMeasurement(), seen: Set<String> = []
@@ -349,46 +443,134 @@ private enum DRFiles {
 private enum DRProjects {
     static let skipped: Set<String> = [".git", ".gradle", ".build", ".claude", ".codex", "node_modules", "build", "dist", "Pods", "vendor",
         "local.properties", "gradle.properties", ".env", ".env.local"]
-    static func find(_ root: URL, budget: DRBudget, wrappers: inout [GradleProjectWrapper]) throws {
+    static let settingsNames: Set<String> = ["settings.gradle.kts", "settings.gradle"]
+    static let buildNames: Set<String> = ["build.gradle.kts", "build.gradle"]
+
+    struct Sources {
+        var wrapper: URL?
+        var catalog: URL?
+        var scripts: [URL] = []
+        var xcode = false
+    }
+
+    static func find(_ root: URL, budget: DRBudget, wrappers: inout [GradleProjectWrapper],
+                     projects: inout [String: DeveloperProject]) throws {
+        var sources: [String: Sources] = [:]
+        var buildFiles: [URL] = []
         func walk(_ url: URL, depth: Int) throws {
             try budget.check()
-            guard depth <= budget.limits.maximumDepth else { budget.note(url, "Nested project search reached its depth limit."); return }
+            guard depth <= budget.limits.maximumDepth else {
+                budget.note(url, "Nested project search reached its depth limit.")
+                return
+            }
             for child in try DRFiles.children(url, budget: budget) {
-                if skipped.contains(child.lastPathComponent) { continue }
+                let name = child.lastPathComponent
+                if skipped.contains(name) || name.hasPrefix(".env.") { continue }
                 do {
                     let info = try DRFiles.metadata(child)
-                    if DRFiles.isDirectory(info) { try walk(child, depth: depth + 1) }
-                    else if DRFiles.isRegular(info), child.lastPathComponent == "gradle-wrapper.properties",
-                            child.deletingLastPathComponent().lastPathComponent == "wrapper",
-                            child.deletingLastPathComponent().deletingLastPathComponent().lastPathComponent == "gradle" {
-                        if wrappers.contains(where: { $0.propertiesURL.path == child.path }) { continue }
-                        try budget.resource()
-                        let project = child.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-                        do {
-                            let properties = try DRProperties.selected(try DRFiles.text(child, budget: budget), keys: ["distributionUrl"])
-                            let parsed = properties["distributionUrl"].flatMap(DRVersions.distributionURL)
-                            wrappers.append(GradleProjectWrapper(projectURL: project, propertiesURL: child,
-                                version: parsed?.version, distributionType: parsed?.type,
-                                note: parsed == nil ? "The selected wrapper's version is unknown; its distribution URL is missing or nonstandard. No URL credentials are retained."
-                                    : "Version inferred from this wrapper's distribution filename. The archive was not executed; this does not establish when the project last ran.", isPartial: parsed == nil))
-                        } catch is CancellationError { throw CancellationError() }
-                        catch is DRStop { throw DRStop.limit }
-                        catch {
-                            budget.note(child, "Wrapper metadata is malformed, changed, inaccessible or exceeds the bounded read size.")
-                            wrappers.append(GradleProjectWrapper(projectURL: project, propertiesURL: child,
-                                version: nil, distributionType: nil, note: "Wrapper version is unknown. No build scripts or credentials files were read.", isPartial: true))
+                    if DRFiles.isDirectory(info) {
+                        if name.hasSuffix(".xcodeproj") { sources[url.path, default: Sources()].xcode = true }
+                        else { try walk(child, depth: depth + 1) }
+                    } else if DRFiles.isRegular(info) {
+                        if settingsNames.contains(name) {
+                            sources[url.path, default: Sources()].scripts.append(child)
+                        } else if buildNames.contains(name) {
+                            buildFiles.append(child)
+                        } else if name == "libs.versions.toml", url.lastPathComponent == "gradle",
+                                  url.path != root.path {
+                            sources[url.deletingLastPathComponent().path, default: Sources()].catalog = child
+                        } else if name == "gradle-wrapper.properties", url.lastPathComponent == "wrapper",
+                                  url.deletingLastPathComponent().lastPathComponent == "gradle" {
+                            let project = url.deletingLastPathComponent().deletingLastPathComponent()
+                            if DRFiles.contains(project, in: root) {
+                                sources[project.path, default: Sources()].wrapper = child
+                            }
                         }
-                    } else if !DRFiles.isRegular(info) { budget.note(child, "A linked or special project item was skipped; its target was not inspected.") }
+                    } else {
+                        budget.note(child, "A linked or special project item was skipped; its target was not inspected.")
+                    }
                 } catch is CancellationError { throw CancellationError() }
                 catch is DRStop { throw DRStop.limit }
                 catch { budget.note(child, "A project item is inaccessible or changed. No symbolic-link target was followed.") }
             }
         }
         try walk(root, depth: 0)
+
+        // Nearest Gradle root owns each module's build script. Keep standalone
+        // scripts as project roots when there is no wrapper, catalog or settings.
+        for script in buildFiles.sorted(by: { $0.pathComponents.count < $1.pathComponents.count }) {
+            let start = script.deletingLastPathComponent()
+            var candidate = start
+            var owner: String?
+            while DRFiles.contains(candidate, in: root) {
+                if let found = sources[candidate.path], found.wrapper != nil || found.catalog != nil || !found.scripts.isEmpty {
+                    owner = candidate.path
+                    break
+                }
+                if candidate.path == root.path { break }
+                candidate.deleteLastPathComponent()
+            }
+            sources[owner ?? start.path, default: Sources()].scripts.append(script)
+        }
+
+        for (path, files) in sources.sorted(by: { $0.key < $1.key }) {
+            try budget.resource()
+            let url = URL(fileURLWithPath: path, isDirectory: true)
+            var project = DeveloperProject(root: path, name: url.lastPathComponent, hasXcodeProject: files.xcode)
+            if let wrapper = files.wrapper {
+                let parsed = try readWrapper(wrapper, project: url, budget: budget)
+                wrappers.append(parsed)
+                if let version = parsed.version, let type = parsed.distributionType {
+                    project.gradle = DeveloperProject.GradlePin(version: version, type: type)
+                }
+            }
+            let catalog: RoomDevParse.Catalog?
+            if let url = files.catalog { catalog = try readScript(url, budget: budget).flatMap(RoomDevParse.versionCatalog) }
+            else { catalog = nil }
+            project.agp = catalog?.agp
+            project.kotlin = catalog?.kotlin
+            for script in files.scripts {
+                guard let text = try readScript(script, budget: budget),
+                      let parsed = RoomDevParse.buildScript(text, catalog: catalog) else { continue }
+                project.agp = project.agp ?? parsed.agp
+                project.kotlin = project.kotlin ?? parsed.kotlin
+                project.ndk = project.ndk ?? parsed.ndk
+                project.multiplatform = project.multiplatform || parsed.appliesMultiplatform
+                project.appleNativeTargets = project.appleNativeTargets || parsed.appleNativeTargets
+            }
+            projects[path] = project
+        }
+    }
+
+    private static func readWrapper(_ file: URL, project: URL, budget: DRBudget) throws -> GradleProjectWrapper {
+        let parsed: (version: String, type: String)?
+        do {
+            parsed = RoomDevParse.wrapper(try DRFiles.text(file, budget: budget))
+        } catch is CancellationError { throw CancellationError() }
+        catch is DRStop { throw DRStop.limit }
+        catch {
+            parsed = nil
+            budget.note(file, "Wrapper metadata is malformed, changed, inaccessible or exceeds the bounded read size.")
+        }
+        return GradleProjectWrapper(projectURL: project, propertiesURL: file, version: parsed?.version,
+                                    distributionType: parsed?.type,
+                                    note: parsed == nil ? "The selected wrapper's version is unknown. No URL credentials are retained."
+                                        : "Version inferred from this wrapper's distribution filename. This does not establish when the project last ran.",
+                                    isPartial: parsed == nil)
+    }
+
+    private static func readScript(_ file: URL, budget: DRBudget) throws -> String? {
+        do { return try DRFiles.text(file, budget: budget, limit: budget.limits.maximumProjectFileBytes) }
+        catch is CancellationError { throw CancellationError() }
+        catch is DRStop { throw DRStop.limit }
+        catch {
+            budget.note(file, "Project version metadata could not be read safely or exceeds the bounded read size.")
+            return nil
+        }
     }
 }
 
-private enum DRProperties {
+enum DRProperties {
     static func selected(_ text: String, keys: Set<String>) throws -> [String: String] {
         var result: [String: String] = [:]
         for raw in text.split(whereSeparator: \.isNewline) {

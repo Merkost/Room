@@ -5,14 +5,16 @@ public struct DeveloperResourcesLimits: Sendable {
     public let maximumDepth: Int
     public let maximumResources: Int
     public let maximumFileBytes: Int
+    public let maximumProjectFileBytes: Int
     public let timeLimit: TimeInterval
 
     public init(maximumNodes: Int = 100_000, maximumDepth: Int = 18, maximumResources: Int = 256,
-                maximumFileBytes: Int = 65_536, timeLimit: TimeInterval = 12) {
+                maximumFileBytes: Int? = nil, timeLimit: TimeInterval = 12) {
         self.maximumNodes = min(500_000, max(1, maximumNodes))
         self.maximumDepth = min(64, max(1, maximumDepth))
         self.maximumResources = min(1_024, max(1, maximumResources))
-        self.maximumFileBytes = min(262_144, max(64, maximumFileBytes))
+        self.maximumFileBytes = min(262_144, max(64, maximumFileBytes ?? 65_536))
+        self.maximumProjectFileBytes = min(262_144, max(64, maximumFileBytes ?? 262_144))
         self.timeLimit = min(60, max(0, timeLimit))
     }
 }
@@ -45,13 +47,18 @@ public struct DeveloperResourcesRequest: Sendable {
     public let avdRoots: [URL]
     public let gradleHomes: [URL]
     public let projectRoots: [URL]
+    public let sdkRoots: [URL]
+    public let derivedDataRoots: [URL]
+    public let konanRoots: [URL]
     public let activity: DeveloperActivitySnapshot
     public let limits: DeveloperResourcesLimits
 
     public init(approvedFolders: [URL], avdRoots: [URL] = [], gradleHomes: [URL] = [], projectRoots: [URL] = [],
+                sdkRoots: [URL] = [], derivedDataRoots: [URL] = [], konanRoots: [URL] = [],
                 activity: DeveloperActivitySnapshot = .unknown, limits: DeveloperResourcesLimits = .init()) {
         self.approvedFolders = approvedFolders; self.avdRoots = avdRoots
         self.gradleHomes = gradleHomes; self.projectRoots = projectRoots
+        self.sdkRoots = sdkRoots; self.derivedDataRoots = derivedDataRoots; self.konanRoots = konanRoots
         self.activity = activity; self.limits = limits
     }
 }
@@ -140,7 +147,32 @@ public struct DeveloperResourcesReport: Identifiable, Codable, Equatable, Sendab
     public let androidDevices: [AndroidVirtualDeviceResource]
     public let gradleResources: [GradleDeveloperResource]
     public let projectWrappers: [GradleProjectWrapper]
+    private let recordedProjects: [DeveloperProject]?
+    private let recordedToolchains: [DeveloperToolchainResource]?
+    public var projects: [DeveloperProject] { recordedProjects ?? [] }
+    public var toolchains: [DeveloperToolchainResource] { recordedToolchains ?? [] }
     public let issues: [ScanIssue]
     public let cancelled: Bool
     public let isPartial: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id, scannedAt, androidDevices, gradleResources, projectWrappers, issues, cancelled, isPartial
+        case recordedProjects = "projects", recordedToolchains = "toolchains"
+    }
+
+    init(id: UUID, scannedAt: Date, androidDevices: [AndroidVirtualDeviceResource],
+         gradleResources: [GradleDeveloperResource], projectWrappers: [GradleProjectWrapper],
+         projects: [DeveloperProject] = [], toolchains: [DeveloperToolchainResource] = [],
+         issues: [ScanIssue], cancelled: Bool, isPartial: Bool) {
+        self.id = id
+        self.scannedAt = scannedAt
+        self.androidDevices = androidDevices
+        self.gradleResources = gradleResources
+        self.projectWrappers = projectWrappers
+        self.recordedProjects = projects
+        self.recordedToolchains = toolchains
+        self.issues = issues
+        self.cancelled = cancelled
+        self.isPartial = isPartial
+    }
 }
