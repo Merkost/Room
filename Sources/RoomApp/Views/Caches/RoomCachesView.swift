@@ -35,6 +35,14 @@ struct RoomCachesView: View {
         }
     }
 
+    private var isStore: Bool {
+        #if ROOM_APP_STORE
+        true
+        #else
+        false
+        #endif
+    }
+
     private var hero: RoomCachesHero {
         #if ROOM_APP_STORE
         let store = true, hasFolders = model.approvedStoreFolderCount > 0
@@ -50,22 +58,27 @@ struct RoomCachesView: View {
     var body: some View {
         let presentation = hero
         VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
-            VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
-                Text("caches.title", tableName: "Caches", bundle: RoomCopy.bundle).font(RoomTokens.Typography.section).accessibilityHeading(.h1)
-                Text(subtitle)
-                    .font(RoomTokens.Typography.caption)
-                    .foregroundStyle(RoomTokens.Ink.secondary)
-            }
             if model.isAfterRestore {
-                Text("Check again to see which caches are available.").font(RoomTokens.Typography.lead)
+                headline(presentation) {
+                    Text("Check again to see which caches are available.").font(RoomTokens.Typography.lead)
+                }
             } else if model.hasReport || model.isPartialScan {
-                figures(presentation)
+                headline(presentation) { figures(presentation) }
             } else if model.cachesCheckStore.check == nil {
-                Text("Make a little room.").font(RoomTokens.Typography.figure)
-                Text("Room checks places where apps keep files they can download or build again.")
-                    .font(RoomTokens.Typography.body).foregroundStyle(RoomTokens.Ink.secondary)
+                headline(presentation) {
+                    VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
+                        Text("Make a little room.").font(RoomTokens.Typography.figure.weight(.semibold))
+                            .accessibilityHeading(.h1)
+                        Text("Room checks the cache folders below and shows what rebuilds on its own. Scanning only looks. Nothing moves until you say so.")
+                            .font(RoomTokens.Typography.body)
+                            .foregroundStyle(RoomTokens.Ink.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(idealWidth: 440, maxWidth: 440, alignment: .leading)
+                }
+            } else if !model.isScanning {
+                primary(presentation)
             }
-            if !model.isScanning { primary(presentation) }
             if let receipt = model.movedReceipt {
                 let entry = model.makeRoomStore?.entry(for: receipt.id)
                 moved(receipt, entry: entry)
@@ -103,20 +116,28 @@ struct RoomCachesView: View {
         }
     }
 
-    private var subtitle: String {
-        if model.isScanning { return "Checking…" }
-        if model.isAfterRestore { return "Put back · check again" }
-        if model.movedReceipt != nil { return "Just now" }
-        if model.isPartialScan { return "Stopped" }
-        return model.cachesCheckStore.check?.caption(now: Date(), calendar: .current) ?? "Never checked"
+    private func headline<Summary: View>(_ hero: RoomCachesHero, @ViewBuilder summary: () -> Summary) -> some View {
+        let content = summary()
+        return ViewThatFits(in: .horizontal) {
+            HStack(alignment: .bottom, spacing: RoomTokens.Space.group) {
+                content
+                Spacer(minLength: 0)
+                if !model.isScanning { primary(hero).fixedSize() }
+            }
+            VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
+                content
+                if !model.isScanning { primary(hero) }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func figures(_ hero: RoomCachesHero) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 28) {
+        HStack(alignment: .lastTextBaseline, spacing: RoomTokens.Space.breath1) {
             if let bytes = hero.heroBytes {
                 VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
                     Text(hero.heroLabel).font(RoomTokens.Typography.caption).foregroundStyle(RoomTokens.Ink.secondary)
-                    Text(format(bytes)).font(RoomTokens.Typography.hero.monospacedDigit())
+                    metric(format(bytes), number: RoomTokens.Typography.hero, unit: RoomTokens.Typography.counter)
                         .contentTransition(motion.isFull ? .numericText() : .identity)
                         .animation(motion.animation(RoomTokens.Motion.countAnimation, fallback: nil), value: bytes)
                 }
@@ -138,18 +159,28 @@ struct RoomCachesView: View {
     private func statistic(_ title: String, bytes: Int64, lowerBound: Bool) -> some View {
         VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
             Text(title).font(RoomTokens.Typography.caption).foregroundStyle(RoomTokens.Ink.secondary)
-            Text("\(lowerBound ? "≥ " : "")\(format(bytes))").font(RoomTokens.Typography.figure.monospacedDigit())
+            metric("\(lowerBound ? "≥ " : "")\(format(bytes))",
+                   number: RoomTokens.Typography.figure, unit: RoomTokens.Typography.micro)
         }
+    }
+
+    private func metric(_ value: String, number: Font, unit: Font) -> Text {
+        guard let split = value.lastIndex(where: \.isWhitespace) else {
+            return Text(value).font(number)
+        }
+        let amount = Text(value[..<split]).font(number)
+        let suffix = Text(value[split...]).font(unit).foregroundColor(RoomTokens.Ink.secondary)
+        return Text("\(amount)\(suffix)")
     }
 
     @ViewBuilder
     private func primary(_ hero: RoomCachesHero) -> some View {
         if model.isAfterRestore {
-            Button(String(localized: "caches.action.check", defaultValue: "Check caches", table: "Caches", bundle: RoomCopy.bundle), action: { model.scan() }).roomPrimary(accent).disabled(!model.canScan)
+            checkButton
         } else {
             switch hero.primary {
             case .check, .checkAgain:
-                Button(String(localized: "caches.action.check", defaultValue: "Check caches", table: "Caches", bundle: RoomCopy.bundle), action: { model.scan() }).roomPrimary(accent).disabled(!model.canScan)
+                checkButton
             case .chooseFolderAndCheck:
                 Button(String(localized: "caches.action.choose", defaultValue: "Choose Folder & Check", table: "Caches", bundle: RoomCopy.bundle)) {
                     #if ROOM_APP_STORE
@@ -158,11 +189,11 @@ struct RoomCachesView: View {
                     model.scan()
                     #endif
                 }
-                .roomPrimary(accent).disabled(!model.canScan)
+                .roomScreenPrimary(accent).disabled(!model.canScan)
             case .review(let bytes):
                 if model.movedReceipt == nil || bytes > 0 {
                     Button(bytes > 0 ? "Review \(format(bytes))" : "Review", action: review)
-                        .roomPrimary(accent).disabled(!model.canReviewCleanup)
+                        .roomScreenPrimary(accent).disabled(!model.canReviewCleanup)
                         .help(hero.disabledReason ?? "Review the selected caches.")
                 }
             case .none: EmptyView()
@@ -170,14 +201,104 @@ struct RoomCachesView: View {
         }
     }
 
+    private var checkButton: some View {
+        Button(String(localized: "caches.action.check", defaultValue: "Check caches", table: "Caches", bundle: RoomCopy.bundle)) {
+            model.scan()
+        }
+        .roomScreenPrimary(accent)
+        .disabled(!model.canScan)
+    }
+
     private var startingPlaces: some View {
-        VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
-            Text("Where Room looks").font(RoomTokens.Typography.section)
-            ForEach(model.checkLocations, id: \.self) { path in
-                Text(hidden ? "Location hidden" : path).font(RoomTokens.Typography.caption.monospaced())
-                    .foregroundStyle(RoomTokens.Ink.secondary).textSelection(.enabled)
+        let groups = model.checkLocations
+        return VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
+            HStack(spacing: RoomTokens.Space.row) {
+                Text("Where Room looks").font(RoomTokens.Typography.section).accessibilityHeading(.h2)
+                Text(isStore ? "Store" : "Direct")
+                    .font(RoomTokens.Typography.micro)
+                    .foregroundStyle(RoomTokens.Ink.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(RoomTokens.Surface.track, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.field))
+                Spacer()
+                if !isStore {
+                    Text("Full Disk Access is optional").font(RoomTokens.Typography.caption)
+                        .foregroundStyle(RoomTokens.Ink.secondary)
+                }
+            }
+            if groups.isEmpty {
+                Text("Room checks only the folders you allow.")
+                    .font(RoomTokens.Typography.body)
+                    .foregroundStyle(RoomTokens.Ink.secondary)
+                    .padding(.vertical, RoomTokens.Space.row)
+            } else {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(groups) { group in
+                        locationRow(group)
+                        if group.id != groups.last?.id { Rectangle().fill(RoomTokens.Surface.line).frame(height: 1) }
+                    }
+                }
+            }
+            if !isStore, model.isDeepScan {
+                Text("The check can also find other cache locations.")
+                    .font(RoomTokens.Typography.caption)
+                    .foregroundStyle(RoomTokens.Ink.secondary)
+                    .padding(.top, RoomTokens.Space.tight)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(RoomTokens.Space.group)
+        .background(RoomTokens.Surface.group, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.group))
+    }
+
+    @ViewBuilder
+    private func locationRow(_ group: RoomCacheLocationGroup) -> some View {
+        let title = hidden && group.isPersonal ? "Folder hidden" : group.title
+        if group.locations.count > 1 {
+            DisclosureGroup {
+                VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
+                    ForEach(group.locations) { location in
+                        locationLine(location.title) { locationPath(location.url) }
+                    }
+                }
+                .padding(.leading, RoomTokens.Space.group)
+                .padding(.vertical, RoomTokens.Space.row)
+            } label: {
+                locationLine(title) {
+                    Text(hidden ? "Locations hidden" : "\(group.locations.count) locations")
+                        .font(RoomTokens.Typography.caption)
+                        .foregroundStyle(RoomTokens.Ink.secondary)
+                }
+            }
+        } else if let location = group.locations.first {
+            locationLine(title) { locationPath(location.url) }
+        }
+    }
+
+    private func locationLine<Detail: View>(_ title: String, @ViewBuilder detail: () -> Detail) -> some View {
+        HStack(spacing: RoomTokens.Space.inner) {
+            Text(title).font(RoomTokens.Typography.body).lineLimit(1)
+                .frame(idealWidth: 148, maxWidth: 148, alignment: .leading)
+            detail()
+            Spacer(minLength: 0)
+        }
+        .frame(minHeight: 34)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func locationPath(_ url: URL) -> some View {
+        #if ROOM_APP_STORE
+        let home = RoomStoreEnvironment.userHome
+        #else
+        let home: URL? = FileManager.default.homeDirectoryForCurrentUser
+        #endif
+        let path = home.map { RoomPillPath.abbreviate(url.path, home: $0.path) } ?? url.path
+        return Text(hidden ? "Location hidden" : path)
+            .font(RoomTokens.Typography.caption.monospaced())
+            .foregroundStyle(RoomTokens.Ink.secondary)
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .textSelection(.enabled)
     }
 
     private var comparison: some View {
@@ -189,22 +310,18 @@ struct RoomCachesView: View {
 
     private var sources: some View {
         VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
-            HStack {
-                Text("Sources").font(RoomTokens.Typography.section)
-                Spacer()
-                Picker("Sources", selection: $filter) {
-                    ForEach(Filter.allCases, id: \.self) { option in Text(option.rawValue).tag(option) }
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: RoomTokens.Space.inner) {
+                    sourceFilter.fixedSize()
+                    selectionCount
                 }
-                .labelsHidden().pickerStyle(.segmented)
-            }
-            if model.hasReport {
-                Text(RoomCachesVisibility.figure("\(model.selection.count) of \(model.sources.filter(\.isAvailable).count) selected", hidden: hidden))
-                    .accessibilityLabel(hidden ? "Selection count hidden" : "\(model.selection.count) of \(model.sources.filter(\.isAvailable).count) selected")
-                    .font(RoomTokens.Typography.caption)
-                    .foregroundStyle(RoomTokens.Ink.secondary)
+                VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
+                    sourceFilter
+                    selectionCount
+                }
             }
             ForEach(rows) { source in
-                RoomCachesRow(source: source, selected: model.selection.contains(source.id),
+                RoomCachesRow(source: source, displayedBytes: displayedBytes(source), selected: model.selection.contains(source.id),
                     canSelect: model.hasReport && !model.isWorking && !model.isScanning && !source.isPartial && source.isAvailable,
                     focus: $focusedSource, format: format, select: { model.toggleSelection(id: source.id) },
                     inspect: { inspect(source) }, reveal: { model.reveal(source: source) },
@@ -217,6 +334,35 @@ struct RoomCachesView: View {
         .frame(minWidth: 270, maxWidth: .infinity, alignment: .topLeading)
         .padding(RoomTokens.Space.group)
         .background(RoomTokens.Surface.group, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.group))
+    }
+
+    private func displayedBytes(_ source: RoomSource) -> Int64 {
+        switch filter {
+        case .clearable: source.isAvailable ? source.eligibleBytes : source.bytes
+        case .kept: max(0, source.bytes - source.eligibleBytes)
+        case .all: source.bytes
+        }
+    }
+
+    private var sourceFilter: some View {
+        Picker("Sources", selection: $filter) {
+            ForEach(Filter.allCases, id: \.self) { option in Text(option.rawValue).tag(option) }
+        }
+        .labelsHidden()
+        .pickerStyle(.segmented)
+    }
+
+    @ViewBuilder
+    private var selectionCount: some View {
+        if model.hasReport {
+            let available = model.sources.filter(\.isAvailable).count
+            let text = "\(model.selection.count) of \(available) selected"
+            Text(RoomCachesVisibility.figure(text, hidden: hidden))
+                .accessibilityLabel(hidden ? "Selection count hidden" : text)
+                .font(RoomTokens.Typography.caption)
+                .foregroundStyle(RoomTokens.Ink.secondary)
+                .fixedSize(horizontal: true, vertical: false)
+        }
     }
 
     private func moveFocus(_ delta: Int) -> KeyPress.Result {
@@ -270,7 +416,9 @@ struct RoomCachesView: View {
         .transition(.opacity)
     }
 
-    private func format(_ bytes: Int64) -> String { RoomCachesVisibility.bytes(bytes, hidden: hidden) }
+    private func format(_ bytes: Int64) -> String {
+        RoomCachesVisibility.figure(RoomFormat.bytes(bytes), hidden: hidden)
+    }
 
     private func neverSuggest(_ source: RoomSource) {
         Task {

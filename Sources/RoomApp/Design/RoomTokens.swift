@@ -32,7 +32,7 @@ enum RoomTokens {
     enum Typography {
         /// Tier 1: the Overview answer and the one hero figure per screen. Regular weight, tabular.
         static let hero = Font.system(size: 40, weight: .regular).monospacedDigit()
-        static let heroTracking: CGFloat = -0.5
+        static let heroTracking: CGFloat = -0.8
         /// Sibling figures (Caches found, Kept safe), Memory pressure word next to the pocket.
         static let figure = Font.system(size: 22, weight: .regular).monospacedDigit()
         /// Toolbar titles, chapter headings (semibold) and the quiet greeting / goal sentence (regular).
@@ -387,12 +387,35 @@ struct RoomMotionRoot: ViewModifier {
 // MARK: - Button styles (no inline tints anywhere else)
 
 struct RoomPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.modifier(RoomPressFeedback(pressed: configuration.isPressed))
+    }
+}
+
+private struct RoomPressFeedback: ViewModifier {
+    let pressed: Bool
     @Environment(\.roomMotion) private var motion
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(pressed && motion.isFull ? RoomTokens.Motion.pressScale : 1)
+            .opacity(pressed && !motion.isFull ? 0.7 : 1)
+            .animation(motion.isFull ? RoomTokens.Motion.quick : nil, value: pressed)
+    }
+}
+
+private struct RoomScreenPrimaryStyle: ButtonStyle {
+    let accent: RoomTokens.Accent
+    @Environment(\.isEnabled) private var enabled
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed && motion.isFull ? RoomTokens.Motion.pressScale : 1)
-            .opacity(configuration.isPressed && !motion.isFull ? 0.7 : 1)
-            .animation(motion.isFull ? RoomTokens.Motion.quick : nil, value: configuration.isPressed)
+            .font(RoomTokens.Typography.bodyStrong)
+            .padding(.horizontal, RoomTokens.Space.group)
+            .frame(minHeight: RoomTokens.Overview.actionHeight)
+            .foregroundStyle(enabled ? Color.white : RoomTokens.Ink.secondary)
+            .background(enabled ? accent.fill : RoomTokens.Surface.track, in: Capsule())
+            .contentShape(Capsule())
+            .modifier(RoomPressFeedback(pressed: configuration.isPressed))
     }
 }
 
@@ -400,6 +423,9 @@ extension View {
     /// The one filled button per context: native prominent glass in the accent fill.
     func roomPrimary(_ accent: RoomTokens.Accent) -> some View {
         buttonStyle(.glassProminent).tint(accent.fill).controlSize(.large)
+    }
+    func roomScreenPrimary(_ accent: RoomTokens.Accent) -> some View {
+        buttonStyle(RoomScreenPrimaryStyle(accent: accent))
     }
     /// Secondary actions: ordinary glass.
     func roomSecondary() -> some View { buttonStyle(.glass).controlSize(.large) }

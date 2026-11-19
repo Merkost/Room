@@ -3,6 +3,19 @@ import Foundation
 import Observation
 import RoomCore
 
+struct RoomCacheLocationGroup: Identifiable {
+    struct Location: Identifiable {
+        let id: String
+        let title: String
+        let url: URL
+    }
+
+    let id: String
+    let title: String
+    let isPersonal: Bool
+    var locations: [Location]
+}
+
 @Observable
 @MainActor
 final class RoomViewModel {
@@ -88,13 +101,42 @@ final class RoomViewModel {
     var hasPartialMeasurements: Bool { isPartialScan || !scanIssues.isEmpty || sources.contains(where: \.isPartial) }
     var hasReport: Bool { lastScanned != nil && report != nil }
     var movedReceipt: RoomActivity? { activity.first { $0.id == movedReceiptID } }
-    var checkLocations: [String] {
+    var cachesStatus: String {
+        if isScanning { return "Checking…" }
+        if isAfterRestore { return "Put back · check again" }
+        if movedReceipt != nil { return "Just now" }
+        if isPartialScan { return "Stopped" }
+        return cachesCheckStore.check?.caption(now: Date(), calendar: .current) ?? "Never checked"
+    }
+
+    var checkLocations: [RoomCacheLocationGroup] {
         #if ROOM_APP_STORE
-        fileAccess.folders.map { $0.url.path }
+        fileAccess.folders.map { folder in
+            RoomCacheLocationGroup(id: folder.id, title: folder.name, isPersonal: true,
+                locations: [.init(id: folder.id, title: folder.name, url: folder.url)])
+        }
         #else
-        CacheConfiguration.standard.roots.map { $0.url.path }
+        Self.standardCheckLocations
         #endif
     }
+
+    #if !ROOM_APP_STORE
+    private static let standardCheckLocations: [RoomCacheLocationGroup] = {
+        let roots = CacheConfiguration.standard.roots
+        let ordered = roots.filter { $0.category != "agents" } + roots.filter { $0.category == "agents" }
+        var orderedIDs: [String] = []
+        var groups: [String: RoomCacheLocationGroup] = [:]
+        for root in ordered {
+            let id = familyID(root.id)
+            if groups[id] == nil {
+                orderedIDs.append(id)
+                groups[id] = .init(id: id, title: familyTitle(id, fallback: root.title), isPersonal: false, locations: [])
+            }
+            groups[id]?.locations.append(.init(id: root.id, title: root.title, url: root.url))
+        }
+        return orderedIDs.compactMap { groups[$0] }
+    }()
+    #endif
     var canScan: Bool {
         #if ROOM_APP_STORE
         !isWorking && !isPreparingStoreReview
@@ -529,12 +571,12 @@ final class RoomViewModel {
         let ignoreRules = ignoreStore?.rules ?? []
         ignoredEntryIDs = Set(groups.filter { RoomIgnoreFilter.isIgnored(rootPath: $0.rootURL.path, rules: ignoreRules) }
             .flatMap(\.entries).map(\.id))
-        sourceGroups = Dictionary(grouping: groups) { familyID($0.id) }
+        sourceGroups = Dictionary(grouping: groups) { Self.familyID($0.id) }
         sources = sourceGroups.map { key, groups in
             let entries = groups.flatMap(\.entries).filter { !movedEntryIDs.contains($0.id) }
             let eligible = allowsCleanup ? entries.filter { $0.eligibility.isEligible && !ignoredEntryIDs.contains($0.id) } : []
             let reasons = Array(Set(entries.compactMap(\.eligibility.reason))).sorted()
-            let title = familyTitle(key, fallback: groups.first?.title ?? key)
+            let title = Self.familyTitle(key, fallback: groups.first?.title ?? key)
             let paths = groups.map { $0.rootURL.path }.sorted().joined(separator: "\n")
             let consequences = Array(Set(groups.map(\.consequence))).sorted().joined(separator: "\n\n")
             let cleanupConsequences = Array(Set(groups.filter { group in
@@ -605,7 +647,7 @@ final class RoomViewModel {
                     RoomActivityItem(id: $0.id, name: $0.originalURL.lastPathComponent, path: $0.originalURL.path,
                         message: $0.message ?? ($0.status == .trashed ? "In Trash" : $0.status == .restored ? "Restored" : "Not moved"),
                         isRestored: $0.status == .restored, canRestore: $0.status == .trashed, bytes: $0.byteCount,
-                        source: familyTitle(familyID($0.rootID), fallback: $0.originalURL.deletingLastPathComponent().lastPathComponent))
+                        source: Self.familyTitle(Self.familyID($0.rootID), fallback: $0.originalURL.deletingLastPathComponent().lastPathComponent))
                 }
             )
         }
@@ -747,7 +789,7 @@ final class RoomViewModel {
     }
     #endif
 
-    private func familyID(_ id: String) -> String {
+    private static func familyID(_ id: String) -> String {
         if id.hasPrefix("lmstudio-models") { return "lmstudio-models" }
         if id.hasPrefix("pnpm-store") { return "pnpm-store" }
         if id.hasPrefix("docker-disk") { return "docker-disk" }
@@ -766,7 +808,7 @@ final class RoomViewModel {
         return id
     }
 
-    private func familyTitle(_ id: String, fallback: String) -> String {
+    private static func familyTitle(_ id: String, fallback: String) -> String {
         if let managed = Self.managedFamilies[id] { return managed.title }
         return ["codex": "Codex", "claude": "Claude", "xcode": "Xcode", "gradle": "Gradle", "npm": "npm", "yarn": "Yarn", "pip": "Python packages", "homebrew": "Homebrew",
          "cursor": "Cursor", "vscode": "VS Code", "antigravity": "Antigravity", "swiftpm": "Swift packages", "androidstudio": "Android Studio",

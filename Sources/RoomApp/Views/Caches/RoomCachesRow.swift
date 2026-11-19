@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RoomCachesRow: View {
     let source: RoomSource
+    let displayedBytes: Int64
     let selected: Bool
     let canSelect: Bool
     let focus: FocusState<String?>.Binding
@@ -40,7 +41,7 @@ struct RoomCachesRow: View {
                             .lineLimit(1)
                     }
                     Spacer(minLength: RoomTokens.Space.row)
-                    Text("\(source.isPartial ? "≥ " : "")\(format(source.bytes))")
+                    Text("\(source.isPartial ? "≥ " : "")\(format(displayedBytes))")
                         .font(RoomTokens.Typography.section.monospacedDigit())
                         .fixedSize()
                 }
@@ -54,7 +55,7 @@ struct RoomCachesRow: View {
                 return .ignored
             }
             .accessibilityLabel(hidden ? "\(source.name), size hidden" :
-                "\(source.name), \(format(source.bytes)), \(source.cleanupConsequences.first ?? source.blockedReason ?? source.subtitle)")
+                "\(source.name), \(format(displayedBytes)), \(source.cleanupConsequences.first ?? source.blockedReason ?? source.subtitle)")
             .accessibilityAddTraits(selected ? .isSelected : [])
             .accessibilityValue(canSelect ? (selected ? "Selected" : "Not selected") : "Kept")
             Button(action: inspect) {
@@ -68,7 +69,6 @@ struct RoomCachesRow: View {
         }
         .padding(.horizontal, 4)
         .padding(.vertical, 4)
-        .background(selected ? accent.wash : .clear, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.row))
         .overlay(alignment: .bottom) {
             Rectangle().fill(contrast == .increased ? RoomTokens.Surface.line2 : RoomTokens.Surface.line).frame(height: 1)
         }
