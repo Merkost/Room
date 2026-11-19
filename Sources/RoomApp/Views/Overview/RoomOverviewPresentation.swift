@@ -19,17 +19,23 @@ nonisolated struct RoomOverviewPlanPresentation {
     let rows: [Row]
     let goalLabel: String?
 
-    init(plan: RoomOverviewPlanInput, hidden: Bool, format: (Int64) -> String) {
+    init(plan: RoomOverviewPlanInput, hidden: Bool, solidKinds: Bool = false, format: (Int64) -> String) {
         let unit = format(Int64(plan.gbPerDot * 1e9))
-        let scale = String(localized: "plan.unit", defaultValue: "1 dot = about \(unit)")
+        let scale = solidKinds
+            ? String(localized: "plan.area", defaultValue: "Area shows storage size", table: "Overview", bundle: RoomCopy.bundle)
+            : String(localized: "plan.unit", defaultValue: "1 dot = about \(unit)")
         let captionText = plan.homeKinds.map {
             let day = $0.mappedAt.formatted(.dateTime.day().month())
             return String(localized: "plan.mapped", defaultValue: "\(scale) · mapped \(day)")
         } ?? scale
         caption = Self.visible(captionText, hidden: hidden)
-        accessibilityLabel = hidden
-            ? String(localized: "plan.a11y.hidden", defaultValue: "Storage plan. Sizes hidden.")
-            : String(localized: "plan.a11y", defaultValue: "Storage plan, one dot is about \(unit).")
+        if hidden {
+            accessibilityLabel = String(localized: "plan.a11y.hidden", defaultValue: "Storage plan. Sizes hidden.")
+        } else if solidKinds {
+            accessibilityLabel = String(localized: "plan.a11y.rooms", defaultValue: "Storage plan. Area shows storage size.", table: "Overview", bundle: RoomCopy.bundle)
+        } else {
+            accessibilityLabel = String(localized: "plan.a11y", defaultValue: "Storage plan, one dot is about \(unit).")
+        }
         let ordered: [(RoomPlanRoom, Int64)] = [(.free, plan.freeBytes), (.notMapped, plan.notMappedBytes)] +
             plan.kindValues.map { (.kind($0.0), Int64(($0.1 * 1e9).rounded())) }
         rows = ordered.filter { $0.0 == .free || $0.1 > 0 }.sorted { $0.1 > $1.1 }.map { id, bytes in
@@ -49,7 +55,10 @@ nonisolated struct RoomOverviewPlanPresentation {
             }
             let dots: String
             let spoken: String
-            if mapped {
+            if mapped && solidKinds {
+                dots = ""
+                spoken = String(localized: "plan.room.area", defaultValue: "\(name), \(size)", table: "Overview", bundle: RoomCopy.bundle)
+            } else if mapped {
                 let dotsForRoom = RoomPure.dotAlloc([(key: name, gb: Double(bytes) / 1e9)], unit: plan.gbPerDot)[0].dots
                 if bytes > 0, dotsForRoom == 0 {
                     dots = String(localized: "plan.underUnit", defaultValue: "under \(unit)")

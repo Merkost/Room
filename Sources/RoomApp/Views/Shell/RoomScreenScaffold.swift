@@ -4,17 +4,18 @@ struct RoomScreenScaffold<Content: View>: View {
     let title: String
     let subtitle: String?
     var scrolls = true
+    var requestedDensity: RoomTokens.Density? = nil
     @ViewBuilder var content: () -> Content
 
     var body: some View {
         GeometryReader { geometry in
-            let density: RoomTokens.Density = geometry.size.width >= 700 ? .calm : .compact
+            let density: RoomTokens.Density = geometry.size.width >= 700 ? requestedDensity ?? .calm : .compact
             Group {
                 if scrolls {
                     ScrollView {
                         content()
                             .padding(.horizontal, density.gutter)
-                            .padding(.top, RoomTokens.Density.calm.topInset)
+                            .padding(.top, requestedDensity?.topInset ?? RoomTokens.Density.calm.topInset)
                             .padding(.bottom, RoomTokens.Space.breath1)
                             .frame(maxWidth: 1120, alignment: .topLeading)
                             .frame(maxWidth: .infinity)

@@ -18,6 +18,7 @@ final class RoomMakeRoomStore {
         storedEntries
         #endif
     }
+    private(set) var hasReadReceipts = false
     private(set) var hadWriteFailure = false
     @ObservationIgnored var didObserveGain: ((RoomMakeRoomEntry) -> Void)?
     @ObservationIgnored private let state: RoomStateStore
@@ -76,6 +77,7 @@ final class RoomMakeRoomStore {
             storedEntries.append(contentsOf: adopted)
             await save()
         }
+        hasReadReceipts = true
         scheduleCheck()
     }
 

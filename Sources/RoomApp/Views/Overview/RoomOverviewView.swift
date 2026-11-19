@@ -11,6 +11,10 @@ struct RoomOverviewView: View {
     var cacheModel: RoomViewModel? = nil
     var editingRoom: UUID? = nil
     var showAllRooms: () -> Void = {}
+    var restoreRecent: ((RoomActivity) -> Void)? = nil
+    @AppStorage(RoomOverviewPreferences.densityKey) private var density = RoomTokens.Density.calm
+    @AppStorage(RoomOverviewPreferences.recentReceiptKey) private var showRecent = true
+    @AppStorage(RoomOverviewStyle.preferenceKey) private var style = RoomOverviewStyle.dots
     @Environment(\.roomHide) private var hide
     private var hidden: Bool { hide.masksNow }
 
@@ -52,8 +56,8 @@ struct RoomOverviewView: View {
 
     var body: some View {
         let snapshot = presentedSnapshot
-        VStack(alignment: .leading, spacing: RoomTokens.Space.breath4) {
-            VStack(alignment: .leading, spacing: RoomTokens.Density.calm.betweenGroups) {
+        VStack(alignment: .leading, spacing: density.betweenChapters) {
+            VStack(alignment: .leading, spacing: density.betweenGroups) {
                 VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
                     if let greeting = model.greeting {
                         Text(greeting)
@@ -64,7 +68,8 @@ struct RoomOverviewView: View {
                     answerGroup(snapshot)
                 }
                 if let plan = snapshot.plan, plan.fitsDotBudget {
-                    RoomDotPlanView(plan: plan, belowGoal: snapshot.state == .belowGoal, hidden: hidden, openDiskMap: openDiskMap)
+                    RoomDotPlanView(plan: plan, belowGoal: snapshot.state == .belowGoal, hidden: hidden,
+                                    density: density, solidKinds: style == .rooms, openDiskMap: openDiskMap)
                 }
                 actions(snapshot)
                 if snapshot.mapLinkAvailable {
@@ -76,13 +81,18 @@ struct RoomOverviewView: View {
                         .foregroundStyle(RoomTokens.Ink.secondary)
                 }
             }
-            .frame(minHeight: RoomTokens.Density.calm.firstScreenMinHeight, alignment: .topLeading)
+            .frame(minHeight: density.firstScreenMinHeight, alignment: .topLeading)
             if showRooms && (!rooms.visibleRooms.isEmpty || rooms.canChooseFolder) {
-                RoomChapterRooms(rooms: rooms, calendar: .current, editing: editingRoom, openRoom: openPinned,
-                                 showAll: showAllRooms)
+                VStack(alignment: .leading, spacing: density.insideChapter) {
+                    RoomChapterRooms(rooms: rooms, calendar: .current, editing: editingRoom, openRoom: openPinned,
+                                     showAll: showAllRooms)
+                    recentLine(standalone: false)
+                }
+            } else {
+                recentLine(standalone: true)
             }
         }
-        .frame(maxWidth: RoomTokens.Space.measure, alignment: .leading)
+        .frame(maxWidth: density.planSize.width, alignment: .leading)
         .frame(maxWidth: .infinity, alignment: .leading)
         .foregroundStyle(RoomTokens.Ink.graphite)
         .onChange(of: inputs, initial: true) { previous, updated in
@@ -147,6 +157,16 @@ struct RoomOverviewView: View {
         .onDisappear {
             isActive = false
             insights.setOverviewActive(false)
+        }
+    }
+
+    @ViewBuilder private func recentLine(standalone: Bool) -> some View {
+        if showRecent, let cacheModel, let store = cacheModel.makeRoomStore,
+           store.hasReadReceipts || store.latest != nil {
+            let entry = store.latest
+            let receipt = cacheModel.activity.first { $0.id == entry?.id }
+            let restore = receipt.flatMap { receipt in restoreRecent.map { action in { action(receipt) } } }
+            RoomRecentOverviewLine(entry: entry, receipt: receipt, restore: restore, standalone: standalone)
         }
     }
 

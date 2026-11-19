@@ -42,6 +42,8 @@ nonisolated enum RoomGreetingName {
 /// Customise (spec 05 §9) as built in DMR-3: only controls whose feature exists. Keys are the spec 04 / 12 keys.
 nonisolated struct RoomOverviewPreferences: Equatable, Sendable {
     static let greetingKey = "RoomGreetingEnabled"       // default true
+    static let densityKey = "RoomDensity"
+    static let recentReceiptKey = "RoomChapterRecentShown"
     static let roomsChapterKey = "RoomChapterRoomsShown" // spec 04 `RoomChapters` narrowed to the one built chapter
     var greetingEnabled = true
     var roomsChapterShown = true
@@ -61,4 +63,16 @@ nonisolated struct RoomOverviewPreferences: Equatable, Sendable {
     /// The chapter is drawn only with something true to show: at least one Room, or the empty line with Add a Room…
     /// The receipt line (05 §8) is not part of this chapter until the Job C ledger exists.
     func showsRoomsChapter(roomCount: Int, canPin: Bool) -> Bool { roomsChapterShown && (roomCount > 0 || canPin) }
+}
+
+nonisolated enum RoomOverviewStyle: String, CaseIterable, Sendable {
+    case dots, rooms
+    static let preferenceKey = "RoomOverviewStyle"
+    var title: String {
+        switch self {
+        case .dots: String(localized: "style.dots", defaultValue: "Dots", table: "Overview", bundle: RoomCopy.bundle)
+        case .rooms: String(localized: "style.rooms", defaultValue: "Rooms", table: "Overview", bundle: RoomCopy.bundle)
+        }
+    }
+    static func isAvailable(homeKinds: RoomHomeKinds?) -> Bool { homeKinds?.kinds.isEmpty == false }
 }

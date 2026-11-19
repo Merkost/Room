@@ -5,6 +5,11 @@ struct RoomCustomisePopover: View {
     let capacityBytes: Int64
     @Binding var selected: UUID?
     let hidden: Bool
+    var canChoosePlanStyle = false
+    var hasRecentReceipts = false
+    @AppStorage(RoomOverviewPreferences.densityKey) private var density = RoomTokens.Density.calm
+    @AppStorage(RoomOverviewPreferences.recentReceiptKey) private var showRecent = true
+    @AppStorage(RoomOverviewStyle.preferenceKey) private var style = RoomOverviewStyle.dots
     @AppStorage(RoomOverviewPreferences.greetingKey) private var greeting = true
     @AppStorage(RoomOverviewPreferences.roomsChapterKey) private var showRooms = true
     @AppStorage(RoomMenuBarSettings.goalBytesKey) private var goal = Int(RoomMenuBarSettings.defaultGoalBytes)
@@ -30,7 +35,21 @@ struct RoomCustomisePopover: View {
                         RoomGoalRulerView(value: $goal, capacityBytes: capacityBytes)
                     }
                 }
+                Picker("Density", selection: $density) {
+                    Text("Calm").tag(RoomTokens.Density.calm)
+                    Text("Compact").tag(RoomTokens.Density.compact)
+                }.pickerStyle(.segmented)
+                if canChoosePlanStyle {
+                    Picker("Overview style", selection: $style) {
+                        ForEach(RoomOverviewStyle.allCases, id: \.self) { option in
+                            Text(option.title).tag(option)
+                        }
+                    }.pickerStyle(.segmented)
+                }
                 RoomSettingsSwitch(title: "Your Rooms", isOn: $showRooms)
+                if hasRecentReceipts {
+                    RoomSettingsSwitch(title: "Recent receipt", isOn: $showRecent)
+                }
                 Picker("Accent", selection: $accent) {
                     ForEach(RoomTokens.Accent.allCases, id: \.self) { option in
                         Text(option.title).tag(option)

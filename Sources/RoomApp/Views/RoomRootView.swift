@@ -14,6 +14,7 @@ struct RoomRootView: View {
     var enableOnboardingMonitor: () -> Void = {}
     var showOnboardingMonitor: () -> Void = {}
     @State private var onboardingFollowUp: [RoomOnboardingEffect] = []
+    @AppStorage(RoomOverviewPreferences.densityKey) private var overviewDensity = RoomTokens.Density.calm
     @AppStorage("RoomAppearance") private var appearance = "dark"
     @Environment(\.roomHide) private var hide
     @Environment(\.openSettings) private var openSettings
@@ -58,9 +59,9 @@ struct RoomRootView: View {
 
     var body: some View {
         RoomShellView(navigation: navigation, rooms: rooms, insights: insights, selectRoom: openPinnedRoom) {
-            RoomScreenScaffold(title: screenActions.title, subtitle: screenSubtitle, scrolls: destination != .disk) {
+            RoomScreenScaffold(title: screenActions.title, subtitle: screenSubtitle, scrolls: destination != .disk,
+                               requestedDensity: destination == .overview ? overviewDensity : nil) {
                 screenContent
-                    .frame(minHeight: destination == .overview ? RoomTokens.Density.calm.firstScreenMinHeight : nil, alignment: .topLeading)
             }
         }
         .preferredColorScheme(colorScheme)
@@ -81,7 +82,9 @@ struct RoomRootView: View {
                     .accessibilityIdentifier("RoomCustomiseOverview")
                     .popover(isPresented: $showingCustomise) {
                         RoomCustomisePopover(rooms: rooms, capacityBytes: insights.volumeCapacity?.capacityBytes ?? 210_000_000_000,
-                            selected: $editingRoom, hidden: hide.masksNow)
+                            selected: $editingRoom,
+                            canChoosePlanStyle: RoomOverviewStyle.isAvailable(homeKinds: insights.homeKinds),
+                            hasRecentReceipts: model.makeRoomStore != nil, hidden: hide.masksNow)
                     }
                 }
             }
@@ -207,7 +210,7 @@ struct RoomRootView: View {
         case .overview:
             RoomOverviewView(insights: insights, rooms: rooms, navigate: navigation.select, refresh: insights.refreshDiskCapacity,
                              cacheModel: model, editingRoom: showingCustomise ? editingRoom : nil,
-                             showAllRooms: { showingCustomise = true })
+                             showAllRooms: { showingCustomise = true }, restoreRecent: restoreFromCaches)
         case .clean:
             RoomCachesView(model: model, review: { sheet = .review },
                 inspect: { sheet = .source($0) }, showKept: { sheet = .protectedSources },
