@@ -11,8 +11,6 @@ struct RoomScreenActions {
     var stop: () -> Void = {}
     var canEnclose = false
     var enclose: () -> Void = {}
-    var overviewSizesHidden: Bool = false
-    var toggleOverviewSizes: () -> Void = {}
 }
 
 extension FocusedValues {
@@ -50,6 +48,7 @@ struct RoomCommands: Commands {
     let navigate: (RoomDestination) -> Void
 
     private let links = RoomAppLinks()
+    private let hide = RoomHideControl.shared
 
     private var items: [RoomMenuModel.Item] {
         #if ROOM_APP_STORE
@@ -59,7 +58,7 @@ struct RoomCommands: Commands {
         #endif
         return RoomMenuModel.make(.init(destination: screen?.destination, canRescan: screen?.canRescan ?? false,
             isScanning: screen?.isScanning ?? false, canEnclose: screen?.canEnclose ?? false,
-            overviewSizesHidden: screen?.overviewSizesHidden ?? false,
+            overviewSizesHidden: hide.state.isOn,
             menuBarEnabled: menuBarEnabled, edition: edition, window: windowContext.window, isWorking: isWorking(),
             canPin: rooms.canChooseFolder, supportAvailable: links.support != nil, privacyAvailable: links.privacy != nil,
             sidebarIconsOnly: navigation.prefersSidebarIcons, canGoBack: navigation.canGoBack,
@@ -143,7 +142,7 @@ struct RoomCommands: Commands {
         case .trash: openTrash()
         case .welcome: if !isWorking() { showWelcome() }
         case .hideOverviewSizes:
-            if window == .main, screen?.destination == .overview { screen?.toggleOverviewSizes() }
+            if window == .main, screen?.destination == .overview { hide.toggle() }
         case .enclosing:
             if window == .main, !isWorking(), let screen, screen.canEnclose, !screen.isScanning {
                 withoutNavigationAnimation(screen.enclose)

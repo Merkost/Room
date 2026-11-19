@@ -9,7 +9,8 @@ struct RoomOverviewView: View {
     let navigate: (RoomDestination) -> Void
     let refresh: () -> Void
     var cacheModel: RoomViewModel? = nil
-    var hidden = false
+    @Environment(\.roomHide) private var hide
+    private var hidden: Bool { hide.masksNow }
 
     @AppStorage(RoomMenuBarSettings.goalBytesKey) private var storedGoal = Int(RoomMenuBarSettings.defaultGoalBytes)
     @AppStorage("RoomChapterRoomsShown") private var showRooms = true
@@ -66,7 +67,7 @@ struct RoomOverviewView: View {
                     link(RoomOverviewCopy.mapMac, accessibilityLabel: RoomOverviewCopy.mapMac, action: insights.scanHome)
                 }
                 if let caption = model.cacheCaption {
-                    Text(caption)
+                    RoomMaskable(caption)
                         .font(RoomTokens.Typography.body)
                         .foregroundStyle(RoomTokens.Ink.secondary)
                 }
@@ -82,7 +83,7 @@ struct RoomOverviewView: View {
                 Text("Your Rooms").font(RoomTokens.Typography.section)
                 ScrollView {
                     VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
-                        ForEach(rooms.rooms) { room in
+                        ForEach(rooms.visibleRooms) { room in
                             Button(hidden ? "Room" : room.name) {
                                 if let url = rooms.url(for: room.id) { openPinned(url) }
                                 else { rooms.chooseFolder(replacingApprovalFor: room.id) }
@@ -155,7 +156,7 @@ struct RoomOverviewView: View {
     }
 
     private func answerGroup(_ snapshot: RoomOverviewSnapshot) -> some View {
-        let answer = Text(snapshot.answer)
+        let answer = RoomMaskable(model.snapshot.answer, spoken: model.snapshot.accessibilityAnswer)
             .font(RoomTokens.Typography.hero)
             .tracking(RoomTokens.Typography.heroTracking)
             .lineHeight(.exact(points: RoomTokens.Overview.answerLineHeight))
@@ -166,7 +167,7 @@ struct RoomOverviewView: View {
                     answer.fixedSize(horizontal: false, vertical: true)
                 }
             }
-            Text(snapshot.sentence)
+            RoomMaskable(model.snapshot.sentence)
                 .font(RoomTokens.Typography.lead.monospacedDigit())
                 .lineHeight(.exact(points: RoomTokens.Overview.goalLineHeight))
                 .foregroundStyle(snapshot.state == .belowGoal ? RoomTokens.Status.elevated : RoomTokens.Ink.secondary)

@@ -9,6 +9,7 @@ struct RoomSidebar: View {
     let foot: RoomSidebarFoot
     let openRoom: (UUID) -> Void
 
+    @Environment(\.roomHide) private var hide
     @Environment(\.roomMotion) private var motion
     @Environment(\.roomAccent) private var accent
     @FocusState private var focusedScreen: RoomDestination?
@@ -156,17 +157,17 @@ struct RoomSidebar: View {
         let unpinID = unpinPrefix + room.id.uuidString
         let question = String(localized: "confirm.unpin", defaultValue: "Unpin %@?", bundle: RoomCopy.bundle)
         let done = String(localized: "confirm.unpin.done", defaultValue: "Unpinned %@.", bundle: RoomCopy.bundle)
-        let confirmTitle = String.localizedStringWithFormat(question, room.name)
-        let doneLine = String.localizedStringWithFormat(done, room.name)
+        let confirmTitle = String.localizedStringWithFormat(question, RoomHideMask.display(room.name, kind: .name, hide: hide))
+        let doneLine = String.localizedStringWithFormat(done, RoomHideMask.display(room.name, kind: .name, hide: hide))
         let spokenFormat = String(localized: "nav.room.a11y", defaultValue: "%1$@, Room, %2$@", bundle: RoomCopy.bundle)
         return Button { openRoom(room.id) } label: {
             row(icon: {
                 Image(systemName: "folder")
                     .background(RoomTokens.Surface.track, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.tile))
             }, iconColor: selected ? accent.text : RoomTokens.Ink.secondary) {
-                Text(room.name).font(RoomTokens.Typography.body).lineLimit(1).truncationMode(.middle)
+                RoomMaskable(room.name, kind: .name).font(RoomTokens.Typography.body).lineLimit(1).truncationMode(.middle)
                 Spacer(minLength: RoomTokens.Sidebar.pitchGap)
-                Text(size).font(RoomTokens.Typography.micro).monospacedDigit().lineLimit(1)
+                RoomMaskable(size, spoken: spokenSize ?? size).font(RoomTokens.Typography.micro).monospacedDigit().lineLimit(1)
                     .foregroundStyle(needsAccess ? accent.text : RoomTokens.Ink.secondary)
             }
             .background {
@@ -175,8 +176,8 @@ struct RoomSidebar: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("\(room.name), \(spokenSize ?? size)")
-        .accessibilityLabel(String.localizedStringWithFormat(spokenFormat, room.name, spokenSize ?? size))
+        .help(RoomHideSpeech.labelled(room.name, value: spokenSize ?? size, labelIsName: true, hide: hide))
+        .accessibilityLabel(hide.masksNow ? "Room, hidden" : String.localizedStringWithFormat(spokenFormat, room.name, spokenSize ?? size))
         .accessibilityAddTraits(selected ? [.isSelected] : [])
         .contextMenu {
             if let url = rooms.pinnedURL {
@@ -220,14 +221,14 @@ struct RoomSidebar: View {
         VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
             HStack(spacing: RoomTokens.Space.tight) {
                 if let name = foot.volumeName {
-                    Text(name).lineLimit(1).truncationMode(.middle)
+                    RoomMaskable(name, kind: .name).lineLimit(1).truncationMode(.middle)
                 }
                 Spacer(minLength: 0)
                 if foot.belowGoal {
                     Image(nsImage: RoomPocketMark.image(fill: 0.5, pointSize: 11))
                         .foregroundStyle(RoomTokens.Status.elevated)
                 }
-                Text(freeText)
+                RoomMaskable(freeText)
                     .fontWeight(foot.belowGoal ? .semibold : .regular)
                     .foregroundStyle(foot.belowGoal ? RoomTokens.Status.elevated : RoomTokens.Ink.secondary)
                     .monospacedDigit().fixedSize()
@@ -244,7 +245,7 @@ struct RoomSidebar: View {
         }
         .padding(.horizontal, RoomTokens.Space.row)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(foot.accessibilityLabel)
+        .accessibilityLabel(hide.masksNow ? "Free space hidden" : foot.accessibilityLabel)
     }
 }
 

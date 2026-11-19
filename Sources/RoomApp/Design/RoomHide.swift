@@ -94,6 +94,7 @@ struct RoomMaskable: View {
             }
         }
         .monospacedDigit()
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel(RoomHideSpeech.value(spoken, hide: hide))
         .onChange(of: hide.isOn) { _, _ in
             let duration = RoomHideMask.duration(text, kind: kind, fullMotion: motion.isFull)
@@ -126,7 +127,11 @@ struct RoomGlobalHideButton: View {
         let hidden = control.state.isOn
         HStack(spacing: RoomTokens.Space.tight) {
             Image(systemName: hidden ? "eye.slash" : "eye")
-            Text(hidden ? "hide.button.on" : "hide.button", bundle: RoomCopy.bundle)
+            if hidden {
+                Text("hide.button.on", bundle: RoomCopy.bundle)
+            } else {
+                Text("hide.button", bundle: RoomCopy.bundle)
+            }
         }
         .font(RoomTokens.Typography.body)
         .padding(.horizontal, RoomTokens.Space.row)
@@ -147,7 +152,8 @@ struct RoomGlobalHideButton: View {
         .help(globalCoverage ? "Hide sizes and names. Hold to peek." : "Hide sizes on Overview.")
         .accessibilityLabel(globalCoverage ? "Hide sizes and names" : "Hide sizes on Overview")
         .accessibilityValue(hidden ? "on" : "off")
-        .accessibilityAddTraits(.isButton)
+        .accessibilityAddTraits(hidden ? [.isButton, .isSelected] : [.isButton])
+        .accessibilityIdentifier("RoomHide")
         .accessibilityAction(.default) { control.toggle() }
     }
 }

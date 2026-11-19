@@ -56,6 +56,7 @@ struct RoomApp: App {
             rootView
                 .modifier(RoomMotionRoot())
                 .modifier(RoomAccentRoot())
+                .modifier(RoomHideRoot())
                 .background(RoomWindowConfigurator())
                 .onAppear {
                     delegate.model = model

@@ -10,6 +10,7 @@ struct RoomMenuBarView: View {
     let showSettings: () -> Void
     @AppStorage(RoomMenuBarSettings.showSwapKey) private var showSwap = RoomMenuBarSettings.showSwapDefault
     @AppStorage(RoomMenuBarSettings.goalBytesKey) private var storedGoal = Int(RoomMenuBarSettings.defaultGoalBytes)
+    @Environment(\.roomHide) private var hide
     @Environment(\.roomMotion) private var motion
     @Environment(\.roomAccent) private var accent
 
@@ -75,19 +76,19 @@ struct RoomMenuBarView: View {
         Button { open(.disk) } label: {
             card {
                 HStack(alignment: .firstTextBaseline, spacing: RoomTokens.Space.tight) {
-                    metric(disk.value, suffix: " free")
+                    metric(disk.value, suffix: " free", maskable: true)
                         .foregroundStyle(disk.belowGoal ? RoomTokens.Status.elevated : RoomTokens.Ink.graphite)
                     Spacer(minLength: 0)
-                    caption(disk.caption)
+                    maskedCaption(disk.caption)
                 }
                 if let used = disk.usedFraction {
                     RoomPopoverDiskBar(usedFraction: used, goalFraction: disk.goalFraction, belowGoal: disk.belowGoal)
                         .padding(.top, 3).accessibilityHidden(true)
                 }
-                if let goal = disk.goalCaption { caption(goal) }
+                if let goal = disk.goalCaption { maskedCaption(goal) }
             }
         }
-        .buttonStyle(.plain).accessibilityLabel(disk.accessibilityLabel)
+        .buttonStyle(.plain).accessibilityLabel(hide.masksNow ? "Free space, hidden" : disk.accessibilityLabel)
         .accessibilityIdentifier("RoomPopoverDiskCard")
     }
 
@@ -125,8 +126,8 @@ struct RoomMenuBarView: View {
             card {
                 HStack(spacing: RoomTokens.Space.row) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(caches.title).font(RoomTokens.Typography.bodyStrong).contentTransition(.numericText())
-                        caption(caches.caption)
+                        RoomMaskable(caches.title).font(RoomTokens.Typography.bodyStrong).contentTransition(.numericText())
+                        maskedCaption(caches.caption)
                     }
                     Spacer(minLength: 0)
                     if let action = caches.accessory {
@@ -135,7 +136,7 @@ struct RoomMenuBarView: View {
                 }
             }
         }
-        .buttonStyle(.plain).accessibilityLabel(caches.accessibilityLabel)
+        .buttonStyle(.plain).accessibilityLabel(hide.masksNow ? "Caches, hidden" : caches.accessibilityLabel)
         .accessibilityIdentifier("RoomPopoverCachesCard")
     }
 
@@ -144,13 +145,13 @@ struct RoomMenuBarView: View {
             card {
                 HStack(spacing: RoomTokens.Space.row) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(room.title).font(RoomTokens.Typography.bodyStrong).lineLimit(1).truncationMode(.middle)
-                        caption(room.caption)
+                        RoomMaskable(room.title, kind: isEmptyRoom ? .figure : .name).font(RoomTokens.Typography.bodyStrong).lineLimit(1).truncationMode(.middle)
+                        maskedCaption(room.caption)
                             .foregroundStyle(isUnreadableRoom ? accent.text : RoomTokens.Ink.secondary)
                     }
                     Spacer(minLength: 0)
                     if let accessory = room.accessory {
-                        Text(accessory)
+                        RoomMaskable(accessory)
                             .font(isEmptyRoom ? RoomTokens.Typography.body : RoomTokens.Typography.numeric)
                             .foregroundStyle(isEmptyRoom ? accent.text : RoomTokens.Ink.graphite)
                             .contentTransition(.numericText()).fixedSize()
@@ -158,7 +159,7 @@ struct RoomMenuBarView: View {
                 }
             }
         }
-        .buttonStyle(.plain).accessibilityLabel(room.accessibilityLabel)
+        .buttonStyle(.plain).accessibilityLabel(hide.masksNow ? "Room, hidden" : room.accessibilityLabel)
         .accessibilityIdentifier("RoomPopoverRoomCard")
     }
 
@@ -178,15 +179,24 @@ struct RoomMenuBarView: View {
             .contentTransition(.numericText())
     }
 
-    private func metric(_ text: String, suffix: String = "") -> some View {
+    private func maskedCaption(_ text: String) -> some View {
+        RoomMaskable(text).font(RoomTokens.Typography.caption).foregroundStyle(RoomTokens.Ink.secondary)
+    }
+
+    private func metric(_ text: String, suffix: String = "", maskable: Bool = false) -> some View {
         let amount = !suffix.isEmpty && text.hasSuffix(suffix) ? String(text.dropLast(suffix.count)) : text
         let parts = amount.split(separator: " ", maxSplits: 1).map(String.init)
         let number = parts.first ?? amount
         let unit = parts.count == 2 ? " \(parts[1])\(suffix)" : ""
-        return (Text(number).font(RoomTokens.Typography.figure)
-                    .tracking(RoomTokens.Typography.tracking(for: 22))
-                + Text(unit).font(RoomTokens.Typography.unit(for: 22)))
-            .monospacedDigit().contentTransition(.numericText()).lineLimit(1).fixedSize()
+        return HStack(alignment: .firstTextBaseline, spacing: 0) {
+            Group {
+                if maskable { RoomMaskable(number) } else { Text(number) }
+            }
+            .font(RoomTokens.Typography.figure)
+            .tracking(RoomTokens.Typography.tracking(for: 22))
+            Text(unit).font(RoomTokens.Typography.unit(for: 22))
+        }
+        .monospacedDigit().contentTransition(.numericText()).lineLimit(1).fixedSize()
     }
 
     private func pressureColor(_ pressure: RoomMenuBarPressure) -> Color {

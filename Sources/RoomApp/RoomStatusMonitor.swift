@@ -82,6 +82,7 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
             })
             .modifier(RoomMotionRoot())
             .modifier(RoomAccentRoot())
+            .modifier(RoomHideRoot())
         )
         hosting.sizingOptions = [.preferredContentSize]
         popover.contentViewController = hosting

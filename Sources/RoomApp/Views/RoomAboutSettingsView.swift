@@ -64,11 +64,11 @@ struct RoomAboutSettingsView: View {
             if let summary = madeRoom {
                 Section {
                     HStack(alignment: .firstTextBaseline, spacing: RoomTokens.Space.inner) {
-                        Text(RoomFormat.bytes(summary.bytes)).font(RoomTokens.Typography.madeRoom)
+                        RoomMaskable(RoomFormat.bytes(summary.bytes)).font(RoomTokens.Typography.madeRoom)
                             .fixedSize()
                             .contentTransition(.numericText(value: Double(summary.bytes)))
                             .animation(motion.animation(RoomTokens.Motion.standard, fallback: nil), value: summary.bytes)
-                        Text(summary.caption).font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
+                        RoomMaskable(summary.caption).font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     .accessibilityElement(children: .combine)
@@ -95,6 +95,7 @@ struct RoomAboutSettingsView: View {
         .formStyle(.grouped).scrollDisabled(true)
         .fixedSize(horizontal: false, vertical: true)
         .animation(motion.animation(RoomTokens.Motion.settle), value: madeRoom != nil)
+        .modifier(RoomHideRoot())
         .task { await model.refreshHistory() }
     }
 }

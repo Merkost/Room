@@ -11,11 +11,11 @@ struct RoomRootView: View {
     @Bindable var agentWork: AgentWorkModel
     #endif
     @AppStorage("RoomAppearance") private var appearance = "dark"
+    @Environment(\.roomHide) private var hide
     @Environment(\.openSettings) private var openSettings
     @Environment(\.roomMotion) private var motion
     @State private var developer = RoomDeveloperModel(unreferencedStore: .init(writer: .shared))
     @State private var sheet: RoomSheet?
-    @AppStorage(RoomOverviewPrivacy.key) private var overviewSizesHidden = false
 
     private var destination: RoomDestination { navigation.destination }
     private var colorScheme: ColorScheme? {
@@ -24,8 +24,7 @@ struct RoomRootView: View {
     private var screenActions: RoomScreenActions {
         switch destination {
         case .overview:
-            RoomScreenActions(destination: .overview, canRescan: true, rescan: insights.refreshDiskCapacity,
-                              overviewSizesHidden: overviewSizesHidden, toggleOverviewSizes: { overviewSizesHidden.toggle() })
+            RoomScreenActions(destination: .overview, canRescan: true, rescan: insights.refreshDiskCapacity)
         case .clean:
             RoomScreenActions(destination: .clean, canRescan: model.canRescanFromMenu, isScanning: model.isScanning,
                               rescan: model.rescanFromMenu, stop: model.cancelScan)
@@ -54,8 +53,10 @@ struct RoomRootView: View {
         .preferredColorScheme(colorScheme)
         .focusedSceneValue(\.roomScreen, screenActions)
         .toolbar {
-            if destination == .overview {
-                ToolbarItem(placement: .primaryAction) { RoomOverviewHideControl(hidden: $overviewSizesHidden) }
+            ToolbarItemGroup(placement: .primaryAction) {
+                if destination == .overview {
+                    RoomGlobalHideButton(control: .shared, globalCoverage: false)
+                }
             }
         }
         .sheet(item: $sheet) { selected in
@@ -97,6 +98,7 @@ struct RoomRootView: View {
             if let map, let root = insights.diskMap.rootURL { rooms.applyMap(map, root: root) }
         }
         .onChange(of: navigation.route) { _, route in
+            RoomHideControl.shared.cancelPeek()
             guard case .room(let id) = route, let url = rooms.url(for: id) else { return }
             insights.openDiskMap(rootURL: url, requestNavigation: false)
         }
@@ -118,7 +120,7 @@ struct RoomRootView: View {
     private var screenSubtitle: String? {
         switch destination {
         case .overview: nil
-        case .disk: insights.diskURL?.lastPathComponent
+        case .disk: insights.diskURL.map { RoomHideSpeech.value($0.lastPathComponent, hide: hide) }
         case .clean, .memory, .developer, .activity: nil
         }
     }
@@ -135,7 +137,7 @@ struct RoomRootView: View {
         switch destination {
         case .overview:
             RoomOverviewView(insights: insights, rooms: rooms, navigate: navigation.select, refresh: insights.refreshDiskCapacity,
-                             cacheModel: model, hidden: overviewSizesHidden)
+                             cacheModel: model)
         case .clean:
             RoomCachesView(model: model, review: { sheet = .review },
                 inspect: { sheet = .source($0) }, showKept: { sheet = .protectedSources },
