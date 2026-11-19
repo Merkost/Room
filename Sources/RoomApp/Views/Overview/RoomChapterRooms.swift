@@ -12,7 +12,7 @@ struct RoomChapterRooms: View {
     @State private var visible = false
 
     var body: some View {
-        let shown = RoomRoomsChapter.shown(rooms.rooms, editing: editing)
+        let shown = RoomRoomsChapter.shown(rooms.visibleRooms, editing: editing)
         let unavailable = rooms.unavailable
         let now = Date()
         VStack(alignment: .leading, spacing: 14) {

@@ -140,11 +140,11 @@ struct RoomMenuBarSettingsControls: View {
         case .pinnedRoom:
             RoomSettingsFormRow("Room in the popover") {
                 HStack(spacing: RoomTokens.Space.row) {
-                    if !rooms.rooms.isEmpty {
+                    if !rooms.visibleRooms.isEmpty {
                         Picker("Room in the popover", selection: Binding(get: { rooms.popoverRoom?.id }, set: { id in
                             if let id { rooms.move(id: id, to: 0) }
                         })) {
-                            ForEach(rooms.rooms) { room in Text(room.name).tag(Optional(room.id)) }
+                            ForEach(rooms.visibleRooms) { room in Text(room.name).tag(Optional(room.id)) }
                         }.labelsHidden().fixedSize()
                     }
                     Button("Pin a Folder…") {

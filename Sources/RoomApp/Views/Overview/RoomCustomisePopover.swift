@@ -10,10 +10,11 @@ struct RoomCustomisePopover: View {
     @AppStorage(RoomMenuBarSettings.goalBytesKey) private var goal = Int(RoomMenuBarSettings.defaultGoalBytes)
     @AppStorage("RoomGoalEnabled") private var useGoal = true
     @AppStorage("RoomAccent") private var accent = RoomTokens.Accent.teal
-    @State private var confirmReset = false
+    @State private var resetBackup: (greeting: Bool, rooms: Bool, accent: RoomTokens.Accent)?
+    private let resetID = "overview/reset"
 
     private var room: RoomPinnedRoom? {
-        rooms.rooms.first { $0.id == selected } ?? rooms.rooms.first
+        rooms.visibleRooms.first { $0.id == selected } ?? rooms.visibleRooms.first
     }
 
     var body: some View {
@@ -38,22 +39,29 @@ struct RoomCustomisePopover: View {
                 if let room {
                     Divider()
                     Picker("Room", selection: Binding(get: { room.id }, set: { selected = $0 })) {
-                        ForEach(rooms.rooms) { item in
+                        ForEach(rooms.visibleRooms) { item in
                             Text(hidden ? RoomRoomsChapter.hiddenText(item.name, lettersToo: true) : item.name).tag(item.id)
                         }
                     }
                     RoomCustomiseEditor(rooms: rooms, room: room, hidden: hidden).id(room.id)
                 }
-                Button("Reset Overview") { confirmReset = true }.roomLink(accent)
-                    .confirmationDialog("Reset Overview preferences?", isPresented: $confirmReset) {
-                        Button("Reset Overview") {
-                            greeting = true
-                            showRooms = true
-                            accent = .teal
-                        }
-                    } message: {
-                        Text("Resets the greeting, Your Rooms visibility, and accent.")
-                    }
+                RoomInlineUndoRows(prefix: "room/unpin/")
+                RoomInlineConfirmButton(id: resetID, title: "Reset Overview", confirmTitle: "Reset preferences?",
+                    doneLine: "Overview preferences reset", stage: {
+                        resetBackup = (greeting, showRooms, accent)
+                        greeting = true
+                        showRooms = true
+                        accent = .teal
+                    }, commit: {
+                        resetBackup = nil
+                    }, undo: {
+                        guard let resetBackup else { return }
+                        greeting = resetBackup.greeting
+                        showRooms = resetBackup.rooms
+                        accent = resetBackup.accent
+                        self.resetBackup = nil
+                    })
+                RoomInlineUndoRows(prefix: resetID)
             }.frame(maxWidth: .infinity, alignment: .leading).padding(RoomTokens.Space.group)
         }
         .frame(width: 320)
@@ -67,7 +75,6 @@ private struct RoomCustomiseEditor: View {
     @Bindable var rooms: RoomRoomsModel
     let room: RoomPinnedRoom
     let hidden: Bool
-    @State private var confirmForget = false
     @State private var name = ""
     @State private var budget = ""
     @State private var budgetIssue = false
@@ -129,12 +136,11 @@ private struct RoomCustomiseEditor: View {
                 Button("Move Down") { rooms.move(id: room.id, to: room.order + 1) }
                     .disabled(room.order >= rooms.rooms.count - 1)
             }
-            Button("Forget this Room") { confirmForget = true }
-                .confirmationDialog("Forget this Room?", isPresented: $confirmForget) {
-                    Button("Forget this Room", role: .destructive) { rooms.unpin(id: room.id) }
-                } message: {
-                    Text("Removes its Room and size history. Folder access is kept.")
-                }
+            RoomInlineConfirmButton(id: "room/unpin/" + room.id.uuidString, title: "Forget this Room",
+                confirmTitle: "Forget this Room?", doneLine: "Room forgotten", isAllowed: rooms.canUnpin,
+                stage: { rooms.stageUnpin(room.id) }, commit: { rooms.commitUnpin(room.id) },
+                undo: { rooms.undoUnpin(room.id) })
+                .help("Removes its Room and size history. Folder access is kept.")
         }
         .onAppear {
             name = room.name

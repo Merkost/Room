@@ -77,7 +77,7 @@ struct RoomOverviewView: View {
                 }
             }
             .frame(minHeight: RoomTokens.Density.calm.firstScreenMinHeight, alignment: .topLeading)
-            if showRooms && (!rooms.rooms.isEmpty || rooms.canChooseFolder) {
+            if showRooms && (!rooms.visibleRooms.isEmpty || rooms.canChooseFolder) {
                 RoomChapterRooms(rooms: rooms, calendar: .current, editing: editingRoom, openRoom: openPinned,
                                  showAll: showAllRooms)
             }

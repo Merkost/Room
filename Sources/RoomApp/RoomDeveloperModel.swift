@@ -62,6 +62,7 @@ final class RoomDeveloperModel {
     @ObservationIgnored private let scanResources: @Sendable (DeveloperResourcesRequest, (@Sendable (DeveloperResourcesProgress) -> Void)?) async -> DeveloperResourcesReport
     private let key = "RoomDeveloperFolderRoles"
     private var records: [RoleRecord]
+    private var stagedRemovals: Set<String> = []
     private var task: Task<Void, Never>?
     private var generation = UUID()
     private(set) var report: DeveloperResourcesReport?
@@ -145,7 +146,7 @@ final class RoomDeveloperModel {
     var locations: [RoomDeveloperLocation] {
         records.compactMap { record in
             access.folders.first(where: { $0.id == record.folderID }).map { RoomDeveloperLocation(role: record.role, folder: $0) }
-        }
+        }.filter { !stagedRemovals.contains($0.id) }
     }
     var canScan: Bool { !locations.isEmpty && !isChoosingFolder }
     var accessRevision: [String] { access.folders.map(\.id).sorted() }
@@ -183,10 +184,22 @@ final class RoomDeveloperModel {
         report = nil; summary = nil
     }
 
-    func remove(_ location: RoomDeveloperLocation) {
+    func stageRemoval(_ location: RoomDeveloperLocation) {
         guard !isScanning else { return }
+        stagedRemovals.insert(location.id)
+        report = nil
+        summary = nil
+    }
+
+    func undoRemoval(_ location: RoomDeveloperLocation) {
+        guard stagedRemovals.remove(location.id) != nil else { return }
+        accessChanged()
+    }
+
+    func commitRemoval(_ location: RoomDeveloperLocation) {
+        guard stagedRemovals.remove(location.id) != nil else { return }
         records.removeAll { $0.role == location.role && $0.folderID == location.folder.id }
-        persist(); report = nil; summary = nil
+        persist()
     }
 
     func accessChanged() {

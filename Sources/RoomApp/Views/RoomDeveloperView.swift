@@ -18,7 +18,7 @@ struct RoomDeveloperView: View {
     @Environment(\.roomHide) private var hide
     @State private var section = RoomDeveloperSection.rooms
     @State private var showingNotes = false
-    @State private var pendingRemoval: RoomDeveloperLocation?
+    private let confirmationPrefix = "developer/remove/"
 
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
@@ -61,12 +61,6 @@ struct RoomDeveloperView: View {
         .alert("Couldn’t add that folder", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) {
             Button("OK") { model.errorMessage = nil }
         } message: { Text(hide.masksNow ? "Choose the folder again." : model.errorMessage ?? "") }
-        .confirmationDialog("Remove this folder from Developer?", isPresented: Binding(get: { pendingRemoval != nil }, set: { if !$0 { pendingRemoval = nil } }),
-                            presenting: pendingRemoval) { location in
-            Button("Remove from Developer", role: .destructive) { model.remove(location); pendingRemoval = nil }
-        } message: { _ in
-            Text("Folder access is managed in Settings.")
-        }
         .sheet(isPresented: $showingNotes) {
             RoomScanIssuesSheet(issues: model.report?.issues.map {
                 hide.masksNow ? "A resource could not be read." : "\($0.url.path): \($0.message)"
@@ -84,9 +78,11 @@ struct RoomDeveloperView: View {
                             RoomMaskable(location.folder.name, kind: .name).lineLimit(1).foregroundStyle(.secondary)
                                 .help(hide.masksNow ? "Folder name hidden" : location.folder.url.path)
                             Spacer()
-                            Button("Remove") { pendingRemoval = location }
-                                .disabled(model.isScanning)
-                                .accessibilityLabel("Remove \(hide.masksNow ? "folder" : location.folder.name) from Developer")
+                            RoomInlineConfirmButton(id: confirmationPrefix + location.id, title: "Remove…",
+                                confirmTitle: "Remove from Developer?", doneLine: "Folder removed from Developer",
+                                isAllowed: !model.isScanning, stage: { model.stageRemoval(location) },
+                                commit: { model.commitRemoval(location) }, undo: { model.undoRemoval(location) })
+                                .help("Folder access is managed in Settings.")
                         }
                     }
                     ForEach(model.folderSuggestions) { suggestion in
@@ -108,6 +104,7 @@ struct RoomDeveloperView: View {
                 }.padding(.top, 9)
             }
         }
+        RoomInlineUndoRows(prefix: confirmationPrefix)
         if model.isScanning {
             ProgressView(model.progress).controlSize(.small)
         }
