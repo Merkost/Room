@@ -307,7 +307,7 @@ public struct CacheConfiguration: Sendable {
 extension URL {
     /// Foundation's standardizedFileURL may rewrite /private/tmp to the /tmp
     /// symlink alias on macOS. Normalize dot components without resolving links.
-    var roomLexicallyNormalized: URL {
+    package var roomLexicallyNormalized: URL {
         var components: [String] = []
         for component in path.split(separator: "/", omittingEmptySubsequences: true) {
             switch component {
