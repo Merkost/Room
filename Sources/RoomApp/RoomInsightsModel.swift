@@ -653,6 +653,8 @@ final class RoomInsightsModel {
         return parts.isEmpty ? "~" : "~/" + parts.joined(separator: "/")
     }
 
+    func approvedMapScope(for url: URL) -> URL? { fileAccess.scope(for: url) }
+
     func reveal(item: DiskMapItem) { NSWorkspace.shared.activateFileViewerSelecting([item.url]) }
 
     func revealDiskRoot() {

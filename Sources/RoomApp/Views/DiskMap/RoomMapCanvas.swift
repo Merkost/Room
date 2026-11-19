@@ -7,12 +7,14 @@ struct RoomMapCanvas: View {
     let hidden: Bool
     var pending: Set<String> = []
     var activate: (String, Bool) -> Void = { _, _ in }
+    var preview: (String) -> Bool = { _ in false }
+    var reveal: (String) -> Void = { _ in }
 
     var body: some View {
         GeometryReader { geometry in
             let layer = RoomMapLayer.make(level: level, size: geometry.size)
             RoomMapCanvasSurface(layer: layer, level: level, selection: selection, hidden: hidden,
-                pending: pending, activate: activate)
+                pending: pending, activate: activate, preview: preview, reveal: reveal)
         }
         .background(RoomTokens.Surface.canvas, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.card))
         .accessibilityIdentifier("RoomDiskMapCanvas")
@@ -31,6 +33,8 @@ private struct RoomMapCanvasSurface: View {
     let hidden: Bool
     let pending: Set<String>
     let activate: (String, Bool) -> Void
+    let preview: (String) -> Bool
+    let reveal: (String) -> Void
 
     private var ordered: [RoomMapItem] {
         layer.items.sorted { lhs, rhs in lhs.bytes == rhs.bytes ? lhs.id < rhs.id : lhs.bytes > rhs.bytes }
@@ -60,6 +64,10 @@ private struct RoomMapCanvasSurface: View {
             activate(item, true)
             return .handled
         }
+        .onKeyPress(.space) {
+            guard let selected = keyboardSelection ?? selection, preview(selected) else { return .ignored }
+            return .handled
+        }
         .onKeyPress(.escape) {
             keyboardSelection = nil
             return .handled
@@ -69,6 +77,7 @@ private struct RoomMapCanvasSurface: View {
             ForEach(ordered, id: \.id) { item in
                 Button(spoken(item)) { activate(item.id, item.canStepInside) }
                     .accessibilityRotorEntry(id: item.id, in: rotor)
+                    .accessibilityAction(named: "Show in Finder") { reveal(item.id) }
             }
         }
         .accessibilityRotor("Largest items") {

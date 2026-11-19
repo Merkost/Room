@@ -22,7 +22,7 @@ struct RoomStateStoreTests {
         }
         #expect(rooms == [room])
         let bytes = try Data(contentsOf: destination)
-        #expect(RoomStateCodec.classify(bytes, currentSchema: 1) == .current)
+        #expect(RoomStateCodec.classify(bytes, currentSchema: RoomStateFile.rooms.schema) == .current)
         let next = RoomStateStore(directory: directory, now: { Self.fixed.addingTimeInterval(80) })
         guard case let .loaded(saved, rewrite: false) = await next.load([RoomPinnedRoom].self, from: .rooms),
               saved == [room] else {
@@ -53,7 +53,7 @@ struct RoomStateStoreTests {
     @Test func newerSchemaNeverOverwritten() async throws {
         let directory = try reserveStateFixture()
         defer { try? FileManager.default.removeItem(at: directory) }
-        let future = RoomStateFile(name: RoomStateFile.rooms.name, schema: 2, maxBytes: 128_000, survivesForget: true)
+        let future = RoomStateFile(name: RoomStateFile.rooms.name, schema: RoomStateFile.rooms.schema + 1, maxBytes: 128_000, survivesForget: true)
         let bytes = try RoomStateCodec.encode(["future"], file: future, writtenAt: Self.fixed, appVersion: "3")
         let destination = directory.appendingPathComponent(future.name)
         try bytes.write(to: destination)

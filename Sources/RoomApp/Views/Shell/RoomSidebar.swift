@@ -127,29 +127,27 @@ struct RoomSidebar: View {
     }
 
     @ViewBuilder private var roomRow: some View {
-        switch rooms.state {
-        case .empty:
-            Button(action: rooms.chooseFolder) {
-                row(icon: { Image(systemName: "pin") }, iconColor: RoomTokens.Ink.secondary) {
-                    Text("nav.rooms.pin", bundle: RoomCopy.bundle).font(RoomTokens.Typography.body).lineLimit(1)
-                }
-            }
-            .buttonStyle(.plain)
-            .disabled(!rooms.canChooseFolder)
-            .help(rooms.isReadOnly ? String(localized: "state.readOnly", defaultValue: "Saved by a newer Room.", bundle: RoomCopy.bundle)
-                  : String(localized: "nav.rooms.pin", defaultValue: "Pin a folder…", bundle: RoomCopy.bundle))
-            .accessibilityLabel(Text("nav.rooms.pin", bundle: RoomCopy.bundle))
-        case .unavailable(let room):
-            pinned(room, size: String(localized: "nav.room.needsAccess", defaultValue: "Needs access", bundle: RoomCopy.bundle), spokenSize: nil, needsAccess: true)
-        case .measuring(let room):
-            pinned(room, size: "—", spokenSize: String(localized: "nav.room.notMeasured", defaultValue: "Not measured yet", bundle: RoomCopy.bundle))
-        case .measured(let room, let log):
-            if let sample = log.latest {
+        ForEach(rooms.visibleRooms) { room in
+            if rooms.unavailable.contains(room.id) {
+                pinned(room, size: String(localized: "nav.room.needsAccess", defaultValue: "Needs access", bundle: RoomCopy.bundle),
+                       spokenSize: nil, needsAccess: true)
+            } else if let sample = rooms.log(for: room.id)?.latest {
                 let size = RoomFormat.bytes(sample.bytes)
                 pinned(room, size: sample.partial ? "≥ \(size)" : size,
                        spokenSize: sample.partial ? "at least \(size)" : size)
+            } else {
+                pinned(room, size: "—", spokenSize: String(localized: "nav.room.notMeasured",
+                       defaultValue: "Not measured yet", bundle: RoomCopy.bundle))
             }
         }
+        Button(action: rooms.chooseFolder) {
+            row(icon: { Image(systemName: "pin") }, iconColor: RoomTokens.Ink.secondary) {
+                Text("nav.rooms.pin", bundle: RoomCopy.bundle).font(RoomTokens.Typography.body).lineLimit(1)
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(!rooms.canChooseFolder)
+        .accessibilityLabel(Text("nav.rooms.pin", bundle: RoomCopy.bundle))
     }
 
     private func pinned(_ room: RoomPinnedRoom, size: String, spokenSize: String?, needsAccess: Bool = false) -> some View {
@@ -180,7 +178,7 @@ struct RoomSidebar: View {
         .accessibilityLabel(hide.masksNow ? "Room, hidden" : String.localizedStringWithFormat(spokenFormat, room.name, spokenSize ?? size))
         .accessibilityAddTraits(selected ? [.isSelected] : [])
         .contextMenu {
-            if let url = rooms.pinnedURL {
+            if let url = rooms.url(for: room.id) {
                 Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
             }
             Button("Unpin…") {

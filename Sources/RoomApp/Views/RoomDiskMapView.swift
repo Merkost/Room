@@ -1,17 +1,22 @@
 import AppKit
+import QuickLook
 import RoomCore
 import SwiftUI
 
 struct RoomDiskMapView: View {
     @Bindable var insights: RoomInsightsModel
+    var rooms: RoomRoomsModel? = nil
     @Environment(\.openSettings) private var openSettings
     @Environment(\.roomAccent) private var accent
-    @AppStorage("RoomHideSizes") private var hidden = false
+    @Environment(\.roomHide) private var privacy
+    private var hidden: Bool { privacy.masksNow }
     @State private var layout: Display = .map
     @State private var filter: String?
     @State private var showsInspector = false
     @State private var showsIssues = false
     @State private var showsOther = false
+    @State private var previewURL: URL?
+    @State private var previewScope: URL?
 
     private enum Display: String, CaseIterable { case map = "Map", largest = "Largest 20", compare = "Compare" }
     private var model: RoomDiskMapModel { insights.diskMap }
@@ -21,7 +26,8 @@ struct RoomDiskMapView: View {
             let isWide = (NSApp.keyWindow?.frame.width ?? geometry.size.width) >= RoomTokens.Map.inspectorBreakpoint
             VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
                 controls(isWide: isWide)
-                if let blueprint = model.blueprint, insights.isScanningDisk {
+                if let blueprint = model.blueprint,
+                   insights.isScanningDisk || (blueprint.phase == .stopped && layout == .map && model.levelPath.isEmpty) {
                     blueprintDetail(blueprint, isWide: isWide)
                 } else if let level = model.level {
                     if model.hasLostAccess {
@@ -43,6 +49,14 @@ struct RoomDiskMapView: View {
             }
         }
         .background(RoomTokens.Surface.canvas)
+        .quickLookPreview($previewURL)
+        .onChange(of: hidden) { _, value in
+            if value { previewURL = nil }
+        }
+        .onChange(of: previewURL) { _, current in
+            if current == nil { releasePreviewScope() }
+        }
+        .onDisappear { releasePreviewScope() }
         .task { await insights.restoreDiskMap() }
         .task { await insights.observeTreeChanges() }
         .onChange(of: model.levelPath) { _, _ in filter = nil }
@@ -86,7 +100,13 @@ struct RoomDiskMapView: View {
         if model.trail.isEmpty {
             Text("Disk Map").font(RoomTokens.Typography.title).accessibilityAddTraits(.isHeader)
         } else {
-            RoomBreadcrumbs(trail: model.trail, hidden: hidden) { model.go(to: $0) }
+            VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
+                RoomBreadcrumbs(trail: model.trail, hidden: hidden) { model.go(to: $0) }
+                if let date = model.current?.scannedAt {
+                    Text("Scanned \(date.formatted(.dateTime.month().day()))")
+                        .font(RoomTokens.Typography.caption).foregroundStyle(RoomTokens.Ink.secondary)
+                }
+            }
         }
     }
 
@@ -163,7 +183,8 @@ struct RoomDiskMapView: View {
             VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
                 if layout == .map {
                     RoomMapKindControl(node: level, hidden: hidden, filter: $filter)
-                    RoomMapCanvas(level: filtered(level), selection: model.selectedPath, hidden: hidden, activate: activate)
+                    RoomMapCanvas(level: filtered(level), selection: model.selectedPath, hidden: hidden,
+                                  activate: activate, preview: quickLook, reveal: reveal)
                         .frame(minHeight: RoomTokens.Map.minimumHeight)
                 } else if layout == .compare, let compared = model.comparison {
                     RoomCompareOverlay(earlier: compared.earlier, current: level, earlierDate: compared.date, hidden: hidden)
@@ -185,6 +206,16 @@ struct RoomDiskMapView: View {
                     .frame(minHeight: RoomTokens.Map.minimumHeight)
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
+                if blueprint.phase == .stopped {
+                    Text(hidden ? "Scan stopped" : blueprint.stoppedSummary)
+                        .font(RoomTokens.Typography.caption)
+                        .foregroundStyle(RoomTokens.Ink.secondary)
+                }
+                if let earlier = blueprint.earlierDate, !blueprint.earlierNames.isEmpty {
+                    Text("Hatched sizes are from \(earlier.formatted(.dateTime.month().day())).")
+                        .font(RoomTokens.Typography.caption)
+                        .foregroundStyle(RoomTokens.Ink.secondary)
+                }
                 RoomMapReadout(title: "Measured so far",
                                detail: hidden ? "Size hidden" : blueprint.counter(files: { $0.formatted() }, bytes: RoomFormat.bytes))
             }
@@ -200,7 +231,7 @@ struct RoomDiskMapView: View {
             if let date = model.changedAt, date > model.current?.scannedAt ?? .distantPast {
                 Text("Changed since this scan").foregroundStyle(RoomTokens.Ink.secondary)
             }
-            if let issueCount = insights.diskReport?.unreadableItemCount, issueCount > 0 {
+            if let issueCount = model.current?.issueCount, issueCount > 0, insights.diskReport != nil {
                 Button(hidden ? "Read issues" : "\(issueCount) folders or items couldn’t be read") { showsIssues = true }
                     .buttonStyle(.borderless)
             }
@@ -209,7 +240,8 @@ struct RoomDiskMapView: View {
 
     private var inspector: some View {
         let shown = model.selectedPath.flatMap { model.current?.tree.descendant(at: $0) } ?? model.level
-        return RoomMapInspector(node: shown, url: shown.flatMap { model.url(for: $0.relativePath) }, showSizes: !hidden,
+        return RoomMapInspector(node: shown, url: shown.flatMap { model.url(for: $0.relativePath) },
+            parent: model.level, pin: rooms.map { $0.pin(url:) }, showSizes: !hidden,
             isScanning: insights.isScanningDisk, analysis: insights.analysisReport, isAnalyzing: insights.isAnalyzingStorage,
             stepIn: { if let shown { model.go(to: shown.relativePath) } },
             map: { if let url = shown.flatMap({ model.url(for: $0.relativePath) }) { insights.scanDisk(url: url) } },
@@ -224,6 +256,25 @@ struct RoomDiskMapView: View {
         }
         if open, model.go(to: path) { return }
         model.select(path)
+    }
+
+    private func quickLook(_ path: String) -> Bool {
+        guard !hidden, model.current?.tree.descendant(at: path)?.isDirectory == false,
+              let url = model.url(for: path), let scope = insights.approvedMapScope(for: url) else { return false }
+        releasePreviewScope()
+        if scope.startAccessingSecurityScopedResource() { previewScope = scope }
+        previewURL = url
+        return true
+    }
+
+    private func releasePreviewScope() {
+        previewScope?.stopAccessingSecurityScopedResource()
+        previewScope = nil
+    }
+
+    private func reveal(_ path: String) {
+        guard !hidden, let url = model.url(for: path), insights.approvedMapScope(for: url) != nil else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
     private func filtered(_ node: RoomTreeNode) -> RoomTreeNode {

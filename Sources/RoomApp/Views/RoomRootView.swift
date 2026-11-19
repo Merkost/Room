@@ -145,7 +145,7 @@ struct RoomRootView: View {
         case .memory:
             RoomMemoryView(insights: insights, memoryActions: memoryActions)
         case .disk:
-            RoomDiskMapView(insights: insights)
+            RoomDiskMapView(insights: insights, rooms: rooms)
         case .developer:
             #if ROOM_APP_STORE
             RoomDeveloperView(model: developer)

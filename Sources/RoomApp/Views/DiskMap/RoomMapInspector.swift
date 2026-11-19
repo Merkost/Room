@@ -5,6 +5,8 @@ import SwiftUI
 struct RoomMapInspector: View {
     let node: RoomTreeNode?
     let url: URL?
+    var parent: RoomTreeNode?
+    var pin: ((URL) -> Void)?
     let showSizes: Bool
     let isScanning: Bool
     let analysis: StorageAnalysisReport?
@@ -31,7 +33,26 @@ struct RoomMapInspector: View {
                             .lineLimit(2).truncationMode(.middle)
                     }
                     if showSizes {
+                        if let parent, parent.relativePath != node.relativePath, parent.allocatedBytes > 0 {
+                            let ratio = Double(node.allocatedBytes) / Double(parent.allocatedBytes)
+                            Text("Share of \(parent.name) \(ratio.formatted(.percent.precision(.fractionLength(0))))")
+                                .font(RoomTokens.Typography.caption)
+                        }
                         Text("\(node.fileCount.formatted()) files").font(RoomTokens.Typography.caption)
+                    }
+                    Text(node.isPartial ? "Measured partly. Lower bound." : "Measured fully.")
+                        .font(RoomTokens.Typography.caption)
+                        .foregroundStyle(RoomTokens.Ink.secondary)
+                    if node.isDirectory, !node.children.isEmpty {
+                        Text("Inside").font(RoomTokens.Typography.section)
+                        ForEach(Array(node.children.prefix(4)), id: \.relativePath) { child in
+                            HStack {
+                                Text(showSizes ? child.name : "Hidden").lineLimit(1)
+                                Spacer()
+                                Text(showSizes ? RoomFormat.bytes(child.allocatedBytes) : "Hidden").monospacedDigit()
+                            }
+                            .font(RoomTokens.Typography.caption)
+                        }
                     }
                     ForEach(RoomKindStrip.totals(node), id: \.kind) { amount in
                         HStack {
@@ -53,7 +74,8 @@ struct RoomMapInspector: View {
                             Button("Map this folder", action: map).roomSecondary().disabled(isScanning)
                         }
                     }
-                    if let url {
+                    if let url, showSizes {
+                        if node.isDirectory, let pin { Button("Pin as a Room") { pin(url) }.buttonStyle(.borderless) }
                         Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
                             .buttonStyle(.borderless)
                     }
