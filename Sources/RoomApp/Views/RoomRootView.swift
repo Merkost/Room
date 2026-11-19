@@ -47,7 +47,9 @@ struct RoomRootView: View {
         case .disk:
             RoomScreenActions(destination: .disk, canRescan: insights.canRescanDisk, isScanning: insights.isScanningDisk,
                               rescan: insights.rescanDisk, stop: insights.cancelDiskScan,
-                              canEnclose: insights.canGoUpInApprovedMap, enclose: insights.encloseApprovedDiskFolder)
+                              canEnclose: insights.canGoUpInApprovedMap, enclose: insights.encloseApprovedDiskFolder,
+                              showDiskInspector: insights.diskMap.current == nil ? nil : insights.toggleDiskInspector,
+                              comparisonTitle: diskComparisonTitle, compareDiskMap: insights.compareDiskMap)
         case .developer:
             RoomScreenActions(destination: .developer, canRescan: developer.canScan, isScanning: developer.isScanning,
                               rescan: developer.scan, stop: developer.stop)
@@ -72,9 +74,9 @@ struct RoomRootView: View {
             }
             .sharedBackgroundVisibility(.hidden)
             ToolbarItemGroup(placement: .primaryAction) {
+                RoomGlobalHideButton(control: .shared, globalCoverage: true)
                 RoomHistoryButton(model: model, show: { sheet = .history }, restore: restoreFromCaches)
                 if destination == .overview {
-                    RoomGlobalHideButton(control: .shared, globalCoverage: false)
                     Button { showingCustomise.toggle() } label: {
                         Label("Customise", systemImage: "slider.horizontal.3")
                     }
@@ -187,6 +189,12 @@ struct RoomRootView: View {
             case .showMonitorOnce: showOnboardingMonitor()
             }
         }
+    }
+
+    private var diskComparisonTitle: String? {
+        guard let date = insights.diskMap.comparison?.date else { return nil }
+        let day = date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))
+        return String(localized: "menu.disk.compareDate", defaultValue: "Compare with \(day)")
     }
 
     private var screenSubtitle: String? {

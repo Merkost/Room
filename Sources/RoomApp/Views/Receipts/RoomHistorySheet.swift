@@ -2,7 +2,8 @@ import RoomCore
 import SwiftUI
 
 struct RoomHistorySheet: View {
-    @AppStorage(RoomCachesVisibility.preferenceKey) private var hidden = false
+    @Environment(\.roomHide) private var hide
+    private var hidden: Bool { hide.masksNow }
     let model: RoomViewModel
     @Environment(\.dismiss) private var dismiss
     #if ROOM_APP_STORE

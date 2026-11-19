@@ -11,7 +11,8 @@ struct RoomCachesRow: View {
     let reveal: () -> Void
     var neverSuggest: (() -> Void)?
 
-    @AppStorage(RoomCachesVisibility.preferenceKey) private var hidden = false
+    @Environment(\.roomHide) private var hide
+    private var hidden: Bool { hide.masksNow }
     @Environment(\.roomAccent) private var accent
     @Environment(\.colorSchemeContrast) private var contrast
 

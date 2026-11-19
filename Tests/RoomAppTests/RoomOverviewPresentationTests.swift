@@ -35,7 +35,7 @@ struct RoomOverviewPresentationTests {
     @Test func overviewHideTitleAndShortcut() throws {
         let visible = RoomMenuModel.make(.init(destination: .overview, window: .main))
         let command = try #require(visible.first { $0.id == .hideOverviewSizes })
-        #expect(command.title == "Hide Sizes on Overview")
+        #expect(command.title == "Hide Sizes and Names")
         #expect(command.shortcut == .init("h", [.command, .shift]))
         #expect(command.checked == false)
     }
@@ -43,10 +43,11 @@ struct RoomOverviewPresentationTests {
     @Test func overviewHideChecksCurrentState() {
         let hidden = RoomMenuModel.make(.init(destination: .overview, overviewSizesHidden: true, window: .main))
         #expect(hidden.first { $0.id == .hideOverviewSizes }?.checked == true)
+        let caches = RoomMenuModel.make(.init(destination: .clean, window: .main))
+        #expect(caches.first { $0.id == .hideOverviewSizes }?.checked == false)
         for context in [
             RoomMenuModel.Input(destination: .overview, window: .modal),
             RoomMenuModel.Input(destination: .overview, window: .settings),
-            RoomMenuModel.Input(destination: .clean, window: .main),
         ] {
             #expect(!RoomMenuModel.make(context).contains { $0.id == .hideOverviewSizes })
         }

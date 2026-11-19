@@ -3,7 +3,8 @@ import SwiftUI
 struct RoomWhatStaysSheet: View {
     let model: RoomViewModel
     @Environment(\.dismiss) private var dismiss
-    @AppStorage(RoomCachesVisibility.preferenceKey) private var hidden = false
+    @Environment(\.roomHide) private var hide
+    private var hidden: Bool { hide.masksNow }
     @State private var pendingRemoval: RoomIgnoreRule?
 
     private struct Reason: Identifiable {

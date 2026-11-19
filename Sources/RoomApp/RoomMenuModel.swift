@@ -41,6 +41,8 @@ nonisolated enum RoomMenuModel {
         case emoji
         case customiseOverview
         case refreshOverview
+        case showDiskInspector
+        case compareDiskMap
         case hideOverviewSizes
         case rescanDisk
         case rescanCaches
@@ -116,7 +118,9 @@ nonisolated enum RoomMenuModel {
             case .emoji: "Emoji & Symbols"
             case .customiseOverview: String(localized: "menu.customiseOverview", defaultValue: "Customise Overview…", bundle: RoomCopy.bundle)
             case .refreshOverview: String(localized: "menu.refreshOverview", defaultValue: "Refresh Free Space", bundle: RoomCopy.bundle)
-            case .hideOverviewSizes: RoomOverviewPrivacy.menuTitle
+            case .showDiskInspector: String(localized: "menu.disk.inspector", defaultValue: "Show Inspector", bundle: RoomCopy.bundle)
+            case .compareDiskMap: String(localized: "menu.disk.compare", defaultValue: "Compare", bundle: RoomCopy.bundle)
+            case .hideOverviewSizes: String(localized: "menu.hide", defaultValue: "Hide Sizes and Names", bundle: RoomCopy.bundle)
             case .rescanDisk: String(localized: "menu.rescanDisk", defaultValue: "Rescan Disk Map", bundle: RoomCopy.bundle)
             case .rescanCaches: String(localized: "menu.rescanCaches", defaultValue: "Check Caches Again", bundle: RoomCopy.bundle)
             case .rescanDeveloper: String(localized: "menu.rescanDeveloper", defaultValue: "Rescan Developer", bundle: RoomCopy.bundle)
@@ -245,6 +249,8 @@ nonisolated enum RoomMenuModel {
         var isScanning = false
         var canEnclose = false
         var overviewSizesHidden = false
+        var canInspectDisk = false
+        var comparisonTitle: String?
         var menuBarEnabled = true
         var edition: Edition = .direct
         var window: Window = .none
@@ -316,8 +322,14 @@ nonisolated enum RoomMenuModel {
                 add(.view, .stop, .init("."), enabled: input.isScanning && !input.isWorking)
             }
         }
-        if main, input.destination == .overview {
+        if main {
             add(.view, .hideOverviewSizes, .init("h", [.command, .shift]), checked: input.overviewSizesHidden)
+            if input.destination == .disk, input.canInspectDisk {
+                add(.view, .showDiskInspector, .init("i", [.option, .command]), enabled: canStart)
+                if let title = input.comparisonTitle {
+                    add(.view, .compareDiskMap, enabled: canStart, title: title)
+                }
+            }
         }
         add(.view, .sidebarLabels, .init("s", [.control, .command]), enabled: main,
             title: input.sidebarIconsOnly ? String(localized: "menu.sidebarLabels.show", defaultValue: "Show Sidebar Labels", bundle: RoomCopy.bundle) : nil)

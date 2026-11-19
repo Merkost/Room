@@ -54,7 +54,7 @@ for f in $files; do
 done
 # G10 debug-only affordances (AP-14, AP-15, MBF-6): the Trash and menu bar simulators must sit in a file guarded by #if DEBUG
 grep -rlE 'Simulate Trash Emptied|RoomDebugTrashSimulator|RoomDebugMenuBarScenario' --include='*.swift' "$root" | while read -r f; do
-  grep -q '^#if DEBUG' "$f" || report "G10 debug-only     $f (wrap the simulator in #if DEBUG)"
+  grep -q '^[[:space:]]*#if DEBUG[[:space:]]*$' "$f" || report "G10 debug-only     $f (wrap the simulator in #if DEBUG)"
 done
 # G8 Trash is never emptied (PR-15, CA-A6): whole tree, Design/ included, no allow escape
 grep -rnE 'emptyTrash|empty (the )?trash|kAEEmptyTrash|"empty"' --include='*.swift' "$root" | grep -viE 'Text\(|String\(localized|//' | while read -r l; do report "G8 trash emptying $l"; done

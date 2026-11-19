@@ -30,7 +30,16 @@ struct RoomApp: App {
                 sentence: RoomMakeRoomCopy.headline(entry, format: RoomFormat.overviewBytes),
                 canRestore: entry.stillInTrashBytes > 0)), from: .makeRoom)
         }
-        let cacheModel = RoomViewModel(cachesCheckStore: RoomCachesCheckStore(writer: .shared),
+        #if DEBUG
+        let fixtureEngine = ProcessInfo.processInfo.environment["ROOM_MAIN_MENU_TEST_OUTPUT"].map { output in
+            let fixture = URL(fileURLWithPath: output).deletingLastPathComponent()
+            return CacheEngine(configuration: CacheConfiguration(roots: [], homeDirectory: fixture),
+                               activityDirectory: fixture.appendingPathComponent("Activity", isDirectory: true))
+        }
+        #else
+        let fixtureEngine: CacheEngine? = nil
+        #endif
+        let cacheModel = RoomViewModel(engine: fixtureEngine, cachesCheckStore: RoomCachesCheckStore(writer: .shared),
             makeRoomStore: ledger, activityCenter: activity, ignoreStore: RoomIgnoreStore(), mapStore: .shared)
         _model = State(initialValue: cacheModel)
         #if ROOM_APP_STORE
@@ -161,6 +170,7 @@ struct RoomApp: App {
             RoomSettingsView(model: model, insights: insights, rooms: rooms, isWorking: { isWorking })
                 .modifier(RoomMotionRoot())
                 .modifier(RoomAccentRoot())
+                .modifier(RoomHideRoot())
         }
         .windowResizability(.contentSize)
 

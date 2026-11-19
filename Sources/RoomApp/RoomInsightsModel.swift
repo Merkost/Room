@@ -17,6 +17,11 @@ final class RoomInsightsModel {
     private(set) var isScanningDisk = false
     private(set) var diskProgress: DiskScanProgress?
     private(set) var diskURL: URL?
+    private(set) var diskInspectorRequest = 0
+    private(set) var diskComparisonRequest = 0
+
+    func toggleDiskInspector() { diskInspectorRequest += 1 }
+    func compareDiskMap() { diskComparisonRequest += 1 }
     private(set) var homeTree: RoomStoredTree?
     private(set) var applicationsTree: RoomStoredTree?
     private(set) var isMappingHome = false

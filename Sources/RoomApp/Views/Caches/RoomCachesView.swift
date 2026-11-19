@@ -2,7 +2,8 @@ import RoomCore
 import SwiftUI
 
 struct RoomCachesView: View {
-    @AppStorage(RoomCachesVisibility.preferenceKey) private var hidden = false
+    @Environment(\.roomHide) private var hide
+    private var hidden: Bool { hide.masksNow }
     let model: RoomViewModel
     let review: () -> Void
     let inspect: (RoomSource) -> Void
@@ -115,7 +116,7 @@ struct RoomCachesView: View {
                     Text(hero.heroLabel).font(RoomTokens.Typography.caption).foregroundStyle(RoomTokens.Ink.secondary)
                     Text(format(bytes)).font(RoomTokens.Typography.hero.monospacedDigit())
                         .contentTransition(motion.isFull ? .numericText() : .identity)
-                        .animation(motion.isFull ? .easeOut(duration: RoomTokens.Motion.count) : nil, value: bytes)
+                        .animation(motion.animation(RoomTokens.Motion.countAnimation, fallback: nil), value: bytes)
                 }
             } else if !hero.lowerBound {
                 Text(hero.heroLabel).font(RoomTokens.Typography.lead)

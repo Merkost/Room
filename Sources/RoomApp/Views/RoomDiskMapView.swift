@@ -13,6 +13,7 @@ struct RoomDiskMapView: View {
     @State private var layout: Display = .map
     @State private var filter: String?
     @State private var showsInspector = false
+    @State private var hidesWideInspector = false
     @State private var showsIssues = false
     @State private var showsOther = false
     @State private var previewURL: URL?
@@ -43,6 +44,13 @@ struct RoomDiskMapView: View {
             }
             .padding([.horizontal, .bottom], RoomTokens.Space.group)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .onChange(of: insights.diskInspectorRequest) { _, _ in
+                if isWide { hidesWideInspector.toggle() }
+                else { showsInspector.toggle() }
+            }
+            .onChange(of: insights.diskComparisonRequest) { _, _ in
+                if model.canCompare { layout = .compare }
+            }
             .inspector(isPresented: $showsInspector) {
                 inspector
                     .inspectorColumnWidth(RoomTokens.Map.inspectorWidth)
@@ -194,7 +202,7 @@ struct RoomDiskMapView: View {
                 }
                 readout(level)
             }
-            if isWide { inspector.frame(width: RoomTokens.Map.inspectorWidth) }
+            if isWide && !hidesWideInspector { inspector.frame(width: RoomTokens.Map.inspectorWidth) }
         }
     }
 
@@ -219,7 +227,7 @@ struct RoomDiskMapView: View {
                 RoomMapReadout(title: "Measured so far",
                                detail: hidden ? "Size hidden" : blueprint.counter(files: { $0.formatted() }, bytes: RoomFormat.bytes))
             }
-            if isWide { inspector.frame(width: RoomTokens.Map.inspectorWidth) }
+            if isWide && !hidesWideInspector { inspector.frame(width: RoomTokens.Map.inspectorWidth) }
         }
     }
 

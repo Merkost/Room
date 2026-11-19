@@ -2,7 +2,8 @@ import RoomCore
 import SwiftUI
 
 struct RoomReceiptView: View {
-    @AppStorage(RoomCachesVisibility.preferenceKey) private var hidden = false
+    @Environment(\.roomHide) private var hide
+    private var hidden: Bool { hide.masksNow }
     let receipt: RoomActivity
     let entry: RoomMakeRoomEntry?
     let restore: (() -> Void)?

@@ -3,7 +3,8 @@ import SwiftUI
 
 @MainActor
 struct RoomAboutSettingsView: View {
-    @AppStorage(RoomCachesVisibility.preferenceKey) private var hidden = false
+    @Environment(\.roomHide) private var hide
+    private var hidden: Bool { hide.masksNow }
     @Bindable var model: RoomViewModel
     @Bindable var insights: RoomInsightsModel
     @Environment(\.openWindow) private var openWindow

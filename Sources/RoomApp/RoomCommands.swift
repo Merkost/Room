@@ -13,6 +13,9 @@ struct RoomScreenActions {
     var enclose: () -> Void = {}
     var showHistory: (() -> Void)?
     var customise: () -> Void = {}
+    var showDiskInspector: (() -> Void)?
+    var comparisonTitle: String?
+    var compareDiskMap: (() -> Void)?
 }
 
 extension FocusedValues {
@@ -61,6 +64,7 @@ struct RoomCommands: Commands {
         return RoomMenuModel.make(.init(destination: screen?.destination, canRescan: screen?.canRescan ?? false,
             isScanning: screen?.isScanning ?? false, canEnclose: screen?.canEnclose ?? false,
             overviewSizesHidden: hide.state.isOn,
+            canInspectDisk: screen?.showDiskInspector != nil, comparisonTitle: screen?.comparisonTitle,
             menuBarEnabled: menuBarEnabled, edition: edition, window: windowContext.window, isWorking: isWorking(),
             canPin: rooms.canChooseFolder, supportAvailable: links.support != nil, privacyAvailable: links.privacy != nil,
             sidebarIconsOnly: navigation.prefersSidebarIcons, canGoBack: navigation.canGoBack,
@@ -144,7 +148,11 @@ struct RoomCommands: Commands {
         case .trash: openTrash()
         case .welcome: if !isWorking() { showWelcome() }
         case .hideOverviewSizes:
-            if window == .main, screen?.destination == .overview { hide.toggle() }
+            if window == .main { hide.toggle() }
+        case .showDiskInspector:
+            if window == .main { screen?.showDiskInspector?() }
+        case .compareDiskMap:
+            if window == .main { screen?.compareDiskMap?() }
         case .customiseOverview:
             if window == .main, screen?.destination == .overview { screen?.customise() }
         case .showHistory:

@@ -2,7 +2,8 @@ import AppKit
 import SwiftUI
 
 struct RoomSourceSheet: View {
-    @AppStorage(RoomCachesVisibility.preferenceKey) private var hidden = false
+    @Environment(\.roomHide) private var hide
+    private var hidden: Bool { hide.masksNow }
     let source: RoomSource
     @Bindable var model: RoomViewModel
     @Environment(\.dismiss) private var dismiss

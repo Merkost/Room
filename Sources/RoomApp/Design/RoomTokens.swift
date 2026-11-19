@@ -277,6 +277,7 @@ enum RoomTokens {
         static let success = Animation.spring(response: 0.28, dampingFraction: 0.7)  // the only overshoot
         static let fade = Animation.easeOut(duration: 0.15)                          // Reduce Motion fallback
         static let count: TimeInterval = 0.32
+        static let countAnimation = Animation.easeOut(duration: count)
         static let stagger: TimeInterval = 0.03
         static let settleStagger: TimeInterval = 0.07
         static let maxStaggered = 12

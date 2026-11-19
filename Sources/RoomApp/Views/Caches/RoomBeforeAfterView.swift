@@ -5,7 +5,8 @@ struct RoomBeforeAfterView: View {
     let selection: Set<String>
     let format: (Int64) -> String
 
-    @AppStorage(RoomCachesVisibility.preferenceKey) private var hidden = false
+    @Environment(\.roomHide) private var hide
+    private var hidden: Bool { hide.masksNow }
     @Environment(\.roomAccent) private var accent
     @Environment(\.roomMotion) private var motion
 

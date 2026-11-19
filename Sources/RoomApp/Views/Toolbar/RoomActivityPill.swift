@@ -9,7 +9,8 @@ struct RoomActivityPill: View {
     @Environment(\.roomActivityCenter) private var center
     @Environment(\.roomMotion) private var motion
     @Environment(\.roomAccent) private var accent
-    @AppStorage(RoomCachesVisibility.preferenceKey) private var hidden = false
+    @Environment(\.roomHide) private var hide
+    private var hidden: Bool { hide.masksNow }
     @State private var expanded = false
     @State private var hovered = false
 
