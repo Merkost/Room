@@ -78,6 +78,19 @@ final class RoomViewModel {
         !isWorking
         #endif
     }
+    var canRescanFromMenu: Bool {
+        #if ROOM_APP_STORE
+        canScan && (usesInjectedEngine || (RoomStoreEnvironment.userHome != nil && !fileAccess.folders.isEmpty))
+        #else
+        canScan
+        #endif
+    }
+
+    func rescanFromMenu() {
+        guard canRescanFromMenu else { return }
+        scan()
+    }
+
     var canReviewCleanup: Bool { report != nil && !isScanning && !isPartialScan && !isWorking && selectedBytes > 0 }
 
     init(engine: CacheEngine? = nil, cachesCheckStore: RoomCachesCheckStore = RoomCachesCheckStore()) {

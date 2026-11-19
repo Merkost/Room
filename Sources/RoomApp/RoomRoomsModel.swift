@@ -24,7 +24,7 @@ final class RoomRoomsModel {
     @ObservationIgnored private var measurementTask: Task<Void, Never>?
     @ObservationIgnored private var measurementGeneration = UUID()
     @ObservationIgnored private var pendingPinMeasurementID: UUID?
-    @ObservationIgnored private var pickerTask: Task<Void, Never>?
+    private var pickerTask: Task<Void, Never>?
     @ObservationIgnored private var pickerGeneration = UUID()
 
     init(store: RoomRoomsStore = .init(), access: RoomFileAccess = .shared,
@@ -66,8 +66,10 @@ final class RoomRoomsModel {
         return .measured(room, log)
     }
 
+    var canChooseFolder: Bool { pickerTask == nil && !isWorking() }
+
     func chooseFolder() {
-        guard pickerTask == nil, !isWorking() else { return }
+        guard canChooseFolder else { return }
         let generation = UUID()
         pickerGeneration = generation
         #if ROOM_APP_STORE

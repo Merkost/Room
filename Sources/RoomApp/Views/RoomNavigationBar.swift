@@ -8,14 +8,11 @@ struct RoomNavigationBar: View {
     @FocusState private var focusedDestination: RoomDestination?
     @State private var hoveredDestination: RoomDestination?
 
-    static let items: [NavigationItem] = [
-        NavigationItem(destination: .overview, title: "Overview", symbol: "house", shortcut: "1"),
-        NavigationItem(destination: .disk, title: "Disk Map", symbol: "square.grid.2x2", shortcut: "2"),
-        NavigationItem(destination: .clean, title: "Caches", symbol: "sparkles", shortcut: "3"),
-        NavigationItem(destination: .developer, title: "Developer", symbol: "shippingbox", shortcut: "4"),
-        NavigationItem(destination: .memory, title: "Memory", symbol: "memorychip", shortcut: "5"),
-        NavigationItem(destination: .activity, title: "Activity", symbol: "clock.arrow.circlepath", shortcut: nil)
-    ]
+    static let items: [NavigationItem] = RoomMenuModel.Destination.allCases.compactMap { item in
+        guard let destination = RoomDestination(rawValue: item.rawValue) else { return nil }
+        return NavigationItem(destination: destination, title: item.item.title, symbol: item.symbol,
+                              shortcut: item.shortcut?.key)
+    }
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
@@ -66,7 +63,6 @@ struct RoomNavigationBar: View {
         }
         .buttonStyle(.plain)
         .focused($focusedDestination, equals: item.destination)
-        .keyboardShortcut(item.shortcut.map { KeyboardShortcut(KeyEquivalent($0), modifiers: .command) })
         .onHover { hovered in
             if hovered { hoveredDestination = item.destination }
             else if hoveredDestination == item.destination { hoveredDestination = nil }

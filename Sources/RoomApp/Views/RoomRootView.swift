@@ -1,10 +1,6 @@
 import AppKit
 import SwiftUI
 
-extension FocusedValues {
-    @Entry var roomOverviewRefresh: (@MainActor () -> Void)?
-}
-
 struct RoomRootView: View {
     @Bindable var model: RoomViewModel
     @Bindable var insights: RoomInsightsModel
@@ -46,16 +42,25 @@ struct RoomRootView: View {
     private var colorScheme: ColorScheme? {
         switch appearance { case "light": .light; case "dark": .dark; default: nil }
     }
-    private func refreshCurrentView() {
+    private var screenActions: RoomScreenActions {
         switch destination {
-        case .overview: insights.refreshDiskCapacity()
-        case .clean: if model.isScanning { model.cancelScan() } else { model.scan() }
-        case .memory: insights.scanMemory()
+        case .overview:
+            RoomScreenActions(destination: .overview, canRescan: true, rescan: insights.refreshDiskCapacity)
+        case .clean:
+            RoomScreenActions(destination: .clean, canRescan: model.canRescanFromMenu, isScanning: model.isScanning,
+                              rescan: model.rescanFromMenu, stop: model.cancelScan)
         case .disk:
-            if insights.isScanningDisk { insights.cancelDiskScan() }
-            else if let url = insights.diskURL { insights.scanDisk(url: url) }
-        case .developer: if developer.isScanning { developer.stop() } else { developer.scan() }
-        case .activity: break
+            RoomScreenActions(destination: .disk, canRescan: insights.canRescanDisk, isScanning: insights.isScanningDisk,
+                              rescan: insights.rescanDisk, stop: insights.cancelDiskScan,
+                              canEnclose: insights.canGoUpInApprovedMap, enclose: insights.encloseApprovedDiskFolder)
+        case .developer:
+            RoomScreenActions(destination: .developer, canRescan: developer.canScan, isScanning: developer.isScanning,
+                              rescan: developer.scan, stop: developer.stop)
+        case .memory:
+            RoomScreenActions(destination: .memory, canRescan: true, isScanning: insights.isScanningMemory,
+                              rescan: insights.scanMemory)
+        case .activity:
+            RoomScreenActions(destination: .activity)
         }
     }
 
@@ -70,7 +75,7 @@ struct RoomRootView: View {
                 VStack(alignment: .leading, spacing: 24) {
                     switch destination {
                     case .overview:
-                        RoomOverviewView(insights: insights, navigate: navigation.select, refresh: refreshCurrentView)
+                        RoomOverviewView(insights: insights, navigate: navigation.select, refresh: insights.refreshDiskCapacity)
                     case .clean:
                         cachesContent
                             .animation(animate, value: expanded)
@@ -104,7 +109,7 @@ struct RoomRootView: View {
         }
         .frame(minWidth: 800, minHeight: 650)
         .preferredColorScheme(colorScheme)
-        .focusedSceneValue(\.roomOverviewRefresh, destination == .overview ? refreshCurrentView : nil)
+        .focusedSceneValue(\.roomScreen, screenActions)
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 HStack(spacing: 6) {
@@ -327,7 +332,9 @@ struct RoomRootView: View {
 
     private var scanActions: some View {
         HStack(alignment: .center, spacing: 10) {
-            Button(action: refreshCurrentView) {
+            Button {
+                if model.isScanning { model.cancelScan() } else { model.scan() }
+            } label: {
                 Label(scanButtonTitle, systemImage: model.isScanning ? "stop.fill" : "magnifyingglass")
                     .font(.system(size: 13, weight: .semibold))
                     .padding(.horizontal, 4)
@@ -337,7 +344,6 @@ struct RoomRootView: View {
             .controlSize(.large)
             .frame(minHeight: 36)
             .disabled(!model.canScan)
-            .keyboardShortcut("r", modifiers: .command)
             .accessibilityIdentifier("RoomCacheScanButton")
 
             if model.canReviewCleanup {

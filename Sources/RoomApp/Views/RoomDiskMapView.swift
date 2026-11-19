@@ -105,7 +105,6 @@ struct RoomDiskMapView: View {
                     .font(.system(size: 13, weight: .medium))
             }
             .buttonStyle(.glassProminent).controlSize(.large)
-            .keyboardShortcut("r", modifiers: .command)
             .accessibilityIdentifier("RoomDiskScanButton")
         }.fixedSize(horizontal: true, vertical: false)
     }

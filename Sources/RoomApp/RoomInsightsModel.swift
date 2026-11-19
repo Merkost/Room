@@ -315,6 +315,29 @@ final class RoomInsightsModel {
         NSWorkspace.shared.open(url)
     }
 
+    var canRescanDisk: Bool {
+        guard let diskURL else { return false }
+        return fileAccess.scope(for: diskURL) != nil
+    }
+
+    func rescanDisk() {
+        guard !isScanningDisk, let diskURL, let scope = fileAccess.scope(for: diskURL) else { return }
+        scanAuthorizedDisk(url: diskURL, scope: scope)
+    }
+
+    var canGoUpInApprovedMap: Bool {
+        guard let diskURL else { return false }
+        let parent = diskURL.deletingLastPathComponent()
+        return parent.path != diskURL.path && fileAccess.scope(for: parent) != nil
+    }
+
+    func encloseApprovedDiskFolder() {
+        guard !isScanningDisk, let diskURL else { return }
+        let parent = diskURL.deletingLastPathComponent()
+        guard parent.path != diskURL.path, let scope = fileAccess.scope(for: parent) else { return }
+        scanAuthorizedDisk(url: parent, scope: scope)
+    }
+
     func diskGoUp() {
         guard let diskURL else { return }
         let parent = diskURL.deletingLastPathComponent()

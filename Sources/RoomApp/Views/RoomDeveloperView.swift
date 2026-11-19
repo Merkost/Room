@@ -32,7 +32,6 @@ struct RoomDeveloperView: View {
                 .buttonStyle(.glassProminent).controlSize(.large)
                 .disabled(!model.canScan)
                 .accessibilityIdentifier("RoomDeveloperScanButton")
-                .keyboardShortcut("r", modifiers: .command)
             }
 
             if model.locations.isEmpty {

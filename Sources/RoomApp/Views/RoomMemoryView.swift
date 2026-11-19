@@ -35,7 +35,6 @@ struct RoomMemoryView: View {
                 }
                 .buttonStyle(.glass).controlSize(.large)
                 .disabled(insights.isScanningMemory)
-                .keyboardShortcut("r", modifiers: .command)
                 .accessibilityIdentifier("RoomMemoryRefreshButton")
             }
 

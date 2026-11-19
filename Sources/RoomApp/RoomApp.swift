@@ -29,6 +29,19 @@ struct RoomApp: App {
         #endif
     }
 
+    private var isWorking: Bool {
+        #if ROOM_APP_STORE
+        model.isWorking
+        #else
+        model.isWorking || agentWork.isWorking
+        #endif
+    }
+
+    private func openMainWindow() {
+        openWindow(id: "room")
+        NSApp.activate()
+    }
+
     @ViewBuilder private var rootView: some View {
         #if ROOM_APP_STORE
         RoomRootView(model: model, insights: insights, memoryActions: memoryActions, rooms: rooms, navigation: navigation)
@@ -63,23 +76,19 @@ struct RoomApp: App {
         .windowToolbarStyle(.unified)
         .windowBackgroundDragBehavior(.enabled)
         .commands {
+            RoomCommands(windowContext: delegate.commandWindow, menuBarEnabled: menuBarEnabled, isWorking: { isWorking },
+                         rooms: rooms, showMonitor: { delegate.statusMonitor?.showMonitor() },
+                         openTrash: model.openTrash, showWelcome: {
+                insights.requestedWelcome = true
+                openMainWindow()
+            }, navigate: { destination in
+                navigation.select(destination)
+                openMainWindow()
+            })
             #if DEBUG
-            RoomDebugMenuCommands(monitor: { delegate.statusMonitor })
+            RoomDebugMenuCommands(windowContext: delegate.commandWindow, enabled: menuBarEnabled,
+                                  monitor: { delegate.statusMonitor })
             #endif
-            RoomOverviewCommands()
-            CommandGroup(replacing: .newItem) { }
-            CommandGroup(after: .appInfo) {
-                Button("Show Monitor") { delegate.statusMonitor?.showMonitor() }
-                    .keyboardShortcut("m", modifiers: [.command, .shift])
-                    .disabled(!menuBarEnabled)
-                Button(model.isScanning ? "Stop Cache Scan" : "Scan Caches") {
-                    insights.requestedDestination = .clean
-                    if model.isScanning { model.cancelScan() } else { model.scan() }
-                }
-                    .keyboardShortcut("r", modifiers: [.command, .shift])
-                    .disabled(model.isWorking)
-                Button("Open Trash") { model.openTrash() }
-            }
         }
         Settings {
             RoomSettingsView(model: model, insights: insights, rooms: rooms)
@@ -88,19 +97,6 @@ struct RoomApp: App {
         }
         .windowResizability(.contentSize)
 
-    }
-}
-
-private struct RoomOverviewCommands: Commands {
-    @FocusedValue(\.roomOverviewRefresh) private var refresh
-
-    var body: some Commands {
-        CommandGroup(after: .toolbar) {
-            if let refresh {
-                Button("Refresh Free Space") { refresh() }
-                    .keyboardShortcut("r", modifiers: .command)
-            }
-        }
     }
 }
 
@@ -119,6 +115,7 @@ final class RoomApplicationDelegate: NSObject, NSApplicationDelegate {
         #endif
     }
     private(set) var statusMonitor: RoomStatusMonitor?
+    let commandWindow = RoomCommandWindowContext()
 
     func configureMonitor(insights: RoomInsightsModel, cacheModel: RoomViewModel,
                           rooms: RoomRoomsModel, enabled: Bool, openRoom: @escaping () -> Void,
@@ -142,6 +139,19 @@ final class RoomApplicationDelegate: NSObject, NSApplicationDelegate {
             NSApp.applicationIconImage = icon
         }
         NSApp.activate()
+        for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification,
+                     NSWindow.willBeginSheetNotification, NSWindow.didEndSheetNotification,
+                     NSWindow.willCloseNotification] {
+            NotificationCenter.default.addObserver(self, selector: #selector(commandWindowChanged), name: name, object: nil)
+        }
+        commandWindow.update()
+        #if DEBUG
+        RoomDebugMainMenuProbe.start()
+        #endif
+    }
+
+    @objc private func commandWindowChanged() {
+        Task { @MainActor in commandWindow.update() }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
