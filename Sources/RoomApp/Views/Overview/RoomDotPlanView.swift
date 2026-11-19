@@ -5,8 +5,8 @@ struct RoomOverviewPlanGeometry {
     let wall: CGRect
     let goal: CGRect?
     let freeLabelArea: CGRect?
-    let rings: Path
     let contextGrid: Path
+    let dotCenters: [CGPoint]
 
     var free: CGRect? { frame(for: .free) }
     var notMapped: CGRect? { frame(for: .notMapped) }
@@ -38,13 +38,8 @@ struct RoomOverviewPlanGeometry {
                 return rect
             }
         }
-        let rings = Path { path in
-            for dot in layout.dots {
-                let radius = layout.radius
-                path.addEllipse(in: CGRect(x: dot.center.x + wall.minX - radius,
-                                           y: dot.center.y + wall.minY - radius,
-                                           width: 2 * radius, height: 2 * radius))
-            }
+        let dotCenters = layout.dots.map {
+            CGPoint(x: $0.center.x + wall.minX, y: $0.center.y + wall.minY)
         }
         let unmapped = layout.rooms.first(where: { $0.id == .notMapped })?.rect.offsetBy(dx: wall.minX, dy: wall.minY)
         let grid = Path { path in
@@ -56,7 +51,7 @@ struct RoomOverviewPlanGeometry {
                 }
             }
         }
-        return Self(layout: layout, wall: wall, goal: goal, freeLabelArea: freeLabelArea, rings: rings, contextGrid: grid)
+        return Self(layout: layout, wall: wall, goal: goal, freeLabelArea: freeLabelArea, contextGrid: grid, dotCenters: dotCenters)
     }
 }
 
@@ -68,10 +63,15 @@ struct RoomDotPlanView: View {
 
     @Environment(\.roomAccent) private var accent
     @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.roomMotion) private var motion
     @FocusState private var focused: Bool
     @State private var drawing: RoomOverviewPlanGeometry?
     @State private var selection: RoomPlanRoom?
     @State private var hover: RoomPlanRoom?
+    @State private var pointer: CGPoint?
+    @State private var field = RoomWakeField(dotCount: 0, enabled: false)
+    @State private var lastFrame: Date?
+    @State private var didPress = false
 
     private typealias Tokens = RoomTokens.OverviewPlan
 
@@ -85,17 +85,38 @@ struct RoomDotPlanView: View {
         GeometryReader { proxy in
             let inputs = Inputs(plan: plan, size: proxy.size)
             ZStack(alignment: .bottomLeading) {
-                Canvas { context, _ in
-                    if let drawing { draw(drawing, presentation: presentation, in: context) }
+                TimelineView(.animation(paused: field.isAtRest)) { tick in
+                    Canvas { context, _ in
+                        if let drawing { draw(drawing, presentation: presentation, in: context) }
+                    }
+                    .onChange(of: tick.date) { _, date in
+                        advanceWake(to: date)
+                    }
                 }
                 .onContinuousHover { phase in
                     switch phase {
                     case .active(let point):
+                        if pointer != point, let drawing, drawing.wall.contains(point) {
+                            if !field.isAtRest || !drawing.layout.dots.isEmpty {
+                                lastFrame = field.isAtRest ? Date.now : lastFrame
+                                field.pointerMoved(to: point, dots: drawing.dotCenters)
+                            }
+                        }
+                        pointer = point
                         hover = presentation.rows.first { drawing?.frame(for: $0.id)?.contains(point) == true }?.id
                     case .ended:
+                        pointer = nil
                         hover = nil
                     }
                 }
+                .simultaneousGesture(DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        guard !didPress, let drawing, drawing.wall.contains(value.startLocation) else { return }
+                        didPress = true
+                        if field.isAtRest { lastFrame = Date.now }
+                        field.press(at: value.startLocation)
+                    }
+                    .onEnded { _ in didPress = false })
                 HStack {
                     Text(presentation.caption)
                     Spacer(minLength: RoomTokens.Space.row)
@@ -110,7 +131,9 @@ struct RoomDotPlanView: View {
             }
             .onChange(of: inputs, initial: true) { _, inputs in
                 drawing = RoomOverviewPlanGeometry.make(plan: inputs.plan, size: inputs.size)
+                resetWake()
             }
+            .onChange(of: motion) { _, _ in resetWake() }
         }
         .frame(width: nil, height: RoomTokens.Density.calm.planSize.height)
         .focusable()
@@ -166,9 +189,7 @@ struct RoomDotPlanView: View {
             gridContext.fill(geometry.contextGrid, with: .color(RoomTokens.Surface.line2))
             context.stroke(room, with: .color(outline), style: Tokens.dashedWall)
         }
-        let ringOpacity = contrast == .increased ? 1 : RoomTokens.Dots.freeRingOpacity
-        context.stroke(geometry.rings, with: .color(RoomTokens.Ink.secondary.opacity(ringOpacity)),
-                       lineWidth: RoomTokens.Dots.freeRingStroke)
+        drawDots(geometry, context: context)
         if belowGoal, let free = geometry.free?.insetBy(dx: Tokens.roomGap, dy: Tokens.roomGap), !free.isEmpty {
             context.stroke(Path(roundedRect: free, cornerRadius: RoomTokens.Radius.planRoom),
                            with: .color(RoomTokens.Status.elevated), lineWidth: Tokens.elevatedWall)
@@ -191,6 +212,50 @@ struct RoomDotPlanView: View {
         drawRoomLabels(presentation, geometry: geometry, context: context)
     }
 
+    private func resetWake() {
+        field = RoomWakeField(dotCount: drawing?.dotCenters.count ?? 0, enabled: motion.isFull)
+        lastFrame = nil
+    }
+
+    private func advanceWake(to date: Date) {
+        guard let drawing, !field.isAtRest else { return }
+        let dt = lastFrame.map { date.timeIntervalSince($0) * 1_000 } ?? 16
+        field.step(dtMS: dt, dots: drawing.dotCenters)
+        lastFrame = field.isAtRest ? nil : date
+    }
+
+    private func drawDots(_ geometry: RoomOverviewPlanGeometry, context: GraphicsContext) {
+        var paths: [RoomPlanRoom: Path] = [:]
+        for (index, dot) in geometry.layout.dots.enumerated() {
+            let center = geometry.dotCenters[index]
+            let rest = geometry.layout.radius
+            let radius = index < field.energy.count ? field.radius(index, rest: rest) : rest
+            paths[dot.room, default: Path()].addEllipse(in: CGRect(
+                x: center.x - radius, y: center.y - radius, width: 2 * radius, height: 2 * radius))
+        }
+        for (room, path) in paths {
+            switch room {
+            case .free:
+                let opacity = contrast == .increased ? 1 : RoomTokens.Dots.freeRingOpacity
+                context.stroke(path, with: .color(RoomTokens.Ink.secondary.opacity(opacity)),
+                               lineWidth: RoomTokens.Dots.freeRingStroke)
+            case .kind(let key):
+                if let kind = RoomTokens.Kind(rawValue: key) {
+                    let focusedKind = hover ?? selection
+                    let dims = focusedKind.map { $0 != room } ?? false
+                    context.fill(path, with: .color(kind.mark.opacity(dims ? RoomTokens.OverviewPlan.dimmedKind : 1)))
+                }
+            case .notMapped: break
+            }
+        }
+        for ring in field.rings {
+            guard let style = RoomWakeField.drawnRing(ageMS: ring.ageMS) else { continue }
+            let rect = CGRect(x: ring.center.x - style.radius, y: ring.center.y - style.radius,
+                              width: 2 * style.radius, height: 2 * style.radius)
+            context.stroke(Path(ellipseIn: rect), with: .color(accent.fill.opacity(style.opacity)), lineWidth: Tokens.wall)
+        }
+    }
+
     private func drawRoomLabels(_ presentation: RoomOverviewPlanPresentation, geometry: RoomOverviewPlanGeometry,
                                 context: GraphicsContext) {
         if let free = geometry.freeLabelArea, let row = presentation.rows.first(where: { $0.id == .free }),
@@ -199,6 +264,15 @@ struct RoomDotPlanView: View {
             let size = free.offsetBy(dx: 0, dy: Tokens.labelLineHeight)
             drawLabel(row.visualSize, in: size, font: RoomTokens.Typography.caption,
                       ink: RoomTokens.Ink.secondary, context: context)
+        }
+        for row in presentation.rows.filter({ if case .kind = $0.id { true } else { false } }).prefix(3) {
+            guard let room = geometry.frame(for: row.id) else { continue }
+            let bounds = room.insetBy(dx: Tokens.labelInset, dy: Tokens.labelInset)
+            let opacity = (motion.isFull ? pointer : nil).map {
+                RoomPure.lampOpacity(distance: hypot($0.x - bounds.midX, $0.y - bounds.midY))
+            } ?? RoomTokens.OverviewPlan.quietLabelOpacity
+            drawLabel(row.name, in: bounds, font: RoomTokens.Typography.micro,
+                      ink: RoomTokens.Ink.graphite.opacity(opacity), context: context)
         }
         if let room = geometry.notMapped, let row = presentation.rows.first(where: { $0.id == .notMapped }) {
             let bounds = room.insetBy(dx: Tokens.labelInset, dy: Tokens.labelInset)

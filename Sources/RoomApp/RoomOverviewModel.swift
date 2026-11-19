@@ -17,10 +17,13 @@ final class RoomOverviewModel {
     }
 
     func update(capacity: RoomVolumeCapacity?, goalBytes: Int64?, caches: RoomCachesCheck? = nil,
-                invalidatedAt: Date? = nil, calendar: Calendar = .current) {
+                invalidatedAt: Date? = nil, calendar: Calendar = .current,
+                homeKinds: RoomHomeKinds? = nil, mapActionAvailable: Bool = false,
+                mapping: RoomOverviewMapping? = nil, stoppedMapping: Bool = false) {
         let date = now()
         let next = Self.makeSnapshot(capacity: capacity, goalBytes: goalBytes, caches: caches,
-                                     invalidatedAt: invalidatedAt, now: date)
+                                     invalidatedAt: invalidatedAt, now: date, homeKinds: homeKinds,
+                                     mapActionAvailable: mapActionAvailable, mapping: mapping, stoppedMapping: stoppedMapping)
         if snapshot != next { snapshot = next }
         let nextGreeting = Self.greeting(at: date, calendar: calendar)
         if greeting != nextGreeting { greeting = nextGreeting }
@@ -39,10 +42,13 @@ final class RoomOverviewModel {
     }
 
     private static func makeSnapshot(capacity: RoomVolumeCapacity?, goalBytes: Int64?, caches: RoomCachesCheck? = nil,
-                                     invalidatedAt: Date? = nil, now: Date) -> RoomOverviewSnapshot {
+                                     invalidatedAt: Date? = nil, now: Date, homeKinds: RoomHomeKinds? = nil,
+                                     mapActionAvailable: Bool = false, mapping: RoomOverviewMapping? = nil,
+                                     stoppedMapping: Bool = false) -> RoomOverviewSnapshot {
         RoomOverviewSnapshot.make(.init(capacityBytes: capacity?.capacityBytes, freeBytes: capacity?.freeBytes,
             goalBytes: goalBytes.map(RoomMenuBarSettings.clampGoalBytes), caches: caches, cachesInvalidatedAt: invalidatedAt,
-            now: now, hidden: false), format: RoomFormat.overviewBytes)
+            now: now, hidden: false, homeKinds: homeKinds, mapActionAvailable: mapActionAvailable,
+            mapping: mapping, stoppedMapping: stoppedMapping), format: RoomFormat.overviewBytes)
     }
 
     private static func greeting(at date: Date, calendar: Calendar = .current) -> String {

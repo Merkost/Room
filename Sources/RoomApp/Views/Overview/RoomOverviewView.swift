@@ -24,14 +24,23 @@ struct RoomOverviewView: View {
         let goalBytes: Int64?
         let caches: RoomCachesCheck?
         let invalidatedAt: Date?
+        let homeKinds: RoomHomeKinds?
+        let mapActionAvailable: Bool
+        let mapping: RoomOverviewMapping?
+        let stoppedMapping: Bool
     }
 
     private var inputs: Inputs {
         let saved = cacheModel?.cachesCheckStore.invalidatedAt
         let known = cacheModel?.activity.first?.date
+        let mapping: RoomOverviewMapping? = insights.isMappingHome ? RoomOverviewMapping(
+            files: insights.diskProgress?.visitedFiles ?? 0, allocatedBytes: insights.diskProgress?.allocatedBytes ?? 0,
+            finishedKinds: insights.homeMappingKinds) : nil
         return Inputs(capacity: insights.volumeCapacity, sampledAt: insights.diskCapacitySampledAt,
                goalBytes: goalEnabled ? Int64(storedGoal) : nil,
-               caches: cacheModel?.cachesCheckStore.check, invalidatedAt: [saved, known].compactMap { $0 }.max())
+               caches: cacheModel?.cachesCheckStore.check, invalidatedAt: [saved, known].compactMap { $0 }.max(),
+               homeKinds: insights.homeKinds, mapActionAvailable: insights.homeTree?.cancelled != false,
+               mapping: mapping, stoppedMapping: insights.stoppedMappingHome)
     }
 
     var body: some View {
@@ -48,6 +57,9 @@ struct RoomOverviewView: View {
                 RoomDotPlanView(plan: plan, belowGoal: snapshot.state == .belowGoal, hidden: hidden, openDiskMap: openDiskMap)
             }
             actions(snapshot)
+            if snapshot.mapLinkAvailable {
+                link(RoomOverviewCopy.mapMac, accessibilityLabel: RoomOverviewCopy.mapMac, action: insights.scanHome)
+            }
             if let caption = model.cacheCaption {
                 Text(caption)
                     .font(RoomTokens.Typography.body)
@@ -65,6 +77,10 @@ struct RoomOverviewView: View {
             }
         }
         .onAppear { updateCapacityMonitoring() }
+        .task {
+            await insights.refreshHomeMap()
+            await insights.observeTreeChanges()
+        }
         .onChange(of: scenePhase) { _, _ in
             updateCapacityMonitoring()
             if isActive { updateSnapshot(inputs) }
@@ -104,7 +120,8 @@ struct RoomOverviewView: View {
 
     private func updateSnapshot(_ inputs: Inputs) {
         model.update(capacity: inputs.capacity, goalBytes: inputs.goalBytes,
-                     caches: inputs.caches, invalidatedAt: inputs.invalidatedAt)
+                     caches: inputs.caches, invalidatedAt: inputs.invalidatedAt, homeKinds: inputs.homeKinds,
+                     mapActionAvailable: inputs.mapActionAvailable, mapping: inputs.mapping, stoppedMapping: inputs.stoppedMapping)
     }
 
     private func answerGroup(_ snapshot: RoomOverviewSnapshot) -> some View {
@@ -134,6 +151,10 @@ struct RoomOverviewView: View {
     private func actions(_ snapshot: RoomOverviewSnapshot) -> some View {
         Group {
             switch snapshot.action {
+            case .mapMac:
+                Button(snapshot.actionTitle, action: insights.scanHome).roomPrimary(accent)
+            case .stopMapping:
+                Button(snapshot.actionTitle, action: insights.cancelDiskScan).roomSecondary()
             case .retryCapacity:
                 link(snapshot.actionTitle, accessibilityLabel: snapshot.accessibilityAction, action: retryCapacity)
                     .transition(.opacity)

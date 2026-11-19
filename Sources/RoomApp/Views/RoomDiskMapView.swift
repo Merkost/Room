@@ -125,6 +125,7 @@ struct RoomDiskMapView: View {
             Button("Add Folder…", action: insights.chooseDiskFolder)
             #if !ROOM_APP_STORE
             Button("Home", action: insights.scanHome)
+            Button("Map Applications…", action: insights.mapApplications)
             Button("Full Disk Access…", action: insights.openPrivacySettings)
             #endif
             Button("Manage in Settings…") {

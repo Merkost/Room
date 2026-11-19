@@ -70,6 +70,8 @@ enum RoomTokens {
     }
 
     enum OverviewPlan {
+        static let dimmedKind = 0.18
+        static let quietLabelOpacity = 0.7
         static let pad: CGFloat = 5
         static let captionHeight: CGFloat = 14
         static let outerRadius: CGFloat = 10

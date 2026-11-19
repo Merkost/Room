@@ -9,21 +9,41 @@ nonisolated struct RoomOverviewInput: Sendable {
     var cachesInvalidatedAt: Date?            // persisted when Room starts any cache move/restore
     var now: Date
     var hidden: Bool
+    var homeKinds: RoomHomeKinds? = nil
+    var mapActionAvailable = false
+    var mapping: RoomOverviewMapping? = nil
+    var stoppedMapping = false
+}
+
+nonisolated struct RoomOverviewMapping: Equatable, Sendable {
+    var files: Int
+    var allocatedBytes: Int64
+    var finishedKinds: [String: Int64]
 }
 
 nonisolated enum RoomOverviewState: Equatable, Sendable {
-    case capacityUnreadable, belowGoal, notMapped
+    case capacityUnreadable, belowGoal, notMapped, mapped, mapping, mappingStopped
 }
 
 nonisolated enum RoomOverviewAction: Equatable, Sendable {
-    case retryCapacity, checkCaches, makeRoom(bytes: Int64, partial: Bool), usingSpaceOnly
+    case retryCapacity, checkCaches, makeRoom(bytes: Int64, partial: Bool), usingSpaceOnly, mapMac, stopMapping
 }
 
 nonisolated struct RoomOverviewPlanInput: Equatable, Sendable {
     let capacityBytes: Int64
     let freeBytes: Int64
     let goalBytes: Int64?                     // dashed goal outline; nil below goal or when disabled
-    var notMappedBytes: Int64 { capacityBytes - freeBytes }
+    var homeKinds: RoomHomeKinds?
+    var mapping: RoomOverviewMapping?
+    var kindValues: [(String, Double)] {
+        if let mapping {
+            let used = capacityBytes - freeBytes
+            guard mapping.finishedKinds.values.reduce(0, +) <= used else { return [] }
+            return mapping.finishedKinds.sorted { $0.key < $1.key }.map { ($0.key, Double($0.value) / 1e9) }
+        }
+        return homeKinds?.kinds ?? []
+    }
+    var notMappedBytes: Int64 { max(0, capacityBytes - freeBytes - kindValues.reduce(0) { $0 + Int64(($1.1 * 1e9).rounded()) }) }
     var capacityGB: Double { Double(capacityBytes) / 1e9 }
     var gbPerDot: Double { RoomPure.gbPerDot(capacityGB: capacityGB) }
     var fitsDotBudget: Bool { capacityGB / gbPerDot <= Double(RoomPure.targetDots) }
@@ -33,7 +53,7 @@ nonisolated struct RoomOverviewPlanInput: Equatable, Sendable {
     var notMappedDots: Int { 0 }
 
     func layout(size: CGSize) -> RoomDotPlan {
-        RoomDotPlan.make(capacityGB: capacityGB, freeGB: Double(freeBytes) / 1e9, kinds: [], size: size)
+        RoomDotPlan.make(capacityGB: capacityGB, freeGB: Double(freeBytes) / 1e9, kinds: kindValues, size: size)
     }
 }
 
@@ -47,6 +67,7 @@ nonisolated struct RoomOverviewSnapshot: Equatable, Sendable {
     let accessibilityAction: String
     let plan: RoomOverviewPlanInput?
     let cachesCheckedAt: Date?
+    var mapLinkAvailable = false
 
     static let cacheFreshness: TimeInterval = 86_400
     static let actionMinimumBytes: Int64 = 100_000_000
@@ -74,17 +95,28 @@ nonisolated struct RoomOverviewSnapshot: Equatable, Sendable {
             return check
         }
         let action: RoomOverviewAction
-        if let fresh, fresh.bytes >= actionMinimumBytes {
+        if input.mapping != nil {
+            action = .stopMapping
+        } else if input.mapActionAvailable, fresh == nil {
+            action = .mapMac
+        } else if let fresh, fresh.bytes >= actionMinimumBytes {
             action = .makeRoom(bytes: fresh.bytes, partial: fresh.partial)
         } else if let fresh, !fresh.partial {
             action = .usingSpaceOnly
         } else {
             action = .checkCaches
         }
-        let rawAnswer = String(localized: "overview.answer", defaultValue: "You have \(format(free)) of room.")
+        let freeAnswer = String(localized: "overview.answer", defaultValue: "You have \(format(free)) of room.")
+        let rawAnswer = input.mapping == nil ? freeAnswer : String(localized: "overview.mapping.title", defaultValue: "Room is looking.")
         let rawSentence: String
         let below = goal.map { free < $0 } ?? false
-        if let goal {
+        if let mapping = input.mapping {
+            let size = format(mapping.allocatedBytes)
+            let files = mapping.files.formatted()
+            rawSentence = String(localized: "overview.mapping.progress", defaultValue: "Measured so far: \(size) in \(files) files.")
+        } else if input.stoppedMapping {
+            rawSentence = String(localized: "overview.mapping.stopped", defaultValue: "Mapping stopped. The plan shows what was measured.")
+        } else if let goal {
             if below {
                 rawSentence = String(localized: "overview.goal.below",
                     defaultValue: "\(format(goal - free)) under your \(format(goal)) goal.")
@@ -106,6 +138,12 @@ nonisolated struct RoomOverviewSnapshot: Equatable, Sendable {
         let rawTitle: String
         let spokenAction: String
         switch action {
+        case .mapMac:
+            rawTitle = RoomOverviewCopy.mapMac
+            spokenAction = rawTitle
+        case .stopMapping:
+            rawTitle = String(localized: "overview.mapping.stop", defaultValue: "Stop mapping")
+            spokenAction = rawTitle
         case .retryCapacity:
             rawTitle = RoomOverviewCopy.retry
             spokenAction = rawTitle
@@ -123,13 +161,21 @@ nonisolated struct RoomOverviewSnapshot: Equatable, Sendable {
             spokenAction = String(localized: "overview.action.makeRoom.a11y",
                 defaultValue: "Make room, \(spokenSize) at last check. Opens Caches.")
         }
-        let snapshot = Self(state: below ? .belowGoal : .notMapped,
+        let state: RoomOverviewState
+        if input.mapping != nil { state = .mapping }
+        else if input.stoppedMapping { state = .mappingStopped }
+        else if below { state = .belowGoal }
+        else if input.homeKinds != nil { state = .mapped }
+        else { state = .notMapped }
+        let snapshot = Self(state: state,
                             answer: rawAnswer, sentence: rawSentence, action: action,
                             actionTitle: rawTitle, accessibilityAnswer:
                                 "\(rawAnswer) \(rawSentence.replacingOccurrences(of: "≥ ", with: "at least "))",
                             accessibilityAction: spokenAction,
-                            plan: .init(capacityBytes: capacity, freeBytes: free, goalBytes: below ? nil : goal),
-                            cachesCheckedAt: recorded?.at)
+                            plan: .init(capacityBytes: capacity, freeBytes: free, goalBytes: below ? nil : goal,
+                                        homeKinds: input.homeKinds, mapping: input.mapping),
+                            cachesCheckedAt: recorded?.at,
+                            mapLinkAvailable: input.mapActionAvailable && action != .mapMac && action != .stopMapping)
         return input.hidden ? snapshot.hidingSizes() : snapshot
     }
 
@@ -149,11 +195,13 @@ nonisolated struct RoomOverviewSnapshot: Equatable, Sendable {
                     sentence: RoomPure.mask(sentence, first: .max, lettersToo: false), action: action,
                     actionTitle: title,
                     accessibilityAnswer: String(localized: "overview.answer.hidden.a11y", defaultValue: "Free space and goal hidden."),
-                    accessibilityAction: spokenAction, plan: plan, cachesCheckedAt: cachesCheckedAt)
+                    accessibilityAction: spokenAction, plan: plan, cachesCheckedAt: cachesCheckedAt,
+                    mapLinkAvailable: mapLinkAvailable)
     }
 }
 
 nonisolated enum RoomOverviewCopy {
+    static var mapMac: String { String(localized: "overview.action.map", defaultValue: "Map your Mac") }
     static var retry: String { String(localized: "common.retry", defaultValue: "Try again") }
     static var usingSpace: String {
         String(localized: "overview.action.using", defaultValue: "See what is using space")

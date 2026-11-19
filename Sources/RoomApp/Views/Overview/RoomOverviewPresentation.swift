@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import RoomCore
 
 /// Only this presentation, never the measured plan input, is exposed to accessibility.
 nonisolated struct RoomOverviewPlanPresentation {
@@ -21,19 +22,24 @@ nonisolated struct RoomOverviewPlanPresentation {
     init(plan: RoomOverviewPlanInput, hidden: Bool, format: (Int64) -> String) {
         let unit = format(Int64(plan.gbPerDot * 1e9))
         let scale = String(localized: "plan.unit", defaultValue: "1 dot = about \(unit)")
-        caption = Self.visible(scale, hidden: hidden)
+        let captionText = plan.homeKinds.map {
+            let day = $0.mappedAt.formatted(.dateTime.day().month())
+            return String(localized: "plan.mapped", defaultValue: "\(scale) · mapped \(day)")
+        } ?? scale
+        caption = Self.visible(captionText, hidden: hidden)
         accessibilityLabel = hidden
             ? String(localized: "plan.a11y.hidden", defaultValue: "Storage plan. Sizes hidden.")
             : String(localized: "plan.a11y", defaultValue: "Storage plan, one dot is about \(unit).")
-        let freeDots = plan.freeDots
-        let ordered: [(RoomPlanRoom, Int64)] = [
-            (.free, plan.freeBytes),
-            (.notMapped, plan.notMappedBytes),
-        ]
+        let ordered: [(RoomPlanRoom, Int64)] = [(.free, plan.freeBytes), (.notMapped, plan.notMappedBytes)] +
+            plan.kindValues.map { (.kind($0.0), Int64(($0.1 * 1e9).rounded())) }
         rows = ordered.filter { $0.0 == .free || $0.1 > 0 }.sorted { $0.1 > $1.1 }.map { id, bytes in
-            let free = id == .free
-            let name = free ? String(localized: "plan.free", defaultValue: "Free")
-                : String(localized: "plan.notMapped", defaultValue: "Not mapped yet")
+            let mapped = id != .notMapped
+            let name: String
+            switch id {
+            case .free: name = String(localized: "plan.free", defaultValue: "Free")
+            case .notMapped: name = String(localized: "plan.notMapped", defaultValue: "Not mapped yet")
+            case .kind(let kind): name = StorageKind(rawValue: kind)?.title ?? kind
+            }
             let size = format(bytes)
             if hidden {
                 let redacted = String(localized: "plan.hidden", defaultValue: "hidden")
@@ -43,13 +49,14 @@ nonisolated struct RoomOverviewPlanPresentation {
             }
             let dots: String
             let spoken: String
-            if free {
-                if bytes > 0, freeDots == 0 {
+            if mapped {
+                let dotsForRoom = RoomPure.dotAlloc([(key: name, gb: Double(bytes) / 1e9)], unit: plan.gbPerDot)[0].dots
+                if bytes > 0, dotsForRoom == 0 {
                     dots = String(localized: "plan.underUnit", defaultValue: "under \(unit)")
-                } else if freeDots == 0 {
+                } else if dotsForRoom == 0 {
                     dots = String(localized: "plan.noDots", defaultValue: "No dots")
                 } else {
-                    dots = String(localized: "plan.dotCount", defaultValue: "about \(freeDots) dots")
+                    dots = String(localized: "plan.dotCount", defaultValue: "about \(dotsForRoom) dots")
                 }
                 spoken = String(localized: "plan.row.free", defaultValue: "\(name), \(size), \(dots)")
             } else {

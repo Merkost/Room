@@ -17,6 +17,11 @@ final class RoomInsightsModel {
     private(set) var isScanningDisk = false
     private(set) var diskProgress: DiskScanProgress?
     private(set) var diskURL: URL?
+    private(set) var homeTree: RoomStoredTree?
+    private(set) var applicationsTree: RoomStoredTree?
+    private(set) var isMappingHome = false
+    private(set) var stoppedMappingHome = false
+    private(set) var homeMappingKinds: [String: Int64] = [:]
     private(set) var statusMessage: String?
     var accessFolders: [RoomAccessFolder] { fileAccess.folders }
     var accessNote: String? { fileAccess.note }
@@ -286,6 +291,12 @@ final class RoomInsightsModel {
         let location = diskLocation(url: visibleRoot, scope: scope)
         let isHome = visibleRoot.standardizedFileURL == suggestedHome.standardizedFileURL
         let displayPath = diskDisplayPath(visibleRoot)
+        let mapsHome = isHome && spliceAt == nil
+        isMappingHome = mapsHome
+        if mapsHome {
+            stoppedMappingHome = false
+            homeMappingKinds = [:]
+        }
         if diskURL?.standardizedFileURL != visibleRoot.standardizedFileURL { diskReport = nil }
         diskURL = visibleRoot
         diskMap.begin(url: visibleRoot)
@@ -309,6 +320,13 @@ final class RoomInsightsModel {
                     guard let self, self.diskGeneration == generation, self.isScanningDisk else { return }
                     self.diskProgress = progress
                     self.diskMap.accept(progress)
+                    if mapsHome {
+                        for folder in progress.completedTopLevel {
+                            for (kind, bytes) in folder.kindBytes {
+                                self.homeMappingKinds[kind, default: 0] += bytes
+                            }
+                        }
+                    }
                 }
             }
             guard let self, self.diskGeneration == generation else { return }
@@ -321,6 +339,14 @@ final class RoomInsightsModel {
             }
             self.diskMap.record(mapped, rootID: rootID, displayPath: displayPath, isHome: isHome)
             self.diskReport = result
+            if mapsHome {
+                self.homeTree = self.diskMap.current
+                self.isMappingHome = false
+                self.stoppedMappingHome = result.cancelled
+            }
+            #if !ROOM_APP_STORE
+            if visibleRoot.standardizedFileURL == self.applicationsFolder { self.applicationsTree = self.diskMap.current }
+            #endif
             if let location, let map = self.diskMap.current {
                 await self.updateTreeApprovals()
                 await self.treeStore.record(map, location: location, isHome: isHome)
@@ -394,6 +420,7 @@ final class RoomInsightsModel {
             self.diskURL = nil
             diskMap.removeCurrent()
             isScanningDisk = false
+            isMappingHome = false
         }
         fileAccess.forget(id: id)
         Task {
@@ -441,6 +468,33 @@ final class RoomInsightsModel {
         }
     }
 
+    var homeKinds: RoomHomeKinds? {
+        guard let homeTree, let volumeCapacity else { return nil }
+        var roots = [(path: suggestedHome.standardizedFileURL.path, map: homeTree)]
+        #if !ROOM_APP_STORE
+        if let apps = applicationsTree, !apps.cancelled, fileAccess.scope(for: applicationsFolder) != nil {
+            roots.append((path: applicationsFolder.path, map: apps))
+        }
+        #endif
+        return try? RoomHomeMap.kinds(roots: roots, capacityBytes: volumeCapacity.capacityBytes,
+            freeBytes: volumeCapacity.freeBytes, capacityVolumeUUID: volumeCapacity.volumeID).get()
+    }
+
+    private var applicationsFolder: URL { URL(fileURLWithPath: "/Applications", isDirectory: true) }
+
+    #if !ROOM_APP_STORE
+    func mapApplications() { scanDisk(url: applicationsFolder) }
+    #endif
+
+    func refreshHomeMap() async {
+        if !isMappingHome, !stoppedMappingHome { homeTree = await treeStore.home() }
+        #if !ROOM_APP_STORE
+        if let scope = fileAccess.scope(for: applicationsFolder) {
+            applicationsTree = await treeStore.current(rootID: diskRootID(url: applicationsFolder, scope: scope))
+        }
+        #endif
+    }
+
     func restoreDiskMap() async {
         guard !restoredDiskMap else { return }
         restoredDiskMap = true
@@ -452,6 +506,7 @@ final class RoomInsightsModel {
     func observeTreeChanges() async {
         let updates = await treeStore.changes
         for await id in updates {
+            await refreshHomeMap()
             guard diskMap.current?.rootID == id, !isScanningDisk else { continue }
             let root = await treeStore.root(for: id)
             guard diskMap.current?.rootID == id, !isScanningDisk else { continue }
