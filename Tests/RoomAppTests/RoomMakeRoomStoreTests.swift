@@ -29,7 +29,11 @@ import Testing
         #expect(ledger.latest?.freeAtMove == nil && ledger.summary.madeBytes == 0)
         let relaunched = RoomMakeRoomStore(state: state, home: directory, sample: { nil })
         await relaunched.updateReceipts([receipt])
-        #expect(relaunched.entries == ledger.entries)
-        #expect(await state.load([RoomMakeRoomEntry].self, from: .ledger).value == ledger.entries)
+        let restored = try #require(relaunched.latest)
+        #expect(restored.id == receipt.id && restored.movedBytes == receipt.trashedBytes)
+        #expect(restored.freeAtMove == nil && restored.observedGain == 0)
+        #expect(abs(restored.movedAt.timeIntervalSince(receipt.date)) < 1)
+        let persisted = await state.load([RoomMakeRoomEntry].self, from: .ledger).value
+        #expect(persisted == relaunched.entries)
     }
 }

@@ -86,7 +86,7 @@ package nonisolated enum RoomMakeRoomLedger {
                         sample: RoomCapacitySample?, now: Date) -> [RoomMakeRoomEntry] {
         guard let sample else { return entries }
         func attributable(_ e: RoomMakeRoomEntry) -> Bool {
-            e.freeAtMove != nil && e.lastFree != nil && e.volumeDevice == sample.device
+            e.movedBytes > noiseBytes && e.freeAtMove != nil && e.lastFree != nil && e.volumeDevice == sample.device
                 && now.timeIntervalSince(e.lastChecked) <= maxCheckGap
         }
         func newly(_ e: RoomMakeRoomEntry) -> Int64 {

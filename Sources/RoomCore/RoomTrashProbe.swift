@@ -40,6 +40,7 @@ package nonisolated enum RoomTrashProbe {
             var stale = false
             let url = try URL(resolvingBookmarkData: data, options: [.withSecurityScope, .withoutUI],
                               relativeTo: nil, bookmarkDataIsStale: &stale)
+            guard !stale else { return .failed }
             return .resolved(path: url.roomLexicallyNormalized.path)
         } catch CocoaError.fileNoSuchFile {
             return .noSuchFile
