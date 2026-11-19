@@ -12,10 +12,16 @@ struct RoomCachesView: View {
     @Environment(\.roomAccent) private var accent
     @Environment(\.roomMotion) private var motion
     @State private var filter = Filter.clearable
+    @State private var undo: Undo?
     @FocusState private var focusedSource: String?
 
     private enum Filter: String, CaseIterable {
         case clearable = "Clearable", kept = "Kept", all = "All"
+    }
+
+    private struct Undo: Equatable {
+        let rules: Set<UUID>
+        let name: String
     }
 
     private var rows: [RoomSource] {
@@ -75,8 +81,21 @@ struct RoomCachesView: View {
             if !model.scanIssues.isEmpty {
                 Button("See scan notes", action: showScanNotes).roomLink(accent)
             }
+            if let undo {
+                HStack {
+                    Text("Room won’t suggest \(undo.name) again.")
+                    Button("Undo") { restoreSuggestion(undo) }.roomLink(accent)
+                        .disabled(model.isScanning || model.isWorking)
+                }
+                .font(RoomTokens.Typography.caption)
+            }
         }
         .foregroundStyle(RoomTokens.Ink.graphite)
+        .task(id: undo) {
+            guard undo != nil else { return }
+            do { try await Task.sleep(for: .seconds(8)) } catch { return }
+            undo = nil
+        }
     }
 
     private var subtitle: String {
@@ -182,7 +201,8 @@ struct RoomCachesView: View {
                 RoomCachesRow(source: source, selected: model.selection.contains(source.id),
                     canSelect: model.hasReport && !model.isWorking && !model.isScanning && !source.isPartial && source.isAvailable,
                     focus: $focusedSource, format: format, select: { model.toggleSelection(id: source.id) },
-                    inspect: { inspect(source) }, reveal: { model.reveal(source: source) })
+                    inspect: { inspect(source) }, reveal: { model.reveal(source: source) },
+                    neverSuggest: source.isAvailable && model.ignoreStore != nil ? { neverSuggest(source) } : nil)
             }
             if rows.isEmpty { Text("No sources in this view.").font(RoomTokens.Typography.caption) }
         }
@@ -228,4 +248,18 @@ struct RoomCachesView: View {
     }
 
     private func format(_ bytes: Int64) -> String { RoomFormat.overviewBytes(bytes) }
+
+    private func neverSuggest(_ source: RoomSource) {
+        Task {
+            let ids = await model.neverSuggest(source)
+            if !ids.isEmpty { undo = Undo(rules: ids, name: source.name) }
+        }
+    }
+
+    private func restoreSuggestion(_ removed: Undo) {
+        Task {
+            await model.removeIgnoreRules(removed.rules)
+            if undo == removed { undo = nil }
+        }
+    }
 }

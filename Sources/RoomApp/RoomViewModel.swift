@@ -10,6 +10,7 @@ final class RoomViewModel {
     let makeRoomStore: RoomMakeRoomStore?
     @ObservationIgnored private let mapStore: RoomTreeStore?
     let activityCenter: RoomActivityCenter?
+    let ignoreStore: RoomIgnoreStore?
     private(set) var sources: [RoomSource] = []
     private(set) var protectedSources: [RoomProtectedSource] = []
     private(set) var selection: Set<String> = []
@@ -42,6 +43,10 @@ final class RoomViewModel {
     @ObservationIgnored private var scanGeneration = UUID()
     @ObservationIgnored private var sourceGroups: [String: [CacheGroup]] = [:]
     @ObservationIgnored private var movedEntryIDs: Set<UUID> = []
+    @ObservationIgnored private var ignoredEntryIDs: Set<UUID> = []
+    #if !ROOM_APP_STORE
+    @ObservationIgnored private var checkingWeekly = false
+    #endif
 
     #if ROOM_APP_STORE
     @ObservationIgnored private let fileAccess = RoomFileAccess.shared
@@ -126,10 +131,11 @@ final class RoomViewModel {
 
     init(engine: CacheEngine? = nil, cachesCheckStore: RoomCachesCheckStore = RoomCachesCheckStore(),
          makeRoomStore: RoomMakeRoomStore? = nil, activityCenter: RoomActivityCenter? = nil,
-         mapStore: RoomTreeStore? = nil) {
+         ignoreStore: RoomIgnoreStore? = nil, mapStore: RoomTreeStore? = nil) {
         self.cachesCheckStore = cachesCheckStore
         self.makeRoomStore = makeRoomStore
         self.activityCenter = activityCenter
+        self.ignoreStore = ignoreStore
         self.mapStore = mapStore
         #if ROOM_APP_STORE
         let initialEngine = engine ?? Self.makeStoreEngine(approvedFolders: RoomFileAccess.shared.folders.map(\.url))
@@ -212,6 +218,7 @@ final class RoomViewModel {
         scanLocationCount = 0
         currentScanPath = "Preparing cache and temporary locations…"
         scanTask = Task { [weak self, engine] in
+            await self?.ignoreStore?.load()
             #if ROOM_APP_STORE
             let scopes = approvedFolders.map { ($0, $0.startAccessingSecurityScopedResource()) }
             defer { Self.endStoreReadAccess(scopes) }
@@ -296,7 +303,8 @@ final class RoomViewModel {
     }
 
     private func entryIDs(for sourceID: String) -> Set<UUID> {
-        Set(sourceGroups[sourceID, default: []].flatMap(\.eligibleEntries).map(\.id)).subtracting(movedEntryIDs)
+        Set(sourceGroups[sourceID, default: []].flatMap(\.eligibleEntries).map(\.id))
+            .subtracting(movedEntryIDs).subtracting(ignoredEntryIDs)
     }
 
     func cleanSelected() async {
@@ -424,6 +432,80 @@ final class RoomViewModel {
         NSWorkspace.shared.activateFileViewerSelecting(roots)
     }
 
+    func neverSuggest(_ source: RoomSource) async -> Set<UUID> {
+        guard !isScanning, !isWorking else { return [] }
+        isWorking = true
+        defer { isWorking = false }
+        return await addIgnoreLocations(sourceGroups[source.id, default: []].map(\.rootURL))
+    }
+
+    func chooseIgnoreLocation() async {
+        guard !isScanning, !isWorking else { return }
+        isWorking = true
+        defer { isWorking = false }
+        let folder = await RoomNativeFolderPicker.shared.choose(title: "Never Suggest",
+            message: "Choose a folder whose caches Room should keep.", prompt: "Add Folder", initialURL: nil)
+        if let folder { _ = await addIgnoreLocations([folder]) }
+    }
+
+    func removeIgnoreRules(_ ids: Set<UUID>) async {
+        guard !isScanning, !isWorking, let ignoreStore else { return }
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            try await ignoreStore.remove(ids)
+            applyIgnoreChanges()
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    private func addIgnoreLocations(_ locations: [URL]) async -> Set<UUID> {
+        guard !isScanning, let ignoreStore else { return [] }
+        do {
+            let approved = try locations.map { url -> (url: URL, accessFolderID: String?) in
+                #if ROOM_APP_STORE
+                let path = url.standardizedFileURL.path
+                let folder = fileAccess.folders.filter { folder in
+                    let approvedPath = folder.url.standardizedFileURL.path
+                    return path == approvedPath || path.hasPrefix(approvedPath + "/")
+                }.max { $0.url.path.count < $1.url.path.count }
+                guard let folder else { throw RoomIgnoreError.outsideApprovedFolder }
+                return (url, folder.id)
+                #else
+                return (url, nil)
+                #endif
+            }
+            let added = try await ignoreStore.add(approved)
+            if !added.isEmpty { applyIgnoreChanges() }
+            return added
+        } catch {
+            errorMessage = error.localizedDescription
+            return []
+        }
+    }
+
+    private func applyIgnoreChanges() {
+        guard let report, !isScanning else { return }
+        apply(report, selectInitially: false)
+        if let at = lastScanned {
+            cachesCheckStore.save(.init(at: at, bytes: clearableBytes, partial: hasPartialMeasurements))
+        }
+    }
+
+    #if !ROOM_APP_STORE
+    func weeklyQuickCheck() async -> RoomWeeklyCheckRecord? {
+        guard !isWorking, !isScanning, !checkingWeekly else { return nil }
+        checkingWeekly = true
+        defer { checkingWeekly = false }
+        await ignoreStore?.load()
+        let report = await CacheEngine(configurationProvider: { .standard }).scan()
+        guard !report.cancelled else { return nil }
+        let rules = ignoreStore?.rules ?? []
+        let bytes = report.groups.filter { !RoomIgnoreFilter.isIgnored(rootPath: $0.rootURL.path, rules: rules) }
+            .reduce(Int64(0)) { $0 + $1.eligibleBytes }
+        return RoomWeeklyCheckRecord(at: report.scannedAt, eligibleBytes: bytes, partial: report.isPartial, scope: "quick")
+    }
+    #endif
+
     func revealProtected(source: RoomProtectedSource) {
         NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: source.path)])
     }
@@ -447,19 +529,25 @@ final class RoomViewModel {
         measuredSourceCount = result.groups.count
         readableSourceCount = result.groups.filter { !$0.entries.isEmpty || $0.issues.isEmpty }.count
         let groups = result.groups.filter { !$0.entries.isEmpty || !$0.issues.isEmpty }
+        let ignoreRules = ignoreStore?.rules ?? []
+        ignoredEntryIDs = Set(groups.filter { RoomIgnoreFilter.isIgnored(rootPath: $0.rootURL.path, rules: ignoreRules) }
+            .flatMap(\.entries).map(\.id))
         sourceGroups = Dictionary(grouping: groups) { familyID($0.id) }
         sources = sourceGroups.map { key, groups in
             let entries = groups.flatMap(\.entries).filter { !movedEntryIDs.contains($0.id) }
-            let eligible = allowsCleanup ? entries.filter(\.eligibility.isEligible) : []
+            let eligible = allowsCleanup ? entries.filter { $0.eligibility.isEligible && !ignoredEntryIDs.contains($0.id) } : []
             let reasons = Array(Set(entries.compactMap(\.eligibility.reason))).sorted()
             let title = familyTitle(key, fallback: groups.first?.title ?? key)
             let paths = groups.map { $0.rootURL.path }.sorted().joined(separator: "\n")
             let consequences = Array(Set(groups.map(\.consequence))).sorted().joined(separator: "\n\n")
-            let cleanupConsequences = Array(Set(groups.filter { !$0.eligibleEntries.isEmpty }
+            let cleanupConsequences = Array(Set(groups.filter { group in
+                group.eligibleEntries.contains { !ignoredEntryIDs.contains($0.id) && !movedEntryIDs.contains($0.id) }
+            }
                 .map(\.consequence).filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })).sorted()
             let issues = groups.flatMap(\.issues).map(\.message)
-            let held = Dictionary(grouping: entries.filter { !allowsCleanup || !$0.eligibility.isEligible }) {
-                allowsCleanup ? ($0.eligibility.reason ?? "Held for review") : "Scan incomplete. Finish measuring before cleanup."
+            let held = Dictionary(grouping: entries.filter { !allowsCleanup || !$0.eligibility.isEligible || ignoredEntryIDs.contains($0.id) }) {
+                if ignoredEntryIDs.contains($0.id) { return "You asked Room not to suggest this" }
+                return allowsCleanup ? ($0.eligibility.reason ?? "Held for review") : "Scan incomplete. Finish measuring before cleanup."
             }
                 .map { RoomHeldReason(reason: $0.key, bytes: $0.value.reduce(0) { $0 + $1.byteCount }, count: $0.value.count) }
                 .sorted { $0.bytes > $1.bytes }
@@ -483,7 +571,8 @@ final class RoomViewModel {
                 isPartial: !allowsCleanup || groups.contains(where: \.isPartial),
                 heldReasons: held,
                 largestEntries: entries.sorted { $0.byteCount > $1.byteCount }.prefix(20).map {
-                    RoomSourceEntry(name: $0.name, path: $0.url.path, bytes: $0.byteCount, reason: $0.eligibility.reason)
+                    RoomSourceEntry(name: $0.name, path: $0.url.path, bytes: $0.byteCount,
+                        reason: ignoredEntryIDs.contains($0.id) ? "You asked Room not to suggest this" : $0.eligibility.reason)
                 },
                 isInspectionOnly: inspectionOnly,
                 cleanupConsequences: cleanupConsequences

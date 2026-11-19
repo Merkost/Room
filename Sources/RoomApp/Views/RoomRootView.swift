@@ -93,7 +93,7 @@ struct RoomRootView: View {
             case .welcome:
                 RoomOnboardingView(capacity: insights.volumeCapacity, isWorking: isOnboardingBusy(),
                                    openPrivacySettings: insights.openPrivacySettings, onFinish: finishWelcome)
-            case .protectedSources: RoomProtectedSheet(model: model)
+            case .protectedSources: RoomWhatStaysSheet(model: model)
             case .scanIssues: RoomScanIssuesSheet(issues: model.scanIssues)
             case .history: RoomHistorySheet(model: model)
             #if ROOM_APP_STORE

@@ -30,8 +30,8 @@ struct RoomApp: App {
                 sentence: RoomMakeRoomCopy.headline(entry, format: RoomFormat.overviewBytes),
                 canRestore: entry.stillInTrashBytes > 0)), from: .makeRoom)
         }
-                let cacheModel = RoomViewModel(cachesCheckStore: RoomCachesCheckStore(writer: .shared),
-                                       makeRoomStore: ledger, activityCenter: activity, mapStore: .shared)
+        let cacheModel = RoomViewModel(cachesCheckStore: RoomCachesCheckStore(writer: .shared),
+            makeRoomStore: ledger, activityCenter: activity, ignoreStore: RoomIgnoreStore(), mapStore: .shared)
         _model = State(initialValue: cacheModel)
         #if ROOM_APP_STORE
         _rooms = State(initialValue: RoomRoomsModel(isWorking: { cacheModel.isWorking }))
@@ -93,9 +93,7 @@ struct RoomApp: App {
                     delegate.agentWork = agentWork
                     RoomWeeklyCheckScheduler.shared.configure(source: {
                         guard !isWorking, !model.isScanning else { return nil }
-                        let report = await CacheEngine(configuration: .standard).scan()
-                        return RoomWeeklyCheckRecord(at: report.scannedAt, eligibleBytes: report.eligibleBytes,
-                                                     partial: report.isPartial, scope: "quick")
+                        return await model.weeklyQuickCheck()
                     }, openCaches: {
                         navigation.select(.clean)
                         openMainWindow()
@@ -115,6 +113,7 @@ struct RoomApp: App {
                 .task {
                     await insights.updateTreeApprovals()
                     if insights.diskCapacitySampledAt == nil { insights.refreshDiskCapacity() }
+                    await model.ignoreStore?.load()
                     await model.refreshHistory()
                     await model.makeRoomStore?.checkNow()
                 }

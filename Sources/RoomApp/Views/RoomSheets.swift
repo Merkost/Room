@@ -141,50 +141,6 @@ struct RoomSourceSheet: View {
     }
 }
 
-struct RoomProtectedSheet: View {
-    @Bindable var model: RoomViewModel
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            RoomSheetHeading(title: "Your work stays.", subtitle: "These locations are excluded from cleanup.")
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    ForEach(model.protectedSources) { source in
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Label(source.name, systemImage: "lock")
-                                    .font(.system(size: 14, weight: .medium))
-                                Spacer()
-                                Text(RoomFormat.bytes(source.bytes))
-                                    .font(.system(size: 13))
-                                    .foregroundStyle(.secondary)
-                                    .monospacedDigit()
-                                Button { model.revealProtected(source: source) } label: { Image(systemName: "arrow.up.forward") }
-                                    .buttonStyle(.plain)
-                                    .help("Show \(source.name) in Finder")
-                                    .accessibilityLabel("Show \(source.name) in Finder")
-                            }
-                            Text(source.reason).font(.system(size: 13)).foregroundStyle(.secondary)
-                            Text(source.path)
-                                .font(.system(size: 12, design: .monospaced))
-                                .foregroundStyle(.secondary)
-                                .textSelection(.enabled)
-                        }
-                    }
-                }
-                .padding(.vertical, 4)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .frame(maxHeight: 360)
-            HStack { Spacer(); Button("Done") { dismiss() }.buttonStyle(.glassProminent).keyboardShortcut(.defaultAction) }
-                .controlSize(.large)
-        }
-        .padding(32)
-        .frame(width: 580)
-    }
-}
-
 struct RoomScanIssuesSheet: View {
     let issues: [String]
     @Environment(\.dismiss) private var dismiss

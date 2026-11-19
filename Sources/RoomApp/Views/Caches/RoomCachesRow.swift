@@ -9,6 +9,7 @@ struct RoomCachesRow: View {
     let select: () -> Void
     let inspect: () -> Void
     let reveal: () -> Void
+    var neverSuggest: (() -> Void)?
 
     @Environment(\.roomAccent) private var accent
     @Environment(\.colorSchemeContrast) private var contrast
@@ -70,6 +71,7 @@ struct RoomCachesRow: View {
         }
         .contextMenu {
             Button("Show in Finder", action: reveal)
+            if let neverSuggest { Button("Never Suggest This", action: neverSuggest) }
             Button("Inspect", action: inspect)
         }
     }
