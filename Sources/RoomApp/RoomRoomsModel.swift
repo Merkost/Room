@@ -14,6 +14,8 @@ final class RoomRoomsModel {
     private var sizes: [String: RoomSizeLog]
     private var unavailableRoomID: UUID?
     private(set) var isMeasuring = false
+    private(set) var isStateLoading = false
+    private(set) var isReadOnly = false
     @ObservationIgnored private let store: RoomRoomsStore
     @ObservationIgnored private let access: RoomFileAccess
     @ObservationIgnored private let measurer: RoomRoomMeasurer
@@ -41,8 +43,20 @@ final class RoomRoomsModel {
         self.folderPicker = folderPicker ?? { title, message, prompt, initial in
             await RoomNativeFolderPicker.shared.choose(title: title, message: message, prompt: prompt, initialURL: initial)
         }
-        rooms = store.loadRooms()
-        sizes = store.loadSizes()
+        let loadsAsynchronously = store.loadsAsynchronously
+        isStateLoading = loadsAsynchronously
+        rooms = loadsAsynchronously ? [] : store.loadRooms()
+        sizes = loadsAsynchronously ? [:] : store.loadSizes()
+        if loadsAsynchronously {
+            Task { [weak self] in
+                let saved = await store.loadState()
+                guard let self else { return }
+                self.rooms = saved.rooms
+                self.sizes = saved.sizes
+                self.isReadOnly = saved.readOnly
+                self.isStateLoading = false
+            }
+        }
         observeWorking()
     }
 
@@ -66,7 +80,7 @@ final class RoomRoomsModel {
         return .measured(room, log)
     }
 
-    var canChooseFolder: Bool { pickerTask == nil && !isWorking() }
+    var canChooseFolder: Bool { pickerTask == nil && !isWorking() && !isStateLoading && !isReadOnly }
 
     func chooseFolder() {
         guard canChooseFolder else { return }
@@ -87,7 +101,7 @@ final class RoomRoomsModel {
     }
 
     func pin(url: URL) {
-        guard !isWorking() else { return }
+        guard !isWorking(), !isStateLoading, !isReadOnly else { return }
         do {
             let approved = try access.remember(url)
             guard let folder = access.folders.first(where: { $0.url.standardizedFileURL == approved.standardizedFileURL }) else { return }
@@ -111,6 +125,7 @@ final class RoomRoomsModel {
     }
 
     func unpin() {
+        guard !isReadOnly else { return }
         cancelMeasurement()
         guard let room = pinnedRoom else { return }
         rooms.removeFirst()
@@ -118,6 +133,12 @@ final class RoomRoomsModel {
         unavailableRoomID = nil
         store.saveRooms(rooms)
         store.saveSizes(sizes)
+    }
+
+    func clearSizeHistory() {
+        cancelMeasurement()
+        sizes = [:]
+        store.discardPendingSizes()
     }
 
     /// Called on popover open, never by the 20-second monitor loop.

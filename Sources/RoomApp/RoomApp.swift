@@ -168,14 +168,29 @@ final class RoomApplicationDelegate: NSObject, NSApplicationDelegate {
         statusMonitor?.setEnabled(false)
     }
 
+    func applicationDidBecomeActive(_ notification: Notification) {
+        insights?.recordCapacityOnActivation()
+    }
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard model?.isWorking == true || isAgentOperationWorking else { return .terminateNow }
-        let alert = NSAlert()
-        alert.messageText = "Room is finishing a file operation."
-        alert.informativeText = "Keep Room open while its recovery record is saved. Files already moved remain in Trash."
-        alert.addButton(withTitle: "Keep Room Open")
-        alert.runModal()
-        return .terminateCancel
+        if model?.isWorking == true || isAgentOperationWorking {
+            let alert = NSAlert()
+            alert.messageText = "Room is finishing a file operation."
+            alert.informativeText = "Keep Room open while its recovery record is saved. Files already moved remain in Trash."
+            alert.addButton(withTitle: "Keep Room Open")
+            alert.runModal()
+            return .terminateCancel
+        }
+        if waitingForStateWrites { return .terminateLater }
+        insights?.volumeHistory.prepareForTermination()
+        let writer = RoomStateWriter.shared
+        guard writer.hasPendingWrites else { return .terminateNow }
+        waitingForStateWrites = true
+        Task { @MainActor in
+            await writer.flush(deadline: .milliseconds(500))
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

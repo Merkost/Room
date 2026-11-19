@@ -16,8 +16,9 @@ struct RoomRoomsStoreTests {
         let reloaded = RoomRoomsStore(directory: directory)
         #expect(reloaded.loadRooms() == [room])
         #expect(reloaded.loadSizes() == [room.id.uuidString: log])
-        let payload = try JSONSerialization.jsonObject(with: Data(contentsOf: directory.appendingPathComponent("room-sizes.json")))
-        #expect((payload as? [String: Any])?[room.id.uuidString] != nil)
+        let data = try Data(contentsOf: directory.appendingPathComponent("room-sizes.json"))
+        let envelope = try RoomStateCodec.decoder().decode(RoomStoredFile<[String: RoomSizeLog]>.self, from: data)
+        #expect(envelope.payload[room.id.uuidString] == log)
         #expect(!String(decoding: try Data(contentsOf: directory.appendingPathComponent("rooms.json")), as: UTF8.self).contains("bookmark"))
     }
 
