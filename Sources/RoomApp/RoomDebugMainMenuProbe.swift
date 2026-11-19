@@ -17,7 +17,7 @@ enum RoomDebugMainMenuProbe {
         let rows: [Row]
     }
 
-    static func start() {
+    static func start(windowContext: RoomCommandWindowContext) {
         guard let path = ProcessInfo.processInfo.environment["ROOM_MAIN_MENU_TEST_OUTPUT"] else { return }
         Task { @MainActor in
             let activationTimeout = ProcessInfo.processInfo.environment["ROOM_MAIN_MENU_ACTIVATION_TIMEOUT"]
@@ -33,6 +33,7 @@ enum RoomDebugMainMenuProbe {
                     window.makeMain()
                     window.makeKeyAndOrderFront(nil)
                 }
+                if windowContext.window != RoomCommandWindowContext.current { windowContext.update() }
                 menus = readMainMenu()
             } while !menus.contains(where: { menu in
                 guard menu.title == "View" else { return false }
@@ -46,7 +47,7 @@ enum RoomDebugMainMenuProbe {
                 [window.identifier?.rawValue ?? "unidentified", "key=\(window.isKeyWindow)",
                  "visible=\(window.isVisible)", "sheet=\(window.attachedSheet != nil)"].joined(separator: " ")
             }.joined(separator: "\n")
-            let diagnostic = "active=\(NSApp.isActive) context=\(RoomCommandWindowContext.current)\n" + state
+            let diagnostic = "active=\(NSApp.isActive) context=\(RoomCommandWindowContext.current) observed=\(windowContext.window)\n" + state
             try? diagnostic.write(to: URL(fileURLWithPath: path).appendingPathExtension("state"), atomically: true, encoding: .utf8)
             if let data = try? JSONEncoder().encode(menus) {
                 try? data.write(to: URL(fileURLWithPath: path), options: .atomic)

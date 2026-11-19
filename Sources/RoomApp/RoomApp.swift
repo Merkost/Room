@@ -228,7 +228,7 @@ final class RoomApplicationDelegate: NSObject, NSApplicationDelegate {
                                                name: NSWindow.willCloseNotification, object: nil)
         commandWindow.update()
         #if DEBUG
-        RoomDebugMainMenuProbe.start()
+        RoomDebugMainMenuProbe.start(windowContext: commandWindow)
         #endif
     }
 
