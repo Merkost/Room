@@ -310,9 +310,11 @@ struct RoomDotPlanView: View {
         for row in kindRows.prefix(labelCount) {
             guard let room = geometry.frame(for: row.id) else { continue }
             let bounds = room.insetBy(dx: Tokens.labelInset, dy: Tokens.labelInset)
-            let opacity = (motion.isFull ? pointer : nil).map {
-                RoomPure.lampOpacity(distance: hypot($0.x - bounds.midX, $0.y - bounds.midY))
-            } ?? (usesSolidKinds ? 1 : Tokens.quietLabelOpacity)
+            let defaultOpacity: Double = usesSolidKinds ? 1 : Tokens.quietLabelOpacity
+            let lampOpacity = (motion.isFull ? pointer : nil).map { point in
+                Double(RoomPure.lampOpacity(distance: hypot(point.x - bounds.midX, point.y - bounds.midY)))
+            }
+            let opacity = lampOpacity ?? defaultOpacity
             let ink = usesSolidKinds ? RoomTokens.Kind.tileInk : RoomTokens.Ink.graphite
             drawLabel(row.name, in: bounds, font: RoomTokens.Typography.micro,
                       ink: ink.opacity(opacity), context: context)
