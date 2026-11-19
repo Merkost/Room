@@ -7,6 +7,7 @@ import RoomCore
 @MainActor
 final class RoomInsightsModel {
     private(set) var memoryReport: MemoryReport?
+    private(set) var pressureHistory: RoomPressureHistory
     private(set) var memorySamples = RoomMemorySampleRing()
     private(set) var isScanningMemory = false
     let diskMap = RoomDiskMapModel()
@@ -32,7 +33,12 @@ final class RoomInsightsModel {
     var requestedSettingsTab: RoomSettingsTab?
     var requestedWelcome = false
 
-    @ObservationIgnored private let memoryEngine = MemoryEngine()
+    @ObservationIgnored private let readMemory: @MainActor () async -> MemoryReport
+    @ObservationIgnored private let waitForMemoryTick: @MainActor () async throws -> Void
+    @ObservationIgnored private let pressureStore: RoomPressureHistoryStore
+    @ObservationIgnored private var pressureDirty = false
+    @ObservationIgnored private var monitorEnabled = false
+    @ObservationIgnored private var memoryActive = false
     @ObservationIgnored private let diskEngine = DiskMapEngine()
     @ObservationIgnored private let storageAI = StorageAIEngine()
     @ObservationIgnored private let fileAccess: RoomFileAccess
@@ -57,7 +63,17 @@ final class RoomInsightsModel {
          capacityReader: @escaping @MainActor () throws -> RoomVolumeCapacity? = RoomVolumeCapacity.read,
          waitForCapacityTick: @escaping @MainActor () async throws -> Void = {
              try await Task.sleep(for: RoomInsightsModel.monitorInterval)
+         },
+         pressureStore: RoomPressureHistoryStore = .init(),
+         readMemory: (@MainActor () async -> MemoryReport)? = nil,
+         waitForMemoryTick: @escaping @MainActor () async throws -> Void = {
+             try await Task.sleep(for: RoomInsightsModel.monitorInterval)
          }) {
+        self.pressureStore = pressureStore
+        pressureHistory = pressureStore.load()
+        let engine = MemoryEngine()
+        self.readMemory = readMemory ?? { await engine.scan() }
+        self.waitForMemoryTick = waitForMemoryTick
         self.fileAccess = access
         self.treeStore = treeStore
         self.volumeHistory = volumeHistory
@@ -69,20 +85,39 @@ final class RoomInsightsModel {
     }
 
     func beginMonitoring() {
-        guard monitorTask == nil else { return }
-        monitorTask = Task { [weak self] in
-            while !Task.isCancelled {
-                self?.scanMemory()
-                do { try await Task.sleep(for: Self.monitorInterval) } catch { break }
-            }
-        }
+        guard !monitorEnabled else { return }
+        monitorEnabled = true
+        updateMemoryMonitoring()
         if capacityMonitorTask == nil { restartCapacityMonitoring(sampleImmediately: true) }
     }
 
     func stopMonitoring() {
-        monitorTask?.cancel()
-        monitorTask = nil
+        monitorEnabled = false
+        updateMemoryMonitoring()
         if !overviewActive { stopCapacityMonitoring() }
+    }
+
+    func setMemoryActive(_ active: Bool) {
+        guard memoryActive != active else { return }
+        memoryActive = active
+        updateMemoryMonitoring()
+    }
+
+    private func updateMemoryMonitoring() {
+        guard monitorEnabled || memoryActive else {
+            monitorTask?.cancel()
+            monitorTask = nil
+            return
+        }
+        guard monitorTask == nil else { return }
+        let wait = waitForMemoryTick
+        monitorTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard self != nil else { return }
+                self?.scanMemory()
+                do { try await wait() } catch { return }
+            }
+        }
     }
 
     func setOverviewActive(_ active: Bool) {
@@ -90,7 +125,7 @@ final class RoomInsightsModel {
         overviewActive = active
         if active {
             restartCapacityMonitoring(sampleImmediately: true)
-        } else if monitorTask == nil {
+        } else if !monitorEnabled {
             stopCapacityMonitoring()
         }
     }
@@ -140,17 +175,33 @@ final class RoomInsightsModel {
     func scanMemory() {
         guard !isScanningMemory else { return }
         isScanningMemory = true
-        memoryTask = Task { [weak self, memoryEngine] in
-            let result = await memoryEngine.scan()
+        memoryTask = Task { [weak self, readMemory] in
+            let result = await readMemory()
             guard let self else { return }
             self.memoryReport = result
             if !Task.isCancelled, result.totalBytes > 0,
                result.usedBytes > 0 || result.availableBytes > 0 {
-                self.memorySamples.append(result.usedBytes)
+                self.memorySamples.append(result.usedBytes, at: result.scannedAt)
             }
+            if !Task.isCancelled { self.recordPressure(result) }
             self.isScanningMemory = false
             self.memoryTask = nil
         }
+    }
+
+    private func recordPressure(_ report: MemoryReport) {
+        guard RoomPressureLevel(memoryPressureRaw: report.pressure.rawValue) != nil else { return }
+        let previous = pressureHistory.day.buckets.last?.index
+        pressureHistory.record(pressureRaw: report.pressure.rawValue, usedBytes: report.usedBytes,
+                               swapBytes: RoomMonitorPresentation.measuredSwap(report), at: report.scannedAt)
+        pressureDirty = true
+        if let previous, pressureHistory.day.buckets.last?.index != previous { savePressureHistory() }
+    }
+
+    func savePressureHistory() {
+        guard pressureDirty else { return }
+        pressureStore.save(pressureHistory)
+        pressureDirty = false
     }
 
     private var suggestedHome: URL {

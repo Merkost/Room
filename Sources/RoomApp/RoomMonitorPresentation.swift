@@ -53,12 +53,7 @@ struct RoomMonitorPresentation: Equatable {
     }
 
     static func pressureTitle(_ pressure: MemoryPressure) -> String {
-        switch pressure {
-        case .normal: "Normal pressure"
-        case .elevated: "Elevated pressure"
-        case .critical: "High pressure"
-        case .unknown: "Pressure unavailable"
-        }
+        RoomPressureLevel(memoryPressureRaw: pressure.rawValue)?.title ?? "Pressure unavailable"
     }
 }
 

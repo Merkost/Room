@@ -8,11 +8,17 @@ import Foundation
 /// The last hour of memory use, one sample per 20 s monitor tick, oldest first. In memory only: it starts empty at launch.
 nonisolated struct RoomMemorySampleRing: Equatable, Sendable {
     static let capacity = 180
-    private(set) var values: [Int64] = []
+    struct Sample: Equatable, Sendable {
+        let at: Date
+        let bytes: Int64
+    }
 
-    mutating func append(_ bytes: Int64) {
-        values.append(bytes)
-        if values.count > Self.capacity { values.removeFirst(values.count - Self.capacity) }
+    private(set) var samples: [Sample] = []
+    var values: [Int64] { samples.map(\.bytes) }
+
+    mutating func append(_ bytes: Int64, at: Date = Date()) {
+        samples.append(Sample(at: at, bytes: bytes))
+        if samples.count > Self.capacity { samples.removeFirst(samples.count - Self.capacity) }
     }
 }
 

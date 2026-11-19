@@ -13,7 +13,7 @@ struct RoomPresentationTests {
         let critical = RoomMonitorPresentation.memory(total: 100, used: 2, available: 98,
             pressure: .critical, swap: 20, showPressure: true, showSwap: false)
         #expect(critical.tone == .critical)
-        #expect(critical.detail.contains("High pressure"))
+        #expect(critical.detail.contains("Critical pressure"))
         #expect(!critical.detail.contains("swap"))
         let hidden = RoomMonitorPresentation.memory(total: 100, used: 99, available: 1,
             pressure: .critical, swap: 20, showPressure: false, showSwap: true)
@@ -21,7 +21,7 @@ struct RoomPresentationTests {
             pressure: .normal, swap: nil, showPressure: true, showSwap: true)
         #expect(missingSwap.detail.contains("Swap unavailable"))
         #expect(hidden.tone == .neutral)
-        #expect(!hidden.detail.contains("High pressure"))
+        #expect(!hidden.detail.contains("Critical pressure"))
     }
 
     @Test func unavailableCountersAndOutOfRangeCapacityStayHonest() {

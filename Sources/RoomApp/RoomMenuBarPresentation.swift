@@ -7,7 +7,7 @@ import Foundation
 nonisolated enum RoomMenuBarValueMode: String, CaseIterable, Sendable { case memory, disk, both, none }
 nonisolated enum RoomMenuBarLayoutMode: String, CaseIterable, Sendable { case inline, stacked }
 nonisolated enum RoomMenuBarIconMode: String, CaseIterable, Sendable { case mark, symbol, none }
-nonisolated enum RoomMenuBarPressure: Sendable { case unknown, normal, elevated, critical }
+nonisolated enum RoomMenuBarPressure: String, Sendable { case unknown, normal, elevated, critical }
 
 /// Severity of what the item shows. Raw values rank it, so the "worse of" rule (MB-4) is `max`.
 nonisolated enum RoomMenuBarLevel: Int, Comparable, Sendable {
@@ -163,12 +163,7 @@ nonisolated enum RoomMenuBarPresentation {
         case .none: title = ""
         }
 
-        let pressureWords: String = switch i.pressure {
-        case .normal: "Normal pressure"
-        case .elevated: "Elevated pressure"
-        case .critical: "Critical pressure"
-        case .unknown: "Pressure unavailable"
-        }
+        let pressureWords = RoomPressureLevel(memoryPressureRaw: i.pressure.rawValue)?.title ?? "Pressure unavailable"
         let memorySpoken = memoryKnown
             ? "\(f.memory(i.memoryUsedBytes ?? 0)) memory used of \(f.memory(i.memoryTotalBytes ?? 0)), \(pressureWords)"
             : "Memory measurement unavailable"

@@ -127,6 +127,7 @@ final class RoomApplicationDelegate: NSObject, NSApplicationDelegate {
     func configureMonitor(insights: RoomInsightsModel, cacheModel: RoomViewModel,
                           rooms: RoomRoomsModel, enabled: Bool, openRoom: @escaping () -> Void,
                           openSettings: @escaping () -> Void) {
+        self.insights = insights
         if let statusMonitor {
             statusMonitor.updateOpenRoom(openRoom)
             statusMonitor.updateOpenSettings(openSettings)
@@ -168,6 +169,7 @@ final class RoomApplicationDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        insights?.savePressureHistory()
         #if !ROOM_APP_STORE
         agentWork?.shutdown()
         #endif
