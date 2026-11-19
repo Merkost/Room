@@ -240,19 +240,21 @@ private struct RoomGeneralSettingsView: View {
 
     private func commitForgetHistory() {
         isForgettingHistory = true
-        Task { @MainActor in
+        RoomStateWriter.shared.forgetHistory(preparing: {
             await insights.treeStore.flush()
-            RoomStateWriter.shared.forgetHistory { _ in
-                Task { @MainActor in
-                    await insights.clearDiskHistory()
-                    insights.clearPressureHistory()
-                    insights.volumeHistory.clearInMemory()
-                    model.cachesCheckStore.clearInMemory()
-                    rooms.clearSizeHistory()
-                    NotificationCenter.default.post(name: .roomSavedHistoryForgotten, object: nil)
-                    suspendHistory(false)
-                    isForgettingHistory = false
-                }
+            await rooms.waitForStateLoad()
+            await insights.volumeHistory.waitForLoad()
+            await model.cachesCheckStore.waitForLoad()
+        }) { _ in
+            Task { @MainActor in
+                await insights.clearDiskHistory()
+                insights.clearPressureHistory()
+                insights.volumeHistory.clearInMemory()
+                model.cachesCheckStore.clearInMemory()
+                rooms.clearSizeHistory()
+                NotificationCenter.default.post(name: .roomSavedHistoryForgotten, object: nil)
+                suspendHistory(false)
+                isForgettingHistory = false
             }
         }
     }

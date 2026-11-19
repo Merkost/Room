@@ -79,7 +79,10 @@ final class RoomCachesCheckStore {
         revision += 1
         savedCheck = nil
         savedInvalidatedAt = nil
-        writer?.discardPending(for: .reports)
+        if let writer {
+            defaults.set(true, forKey: Self.migrationFlag)
+            writer.discardPending(for: .reports)
+        }
     }
 
     private func apply(_ reports: RoomReports) {

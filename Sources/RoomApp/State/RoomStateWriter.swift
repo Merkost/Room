@@ -60,13 +60,14 @@ final class RoomStateWriter {
         timers.removeValue(forKey: name)?.cancel()
     }
 
-    func forgetHistory(completion: @escaping ([String]) -> Void) {
+    func forgetHistory(preparing: @escaping () async -> Void = {}, completion: @escaping ([String]) -> Void) {
         guard !isForgettingHistory else { return }
         isForgettingHistory = true
         for name in pending.filter({ $0.value.history }).keys { discardPending(named: name) }
         let previousWrites = active.values.filter(\.history).map(\.task)
         let id = UUID()
         let task = Task { [weak self, store] in
+            await preparing()
             for write in previousWrites { await write.value }
             let forgotten = await store.forgetHistory()
             guard let self else { return }

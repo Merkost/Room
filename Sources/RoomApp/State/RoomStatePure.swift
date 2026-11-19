@@ -66,6 +66,7 @@ nonisolated enum RoomStateLoad<Payload: Sendable>: Sendable {
 }
 
 nonisolated enum RoomStateCodec {
+    private struct GenerationHeader: Decodable { let schema: Int }
     private struct Header: Decodable { let schema: Int; let writtenAt: Date; let appVersion: String }
 
     static func encoder() -> JSONEncoder {
@@ -83,7 +84,11 @@ nonisolated enum RoomStateCodec {
     static func classify(_ data: Data, currentSchema: Int) -> RoomStateClassification {
         guard (try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])) != nil else { return .corrupt }
         if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any], object["payload"] != nil {
-            guard let header = try? decoder().decode(Header.self, from: data), header.schema >= 0 else { return .corrupt }
+            guard let generation = try? decoder().decode(GenerationHeader.self, from: data), generation.schema >= 0 else {
+                return .corrupt
+            }
+            if generation.schema > currentSchema { return .newer(generation.schema) }
+            guard let header = try? decoder().decode(Header.self, from: data) else { return .corrupt }
             if header.schema == currentSchema { return .current }
             return header.schema < currentSchema ? .older(header.schema) : .newer(header.schema)
         }

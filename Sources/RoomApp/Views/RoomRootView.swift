@@ -82,9 +82,9 @@ struct RoomRootView: View {
                     .accessibilityIdentifier("RoomCustomiseOverview")
                     .popover(isPresented: $showingCustomise) {
                         RoomCustomisePopover(rooms: rooms, capacityBytes: insights.volumeCapacity?.capacityBytes ?? 210_000_000_000,
-                            selected: $editingRoom,
+                            selected: $editingRoom, hidden: hide.masksNow,
                             canChoosePlanStyle: RoomOverviewStyle.isAvailable(homeKinds: insights.homeKinds),
-                            hasRecentReceipts: model.makeRoomStore != nil, hidden: hide.masksNow)
+                            hasRecentReceipts: model.makeRoomStore != nil)
                     }
                 }
             }

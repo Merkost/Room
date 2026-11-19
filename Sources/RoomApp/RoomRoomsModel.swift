@@ -11,6 +11,7 @@ final class RoomRoomsModel {
     }
 
     private(set) var rooms: [RoomPinnedRoom]
+    @ObservationIgnored private var stateLoadingTask: Task<Void, Never>?
     private var sizes: [String: RoomSizeLog]
     private var stagedUnpins: Set<UUID> = []
     private var historySuspended = false
@@ -58,7 +59,7 @@ final class RoomRoomsModel {
         rooms = loadsAsynchronously ? [] : store.loadRooms()
         sizes = loadsAsynchronously ? [:] : store.loadSizes()
         if loadsAsynchronously {
-            Task { [weak self] in
+            stateLoadingTask = Task { [weak self] in
                 let saved = await store.loadState()
                 guard let self else { return }
                 self.rooms = saved.rooms
@@ -73,6 +74,8 @@ final class RoomRoomsModel {
 
     var visibleRooms: [RoomPinnedRoom] { rooms.filter { !stagedUnpins.contains($0.id) } }
     var popoverRoom: RoomPinnedRoom? { visibleRooms.first }
+
+    func waitForStateLoad() async { await stateLoadingTask?.value }
     var savedRoomID: UUID? { rooms.first?.id }
     var canUnpin: Bool { !isWorking() && !isStateLoading && !isReadOnly }
     var pinnedRoom: RoomPinnedRoom? { popoverRoom }
