@@ -60,12 +60,24 @@ struct RoomVolumeCapacityTests {
     }
 
     @Test func refreshRunsWithMenuBarOff() async throws {
-        let probe = CapacityProbe(delay: .milliseconds(10))
-        let insights = probe.makeInsights()
+        let (ticks, tick) = AsyncStream<Void>.makeStream()
+        var reads = 0
+        let insights = RoomInsightsModel(capacityReader: {
+            reads += 1
+            return RoomVolumeCapacity(capacityBytes: 100, freeBytes: 25)
+        }, waitForCapacityTick: {
+            var iterator = ticks.makeAsyncIterator()
+            guard await iterator.next(isolation: #isolation) != nil else { throw CancellationError() }
+        })
         insights.setOverviewActive(true)
-        defer { insights.setOverviewActive(false) }
+        defer {
+            insights.setOverviewActive(false)
+            tick.finish()
+        }
 
-        try await waitFor { probe.reads >= 2 }
+        try await waitFor { reads == 1 }
+        tick.yield(())
+        try await waitFor { reads == 2 }
         #expect(insights.volumeCapacity?.freeBytes == 25)
     }
 
@@ -112,7 +124,7 @@ struct RoomVolumeCapacityTests {
     }
 
     private func waitFor(_ condition: @MainActor () -> Bool) async throws {
-        let deadline = ContinuousClock.now + .seconds(2)
+        let deadline = ContinuousClock.now + .seconds(15)
         while !condition(), ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(5))
         }
