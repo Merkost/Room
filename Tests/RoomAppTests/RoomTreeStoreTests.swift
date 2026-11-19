@@ -1,7 +1,7 @@
 import Foundation
 import RoomCore
 import Testing
-@testable import Room
+@testable import RoomApp
 
 @Suite("Disk Map retention")
 struct RoomTreeStoreTests {
