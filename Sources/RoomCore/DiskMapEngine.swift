@@ -13,12 +13,14 @@ public struct DiskMapItem: Identifiable, Equatable, Sendable {
     public let isHidden: Bool
     public let modifiedAt: Date?
     public let categoryAllocatedBytes: [StorageCategory: Int64]
+    public let kindAllocatedBytes: [StorageKind: Int64]
     public let hiddenAllocatedBytes: Int64
 
     public init(url: URL, name: String, isDirectory: Bool, allocatedBytes: Int64,
                 logicalBytes: Int64, fileCount: Int, category: StorageCategory? = nil,
                 isHidden: Bool? = nil, modifiedAt: Date? = nil,
-                categoryAllocatedBytes: [StorageCategory: Int64] = [:], hiddenAllocatedBytes: Int64 = 0) {
+                categoryAllocatedBytes: [StorageCategory: Int64] = [:], hiddenAllocatedBytes: Int64 = 0,
+                kindAllocatedBytes: [StorageKind: Int64] = [:]) {
         self.id = url.path
         self.url = url
         self.name = name
@@ -30,6 +32,7 @@ public struct DiskMapItem: Identifiable, Equatable, Sendable {
         self.isHidden = isHidden ?? StorageClassification.isHiddenPath(url)
         self.modifiedAt = modifiedAt
         self.categoryAllocatedBytes = categoryAllocatedBytes
+        self.kindAllocatedBytes = kindAllocatedBytes
         self.hiddenAllocatedBytes = hiddenAllocatedBytes
     }
 }
@@ -38,6 +41,48 @@ public struct DiskScanProgress: Equatable, Sendable {
     public let visitedFiles: Int
     public let allocatedBytes: Int64
     public let currentName: String
+    public let topLevelTotal: Int?
+    public let currentTopLevel: String?
+    public let completedTopLevel: [DiskTopLevelRoom]
+
+    public init(visitedFiles: Int, allocatedBytes: Int64, currentName: String, topLevelTotal: Int? = nil,
+                currentTopLevel: String? = nil, completedTopLevel: [DiskTopLevelRoom] = []) {
+        self.visitedFiles = visitedFiles
+        self.allocatedBytes = allocatedBytes
+        self.currentName = currentName
+        self.topLevelTotal = topLevelTotal
+        self.currentTopLevel = currentTopLevel
+        self.completedTopLevel = completedTopLevel
+    }
+}
+
+public struct DiskTopLevelRoom: Equatable, Sendable {
+    public let name: String
+    public let bytes: Int64
+    public let files: Int
+    public let kindBytes: [String: Int64]
+    public let isPartial: Bool
+}
+
+public struct DiskScanPolicy: Sendable {
+    public let skipApplicationContainers: Bool
+    public static let standard = Self(skipApplicationContainers: true)
+
+    public init(skipApplicationContainers: Bool) {
+        self.skipApplicationContainers = skipApplicationContainers
+    }
+
+    func skipDescending(into url: URL) -> Bool {
+        guard skipApplicationContainers else { return false }
+        let tail = url.pathComponents.suffix(2)
+        return tail.elementsEqual(["Library", "Containers"]) || tail.elementsEqual(["Library", "Group Containers"])
+    }
+}
+
+public struct DiskTreeReport: Equatable, Sendable {
+    public let report: DiskMapReport
+    public let tree: RoomTreeNode
+    public let volumeID: String?
 }
 
 public struct DiskMapReport: Identifiable, Equatable, Sendable {
@@ -59,22 +104,25 @@ public struct DiskMapReport: Identifiable, Equatable, Sendable {
     public let hiddenAllocatedBytes: Int64
     public let hiddenLogicalBytes: Int64
     public let hiddenFileCount: Int
+    public let kindAllocatedBytes: [StorageKind: Int64]
 
     public init(id: UUID, url: URL, scannedAt: Date, children: [DiskMapItem], largestFiles: [DiskMapItem],
                 allocatedBytes: Int64, logicalBytes: Int64, fileCount: Int, issues: [ScanIssue],
                 cancelled: Bool, isPartial: Bool, unreadableItemCount: Int = 0, categories: [StorageCategorySummary] = [],
-                hiddenAllocatedBytes: Int64 = 0, hiddenLogicalBytes: Int64 = 0, hiddenFileCount: Int = 0) {
+                hiddenAllocatedBytes: Int64 = 0, hiddenLogicalBytes: Int64 = 0, hiddenFileCount: Int = 0,
+                kindAllocatedBytes: [StorageKind: Int64] = [:]) {
         self.id = id; self.url = url; self.scannedAt = scannedAt; self.children = children
         self.largestFiles = largestFiles; self.allocatedBytes = allocatedBytes; self.logicalBytes = logicalBytes
         self.fileCount = fileCount; self.issues = issues; self.cancelled = cancelled; self.isPartial = isPartial
         self.unreadableItemCount = unreadableItemCount
         self.categories = categories; self.hiddenAllocatedBytes = hiddenAllocatedBytes
         self.hiddenLogicalBytes = hiddenLogicalBytes; self.hiddenFileCount = hiddenFileCount
+        self.kindAllocatedBytes = kindAllocatedBytes
     }
 }
 
-/// Reads metadata only. Directory drill-down is another scan of the selected child.
-/// Retains immediate children and the largest 100 unique file allocations, not a full tree.
+/// Reads metadata only. The legacy report keeps immediate children and the largest 100 files.
+/// A tree scan also retains a bounded, browsable view of the same walk.
 public actor DiskMapEngine {
     private let progressInterval: TimeInterval
 
@@ -87,6 +135,17 @@ public actor DiskMapEngine {
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         var walker = DiskMapWalker(url: url, progressInterval: progressInterval, progress: progress)
         return walker.run()
+    }
+
+    public func scanTree(url: URL, policy: DiskScanPolicy = .standard,
+                         progress: (@Sendable (DiskScanProgress) -> Void)? = nil) async -> DiskTreeReport {
+        let scoped = url.isFileURL && url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        var walker = DiskMapWalker(url: url, progressInterval: progressInterval, progress: progress, treePolicy: policy)
+        let report = walker.run()
+        let volumeID = url.isFileURL && (url.host?.isEmpty != false || url.host == "localhost")
+            ? try? report.url.resourceValues(forKeys: [.volumeUUIDStringKey]).volumeUUIDString : nil
+        return DiskTreeReport(report: report, tree: walker.finishTree(partial: report.isPartial), volumeID: volumeID)
     }
 }
 
@@ -110,13 +169,28 @@ private struct DiskMapWalker {
     private var cancelled = false
     private var lastProgress = Date.distantPast
     private var currentName: String
+    private let treePolicy: DiskScanPolicy?
+    private var treeBuilder: RoomTreeBuilder?
+    private var topLevelTotal: Int?
+    private var currentTopLevel: String?
+    private var completedTopLevel: [DiskTopLevelRoom] = []
 
-    init(url: URL, progressInterval: TimeInterval, progress: (@Sendable (DiskScanProgress) -> Void)?) {
+    private var partialEventCount: Int { errorCount + symbolicLinks + specialItems + repeatedDirectories }
+
+    init(url: URL, progressInterval: TimeInterval, progress: (@Sendable (DiskScanProgress) -> Void)?,
+         treePolicy: DiskScanPolicy? = nil) {
         inputURL = url
         root = url.isFileURL ? url.roomLexicallyNormalized : url
         currentName = url.lastPathComponent
         self.progressInterval = progressInterval
         self.progress = progress
+        self.treePolicy = treePolicy
+        if treePolicy != nil { treeBuilder = RoomTreeBuilder(rootName: url.lastPathComponent) }
+    }
+
+    mutating func finishTree(partial: Bool) -> RoomTreeNode {
+        guard var builder = treeBuilder else { preconditionFailure("A retained scan must supply a tree builder.") }
+        return builder.finish(partial: partial)
     }
 
     mutating func run() -> DiskMapReport {
@@ -137,6 +211,7 @@ private struct DiskMapWalker {
                 }
                 let metadata = DiskMetadata(info)
                 seenDirectories.insert(metadata.inode)
+                if treePolicy != nil, progress != nil { topLevelTotal = Self.countTopLevel(from: descriptor) }
                 // scanDirectory takes ownership of the descriptor on every path.
                 _ = scanDirectory(descriptor, url: root, expected: metadata, depth: 0, collectChildren: true, inheritedHidden: StorageClassification.isHiddenPath(root) || metadata.isHidden)
                 if !Task.isCancelled {
@@ -183,11 +258,41 @@ private struct DiskMapWalker {
                 return StorageCategorySummary(category: category, allocatedBytes: counts.allocatedBytes,
                     logicalBytes: counts.logicalBytes, fileCount: counts.fileCount)
             }, hiddenAllocatedBytes: measured.hiddenAllocatedBytes, hiddenLogicalBytes: measured.hiddenLogicalBytes,
-            hiddenFileCount: measured.hiddenFileCount)
+            hiddenFileCount: measured.hiddenFileCount, kindAllocatedBytes: measured.kinds)
+    }
+
+    private static func countTopLevel(from parent: Int32) -> Int? {
+        let descriptor = openat(parent, ".", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard descriptor >= 0 else { return nil }
+        guard let directory = fdopendir(descriptor) else {
+            close(descriptor)
+            return nil
+        }
+        defer { closedir(directory) }
+        var count = 0
+        while !Task.isCancelled {
+            errno = 0
+            guard let entry = readdir(directory) else { return errno == 0 ? count : nil }
+            let isDot = withUnsafePointer(to: entry.pointee.d_name) {
+                $0.withMemoryRebound(to: CChar.self, capacity: 3) { name in
+                    name[0] == 46 && (name[1] == 0 || (name[1] == 46 && name[2] == 0))
+                }
+            }
+            if !isDot { count += 1 }
+        }
+        return nil
     }
 
     private mutating func scanDirectory(_ descriptor: Int32, url: URL, expected: DiskMetadata,
                                         depth: Int, collectChildren: Bool, inheritedHidden: Bool) -> DiskTotals {
+        let partialBefore = partialEventCount
+        if depth > 0 { treeBuilder?.enterDirectory(url.lastPathComponent) }
+        defer {
+            if depth > 0 {
+                let isPartial = cancelled || partialEventCount != partialBefore
+                treeBuilder?.leaveDirectory(partial: isPartial)
+            }
+        }
         guard let directory = fdopendir(descriptor) else {
             let code = errno
             close(descriptor)
@@ -220,11 +325,19 @@ private struct DiskMapWalker {
             }
             guard name != ".", name != ".." else { continue }
             let childURL = url.appendingPathComponent(name, isDirectory: false)
+            if depth == 0 { currentTopLevel = name }
+            let partialBeforeChild = partialEventCount
             let child = scanItem(parent: descriptor, name: name, url: childURL, depth: depth + 1, inheritedHidden: inheritedHidden)
             totals.add(child.totals)
             if collectChildren { children.append(child.item) }
             if cancelled { break }
+            if depth == 0, treePolicy != nil, progress != nil {
+                completedTopLevel.append(DiskTopLevelRoom(name: name, bytes: child.totals.allocatedBytes,
+                    files: child.totals.fileCount, kindBytes: child.totals.stringKinds,
+                    isPartial: partialEventCount != partialBeforeChild))
+            }
         }
+        if depth == 0 { currentTopLevel = nil }
         if !cancelled {
             var finished = stat()
             if fstat(descriptor, &finished) != 0 || DiskMetadata(finished).directoryIdentity != expected.directoryIdentity {
@@ -242,6 +355,7 @@ private struct DiskMapWalker {
         var info = stat()
         guard fstatat(parent, name, &info, AT_SYMLINK_NOFOLLOW) == 0 else {
             recordIssue(url, "This item could not be inspected: \(systemMessage(errno)).")
+            treeBuilder?.skip(name, isDirectory: false)
             return (item(url, isDirectory: false, totals: DiskTotals()), DiskTotals())
         }
         let metadata = DiskMetadata(info)
@@ -249,6 +363,7 @@ private struct DiskMapWalker {
         currentName = name
         if metadata.isSymbolicLink {
             symbolicLinks += 1
+            treeBuilder?.skip(name, isDirectory: false)
             return (item(url, isDirectory: false, totals: DiskTotals()), DiskTotals())
         }
         if metadata.isRegular {
@@ -263,6 +378,7 @@ private struct DiskMapWalker {
             let totals = DiskTotals.file(allocatedBytes: attributedBytes, logicalBytes: metadata.logicalBytes,
                 category: category, isHidden: hidden)
             measured.add(totals)
+            treeBuilder?.file(name, bytes: attributedBytes, kind: StorageKind.kind(category: category, isHidden: hidden)?.rawValue)
             let result = item(url, isDirectory: false, totals: totals, isHidden: hidden, modifiedAt: metadata.modifiedAt)
             if isFirstAllocation { largest.offer(result) }
             publishProgress()
@@ -270,25 +386,35 @@ private struct DiskMapWalker {
         }
         guard metadata.isDirectory else {
             specialItems += 1
+            treeBuilder?.skip(name, isDirectory: false)
             return (item(url, isDirectory: false, totals: DiskTotals()), DiskTotals())
+        }
+        if treePolicy?.skipDescending(into: url) == true {
+            recordIssue(url, "Other apps keep their data here. macOS asks before Room reads it.")
+            treeBuilder?.skip(name, isDirectory: true)
+            return (item(url, isDirectory: true, totals: DiskTotals()), DiskTotals())
         }
         guard depth < 128 else {
             recordIssue(url, "The folder nesting is unusually deep. Scan this folder separately to inspect its contents.")
+            treeBuilder?.skip(name, isDirectory: true)
             return (item(url, isDirectory: true, totals: DiskTotals()), DiskTotals())
         }
         guard seenDirectories.insert(metadata.inode).inserted else {
             repeatedDirectories += 1
+            treeBuilder?.skip(name, isDirectory: true)
             return (item(url, isDirectory: true, totals: DiskTotals()), DiskTotals())
         }
         let descriptor = openat(parent, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         guard descriptor >= 0 else {
             recordIssue(url, "This folder could not be opened without following links: \(systemMessage(errno)).")
+            treeBuilder?.skip(name, isDirectory: true)
             return (item(url, isDirectory: true, totals: DiskTotals()), DiskTotals())
         }
         var opened = stat()
         guard fstat(descriptor, &opened) == 0, DiskMetadata(opened).directoryIdentity == metadata.directoryIdentity else {
             close(descriptor)
             recordIssue(url, "This folder was replaced or changed before it could be inspected.")
+            treeBuilder?.skip(name, isDirectory: true)
             return (item(url, isDirectory: true, totals: DiskTotals()), DiskTotals())
         }
         let totals = scanDirectory(descriptor, url: url, expected: metadata, depth: depth, collectChildren: false, inheritedHidden: hidden)
@@ -299,7 +425,8 @@ private struct DiskMapWalker {
         DiskMapItem(url: url, name: url.lastPathComponent, isDirectory: isDirectory,
             allocatedBytes: totals.allocatedBytes, logicalBytes: totals.logicalBytes, fileCount: totals.fileCount,
             isHidden: isHidden, modifiedAt: modifiedAt,
-            categoryAllocatedBytes: totals.categories.mapValues(\.allocatedBytes), hiddenAllocatedBytes: totals.hiddenAllocatedBytes)
+            categoryAllocatedBytes: totals.categories.mapValues(\.allocatedBytes), hiddenAllocatedBytes: totals.hiddenAllocatedBytes,
+            kindAllocatedBytes: totals.kinds)
     }
 
     private mutating func recordIssue(_ url: URL, _ message: String) {
@@ -314,7 +441,9 @@ private struct DiskMapWalker {
         guard force || now.timeIntervalSince(lastProgress) >= progressInterval else { return }
         lastProgress = now
         progress(DiskScanProgress(visitedFiles: measured.fileCount, allocatedBytes: measured.allocatedBytes,
-            currentName: currentName))
+            currentName: currentName, topLevelTotal: topLevelTotal, currentTopLevel: currentTopLevel,
+            completedTopLevel: completedTopLevel))
+        completedTopLevel.removeAll(keepingCapacity: true)
     }
 
     private func openRoot(_ url: URL) throws -> Int32 {
@@ -351,18 +480,24 @@ private struct DiskTotals {
     var hiddenAllocatedBytes: Int64 = 0
     var hiddenLogicalBytes: Int64 = 0
     var hiddenFileCount: Int = 0
+    var kinds: [StorageKind: Int64] = [:]
+
+    var stringKinds: [String: Int64] { Dictionary(uniqueKeysWithValues: kinds.map { ($0.key.rawValue, $0.value) }) }
 
     static func file(allocatedBytes: Int64, logicalBytes: Int64, category: StorageCategory, isHidden: Bool) -> DiskTotals {
-        DiskTotals(allocatedBytes: allocatedBytes, logicalBytes: logicalBytes, fileCount: 1,
+        let kind = StorageKind.kind(category: category, isHidden: isHidden)
+        let kinds = allocatedBytes > 0 ? kind.map { [$0: allocatedBytes] } ?? [:] : [:]
+        return DiskTotals(allocatedBytes: allocatedBytes, logicalBytes: logicalBytes, fileCount: 1,
             categories: [category: DiskCategoryTotals(allocatedBytes: allocatedBytes, logicalBytes: logicalBytes, fileCount: 1)],
             hiddenAllocatedBytes: isHidden ? allocatedBytes : 0, hiddenLogicalBytes: isHidden ? logicalBytes : 0,
-            hiddenFileCount: isHidden ? 1 : 0)
+            hiddenFileCount: isHidden ? 1 : 0, kinds: kinds)
     }
 
     mutating func add(_ other: DiskTotals) {
         allocatedBytes += other.allocatedBytes; logicalBytes += other.logicalBytes; fileCount += other.fileCount
         hiddenAllocatedBytes += other.hiddenAllocatedBytes; hiddenLogicalBytes += other.hiddenLogicalBytes
         hiddenFileCount += other.hiddenFileCount
+        for (kind, bytes) in other.kinds { kinds[kind, default: 0] += bytes }
         for (category, counts) in other.categories {
             var current = categories[category] ?? DiskCategoryTotals()
             current.allocatedBytes += counts.allocatedBytes; current.logicalBytes += counts.logicalBytes
