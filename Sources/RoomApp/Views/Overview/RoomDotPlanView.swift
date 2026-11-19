@@ -6,6 +6,7 @@ struct RoomOverviewPlanGeometry {
     let goal: CGRect?
     let freeLabelArea: CGRect?
     let contextGrid: Path
+    let rings: Path
     let dotCenters: [CGPoint]
 
     var free: CGRect? { frame(for: .free) }
@@ -41,6 +42,14 @@ struct RoomOverviewPlanGeometry {
         let dotCenters = layout.dots.map {
             CGPoint(x: $0.center.x + wall.minX, y: $0.center.y + wall.minY)
         }
+        let rings = Path { path in
+            for (index, dot) in layout.dots.enumerated() where dot.room == .free {
+                let center = dotCenters[index]
+                let radius = layout.radius
+                path.addEllipse(in: CGRect(x: center.x - radius, y: center.y - radius,
+                                           width: 2 * radius, height: 2 * radius))
+            }
+        }
         let unmapped = layout.rooms.first(where: { $0.id == .notMapped })?.rect.offsetBy(dx: wall.minX, dy: wall.minY)
         let grid = Path { path in
             guard let unmapped else { return }
@@ -51,7 +60,7 @@ struct RoomOverviewPlanGeometry {
                 }
             }
         }
-        return Self(layout: layout, wall: wall, goal: goal, freeLabelArea: freeLabelArea, contextGrid: grid, dotCenters: dotCenters)
+        return Self(layout: layout, wall: wall, goal: goal, freeLabelArea: freeLabelArea, contextGrid: grid, rings: rings, dotCenters: dotCenters)
     }
 }
 
@@ -225,8 +234,12 @@ struct RoomDotPlanView: View {
     }
 
     private func drawDots(_ geometry: RoomOverviewPlanGeometry, context: GraphicsContext) {
+        let freeInk = RoomTokens.Ink.secondary.opacity(contrast == .increased ? 1 : RoomTokens.Dots.freeRingOpacity)
+        if field.isAtRest {
+            context.stroke(geometry.rings, with: .color(freeInk), lineWidth: RoomTokens.Dots.freeRingStroke)
+        }
         var paths: [RoomPlanRoom: Path] = [:]
-        for (index, dot) in geometry.layout.dots.enumerated() {
+        for (index, dot) in geometry.layout.dots.enumerated() where dot.room != .free || !field.isAtRest {
             let center = geometry.dotCenters[index]
             let rest = geometry.layout.radius
             let radius = index < field.energy.count ? field.radius(index, rest: rest) : rest
@@ -236,8 +249,7 @@ struct RoomDotPlanView: View {
         for (room, path) in paths {
             switch room {
             case .free:
-                let opacity = contrast == .increased ? 1 : RoomTokens.Dots.freeRingOpacity
-                context.stroke(path, with: .color(RoomTokens.Ink.secondary.opacity(opacity)),
+                context.stroke(path, with: .color(freeInk),
                                lineWidth: RoomTokens.Dots.freeRingStroke)
             case .kind(let key):
                 if let kind = RoomTokens.Kind(rawValue: key) {
