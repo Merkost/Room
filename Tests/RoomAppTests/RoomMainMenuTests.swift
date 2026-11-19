@@ -14,8 +14,9 @@ struct RoomMainMenuTests {
         let output = fixture.appendingPathComponent("menu.json")
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.createsNewApplicationInstance = true
-        configuration.arguments = ["-RoomOnboardingVersion", "1", "-RoomOpenOn", "overview",
-                                   "-RoomMenuBarEnabled", "NO", "-AppleLanguages", "(en-US)"]
+        configuration.arguments = ["-RoomOnboardingVersion", String(RoomOnboardingFlow.version),
+                                   "-RoomOpenOn", "overview", "-RoomMenuBarEnabled", "NO",
+                                   "-RoomWeeklyCheckEnabled", "NO", "-AppleLanguages", "(en-US)"]
         configuration.environment = ["ROOM_MAIN_MENU_TEST_OUTPUT": output.path]
         let application = try await NSWorkspace.shared.openApplication(at: bundle, configuration: configuration)
         defer { if !application.isTerminated { application.terminate() } }
