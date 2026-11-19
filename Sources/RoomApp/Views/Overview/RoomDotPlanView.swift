@@ -68,6 +68,8 @@ struct RoomDotPlanView: View {
     let plan: RoomOverviewPlanInput
     let belowGoal: Bool
     var hidden = false
+    var displayHeight = RoomTokens.Density.calm.planSize.height
+    var staticPreview = false
     let openDiskMap: () -> Void
 
     @Environment(\.roomAccent) private var accent
@@ -144,8 +146,8 @@ struct RoomDotPlanView: View {
             }
             .onChange(of: motion) { _, _ in resetWake() }
         }
-        .frame(width: nil, height: RoomTokens.Density.calm.planSize.height)
-        .focusable()
+        .frame(height: displayHeight)
+        .focusable(!staticPreview)
         .focused($focused)
         .focusEffectDisabled()
         .onChange(of: focused) { _, focused in

@@ -558,7 +558,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Room maps your home folder. Full Disk Access is optional; without it Room skips protected folders and says which."
+            "value": "Choose the folder you want to map. Room reads sizes, skips protected folders it cannot read, and shows the limits of the scan."
           }
         }
       }

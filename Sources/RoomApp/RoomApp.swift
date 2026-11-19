@@ -55,12 +55,25 @@ struct RoomApp: App {
         NSApp.activate()
     }
 
+    private func isOnboardingBusy() -> Bool {
+        isWorking || RoomNativeFolderPicker.shared.isPresenting
+    }
+
+    private func enableOnboardingMonitor() {
+        menuBarEnabled = true
+        delegate.statusMonitor?.setEnabled(true)
+    }
+
     @ViewBuilder private var rootView: some View {
         #if ROOM_APP_STORE
-        RoomRootView(model: model, insights: insights, memoryActions: memoryActions, rooms: rooms, navigation: navigation)
+        RoomRootView(model: model, insights: insights, memoryActions: memoryActions, rooms: rooms, navigation: navigation,
+                     isOnboardingBusy: isOnboardingBusy, enableOnboardingMonitor: enableOnboardingMonitor,
+                     showOnboardingMonitor: { delegate.statusMonitor?.showMonitor() })
         #else
         RoomRootView(model: model, insights: insights, memoryActions: memoryActions, rooms: rooms,
-                     navigation: navigation, agentWork: agentWork)
+                     navigation: navigation, agentWork: agentWork, isOnboardingBusy: isOnboardingBusy,
+                     enableOnboardingMonitor: enableOnboardingMonitor,
+                     showOnboardingMonitor: { delegate.statusMonitor?.showMonitor() })
         #endif
     }
 

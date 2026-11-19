@@ -31,7 +31,7 @@ final class RoomWindowNavigation {
             last: defaults.string(forKey: "RoomLastDestination"))
         history = RoomNavigationHistory(current: .screen(destination))
         prefersSidebarIcons = defaults.bool(forKey: "RoomSidebarIconsOnly")
-        needsWelcome = defaults.integer(forKey: "RoomOnboardingVersion") < 1
+        needsWelcome = RoomOnboardingFlow.shouldShow(storedVersion: defaults.integer(forKey: "RoomOnboardingVersion"))
     }
 
     func select(_ destination: RoomDestination) {
@@ -72,7 +72,7 @@ final class RoomWindowNavigation {
 
     func dismissWelcome() {
         needsWelcome = false
-        defaults.set(1, forKey: "RoomOnboardingVersion")
+        defaults.set(RoomOnboardingFlow.version, forKey: "RoomOnboardingVersion")
     }
 
     func consumeRequest(from insights: RoomInsightsModel) {

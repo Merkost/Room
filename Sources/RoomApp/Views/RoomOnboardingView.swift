@@ -1,181 +1,183 @@
 import SwiftUI
 
-/// A short introduction. Folder grants remain contextual inside Room, after this sheet closes.
 struct RoomOnboardingView: View {
-    let onFinish: () -> Void
-    @AppStorage("RoomMotionEnabled") private var motionEnabled = true
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Namespace private var introductionGlass
-    @State private var page = 0
+    let capacity: RoomVolumeCapacity?
+    let isWorking: Bool
+    let openPrivacySettings: () -> Void
+    let onFinish: (RoomOnboardingChoice?) -> Void
 
-    private var allowsMotion: Bool { motionEnabled && !reduceMotion }
-    private var pageAnimation: Animation? {
-        allowsMotion ? .spring(response: 0.35, dampingFraction: 1) : nil
-    }
+    @Environment(\.roomMotion) private var motion
+    @Environment(\.roomAccent) private var accent
+    @Environment(\.roomHide) private var hide
+    @State private var page = 1
+    @State private var entered = false
+    @State private var goesForward = true
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            HStack(spacing: 9) {
-                RoomMark()
-                    .fill(.primary, style: FillStyle(eoFill: true))
-                    .frame(width: 25, height: 25)
-                    .accessibilityHidden(true)
-                Text("Room").font(RoomType.heading(16))
-                Spacer()
-                Text("\(page + 1) of 2")
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
-                    .accessibilityLabel("Introduction, step \(page + 1) of 2")
+        VStack(alignment: .leading, spacing: RoomTokens.Space.breath1) {
+            Group {
+                if page == 1 { introduction.transition(pageTransition) }
+                else { routes.transition(pageTransition) }
             }
-
-            VStack(alignment: .leading, spacing: 10) {
-                Text(page == 0 ? "Room to breathe." : "Always in your hands.")
-                    .font(RoomType.heading(28))
-                    .tracking(-0.6)
-                    .accessibilityAddTraits(.isHeader)
-                Text(page == 0
-                     ? "See what’s taking space. Choose what to clear."
-                     : "Scan first. Access and changes stay under your control.")
-                    .font(.system(size: 14))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            ZStack {
-                if page == 0 {
-                    overview
-                        .transition(contentTransition)
-                } else {
-                    safeguards
-                        .transition(contentTransition)
-                }
-            }
-            .frame(maxWidth: .infinity, minHeight: 240, maxHeight: 240)
-
-            Spacer(minLength: 0)
-
-            HStack(spacing: 16) {
-                Button("Skip") { onFinish() }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-                    .keyboardShortcut(.cancelAction)
-                    .accessibilityIdentifier("RoomOnboardingSkip")
-
-                if page > 0 {
-                    Button("Back") { move(to: 0) }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
-                        .accessibilityIdentifier("RoomOnboardingBack")
-                }
-
-                Spacer()
-
-                HStack(spacing: 5) {
-                    ForEach(0..<2) { index in
-                        Capsule()
-                            .fill(page == index ? Color.primary.opacity(0.65) : Color.primary.opacity(0.16))
-                            .frame(width: 18, height: 6)
-                            .scaleEffect(x: page == index ? 1 : 0.35, y: 1)
-                    }
-                }
-                .accessibilityHidden(true)
-
-                Spacer()
-
-                Button {
-                    if page == 0 { move(to: 1) } else { onFinish() }
-                } label: {
-                    HStack(spacing: 12) {
-                        Text(page == 0 ? "Continue" : "Get started")
-                        Image(systemName: "arrow.right")
-                    }
-                    .font(.system(size: 13, weight: .medium))
-                    .padding(.horizontal, 10).padding(.vertical, 3)
-                }
-                .buttonStyle(.glassProminent)
-                .tint(Color(red: 0.60, green: 0.79, blue: 0.91))
-                .controlSize(.large)
-                .keyboardShortcut(.defaultAction)
-                .accessibilityIdentifier(page == 0 ? "RoomOnboardingContinue" : "RoomOnboardingFinish")
-            }
-            .font(.system(size: 13))
+            .frame(maxHeight: .infinity, alignment: .center)
+            footer
         }
-        .padding(32)
-        .frame(width: 620, height: 540)
-        .background(Color(nsColor: .windowBackgroundColor))
-        .animation(pageAnimation, value: page)
-        .transaction { transaction in
-            if !allowsMotion { transaction.disablesAnimations = true }
-        }
+        .padding(RoomTokens.Space.breath1)
+        .frame(width: RoomTokens.Onboarding.width, height: RoomTokens.Onboarding.height)
+        .background(RoomTokens.Surface.group)
+        .foregroundStyle(RoomTokens.Ink.graphite)
+        .onAppear { withAnimation(motion.animation(RoomTokens.Motion.settle)) { entered = true } }
     }
 
-    private var overview: some View {
-        VStack(spacing: 20) {
-            RoomStorageVisual(selectionCount: 0, isScanning: false, motionEnabled: motionEnabled)
-                .scaleEffect(1.1)
-                .frame(height: 170)
-            HStack(spacing: 30) {
-                Label("Caches", systemImage: "internaldrive")
-                Label("Memory", systemImage: "memorychip")
-                Label("Disk Map", systemImage: "square.grid.2x2")
+    private var introduction: some View {
+        let plan = RoomOnboardingFlow.plan(capacityBytes: capacity?.capacityBytes, freeBytes: capacity?.freeBytes)
+        return HStack(alignment: .center, spacing: RoomTokens.Space.breath1) {
+            if let plan {
+                RoomDotPlanView(plan: plan, belowGoal: false, hidden: hide.masksNow,
+                                displayHeight: RoomTokens.Onboarding.planHeight, staticPreview: true, openDiskMap: {})
+                    .frame(width: RoomTokens.Onboarding.planWidth)
+                    .allowsHitTesting(false)
+                    .accessibilityRepresentation {
+                        Text(RoomOnboardingFlow.planAccessibility(capacityBytes: plan.capacityBytes, freeBytes: plan.freeBytes,
+                            hidden: hide.masksNow, format: RoomFormat.overviewBytes))
+                            .accessibilityAddTraits(.isImage)
+                    }
+                    .opacity(entered ? 1 : 0)
             }
-            .font(.system(size: 13, weight: .medium))
-            .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
+                Text("onboarding.p1.title", bundle: RoomCopy.bundle)
+                    .font(RoomTokens.Typography.aboutHeading)
+                    .accessibilityAddTraits(.isHeader)
+                Text("onboarding.p1.body", bundle: RoomCopy.bundle)
+                    .foregroundStyle(RoomTokens.Ink.secondary)
+                safeguard("onboarding.p1.scan", symbol: "map")
+                safeguard("onboarding.p1.trash", symbol: "arrow.uturn.backward")
+                safeguard("onboarding.p1.privacy", symbol: "checkmark")
+            }
+            .font(RoomTokens.Typography.body)
+            .fixedSize(horizontal: false, vertical: true)
+            .opacity(entered ? 1 : 0)
+            .offset(y: entered || !motion.isFull ? 0 : RoomTokens.Space.group)
+            .animation(motion.animation(RoomTokens.Motion.onboardingText), value: entered)
         }
         .frame(maxWidth: .infinity)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Read-only storage discovery, memory insight, and a visual disk map")
     }
 
-    private var safeguards: some View {
-        GlassEffectContainer(spacing: 12) {
-            VStack(spacing: 12) {
-                safeguard("access", symbol: "folder.badge.plus", title: "Choose folder access",
-                          detail: "Pick a folder inside Room. macOS manages system permissions.")
-                safeguard("cleanup", symbol: "trash", title: "Review every cleanup",
-                          detail: "Selected caches move to Trash with a recovery record.")
-                #if ROOM_APP_STORE
-                safeguard("memory", symbol: "memorychip", title: "Understand memory",
-                          detail: "See pressure, compression, and swap with local suggestions.")
-                #else
-                safeguard("memory", symbol: "memorychip", title: "Memory without surprises",
-                          detail: "Choose apps for a normal quit; their unsaved-work prompts remain.")
-                #endif
+    private func safeguard(_ key: LocalizedStringKey, symbol: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: RoomTokens.Space.tight) {
+            Image(systemName: symbol).foregroundStyle(accent.text).accessibilityHidden(true)
+            Text(key, bundle: RoomCopy.bundle)
+        }
+    }
+
+    private var routes: some View {
+        VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
+            Text("onboarding.p2.title", bundle: RoomCopy.bundle)
+                .font(RoomTokens.Typography.aboutHeading).accessibilityAddTraits(.isHeader)
+            Text("onboarding.p2.lead", bundle: RoomCopy.bundle)
+                .font(RoomTokens.Typography.body).foregroundStyle(RoomTokens.Ink.secondary)
+            VStack(spacing: 0) {
+                choice(.mapFolder, title: "onboarding.p2.map", symbol: "map") {
+                    #if ROOM_APP_STORE
+                    VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
+                        Text("onboarding.p2.map.store", bundle: RoomCopy.bundle)
+                        Text("onboarding.p2.map.store.reads", bundle: RoomCopy.bundle)
+                    }
+                    #else
+                    Text("onboarding.p2.map.direct", bundle: RoomCopy.bundle)
+                    #endif
+                }
+                Divider()
+                choice(.checkCaches, title: "onboarding.p2.caches", symbol: "sparkles") {
+                    #if ROOM_APP_STORE
+                    Text("onboarding.p2.caches.store", bundle: RoomCopy.bundle)
+                    #else
+                    VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
+                        Text("onboarding.p2.caches.direct", bundle: RoomCopy.bundle)
+                        Button(action: openPrivacySettings) {
+                            Text("onboarding.p2.caches.permission", bundle: RoomCopy.bundle)
+                        }
+                        .roomLink(accent)
+                    }
+                    #endif
+                }
+                Divider()
+                choice(.menuBar, title: "onboarding.p2.memory", symbol: "memorychip") { EmptyView() }
             }
         }
     }
 
-    private func safeguard(_ id: String, symbol: String, title: String, detail: String) -> some View {
-        HStack(spacing: 16) {
-            Image(systemName: symbol)
-                .font(.system(size: 22, weight: .regular))
-                .foregroundStyle(.secondary)
-                .frame(width: 28)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.system(size: 14, weight: .medium))
-                Text(detail)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+    private func choice<Supporting: View>(_ choice: RoomOnboardingChoice, title: LocalizedStringKey,
+                                          symbol: String, @ViewBuilder supporting: () -> Supporting) -> some View {
+        HStack(alignment: .center, spacing: RoomTokens.Space.group) {
+            Group {
+                if RoomOnboardingFlow.isProminent(choice) {
+                    choiceButton(choice, title: title, symbol: symbol).roomPrimary(accent)
+                } else {
+                    choiceButton(choice, title: title, symbol: symbol).roomSecondary()
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            supporting()
+                .font(RoomTokens.Typography.caption)
+                .foregroundStyle(RoomTokens.Ink.secondary)
+                .padding(RoomTokens.Space.row)
+                .frame(width: RoomTokens.Onboarding.supportingWidth, alignment: .leading)
+                .background(RoomTokens.Surface.canvas, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.row))
         }
-        .padding(.horizontal, 18).padding(.vertical, 14)
-        .background(reduceTransparency ? Color(nsColor: .controlBackgroundColor) : .clear,
-                    in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .glassEffect(reduceTransparency ? .identity : .regular,
-                     in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .glassEffectID(id, in: introductionGlass)
-        .glassEffectTransition(allowsMotion ? .materialize : .identity)
-        .accessibilityElement(children: .combine)
+        .padding(.vertical, RoomTokens.Onboarding.choicePadding)
+        .accessibilityElement(children: .contain)
     }
 
-    private var contentTransition: AnyTransition {
-        allowsMotion ? .opacity.combined(with: .offset(y: 8)) : .opacity
+    private func choiceButton(_ choice: RoomOnboardingChoice, title: LocalizedStringKey, symbol: String) -> some View {
+        Button {
+            onFinish(choice)
+        } label: {
+            Label {
+                Text(title, bundle: RoomCopy.bundle)
+            } icon: {
+                Image(systemName: symbol)
+            }
+        }
+        .disabled(!RoomOnboardingFlow.choicesEnabled(isWorking: isWorking))
+    }
+
+    private var footer: some View {
+        HStack(spacing: RoomTokens.Space.group) {
+            Button { onFinish(nil) } label: { Text("onboarding.p2.skip", bundle: RoomCopy.bundle) }
+                .buttonStyle(.plain)
+                .keyboardShortcut(.cancelAction)
+                .accessibilityIdentifier("RoomOnboardingSkip")
+            if page == 2 {
+                Button { move(to: 1) } label: { Text("onboarding.p2.back", bundle: RoomCopy.bundle) }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("RoomOnboardingBack")
+            }
+            Spacer()
+            if page == 1 {
+                Text("onboarding.p1.step", bundle: RoomCopy.bundle)
+                    .font(RoomTokens.Typography.caption).foregroundStyle(RoomTokens.Ink.secondary)
+                Button { move(to: 2) } label: { Text("onboarding.p1.continue", bundle: RoomCopy.bundle) }
+                    .roomPrimary(accent)
+                    .keyboardShortcut(.defaultAction)
+                    .accessibilityIdentifier("RoomOnboardingContinue")
+            } else {
+                Text("onboarding.p2.step", bundle: RoomCopy.bundle)
+                    .font(RoomTokens.Typography.caption).foregroundStyle(RoomTokens.Ink.secondary)
+            }
+        }
+        .font(RoomTokens.Typography.body)
+    }
+
+    private var pageTransition: AnyTransition {
+        guard motion.isFull else { return .opacity }
+        let offset = goesForward ? RoomTokens.Space.breath1 : -RoomTokens.Space.breath1
+        return .asymmetric(insertion: .offset(x: offset).combined(with: .opacity),
+                           removal: .offset(x: -offset).combined(with: .opacity))
     }
 
     private func move(to nextPage: Int) {
-        withAnimation(pageAnimation) { page = nextPage }
+        goesForward = nextPage > page
+        withAnimation(motion.animation(RoomTokens.Motion.page)) { page = nextPage }
     }
 }

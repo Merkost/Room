@@ -103,7 +103,7 @@ struct RoomOverviewRoutingTests {
         fixture.navigation.dismissWelcome()
 
         #expect(!fixture.navigation.needsWelcome)
-        #expect(fixture.defaults.integer(forKey: "RoomOnboardingVersion") == 1)
+        #expect(fixture.defaults.integer(forKey: "RoomOnboardingVersion") == 2)
         #expect(fixture.navigation.destination == (preference == "overview" ? .overview : .clean))
         try await fixture.expectIdle()
     }

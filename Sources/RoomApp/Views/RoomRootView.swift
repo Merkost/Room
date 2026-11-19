@@ -10,6 +10,10 @@ struct RoomRootView: View {
     #if !ROOM_APP_STORE
     @Bindable var agentWork: AgentWorkModel
     #endif
+    var isOnboardingBusy: () -> Bool = { false }
+    var enableOnboardingMonitor: () -> Void = {}
+    var showOnboardingMonitor: () -> Void = {}
+    @State private var onboardingFollowUp: [RoomOnboardingEffect] = []
     @AppStorage("RoomAppearance") private var appearance = "dark"
     @Environment(\.roomHide) private var hide
     @Environment(\.openSettings) private var openSettings
@@ -82,15 +86,13 @@ struct RoomRootView: View {
                 }
             }
         }
-        .sheet(item: $sheet) { selected in
+        .sheet(item: $sheet, onDismiss: performOnboardingFollowUp) { selected in
             switch selected {
             case .review: RoomCleanupReviewSheet(model: model)
             case .source(let source): RoomSourceSheet(source: source, model: model)
             case .welcome:
-                RoomOnboardingView {
-                    navigation.dismissWelcome()
-                    sheet = nil
-                }
+                RoomOnboardingView(capacity: insights.volumeCapacity, isWorking: isOnboardingBusy(),
+                                   openPrivacySettings: insights.openPrivacySettings, onFinish: finishWelcome)
             case .protectedSources: RoomProtectedSheet(model: model)
             case .scanIssues: RoomScanIssuesSheet(issues: model.scanIssues)
             case .history: RoomHistorySheet(model: model)
@@ -145,6 +147,42 @@ struct RoomRootView: View {
             guard requested else { return }
             sheet = .welcome
             insights.requestedWelcome = false
+        }
+    }
+
+    private func finishWelcome(_ choice: RoomOnboardingChoice?) {
+        guard choice == nil || !isOnboardingBusy() else { return }
+        #if ROOM_APP_STORE
+        let edition = RoomOnboardingEdition.store
+        #else
+        let edition = RoomOnboardingEdition.direct
+        #endif
+        let effects = choice.map { RoomOnboardingFlow.effects($0, edition: edition) } ?? RoomOnboardingFlow.skipEffects
+        onboardingFollowUp = effects.filter { $0 != .markSeen && $0 != .close }
+        if effects.contains(.markSeen) { navigation.dismissWelcome() }
+        if effects.contains(.close) { sheet = nil }
+    }
+
+    private func performOnboardingFollowUp() {
+        let effects = onboardingFollowUp
+        onboardingFollowUp = []
+        for effect in effects {
+            switch effect {
+            case .markSeen, .close: break
+            case .navigate(let raw):
+                if let destination = RoomDestination(rawValue: raw) { navigation.select(destination) }
+            case .chooseHomeAccess, .chooseDiskFolder: insights.chooseDiskFolder()
+            case .chooseStoreCachesFolder:
+                #if ROOM_APP_STORE
+                model.chooseStoreFolder(scanAfterApproval: true)
+                #endif
+            case .startCachesCheck:
+                #if !ROOM_APP_STORE
+                model.scan()
+                #endif
+            case .enableMenuBar: enableOnboardingMonitor()
+            case .showMonitorOnce: showOnboardingMonitor()
+            }
         }
     }
 

@@ -137,6 +137,15 @@ enum RoomTokens {
         static let plan: CGFloat = 11
     }
 
+    enum Onboarding {
+        static let width: CGFloat = 620
+        static let height: CGFloat = 540
+        static let planWidth: CGFloat = 300
+        static let planHeight: CGFloat = 262
+        static let supportingWidth: CGFloat = 210
+        static let choicePadding: CGFloat = 14
+    }
+
     enum Sidebar {
         static let iconWidth: CGFloat = 16
         static let innerPadding: CGFloat = 8
@@ -263,6 +272,7 @@ enum RoomTokens {
         static let standard = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.20)
         static let exit = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.12)
         static let page = Animation.spring(response: 0.32, dampingFraction: 1)
+        static let onboardingText = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.24).delay(0.07)
         static let settle = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.24)
         static let success = Animation.spring(response: 0.28, dampingFraction: 0.7)  // the only overshoot
         static let fade = Animation.easeOut(duration: 0.15)                          // Reduce Motion fallback

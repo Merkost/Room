@@ -6,6 +6,7 @@ import Foundation
 final class RoomNativeFolderPicker {
     static let shared = RoomNativeFolderPicker()
     private var panel: NSOpenPanel?
+    var isPresenting: Bool { panel != nil }
 
     func choose(title: String, message: String, prompt: String, initialURL: URL?, allowsFiles: Bool = false) async -> URL? {
         guard panel == nil else { panel?.makeKeyAndOrderFront(nil); return nil }
