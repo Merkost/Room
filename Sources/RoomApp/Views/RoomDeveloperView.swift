@@ -15,6 +15,7 @@ struct RoomDeveloperView: View {
     @Bindable var agentWork: AgentWorkModel
     var memoryReport: MemoryReport?
     #endif
+    @Environment(\.roomHide) private var hide
     @State private var section = RoomDeveloperSection.rooms
     @State private var showingNotes = false
     @State private var pendingRemoval: RoomDeveloperLocation?
@@ -25,8 +26,11 @@ struct RoomDeveloperView: View {
                 VStack(alignment: .leading, spacing: 5) {
                     Text("Developer").font(RoomType.heading(24))
                     if let root = model.projectRootLabel {
-                        Text("\(model.report?.projects.count ?? 0) projects in \(root)")
-                            .font(RoomTokens.Typography.body).foregroundStyle(.secondary)
+                        HStack(spacing: 4) {
+                            RoomMaskable((model.report?.projects.count ?? 0).formatted())
+                            Text("projects in")
+                            RoomMaskable(root, kind: .name).lineLimit(1).truncationMode(.middle)
+                        }.font(RoomTokens.Typography.body).foregroundStyle(.secondary)
                     }
                 }
                 Spacer()
@@ -56,7 +60,7 @@ struct RoomDeveloperView: View {
         }
         .alert("Couldn’t add that folder", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) {
             Button("OK") { model.errorMessage = nil }
-        } message: { Text(model.errorMessage ?? "") }
+        } message: { Text(hide.masksNow ? "Choose the folder again." : model.errorMessage ?? "") }
         .confirmationDialog("Remove this folder from Developer?", isPresented: Binding(get: { pendingRemoval != nil }, set: { if !$0 { pendingRemoval = nil } }),
                             presenting: pendingRemoval) { location in
             Button("Remove from Developer", role: .destructive) { model.remove(location); pendingRemoval = nil }
@@ -64,7 +68,9 @@ struct RoomDeveloperView: View {
             Text("Folder access is managed in Settings.")
         }
         .sheet(isPresented: $showingNotes) {
-            RoomScanIssuesSheet(issues: model.report?.issues.map { "\($0.url.path): \($0.message)" } ?? [])
+            RoomScanIssuesSheet(issues: model.report?.issues.map {
+                hide.masksNow ? "A resource could not be read." : "\($0.url.path): \($0.message)"
+            } ?? [])
         }
     }
 
@@ -75,12 +81,12 @@ struct RoomDeveloperView: View {
                     ForEach(model.locations) { location in
                         HStack {
                             Label(location.role.title, systemImage: location.role.symbol)
-                            Text(location.folder.name).lineLimit(1).foregroundStyle(.secondary)
-                                .help(location.folder.url.path)
+                            RoomMaskable(location.folder.name, kind: .name).lineLimit(1).foregroundStyle(.secondary)
+                                .help(hide.masksNow ? "Folder name hidden" : location.folder.url.path)
                             Spacer()
                             Button("Remove") { pendingRemoval = location }
                                 .disabled(model.isScanning)
-                                .accessibilityLabel("Remove \(location.folder.name) from Developer")
+                                .accessibilityLabel("Remove \(hide.masksNow ? "folder" : location.folder.name) from Developer")
                         }
                     }
                     ForEach(model.folderSuggestions) { suggestion in
@@ -130,8 +136,9 @@ struct RoomDeveloperView: View {
                 }
                 Spacer()
                 if !report.issues.isEmpty {
-                    Button("\(report.issues.count) \(report.issues.count == 1 ? "note" : "notes")") { showingNotes = true }
-                        .buttonStyle(.plain)
+                    Button { showingNotes = true } label: {
+                        RoomMaskable("\(report.issues.count) \(report.issues.count == 1 ? "note" : "notes")")
+                    }.buttonStyle(.plain)
                 }
             }.font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
         }
@@ -154,6 +161,7 @@ struct RoomDeveloperView: View {
 
 private struct RoomDeveloperDevicesTable: View {
     let devices: [AndroidVirtualDeviceResource]
+    @Environment(\.roomHide) private var hide
     @State private var selected: String?
 
     var body: some View {
@@ -163,10 +171,10 @@ private struct RoomDeveloperDevicesTable: View {
         } else {
             HStack(alignment: .top, spacing: 15) {
                 Table(devices, selection: $selected) {
-                    TableColumn("Name", value: \.displayName).width(min: 120, ideal: 150)
-                    TableColumn("API") { Text($0.apiLevel ?? "—") }.width(min: 36, ideal: 42)
+                    TableColumn("Name") { RoomMaskable($0.displayName, kind: .name) }.width(min: 120, ideal: 150)
+                    TableColumn("API") { RoomMaskable($0.apiLevel ?? "—") }.width(min: 36, ideal: 42)
                     TableColumn("ABI") { Text($0.abi ?? "—") }.width(min: 50, ideal: 65)
-                    TableColumn("Size") { Text(($0.isPartial ? "≥ " : "") + RoomFormat.bytes($0.allocatedBytes)) }
+                    TableColumn("Size") { RoomMaskable(($0.isPartial ? "≥ " : "") + RoomFormat.bytes($0.allocatedBytes)) }
                     TableColumn("Last used") { device in
                         Text(device.lastUsedAt?.formatted(date: .abbreviated, time: .omitted) ?? "—").help(device.lastUseNote)
                     }
@@ -174,10 +182,12 @@ private struct RoomDeveloperDevicesTable: View {
                 }.frame(minHeight: 240)
                 if let device = devices.first(where: { $0.id == selected }) {
                     VStack(alignment: .leading, spacing: 7) {
-                        Text(device.displayName).font(RoomTokens.Typography.section)
+                        RoomMaskable(device.displayName, kind: .name).font(RoomTokens.Typography.section)
                         Text(device.lastUseNote)
-                        ForEach(device.evidence) { item in
-                            Text(item.label + " · " + item.uncertainty).textSelection(.enabled)
+                        if !hide.masksNow {
+                            ForEach(device.evidence) { item in
+                                Text(item.label + " · " + item.uncertainty).textSelection(.enabled)
+                            }
                         }
                         Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([device.url]) }
                     }

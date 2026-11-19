@@ -5,6 +5,7 @@ import SwiftUI
 struct RoomDeveloperRoomsView: View {
     let summary: RoomDevSummary
     let unreferenced: RoomDevUnreferenced
+    @Environment(\.roomHide) private var hide
     @Environment(\.roomAccent) private var accent
     @AppStorage(RoomDevUnreferenced.preferenceKey) private var threshold = RoomDevUnreferenced.defaultThreshold
     @State private var sort: Sort = .size
@@ -55,7 +56,8 @@ struct RoomDeveloperRoomsView: View {
             ForEach(rows, id: \.project.id) { row in
                 HStack(spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(row.project.name).fontWeight(.semibold).lineLimit(1)
+                        RoomMaskable(row.project.name, kind: .name).font(RoomTokens.Typography.section).lineLimit(1)
+                            .help(hide.masksNow ? "Project name hidden" : row.project.name)
                         if !row.kindLine.isEmpty {
                             Text(row.kindLine).font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
                         }
@@ -69,8 +71,8 @@ struct RoomDeveloperRoomsView: View {
                             }
                         }
                     }.frame(height: 20)
-                    Text(row.totalBytes > 0 ? measured(row.totalBytes, partial: row.partial || summary.partial) : "—")
-                        .monospacedDigit().fontWeight(.semibold).frame(width: 85, alignment: .trailing)
+                    RoomMaskable(row.totalBytes > 0 ? measured(row.totalBytes, partial: row.partial || summary.partial) : "—")
+                        .font(RoomTokens.Typography.section).frame(width: 85, alignment: .trailing)
                 }
             }
             Text("Android Gradle Plugin versions live inside the shared Gradle module cache, so they add no bar of their own.")
@@ -91,33 +93,34 @@ struct RoomDeveloperRoomsView: View {
                             .frame(width: 250, alignment: .leading).padding(14)
                     }
             }
-            Text("\(measured(summary.orphanBytes, partial: summary.partial)) · no selected project refers to these")
+            RoomMaskable("\(measured(summary.orphanBytes, partial: summary.partial)) · no selected project refers to these")
                 .font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
             let largest = summary.orphans.map { $0.artifact.bytes }.max() ?? 1
             ForEach(orphanRows, id: \.artifact.id) { row in
                 HStack(spacing: 9) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(row.artifact.version).fontWeight(.medium).lineLimit(1)
+                        RoomMaskable(row.artifact.version, kind: row.artifact.kind == .derivedData ? .name : .figure)
+                            .font(RoomTokens.Typography.bodyStrong).lineLimit(1)
                         Text(row.artifact.kind.title).font(RoomTokens.Typography.micro).foregroundStyle(.secondary)
                     }.frame(width: 142, alignment: .leading)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(row.reason.text).foregroundStyle(.secondary)
                         if let caption = RoomDevUnreferenced.caption(since: unreferenced.since[row.artifact.key],
                                                                      now: Date(), thresholdDays: threshold) {
-                            Text(caption).font(RoomTokens.Typography.micro).foregroundStyle(.secondary)
+                            RoomMaskable(caption).font(RoomTokens.Typography.micro).foregroundStyle(.secondary)
                         }
                     }.frame(maxWidth: .infinity, alignment: .leading)
                     Capsule().fill(RoomTokens.Surface.used)
                         .frame(width: 90 * Double(row.artifact.bytes) / Double(max(1, largest)), height: 5)
                         .frame(width: 90, alignment: .leading).accessibilityHidden(true)
-                    Text(measured(row.artifact.bytes, partial: row.artifact.partial || summary.partial))
+                    RoomMaskable(measured(row.artifact.bytes, partial: row.artifact.partial || summary.partial))
                         .monospacedDigit().frame(width: 80, alignment: .trailing)
                     Button {
                         NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: row.artifact.path)])
                     } label: {
                         Image(systemName: "arrow.up.forward.app")
                     }
-                    .buttonStyle(.plain).help("Show in Finder").accessibilityLabel("Show \(row.artifact.version) in Finder")
+                    .buttonStyle(.plain).help("Show in Finder").accessibilityLabel("Show \(hide.masksNow ? "version" : row.artifact.version) in Finder")
                 }.padding(.vertical, 4)
                 Divider()
             }
@@ -165,10 +168,15 @@ struct RoomDeveloperRoomsView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help(detail)
-        .accessibilityLabel(detail + (segment.countedEarlier ? ", counted in another room" : ""))
+        .help(hide.masksNow ? segment.kind.title + " · hidden" : detail)
+        .accessibilityLabel((hide.masksNow ? segment.kind.title + ", hidden" : detail)
+                            + (segment.countedEarlier ? ", counted in another room" : ""))
         .popover(isPresented: Binding(get: { selectedSegment == id }, set: { if !$0 { selectedSegment = nil } })) {
-            Text(detail).padding(12)
+            VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
+                Text(segment.kind.title)
+                RoomMaskable(segment.version, kind: segment.kind == .derivedData ? .name : .figure)
+                RoomMaskable(measured(segment.bytes, partial: segment.partial))
+            }.padding(RoomTokens.Space.inner)
         }
     }
 
@@ -183,8 +191,8 @@ struct RoomDeveloperRoomsView: View {
 
     private func figure(_ label: String, _ bytes: Int64) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(label).font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
-            Text(measured(bytes, partial: summary.partial)).font(RoomTokens.Typography.figure).monospacedDigit()
+            RoomMaskable(label).font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
+            RoomMaskable(measured(bytes, partial: summary.partial)).font(RoomTokens.Typography.figure)
         }.frame(maxWidth: .infinity, alignment: .leading).accessibilityElement(children: .combine)
     }
 
