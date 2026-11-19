@@ -143,7 +143,7 @@ final class RoomWeeklyCheckScheduler {
                                                didReceive response: UNNotificationResponse) async {
         guard response.notification.request.identifier == Self.identifier,
               response.actionIdentifier == UNNotificationDefaultActionIdentifier else { return }
-        await openCaches()
+        await MainActor.run { openCaches() }
     }
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
