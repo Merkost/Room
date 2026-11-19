@@ -8,8 +8,8 @@ nonisolated enum RoomMenuModel {
 
         var title: String {
             switch self {
-            case .go: String(localized: "menu.go", defaultValue: "Go")
-            case .debug: String(localized: "menu.debug", defaultValue: "Debug")
+            case .go: String(localized: "menu.go", defaultValue: "Go", bundle: RoomCopy.bundle)
+            case .debug: String(localized: "menu.debug", defaultValue: "Debug", bundle: RoomCopy.bundle)
             default: rawValue
             }
         }
@@ -93,15 +93,15 @@ nonisolated enum RoomMenuModel {
             switch self {
             case .about: "About Room"
             case .settings: "Settings…"
-            case .monitor: String(localized: "menu.monitor", defaultValue: "Show Monitor")
+            case .monitor: String(localized: "menu.monitor", defaultValue: "Show Monitor", bundle: RoomCopy.bundle)
             case .services: "Services"
             case .hideApp: "Hide Room"
             case .hideOthers: "Hide Others"
             case .showAll: "Show All"
             case .quit: "Quit Room"
             case .quitKeepingWindows: "Quit and Keep Windows"
-            case .pin: String(localized: "menu.pin", defaultValue: "Pin Folder as a Room…")
-            case .trash: String(localized: "menu.trash", defaultValue: "Open Trash")
+            case .pin: String(localized: "menu.pin", defaultValue: "Pin Folder as a Room…", bundle: RoomCopy.bundle)
+            case .trash: String(localized: "menu.trash", defaultValue: "Open Trash", bundle: RoomCopy.bundle)
             case .close: "Close"
             case .closeAll: "Close All"
             case .undo: "Undo"
@@ -114,25 +114,25 @@ nonisolated enum RoomMenuModel {
             case .autoFill: "AutoFill"
             case .dictation: "Start Dictation"
             case .emoji: "Emoji & Symbols"
-            case .customiseOverview: String(localized: "menu.customiseOverview", defaultValue: "Customise Overview…")
-            case .refreshOverview: String(localized: "menu.refreshOverview", defaultValue: "Refresh Free Space")
+            case .customiseOverview: String(localized: "menu.customiseOverview", defaultValue: "Customise Overview…", bundle: RoomCopy.bundle)
+            case .refreshOverview: String(localized: "menu.refreshOverview", defaultValue: "Refresh Free Space", bundle: RoomCopy.bundle)
             case .hideOverviewSizes: RoomOverviewPrivacy.menuTitle
-            case .rescanDisk: String(localized: "menu.rescanDisk", defaultValue: "Rescan Disk Map")
-            case .rescanCaches: String(localized: "menu.rescanCaches", defaultValue: "Check Caches Again")
-            case .rescanDeveloper: String(localized: "menu.rescanDeveloper", defaultValue: "Rescan Developer")
-            case .refreshMemory: String(localized: "menu.refreshMemory", defaultValue: "Refresh Memory")
-            case .stop: String(localized: "menu.stop", defaultValue: "Stop Scan")
+            case .rescanDisk: String(localized: "menu.rescanDisk", defaultValue: "Rescan Disk Map", bundle: RoomCopy.bundle)
+            case .rescanCaches: String(localized: "menu.rescanCaches", defaultValue: "Check Caches Again", bundle: RoomCopy.bundle)
+            case .rescanDeveloper: String(localized: "menu.rescanDeveloper", defaultValue: "Rescan Developer", bundle: RoomCopy.bundle)
+            case .refreshMemory: String(localized: "menu.refreshMemory", defaultValue: "Refresh Memory", bundle: RoomCopy.bundle)
+            case .stop: String(localized: "menu.stop", defaultValue: "Stop Scan", bundle: RoomCopy.bundle)
             case .fullScreen: "Enter Full Screen"
             case .sidebarLabels: String(localized: "menu.sidebarLabels.hide", defaultValue: "Hide Sidebar Labels", bundle: RoomCopy.bundle)
             case .back: String(localized: "menu.back", defaultValue: "Back", bundle: RoomCopy.bundle)
             case .forward: String(localized: "menu.forward", defaultValue: "Forward", bundle: RoomCopy.bundle)
-            case .overview: String(localized: "menu.overview", defaultValue: "Overview")
-            case .disk: String(localized: "menu.disk", defaultValue: "Disk Map")
-            case .caches: String(localized: "menu.caches", defaultValue: "Caches")
-            case .developer: String(localized: "menu.developer", defaultValue: "Developer")
-            case .memory: String(localized: "menu.memory", defaultValue: "Memory")
-            case .showHistory: String(localized: "menu.showHistory", defaultValue: "Show History")
-            case .enclosing: String(localized: "menu.enclosing", defaultValue: "Enclosing Folder")
+            case .overview: String(localized: "menu.overview", defaultValue: "Overview", bundle: RoomCopy.bundle)
+            case .disk: String(localized: "menu.disk", defaultValue: "Disk Map", bundle: RoomCopy.bundle)
+            case .caches: String(localized: "menu.caches", defaultValue: "Caches", bundle: RoomCopy.bundle)
+            case .developer: String(localized: "menu.developer", defaultValue: "Developer", bundle: RoomCopy.bundle)
+            case .memory: String(localized: "menu.memory", defaultValue: "Memory", bundle: RoomCopy.bundle)
+            case .showHistory: String(localized: "menu.showHistory", defaultValue: "Show History", bundle: RoomCopy.bundle)
+            case .enclosing: String(localized: "menu.enclosing", defaultValue: "Enclosing Folder", bundle: RoomCopy.bundle)
             case .minimize: "Minimize"
             case .minimizeAll: "Minimize All"
             case .zoom: "Zoom"
@@ -144,24 +144,24 @@ nonisolated enum RoomMenuModel {
             case .front: "Bring All to Front"
             case .arrangeInFront: "Arrange in Front"
             case .removeWindowSet: "Remove Window from Set"
-            case .welcome: String(localized: "menu.welcome", defaultValue: "Show Welcome")
-            case .support: String(localized: "menu.support", defaultValue: "Room Support")
-            case .privacy: String(localized: "menu.privacy", defaultValue: "Privacy")
+            case .welcome: String(localized: "menu.welcome", defaultValue: "Show Welcome", bundle: RoomCopy.bundle)
+            case .support: String(localized: "menu.support", defaultValue: "Room Support", bundle: RoomCopy.bundle)
+            case .privacy: String(localized: "menu.privacy", defaultValue: "Privacy", bundle: RoomCopy.bundle)
             case .helpSearch: "Search"
             case .systemHelp: "Room Help"
             case .feedback: "Send Room Feedback to Apple"
-            case .debugState: String(localized: "menu.debugState", defaultValue: "Menu bar state")
-            case .debugLive: String(localized: "menu.debugLive", defaultValue: "Live")
-            case .debugNormal: String(localized: "menu.debugNormal", defaultValue: "Normal")
-            case .debugElevated: String(localized: "menu.debugElevated", defaultValue: "Elevated")
-            case .debugCritical: String(localized: "menu.debugCritical", defaultValue: "Critical")
-            case .debugBelowGoal: String(localized: "menu.debugBelowGoal", defaultValue: "Disk below goal")
-            case .debugBoth: String(localized: "menu.debugBoth", defaultValue: "Both (elevated and below goal)")
-            case .debugStacked: String(localized: "menu.debugStacked", defaultValue: "Both stacked (elevated and below goal)")
-            case .debugIcon: String(localized: "menu.debugIcon", defaultValue: "Icon only (elevated)")
+            case .debugState: String(localized: "menu.debugState", defaultValue: "Menu bar state", bundle: RoomCopy.bundle)
+            case .debugLive: String(localized: "menu.debugLive", defaultValue: "Live", bundle: RoomCopy.bundle)
+            case .debugNormal: String(localized: "menu.debugNormal", defaultValue: "Normal", bundle: RoomCopy.bundle)
+            case .debugElevated: String(localized: "menu.debugElevated", defaultValue: "Elevated", bundle: RoomCopy.bundle)
+            case .debugCritical: String(localized: "menu.debugCritical", defaultValue: "Critical", bundle: RoomCopy.bundle)
+            case .debugBelowGoal: String(localized: "menu.debugBelowGoal", defaultValue: "Disk below goal", bundle: RoomCopy.bundle)
+            case .debugBoth: String(localized: "menu.debugBoth", defaultValue: "Both (elevated and below goal)", bundle: RoomCopy.bundle)
+            case .debugStacked: String(localized: "menu.debugStacked", defaultValue: "Both stacked (elevated and below goal)", bundle: RoomCopy.bundle)
+            case .debugIcon: String(localized: "menu.debugIcon", defaultValue: "Icon only (elevated)", bundle: RoomCopy.bundle)
             #if DEBUG
-            case .debugSimulateTrash: String(localized: "debug.simulateTrash", defaultValue: "Simulate Trash Emptied")
-            case .debugResetTrash: String(localized: "debug.resetTrash", defaultValue: "Reset Simulated Trash")
+            case .debugSimulateTrash: String(localized: "debug.simulateTrash", defaultValue: "Simulate Trash Emptied", bundle: RoomCopy.bundle)
+            case .debugResetTrash: String(localized: "debug.resetTrash", defaultValue: "Reset Simulated Trash", bundle: RoomCopy.bundle)
             #endif
             }
         }

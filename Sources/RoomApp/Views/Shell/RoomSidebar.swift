@@ -31,7 +31,7 @@ struct RoomSidebar: View {
                     ForEach(Self.items) { screenRow($0) }
                     roomsHeading
                     roomRow
-                    RoomInlineUndoRows(prefix: unpinPrefix)
+                    RoomInlineUndoRows(prefix: unpinPrefix, hidesPrivateName: true)
                 }
             }
             .scrollIndicators(.hidden)
@@ -67,7 +67,7 @@ struct RoomSidebar: View {
                 Text(item.title).font(RoomTokens.Typography.body).lineLimit(1)
                 Spacer(minLength: 0)
                 if let shortcut = item.shortcut {
-                    Text("⌘\(shortcut)").font(RoomTokens.Typography.micro)
+                    Text(verbatim: "⌘\(shortcut)").font(RoomTokens.Typography.micro)
                         .foregroundStyle(RoomTokens.Ink.secondary)
                 }
             }
@@ -94,7 +94,7 @@ struct RoomSidebar: View {
         .onMoveCommand(perform: moveFocus)
         .help(item.help)
         .accessibilityLabel(item.title)
-        .accessibilityHint(item.shortcut.map { "Command \($0)" } ?? "")
+        .accessibilityHint(Text(verbatim: item.shortcut.map { "Command \($0)" } ?? ""))
         .accessibilityIdentifier("RoomNavigation-\(item.id)")
         .accessibilityAddTraits(selected ? [.isSelected] : [])
     }

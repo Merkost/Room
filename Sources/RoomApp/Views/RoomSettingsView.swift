@@ -123,7 +123,7 @@ private struct RoomGeneralSettingsView: View {
 
             RoomSettingsFormRow("Free-space goal", hint: "Below it, the Overview and the menu-bar icon turn amber.") {
                 Stepper(onIncrement: incrementGoal, onDecrement: decrementGoal) {
-                    (Text("Keep ") + Text("\(goalBytes / 1_000_000_000)").bold() + Text(" GB free"))
+                    Text("Keep \(Text("\(goalBytes / 1_000_000_000)").bold()) GB free")
                         .monospacedDigit()
                         .contentTransition(.numericText(value: Double(goalBytes)))
                         .animation(motion.animation(RoomTokens.Motion.standard, fallback: nil), value: goalBytes)
@@ -268,7 +268,7 @@ private struct RoomGeneralSettingsView: View {
     }
 
     private func hint(_ text: String) -> some View {
-        Text(text).font(.system(size: 11)).foregroundStyle(.secondary)
+        Text(text).font(RoomTokens.Typography.micro).foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
     }
 }

@@ -103,7 +103,7 @@ struct RoomFolderAccessSettingsView: View {
             Image(systemName: "folder").foregroundStyle(.secondary).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
                 Text(folder.name).font(RoomTokens.Typography.bodyStrong).lineLimit(1)
-                Text(folder.url.path).font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
+                Text(folder.url.path).font(RoomTokens.Typography.path).foregroundStyle(.secondary)
                     .lineLimit(1).truncationMode(.middle)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -163,7 +163,7 @@ private struct RoomFolderRowHover<Content: View>: View {
     var body: some View {
         content
             .background(RoundedRectangle(cornerRadius: RoomTokens.Radius.tile, style: .continuous)
-                .fill(Color.primary.opacity(hovering ? 0.05 : 0)).padding(.horizontal, -6))
+                .fill(hovering ? RoomTokens.Surface.hover : .clear).padding(.horizontal, -6))
             .onHover { hovering = $0 }
             .animation(motion.animation(RoomTokens.Motion.quick), value: hovering)
     }

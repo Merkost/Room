@@ -106,12 +106,15 @@ struct RoomInlineConfirmButton: View {
 
 struct RoomInlineUndoRows: View {
     let prefix: String
+    var hidesPrivateName = false
+    @Environment(\.roomHide) private var hide
     private let center = RoomInlineConfirmCenter.shared
 
     var body: some View {
         ForEach(center.stagedLines(prefix: prefix), id: \.id) { entry in
             HStack {
-                Text(entry.text).font(RoomTokens.Typography.caption)
+                Text(hide.masksNow && hidesPrivateName ? "Room unpinned." : entry.text)
+                    .font(RoomTokens.Typography.caption)
                 Button(String(localized: "confirm.undo", defaultValue: "Undo", bundle: RoomCopy.bundle)) {
                     center.undo(entry.id)
                 }
