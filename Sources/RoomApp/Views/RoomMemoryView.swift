@@ -404,8 +404,8 @@ private struct MemoryApplicationRow: View {
             }
             .padding(.horizontal, 12).padding(.vertical, 11)
             .background(selected ? Color.accentColor.opacity(0.065) : Color.clear,
-                in: RoundedRectangle(cornerRadius: RoomTokens.Radius.budgetOverrun3))
-            .contentShape(RoundedRectangle(cornerRadius: RoomTokens.Radius.budgetOverrun3))
+                in: RoundedRectangle(cornerRadius: RoomTokens.Radius.group))
+            .contentShape(RoundedRectangle(cornerRadius: RoomTokens.Radius.group))
         }
         .buttonStyle(.plain).disabled(disabled)
         .accessibilityLabel("\(selected ? "Deselect" : "Select") \(application.name)")
