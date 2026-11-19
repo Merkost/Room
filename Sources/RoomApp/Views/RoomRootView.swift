@@ -45,11 +45,7 @@ struct RoomRootView: View {
             RoomScreenActions(destination: .clean, canRescan: model.canRescanFromMenu, isScanning: model.isScanning,
                               rescan: model.rescanFromMenu, stop: model.cancelScan)
         case .disk:
-            RoomScreenActions(destination: .disk, canRescan: insights.canRescanDisk, isScanning: insights.isScanningDisk,
-                              rescan: insights.rescanDisk, stop: insights.cancelDiskScan,
-                              canEnclose: insights.canGoUpInApprovedMap, enclose: insights.encloseApprovedDiskFolder,
-                              showDiskInspector: insights.diskMap.current == nil ? nil : insights.toggleDiskInspector,
-                              comparisonTitle: diskComparisonTitle, compareDiskMap: insights.compareDiskMap)
+            diskActions
         case .developer:
             RoomScreenActions(destination: .developer, canRescan: developer.canScan, isScanning: developer.isScanning,
                               rescan: developer.scan, stop: developer.stop)
@@ -57,6 +53,20 @@ struct RoomRootView: View {
             RoomScreenActions(destination: .memory, canRescan: true, isScanning: insights.isScanningMemory,
                               rescan: insights.scanMemory)
         }
+    }
+
+    private var diskActions: RoomScreenActions {
+        var actions = RoomScreenActions(destination: .disk, canRescan: insights.canRescanDisk,
+            isScanning: insights.isScanningDisk, rescan: insights.rescanDisk, stop: insights.cancelDiskScan,
+            canEnclose: insights.canGoUpInApprovedMap, enclose: insights.encloseApprovedDiskFolder)
+        if insights.diskMap.current != nil {
+            actions.showDiskInspector = { insights.toggleDiskInspector() }
+        }
+        if let title = diskComparisonTitle {
+            actions.comparisonTitle = title
+            actions.compareDiskMap = { insights.compareDiskMap() }
+        }
+        return actions
     }
 
     var body: some View {
