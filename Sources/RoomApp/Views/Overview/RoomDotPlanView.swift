@@ -192,8 +192,8 @@ struct RoomDotPlanView: View {
         .accessibilityIdentifier("RoomOverviewStoragePlan")
     }
 
-    private func paint(_ presentation: RoomOverviewPlanPresentation) -> RoomOverviewPaint {
-        var paint = RoomOverviewPaint()
+    private func paint(_ presentation: RoomOverviewPlanPresentation) -> RoomCanvasFrame {
+        var paint = RoomCanvasFrame()
         guard let geometry = drawing else { return paint }
         let outline = contrast == .increased ? RoomTokens.Surface.line2 : RoomTokens.Ink.secondary
         paint.stroke(Path(roundedRect: geometry.wall, cornerRadius: Tokens.outerRadius), outline, lineWidth: Tokens.wall)
@@ -243,7 +243,7 @@ struct RoomDotPlanView: View {
         lastFrame = field.isAtRest ? nil : date
     }
 
-    private func drawSolidKinds(_ geometry: RoomOverviewPlanGeometry, paint: inout RoomOverviewPaint) {
+    private func drawSolidKinds(_ geometry: RoomOverviewPlanGeometry, paint: inout RoomCanvasFrame) {
         let focus = hover ?? selection
         for room in geometry.layout.rooms {
             guard case let .kind(key) = room.id, let kind = RoomTokens.Kind(rawValue: key),
@@ -258,11 +258,11 @@ struct RoomDotPlanView: View {
         RoomTokens.Ink.secondary.opacity(contrast == .increased ? 1 : RoomTokens.Dots.freeRingOpacity)
     }
 
-    private func drawFreeRings(_ geometry: RoomOverviewPlanGeometry, paint: inout RoomOverviewPaint) {
+    private func drawFreeRings(_ geometry: RoomOverviewPlanGeometry, paint: inout RoomCanvasFrame) {
         paint.stroke(geometry.rings, freeInk, lineWidth: RoomTokens.Dots.freeRingStroke)
     }
 
-    private func drawDots(_ geometry: RoomOverviewPlanGeometry, paint: inout RoomOverviewPaint) {
+    private func drawDots(_ geometry: RoomOverviewPlanGeometry, paint: inout RoomCanvasFrame) {
         if field.isAtRest { drawFreeRings(geometry, paint: &paint) }
         var paths: [RoomPlanRoom: Path] = [:]
         for (index, dot) in geometry.layout.dots.enumerated() where dot.room != .free || !field.isAtRest {
@@ -294,7 +294,7 @@ struct RoomDotPlanView: View {
     }
 
     private func drawRoomLabels(_ presentation: RoomOverviewPlanPresentation, geometry: RoomOverviewPlanGeometry,
-                                paint: inout RoomOverviewPaint) {
+                                paint: inout RoomCanvasFrame) {
         if let free = geometry.freeLabelArea, let row = presentation.rows.first(where: { $0.id == .free }),
            (geometry.free?.height ?? 0) >= free.height + Tokens.labelInset {
             paint.label(row.name, in: free, font: Tokens.freeLabel, ink: RoomTokens.Ink.graphite)
@@ -318,59 +318,6 @@ struct RoomDotPlanView: View {
             let bounds = room.insetBy(dx: Tokens.labelInset, dy: Tokens.labelInset)
             let label = showsUnmappedFigure ? "\(row.name) · \(row.visualSize)" : row.name
             paint.label(label, in: bounds, font: RoomTokens.Typography.micro, ink: RoomTokens.Ink.graphite)
-        }
-    }
-}
-
-/// Canvas can render off the main actor. The renderer captures a frame of values,
-/// leaving hover, selection and wake state on the view's actor.
-private nonisolated struct RoomOverviewPaint {
-    private enum Mark {
-        case stroke(Path, Color, StrokeStyle)
-        case fill(Path, Color, clip: Path?)
-        case label(Text, CGRect, centeredVertically: Bool)
-    }
-
-    private var marks: [Mark] = []
-
-    mutating func stroke(_ path: Path, _ ink: Color, lineWidth: CGFloat) {
-        stroke(path, ink, style: StrokeStyle(lineWidth: lineWidth))
-    }
-
-    mutating func stroke(_ path: Path, _ ink: Color, style: StrokeStyle) {
-        marks.append(.stroke(path, ink, style))
-    }
-
-    mutating func fill(_ path: Path, _ ink: Color, clip: Path? = nil) {
-        marks.append(.fill(path, ink, clip: clip))
-    }
-
-    mutating func label(_ text: String, in bounds: CGRect, font: Font, ink: Color, centeredVertically: Bool = false) {
-        marks.append(.label(Text(text).font(font).foregroundStyle(ink), bounds, centeredVertically: centeredVertically))
-    }
-
-    var renderer: (inout GraphicsContext, CGSize) -> Void {
-        { context, _ in
-            for mark in marks {
-                switch mark {
-                case let .stroke(path, ink, style):
-                    context.stroke(path, with: .color(ink), style: style)
-                case let .fill(path, ink, clip):
-                    if let clip {
-                        var clipped = context
-                        clipped.clip(to: clip)
-                        clipped.fill(path, with: .color(ink))
-                    } else {
-                        context.fill(path, with: .color(ink))
-                    }
-                case let .label(text, bounds, centeredVertically):
-                    let label = context.resolve(text)
-                    let size = label.measure(in: CGSize(width: CGFloat.infinity, height: CGFloat.infinity))
-                    guard size.width <= bounds.width, size.height <= bounds.height else { continue }
-                    let point = CGPoint(x: bounds.minX, y: centeredVertically ? bounds.midY : bounds.minY)
-                    context.draw(label, at: point, anchor: centeredVertically ? .leading : .topLeading)
-                }
-            }
         }
     }
 }

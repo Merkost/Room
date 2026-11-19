@@ -14,6 +14,7 @@ final class RoomInsightsModel {
     @ObservationIgnored let treeStore: RoomTreeStore
     @ObservationIgnored private var restoredDiskMap = false
     private(set) var diskReport: DiskMapReport?
+    private(set) var isChoosingDiskFolder = false
     private(set) var isScanningDisk = false
     private(set) var diskProgress: DiskScanProgress?
     private(set) var diskURL: URL?
@@ -314,21 +315,31 @@ final class RoomInsightsModel {
         presentFolderPicker(initialURL: home, mapAfterApproval: false, homeApproval: true)
     }
 
-    private func presentFolderPicker(initialURL: URL, mapAfterApproval: Bool, homeApproval: Bool = false) {
+    private func presentFolderPicker(initialURL: URL, mapAfterApproval: Bool, homeApproval: Bool = false,
+                                     opensSelectedMap: Bool = false) {
+        guard !isChoosingDiskFolder else { return }
+        isChoosingDiskFolder = true
         Task { [weak self] in
             guard let self else { return }
+            defer { self.isChoosingDiskFolder = false }
             let title = homeApproval ? "Remember home folder access" : "Allow Room to inspect a folder"
             let message = homeApproval
                 ? "Choose your home folder to remember read-only access to accessible files and hidden folders inside it. macOS may still protect some locations. Other volumes need their own folder approval. Changes always require a separate reviewed write approval."
                 : "Choose a folder to inspect. Room remembers read-only access, including accessible descendants. Supported changes require a separate review and approval."
             guard let url = await self.folderPicker(title, message,
                 mapAfterApproval ? "Allow & Map" : "Remember Folder", initialURL) else { return }
+            let approved: URL
             do {
-                let approved = try self.fileAccess.remember(url)
-                if mapAfterApproval { self.scanDisk(url: approved) }
+                approved = try self.fileAccess.remember(url)
             } catch {
                 self.fileAccess.setNote("Access could not be remembered. Choose this folder again next time.")
-                if mapAfterApproval { self.scanAuthorizedDisk(url: url, scope: url) }
+                approved = url
+            }
+            guard mapAfterApproval else { return }
+            self.scanAuthorizedDisk(url: approved, scope: approved)
+            if opensSelectedMap, self.isScanningDisk,
+               approved.standardizedFileURL != self.suggestedHome.standardizedFileURL {
+                self.requestedDestination = .disk
             }
         }
     }
@@ -336,7 +347,7 @@ final class RoomInsightsModel {
     func scanHome() {
         let home = suggestedHome
         if fileAccess.scope(for: home) != nil { scanDisk(url: home) }
-        else { presentFolderPicker(initialURL: home, mapAfterApproval: true) }
+        else { presentFolderPicker(initialURL: home, mapAfterApproval: true, opensSelectedMap: true) }
     }
 
     func scanDisk(url: URL) {

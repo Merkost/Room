@@ -55,6 +55,38 @@ struct RoomInsightsAccessTests {
         #expect(access.folders.isEmpty && !insights.hasRememberedHomeAccess)
         #expect(!insights.isScanningDisk && insights.diskReport == nil)
     }
+
+    @Test func mapYourMacShowsDiskMapWhenThePickerApprovesAnotherFolder() async throws {
+        let suite = "RoomMapYourMac-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        let directory = FileManager.default.temporaryDirectory.resolvingSymlinksInPath().appendingPathComponent(suite)
+        let folder = directory.appendingPathComponent("Example", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data(repeating: 0x43, count: 4096).write(to: folder.appendingPathComponent("test-data.bin"))
+        defer {
+            defaults.removePersistentDomain(forName: suite)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let calls = DiskPickerCalls()
+        let insights = RoomInsightsModel(access: RoomFileAccess(defaults: defaults),
+            treeStore: RoomTreeStore(state: RoomStateStore(directory: directory.appendingPathComponent("State"))),
+            folderPicker: { _, _, _, _ in
+                calls.count += 1
+                try? await Task.sleep(for: .milliseconds(25))
+                return folder
+            })
+        insights.scanHome()
+        insights.scanHome()
+
+        let deadline = ContinuousClock.now + .seconds(10)
+        while (insights.diskReport == nil || insights.isScanningDisk) && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(calls.count == 1)
+        #expect(insights.requestedDestination == .disk)
+        #expect(insights.diskReport?.url.standardizedFileURL.path == folder.standardizedFileURL.path)
+        #expect(insights.diskReport?.fileCount == 1)
+    }
 }
 
 @MainActor private final class DiskPickerCalls {

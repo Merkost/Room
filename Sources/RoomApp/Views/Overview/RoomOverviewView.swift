@@ -1,6 +1,5 @@
 import Accessibility
 import AppKit
-import CoreText
 import SwiftUI
 
 private struct RoomOverviewArrivalGroup: ViewModifier {
@@ -8,7 +7,7 @@ private struct RoomOverviewArrivalGroup: ViewModifier {
     let index: Int
 
     func body(content: Content) -> some View {
-        content.roomReveal(visible, from: RoomTokens.Space.group,
+        content.roomReveal(visible, from: RoomTokens.Space.tight,
                            animation: RoomTokens.Motion.settle.delay(Double(index) * RoomTokens.Motion.settleStagger))
     }
 }
@@ -68,53 +67,34 @@ struct RoomOverviewView: View {
 
     var body: some View {
         let snapshot = presentedSnapshot
-        VStack(alignment: .leading, spacing: density.betweenChapters) {
-            VStack(alignment: .leading, spacing: density.betweenGroups) {
-                VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
-                    if let greeting = model.greeting {
-                        Text(greeting)
-                            .font(RoomTokens.Typography.lead)
-                            .lineHeight(.exact(points: RoomTokens.Overview.greetingLineHeight))
-                            .foregroundStyle(RoomTokens.Ink.secondary)
-                    }
-                    answerGroup(snapshot)
-                }
-                .modifier(arrivalGroup(0))
-                if let plan = snapshot.plan, plan.fitsDotBudget {
-                    RoomDotPlanView(plan: plan, belowGoal: snapshot.state == .belowGoal, hidden: hidden,
-                                    density: density, solidKinds: style == .rooms,
-                                    showsUnmappedFigure: snapshot.state != .firstRun, openDiskMap: openDiskMap)
-                        .modifier(arrivalGroup(1))
-                }
-                VStack(alignment: .leading, spacing: density.betweenGroups) {
-                    actions(snapshot)
-                    if snapshot.mapLinkAvailable {
-                        link(RoomOverviewCopy.mapMac, accessibilityLabel: RoomOverviewCopy.mapMac, action: insights.scanHome)
-                    }
-                }
-                .modifier(arrivalGroup(2))
-                if let caption = model.cacheCaption {
-                    RoomMaskable(caption)
-                        .font(RoomTokens.Typography.body)
-                        .foregroundStyle(RoomTokens.Ink.secondary)
-                        .modifier(arrivalGroup(3))
-                }
+        VStack(alignment: .leading, spacing: density == .calm ? RoomTokens.Space.breath1 : RoomTokens.Space.group) {
+            if let greeting = model.greeting {
+                Text(greeting)
+                    .font(RoomTokens.Typography.body)
+                    .foregroundStyle(RoomTokens.Ink.secondary)
             }
-            .frame(minHeight: density.firstScreenMinHeight, alignment: .topLeading)
+            if let plan = snapshot.plan {
+                RoomOverviewStoragePanel(volumeName: insights.volumeCapacity?.volumeName,
+                    balance: .init(plan: plan, goal: goalEnabled ? Int64(storedGoal) : nil))
+                    .modifier(arrivalGroup(0))
+            }
+            nextAction(snapshot)
+                .modifier(arrivalGroup(1))
+            if let plan = snapshot.plan, plan.fitsDotBudget,
+               plan.mapping != nil || !plan.kindValues.isEmpty || snapshot.state == .mappingStopped {
+                storageMap(plan, snapshot: snapshot)
+                    .modifier(arrivalGroup(2))
+            }
             if showRooms && (!rooms.visibleRooms.isEmpty || (snapshot.state != .firstRun && rooms.canChooseFolder)) {
-                VStack(alignment: .leading, spacing: density.insideChapter) {
-                    RoomChapterRooms(rooms: rooms, calendar: .current, editing: editingRoom, openRoom: openPinned,
-                                     showAll: showAllRooms)
-                    recentLine(standalone: false)
-                }
-                .modifier(arrivalGroup(4))
-            } else {
-                recentLine(standalone: true)
-                    .modifier(arrivalGroup(4))
+                RoomChapterRooms(rooms: rooms, calendar: .current, editing: editingRoom, openRoom: openPinned,
+                                 showAll: showAllRooms)
+                    .modifier(arrivalGroup(3))
             }
+            recentLine(standalone: true)
+                .modifier(arrivalGroup(4))
         }
-        .frame(maxWidth: density.planSize.width, alignment: .leading)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: 920, alignment: .leading)
+        .frame(maxWidth: .infinity)
         .foregroundStyle(RoomTokens.Ink.graphite)
         .roomReveal(!animatesArrival || motion.isFull || arrived, animation: RoomTokens.Motion.fade)
         .task { arrived = true }
@@ -185,9 +165,8 @@ struct RoomOverviewView: View {
 
     @ViewBuilder private func recentLine(standalone: Bool) -> some View {
         if showRecent, let cacheModel, let store = cacheModel.makeRoomStore,
-           store.hasReadReceipts || store.latest != nil {
-            let entry = store.latest
-            let receipt = cacheModel.activity.first { $0.id == entry?.id }
+           let entry = store.latest {
+            let receipt = cacheModel.activity.first { $0.id == entry.id }
             let restore = receipt.flatMap { receipt in restoreRecent.map { action in { action(receipt) } } }
             RoomRecentOverviewLine(entry: entry, receipt: receipt, restore: restore, standalone: standalone)
         }
@@ -203,28 +182,68 @@ struct RoomOverviewView: View {
                      mapActionAvailable: inputs.mapActionAvailable, mapping: inputs.mapping, stoppedMapping: inputs.stoppedMapping)
     }
 
-    private func answerGroup(_ snapshot: RoomOverviewSnapshot) -> some View {
-        let answer = RoomMaskable(model.snapshot.answer, spoken: model.snapshot.accessibilityAnswer)
-            .font(RoomTokens.Typography.hero)
-            .tracking(RoomTokens.Typography.heroTracking)
-            .lineHeight(.exact(points: RoomTokens.Overview.answerLineHeight))
-        return VStack(alignment: .leading, spacing: RoomTokens.Overview.goalSpacing) {
-            ViewThatFits(in: .horizontal) {
-                answer.fixedSize(horizontal: true, vertical: false)
-                RoomOverviewWrappedAnswer {
-                    answer.fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            RoomMaskable(model.snapshot.sentence)
-                .font(RoomTokens.Typography.lead.monospacedDigit())
-                .lineHeight(.exact(points: RoomTokens.Overview.goalLineHeight))
-                .foregroundStyle(snapshot.state == .belowGoal ? RoomTokens.Status.elevated : RoomTokens.Ink.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+    private func storageMap(_ plan: RoomOverviewPlanInput, snapshot: RoomOverviewSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
+            Text("Storage map").font(RoomTokens.Typography.title).accessibilityHeading(.h2)
+            RoomDotPlanView(plan: plan, belowGoal: snapshot.state == .belowGoal, hidden: hidden,
+                            density: density, solidKinds: style == .rooms, openDiskMap: openDiskMap)
         }
-        .focusable()
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(snapshot.accessibilityAnswer)
-        .accessibilityHeading(.h1)
+    }
+
+    private func nextAction(_ snapshot: RoomOverviewSnapshot) -> some View {
+        let copy = actionCopy(snapshot)
+        return ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: RoomTokens.Space.breath1) {
+                actionSummary(copy)
+                Spacer(minLength: 0)
+                actions(snapshot).fixedSize(horizontal: true, vertical: false)
+            }
+            VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
+                actionSummary(copy)
+                actions(snapshot)
+            }
+        }
+        .padding(RoomTokens.Space.group)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoomTokens.Surface.group, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.popover))
+    }
+
+    private func actionSummary(_ copy: (title: String, detail: String, symbol: String)) -> some View {
+        HStack(alignment: .top, spacing: RoomTokens.Space.inner) {
+            Image(systemName: copy.symbol)
+                .font(RoomTokens.Typography.lead)
+                .foregroundStyle(accent.text)
+                .frame(width: RoomTokens.Space.breath2, height: RoomTokens.Space.breath2)
+                .background(accent.wash, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.row))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(copy.title).font(RoomTokens.Typography.title).accessibilityHeading(.h2)
+                RoomMaskable(copy.detail)
+                    .font(RoomTokens.Typography.body)
+                    .foregroundStyle(RoomTokens.Ink.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.vertical, 2)
+        }
+        .layoutPriority(1)
+    }
+
+    private func actionCopy(_ snapshot: RoomOverviewSnapshot) -> (title: String, detail: String, symbol: String) {
+        switch snapshot.action {
+        case .mapMac:
+            if snapshot.state == .mappingStopped {
+                return ("Mapping stopped", "Room kept the space it measured. Map again to update it.", "map")
+            }
+            return ("See what’s using space", "Map folders to see how their space is used. Your files stay in place.", "map")
+        case .stopMapping:
+            return ("Mapping storage", model.snapshot.sentence, "map")
+        case .retryCapacity:
+            return ("Storage unavailable", model.snapshot.sentence, "internaldrive")
+        case .checkCaches, .makeRoom:
+            return ("Rebuildable caches", model.cacheCaption ?? "See which caches your apps can rebuild.", "archivebox")
+        case .usingSpaceOnly:
+            return ("Explore your storage", model.snapshot.sentence, "map")
+        }
     }
 
     private func arrivalGroup(_ index: Int) -> RoomOverviewArrivalGroup {
@@ -235,21 +254,23 @@ struct RoomOverviewView: View {
         Group {
             switch snapshot.action {
             case .mapMac:
-                Button(snapshot.actionTitle, action: insights.scanHome).roomScreenPrimary(accent)
+                Button(insights.isChoosingDiskFolder ? "Choosing a folder…" :
+                       snapshot.state == .mappingStopped ? "Map again" : snapshot.actionTitle,
+                       action: insights.scanHome)
+                    .roomScreenPrimary(accent)
+                    .disabled(insights.isChoosingDiskFolder)
             case .stopMapping:
                 Button(snapshot.actionTitle, action: insights.cancelDiskScan).roomSecondary()
             case .retryCapacity:
                 link(snapshot.actionTitle, accessibilityLabel: snapshot.accessibilityAction, action: retryCapacity)
                     .transition(.opacity)
             case .checkCaches, .makeRoom:
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: RoomTokens.Overview.actionSpacing) {
-                        cacheButton(snapshot).fixedSize()
-                        usingSpaceLink.fixedSize()
-                    }
-                    VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
-                        cacheButton(snapshot)
-                        usingSpaceLink
+                VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
+                    cacheButton(snapshot)
+                    if snapshot.mapLinkAvailable {
+                        link(RoomOverviewCopy.mapMac, accessibilityLabel: RoomOverviewCopy.mapMac, action: insights.scanHome)
+                    } else {
+                        link("Open Disk Map", accessibilityLabel: RoomOverviewCopy.usingSpaceAccessibility, action: openDiskMap)
                     }
                 }
                 .transition(.opacity)
@@ -300,35 +321,5 @@ struct RoomOverviewView: View {
         let windowVisible = primary?.occlusionState.contains(.visible) ?? true
         isActive = scenePhase == .active && windowVisible
         insights.setOverviewActive(isActive)
-    }
-}
-
-/// Finds the narrowest width that still fits the two-line answer.
-/// Longer translations keep their natural wrapping at the full measure.
-private nonisolated struct RoomOverviewWrappedAnswer: Layout {
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let text = subviews[0]
-        let ideal = text.sizeThatFits(.unspecified)
-        guard let width = proposal.width, width < ideal.width else { return ideal }
-        let wrapped = text.sizeThatFits(ProposedViewSize(width: width, height: nil))
-        guard wrapped.height > ideal.height, wrapped.height <= 2 * ideal.height else { return wrapped }
-
-        var lower = min(ideal.width / 2, width)
-        var upper = width
-        while upper - lower > 1 {
-            let trial = (lower + upper) / 2
-            let size = text.sizeThatFits(ProposedViewSize(width: trial, height: nil))
-            if size.height <= wrapped.height, size.width <= trial {
-                upper = trial
-            } else {
-                lower = trial
-            }
-        }
-        return CGSize(width: upper, height: wrapped.height)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        subviews[0].place(at: bounds.origin, anchor: .topLeading,
-                          proposal: ProposedViewSize(width: bounds.width, height: nil))
     }
 }

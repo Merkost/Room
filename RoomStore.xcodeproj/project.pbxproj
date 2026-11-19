@@ -59,6 +59,7 @@
 		5261A03887BFE3B31CDEEB09 /* RoomHistorySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF8498717699334B457230B9 /* RoomHistorySheet.swift */; };
 		589A103C6DABB5BC2005FFF3 /* RoomStateStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F3085E47FAAA3DE9EB96E2 /* RoomStateStore.swift */; };
 		58AC16036416BF81CA1D1225 /* RoomOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF130D1DB04ABCF7EC616D48 /* RoomOnboardingView.swift */; };
+		58BD9CA71B27054F6C701EE1 /* RoomOverviewStoragePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08CE51B251FF7B7A82399F9E /* RoomOverviewStoragePanel.swift */; };
 		5BB80D1F61269DB4F515014E /* RoomDebugMenuCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A34F0BEC666C111EA71748 /* RoomDebugMenuCommands.swift */; };
 		5D1B0C90A4169D010A94E896 /* CacheEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB4FB32248A3E1F9ED25C4DF /* CacheEngine.swift */; };
 		5E9A814B53525F7BDAFAEB8D /* Memory.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 091749FB90F94027ABB338D2 /* Memory.xcstrings */; };
@@ -125,6 +126,7 @@
 		B1D77A7021BB6093B5028B89 /* RoomDeveloperModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34997C8F55A6F321B305B044 /* RoomDeveloperModel.swift */; };
 		B1EEAD8C234C91E9D008B0F8 /* RoomCustomisePopover.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97BC44CA765CB596F06503D5 /* RoomCustomisePopover.swift */; };
 		B30C5F6200C726AEE17313E6 /* RoomTreeBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A32C59E45BDAEAEB6CAE989C /* RoomTreeBuilder.swift */; };
+		B39E062905D9176373070D92 /* RoomCanvasFrame.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADC191D3D797A9F30C15A6CC /* RoomCanvasFrame.swift */; };
 		B3F5727DD4A5EC79B9F5C87B /* DiskMapEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = E15D82C6A0370CDD17F3115F /* DiskMapEngine.swift */; };
 		B49CD0939540E7993A106C8F /* RoomActivityPill.swift in Sources */ = {isa = PBXBuildFile; fileRef = D94DDF4EE869BE5847DAB102 /* RoomActivityPill.swift */; };
 		B4B4FFA7432302DE2833E6FF /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CD8A5FF5EB26D8E5DA3F257 /* Models.swift */; };
@@ -188,6 +190,7 @@
 		03FE6F060223DDABDB245961 /* RoomFileAccess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomFileAccess.swift; sourceTree = "<group>"; };
 		05F8F40E05565B0DE1024830 /* RoomBeforeAfterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomBeforeAfterView.swift; sourceTree = "<group>"; };
 		06FF4694333FF1CD35E76301 /* ExpandedCatalogue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExpandedCatalogue.swift; sourceTree = "<group>"; };
+		08CE51B251FF7B7A82399F9E /* RoomOverviewStoragePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomOverviewStoragePanel.swift; sourceTree = "<group>"; };
 		091749FB90F94027ABB338D2 /* Memory.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Memory.xcstrings; sourceTree = "<group>"; };
 		0B92C86803C84662DE154EB0 /* RoomOverviewPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomOverviewPresentation.swift; sourceTree = "<group>"; };
 		0BF4D8BF1248A148F4B66174 /* RoomCachesHero.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomCachesHero.swift; sourceTree = "<group>"; };
@@ -307,6 +310,7 @@
 		A8AA0556F359184206362CAF /* RoomHidePure.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomHidePure.swift; sourceTree = "<group>"; };
 		AB4FB32248A3E1F9ED25C4DF /* CacheEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheEngine.swift; sourceTree = "<group>"; };
 		AB88A4D54C15871548B99A5A /* RoomTrashProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomTrashProbe.swift; sourceTree = "<group>"; };
+		ADC191D3D797A9F30C15A6CC /* RoomCanvasFrame.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomCanvasFrame.swift; sourceTree = "<group>"; };
 		AF130D1DB04ABCF7EC616D48 /* RoomOnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomOnboardingView.swift; sourceTree = "<group>"; };
 		AF4B223D7A164C388B3C734E /* RoomCopy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomCopy.swift; sourceTree = "<group>"; };
 		B00B1DD3E16C96715888A2BF /* RoomChapterRooms.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomChapterRooms.swift; sourceTree = "<group>"; };
@@ -553,6 +557,7 @@
 				6A1C68CCD303B442C37799E0 /* RoomDotPlanView.swift */,
 				EE34118C213382CD9A663510 /* RoomOverviewHideControl.swift */,
 				0B92C86803C84662DE154EB0 /* RoomOverviewPresentation.swift */,
+				08CE51B251FF7B7A82399F9E /* RoomOverviewStoragePanel.swift */,
 				B8B08F310CBBAE2B1B5D30D9 /* RoomOverviewView.swift */,
 				8B5C1ABA9144A5FB6AFC9CEC /* RoomRecentOverviewLine.swift */,
 				9DF7F65ACD69AAB4574B4F5A /* RoomWakeField.swift */,
@@ -589,6 +594,7 @@
 		BB90D84961BA89B1B334CB88 /* Design */ = {
 			isa = PBXGroup;
 			children = (
+				ADC191D3D797A9F30C15A6CC /* RoomCanvasFrame.swift */,
 				94F2FE6D15918BA32A124E64 /* RoomFormat.swift */,
 				F3AF99D6F5CBB2F6A9D4FB76 /* RoomGoalRuler.swift */,
 				6B2A562DDA9514F6DC5CAD0F /* RoomHide.swift */,
@@ -870,6 +876,7 @@
 				0DA0ACF8983E968437BA7C9D /* RoomCachesRow.swift in Sources */,
 				6BE843F9A729635237E56E72 /* RoomCachesView.swift in Sources */,
 				7A1E1308835895547D478546 /* RoomCachesVisibility.swift in Sources */,
+				B39E062905D9176373070D92 /* RoomCanvasFrame.swift in Sources */,
 				888B211473D59F25B0BEF5CE /* RoomChapterRooms.swift in Sources */,
 				033AF07DF19574CCE3F7B785 /* RoomCleanupOutcome.swift in Sources */,
 				E9E5EC48D4F7AFC2C5502123 /* RoomCleanupReview.swift in Sources */,
@@ -938,6 +945,7 @@
 				7F93DA36EAF31DE28A5B2F0A /* RoomOverviewPersonal.swift in Sources */,
 				043A5AA7512E7C0B32CD6298 /* RoomOverviewPresentation.swift in Sources */,
 				6AB91C7AB37D58053A9870AC /* RoomOverviewSnapshot.swift in Sources */,
+				58BD9CA71B27054F6C701EE1 /* RoomOverviewStoragePanel.swift in Sources */,
 				77166071BA25DDBD59970D08 /* RoomOverviewView.swift in Sources */,
 				A2A9A7BFE74948D6B10B279C /* RoomPocketScrubber.swift in Sources */,
 				845B2FB0991A1D6BD5B8C529 /* RoomPopoverModel.swift in Sources */,

@@ -64,6 +64,16 @@ struct RoomOverviewModelTests {
         #expect(snapshot(new).state == .belowGoal)
     }
 
+    @Test func capacitySplitKeepsGoalOnTheUsedSpaceScale() throws {
+        let plan = try #require(snapshot(input(free: 20 * gb, capacity: 100 * gb)).plan)
+        let balance = RoomOverviewCapacityBalance(plan: plan, goal: 25 * gb)
+        #expect(balance.usedBytes == 80 * gb)
+        #expect(balance.usedFraction == 0.8)
+        #expect(balance.goalPosition == 0.75)
+        #expect(balance.goalDifference == -5 * gb)
+        #expect(RoomOverviewCapacityBalance(plan: plan, goal: 101 * gb).goalPosition == nil)
+    }
+
     @Test("OVC-06_BelowGoalOutranksUnmapped") func belowGoalOutranksUnmapped() {
         let below = snapshot(input(free: 41 * gb, caches: caches()))
         #expect(below.state == .belowGoal)
