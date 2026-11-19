@@ -164,11 +164,11 @@ actor RoomStateStore {
     }
 
     func forgetHistory() -> [String] {
-        let history: [RoomStateFile] = [.roomSizes, .volumeSamples, .reports, .weeklyCheck, .pressure]
+        let history: [RoomStateFile] = [.roomSizes, .volumeSamples, .reports, .weeklyCheck, .pressure, .treeIndex]
         let treeFolder = directory.appendingPathComponent("trees", isDirectory: true)
         let treeNames = (try? disk.names(in: treeFolder)) ?? []
         let trees = treeNames.compactMap { name -> RoomStateFile? in
-            guard name.hasSuffix(".json") else { return nil }
+            guard name.hasSuffix(".json"), name != "index.json" else { return nil }
             let file = RoomStateFile.tree(rootID: String(name.dropLast(5)))
             return file.name == "trees/\(name)" ? file : nil
         }

@@ -26,6 +26,7 @@ nonisolated struct RoomStateFile: Hashable, Sendable {
     static let ignore = RoomStateFile(name: "ignore.json", schema: 1, maxBytes: 128_000, survivesForget: true)
     static let views = RoomStateFile(name: "views.json", schema: 1, maxBytes: 64_000, survivesForget: true)
     static let pressure = RoomStateFile(name: "pressure.json", schema: 1, maxBytes: 512_000, survivesForget: false)
+    static let treeIndex = RoomStateFile(name: "trees/index.json", schema: 1, maxBytes: 64_000, survivesForget: false)
     static func tree(rootID: String) -> RoomStateFile {
         // rootID is a RoomFileAccess record id (Store) or a SHA-256 hex (Direct): never a path.
         let safe = String(rootID.unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) || $0 == "-" }.prefix(80))
