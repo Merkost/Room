@@ -42,6 +42,8 @@ enum RoomTokens {
         static let section = Font.system(size: 13, weight: .semibold)
         static let body = Font.system(size: 13, weight: .regular)
         static let bodyStrong = Font.system(size: 13, weight: .medium)
+        static let counter = Font.system(size: 17, weight: .regular).monospacedDigit()
+        static let roomGlyph = Font.system(size: 10, weight: .medium)
         static let numeric = Font.system(size: 13, weight: .regular).monospacedDigit()
         static let caption = Font.system(size: 12, weight: .regular)
         static let sidebarGroup = Font.system(size: 11, weight: .semibold)
@@ -122,6 +124,8 @@ enum RoomTokens {
 
     // MARK: Radii (concentric: outer = inner + padding)
     enum Radius {
+        static let budgetOverrun: CGFloat = 1
+        static let budgetFill: CGFloat = 2
         static let tile: CGFloat = 5
         static let field: CGFloat = 6
         static let row: CGFloat = 8
@@ -199,6 +203,7 @@ enum RoomTokens {
 
     // MARK: Status: memory pressure and the free-space goal only. Never used for data series.
     enum Status {
+        static let pressureLaneOpacity = 0.08
         static let normal = Color.room(light: 0x2E7D4F, dark: 0x5CC08A, name: "room.status.normal")
         static let elevated = Color.room(light: 0xA3590A, dark: 0xF0A040, name: "room.status.elevated")
         static let critical = Color.room(light: 0xC4242A, dark: 0xFF6B66, name: "room.status.critical")

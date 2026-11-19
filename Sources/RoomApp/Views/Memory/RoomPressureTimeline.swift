@@ -37,8 +37,8 @@ struct RoomPressureTimeline: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Pressure").font(.system(size: 15, weight: .semibold))
-                Text(range.intervalTitle).font(.system(size: 12)).foregroundStyle(.secondary)
+                Text("Pressure").font(RoomTokens.Typography.title)
+                Text(range.intervalTitle).font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
                 Spacer()
                 Picker("Pressure history range", selection: $range) {
                     ForEach(RoomMemoryRange.allCases, id: \.self) { Text($0.title).tag($0) }
@@ -71,7 +71,7 @@ struct RoomPressureTimeline: View {
             HStack(spacing: 8) {
                 RoomPocketScrubber(level: selectedLevel, size: 26)
                     .animation(motion.isFull && !keyboardSelection ? RoomTokens.Motion.standard : nil, value: selectedLevel)
-                Text(readout).font(.system(size: 12)).foregroundStyle(.secondary)
+                Text(readout).font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
             }.accessibilityHidden(true)
         }
         .onChange(of: range) { _, _ in selection = nil }
@@ -83,7 +83,7 @@ struct RoomPressureTimeline: View {
                 RectangleMark(xStart: .value("From", firstDate), xEnd: .value("To", endDate),
                               yStart: .value("Lane", Double(level.rawValue) - 0.45),
                               yEnd: .value("Lane", Double(level.rawValue) + 0.45))
-                    .foregroundStyle(RoomPocketScrubber.color(level).opacity(0.08))
+                    .foregroundStyle(RoomPocketScrubber.color(level).opacity(RoomTokens.Status.pressureLaneOpacity))
             }
             ForEach(points) { point in
                 LineMark(x: .value("Time", point.date), y: .value("Pressure", point.level.rawValue),
@@ -114,7 +114,7 @@ struct RoomPressureTimeline: View {
             AxisMarks(position: .leading, values: [0, 1, 2]) { value in
                 AxisValueLabel {
                     if let number = value.as(Int.self), let level = RoomPressureLevel(rawValue: number) {
-                        Text(level.word).font(.system(size: 11))
+                        Text(level.word).font(RoomTokens.Typography.micro)
                     }
                 }
             }

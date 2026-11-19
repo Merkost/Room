@@ -17,10 +17,10 @@ struct RoomDeveloperMatrixView: View {
                         Text(row.title).lineLimit(2)
                         ForEach(Array(row.cells.enumerated()), id: \.offset) { index, cell in
                             Text(cell.text)
-                                .font(.system(size: 12, design: .monospaced))
+                                .font(RoomTokens.Typography.version)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.vertical, 5).padding(.horizontal, 6)
-                                .background(cell.shaded ? RoomTokens.Surface.press : .clear, in: .rect(cornerRadius: 4))
+                                .background(cell.shaded ? RoomTokens.Surface.press : .clear, in: .rect(cornerRadius: RoomTokens.Radius.tile))
                                 .help(cell.tooltip ?? "")
                                 .accessibilityLabel("\(RoomDevMatrix.columns[index]), \(cell.text)")
                         }
@@ -28,9 +28,9 @@ struct RoomDeveloperMatrixView: View {
                     .accessibilityElement(children: .contain)
                 }
             }
-            .font(.system(size: 12))
+            .font(RoomTokens.Typography.caption)
             Text("Shaded: shared by more than one room, counted once")
-                .font(.system(size: 12)).foregroundStyle(.secondary)
+                .font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
         }
     }
 }

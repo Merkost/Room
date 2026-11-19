@@ -17,11 +17,11 @@ struct RoomChapterRooms: View {
         let now = Date()
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
-                Text("Your Rooms").font(.system(size: 15, weight: .semibold)).accessibilityAddTraits(.isHeader)
-                Text("folders you pinned · 12 weeks").font(.system(size: 12)).foregroundStyle(.secondary)
+                Text("Your Rooms").font(RoomTokens.Typography.title).accessibilityAddTraits(.isHeader)
+                Text("folders you pinned · 12 weeks").font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
             }
             if shown.rows.isEmpty {
-                Text("Pin a folder to watch it here.").font(.system(size: 13)).foregroundStyle(.secondary)
+                Text("Pin a folder to watch it here.").font(RoomTokens.Typography.body).foregroundStyle(.secondary)
             } else {
                 VStack(spacing: 8) {
                     ForEach(shown.rows) { room in
@@ -34,11 +34,11 @@ struct RoomChapterRooms: View {
                     .roomLink(accent).disabled(!rooms.canChooseFolder)
                 if shown.more > 0 {
                     Button("\(shown.more) more Rooms", action: showAll)
-                        .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(.secondary)
+                        .buttonStyle(.plain).font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
                 }
             }
             if let notice = rooms.notice {
-                Text(notice).font(.system(size: 12)).foregroundStyle(.secondary)
+                Text(notice).font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
             }
         }
         .frame(maxWidth: 560, alignment: .leading)
@@ -62,10 +62,10 @@ struct RoomChapterRooms: View {
         } label: {
             HStack(spacing: 16) {
                 Image(systemName: room.resolvedGlyph.rawValue)
-                    .font(.system(size: 10, weight: .medium)).foregroundStyle(RoomTokens.Kind.tileInk)
-                    .frame(width: 20, height: 20).background(kind.fill, in: .rect(cornerRadius: 6))
+                    .font(RoomTokens.Typography.roomGlyph).foregroundStyle(RoomTokens.Kind.tileInk)
+                    .frame(width: 20, height: 20).background(kind.fill, in: .rect(cornerRadius: RoomTokens.Radius.field))
                     .frame(width: 22)
-                Text(row.name).font(.system(size: 13, weight: .medium)).lineLimit(1)
+                Text(row.name).font(RoomTokens.Typography.bodyStrong).lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Group {
                     if let budget = row.budget {
@@ -74,13 +74,13 @@ struct RoomChapterRooms: View {
                         sparkline(row.sparkline, color: kind.mark)
                     }
                 }.frame(width: 72, height: 20)
-                Text(row.size).font(RoomType.figure(15)).monospacedDigit().lineLimit(1)
+                Text(row.size).font(RoomTokens.Typography.lead).monospacedDigit().lineLimit(1)
                     .frame(width: 76, alignment: .trailing)
                 (Text(row.trendEmphasis ?? "").fontWeight(.semibold) + Text(row.trendRest))
-                    .font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2)
+                    .font(RoomTokens.Typography.caption).foregroundStyle(.secondary).lineLimit(2)
                     .frame(width: 124, alignment: .leading)
             }
-            .frame(height: 36).padding(.horizontal, 8).contentShape(.rect(cornerRadius: 8))
+            .frame(height: 36).padding(.horizontal, 8).contentShape(.rect(cornerRadius: RoomTokens.Radius.row))
         }
         .buttonStyle(RoomChapterRowButtonStyle())
         .help(hidden ? help : row.name + " · " + help)
@@ -110,7 +110,7 @@ private struct RoomChapterRowButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .background(hovering || configuration.isPressed ? RoomTokens.Surface.hover : .clear, in: .rect(cornerRadius: 8))
+            .background(hovering || configuration.isPressed ? RoomTokens.Surface.hover : .clear, in: .rect(cornerRadius: RoomTokens.Radius.row))
             .onHover { hovering = $0 }
     }
 }

@@ -8,9 +8,9 @@ struct RoomBudgetFrameView: View {
         Canvas { context, size in
             let box = CGRect(x: RoomBudgetFrame.originX, y: RoomBudgetFrame.originY,
                              width: RoomBudgetFrame.frameWidth, height: size.height - 8)
-            context.fill(Path(roundedRect: layout.fill, cornerRadius: 2), with: .color(color))
+            context.fill(Path(roundedRect: layout.fill, cornerRadius: RoomTokens.Radius.budgetFill), with: .color(color))
             if let overrun = layout.overrun {
-                context.fill(Path(roundedRect: overrun, cornerRadius: 1), with: .color(RoomTokens.Status.elevated))
+                context.fill(Path(roundedRect: overrun, cornerRadius: RoomTokens.Radius.budgetOverrun), with: .color(RoomTokens.Status.elevated))
             }
             var outline = Path()
             outline.move(to: CGPoint(x: box.maxX, y: box.minY))

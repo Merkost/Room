@@ -26,7 +26,7 @@ struct RoomDeveloperView: View {
                     Text("Developer").font(RoomType.heading(24))
                     if let root = model.projectRootLabel {
                         Text("\(model.report?.projects.count ?? 0) projects in \(root)")
-                            .font(.system(size: 13)).foregroundStyle(.secondary)
+                            .font(RoomTokens.Typography.body).foregroundStyle(.secondary)
                     }
                 }
                 Spacer()
@@ -133,13 +133,13 @@ struct RoomDeveloperView: View {
                     Button("\(report.issues.count) \(report.issues.count == 1 ? "note" : "notes")") { showingNotes = true }
                         .buttonStyle(.plain)
                 }
-            }.font(.system(size: 12)).foregroundStyle(.secondary)
+            }.font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
         }
     }
 
     private var emptyReview: some View {
         Text(model.locations.isEmpty ? "Choose the folders you want Room to read." : "Rescan to see measurements from these folders.")
-            .font(.system(size: 13)).foregroundStyle(.secondary)
+            .font(RoomTokens.Typography.body).foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, minHeight: 88, alignment: .leading)
     }
 
@@ -159,7 +159,7 @@ private struct RoomDeveloperDevicesTable: View {
     var body: some View {
         if devices.isEmpty {
             Text("No Android devices found in the chosen folders.")
-                .font(.system(size: 13)).foregroundStyle(.secondary)
+                .font(RoomTokens.Typography.body).foregroundStyle(.secondary)
         } else {
             HStack(alignment: .top, spacing: 15) {
                 Table(devices, selection: $selected) {
@@ -174,14 +174,14 @@ private struct RoomDeveloperDevicesTable: View {
                 }.frame(minHeight: 240)
                 if let device = devices.first(where: { $0.id == selected }) {
                     VStack(alignment: .leading, spacing: 7) {
-                        Text(device.displayName).font(.system(size: 13, weight: .semibold))
+                        Text(device.displayName).font(RoomTokens.Typography.section)
                         Text(device.lastUseNote)
                         ForEach(device.evidence) { item in
                             Text(item.label + " · " + item.uncertainty).textSelection(.enabled)
                         }
                         Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([device.url]) }
                     }
-                    .font(.system(size: 12)).frame(width: 180, alignment: .leading)
+                    .font(RoomTokens.Typography.caption).frame(width: 180, alignment: .leading)
                 }
             }
         }

@@ -39,7 +39,7 @@ struct RoomDeveloperRoomsView: View {
                 Text("What each project pins").fontWeight(.semibold)
                 Spacer()
                 Text("Read from wrappers, libs.versions.toml and Xcode schemes")
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                    .font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
             }
             HStack(spacing: 12) {
                 ForEach(RoomDevPinKind.allCases, id: \.self) { kind in
@@ -47,7 +47,7 @@ struct RoomDeveloperRoomsView: View {
                         Circle().fill(color(kind)).frame(width: 7, height: 7)
                     }
                 }
-            }.font(.system(size: 12)).foregroundStyle(.secondary)
+            }.font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
             if summary.rows.isEmpty {
                 Text("No supported projects found in the chosen folders.").foregroundStyle(.secondary)
             }
@@ -57,7 +57,7 @@ struct RoomDeveloperRoomsView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(row.project.name).fontWeight(.semibold).lineLimit(1)
                         if !row.kindLine.isEmpty {
-                            Text(row.kindLine).font(.system(size: 12)).foregroundStyle(.secondary)
+                            Text(row.kindLine).font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
                         }
                     }.frame(width: 155, alignment: .leading)
                     GeometryReader { geometry in
@@ -74,8 +74,8 @@ struct RoomDeveloperRoomsView: View {
                 }
             }
             Text("Android Gradle Plugin versions live inside the shared Gradle module cache, so they add no bar of their own.")
-                .font(.system(size: 12)).foregroundStyle(.secondary)
-        }.font(.system(size: 13))
+                .font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
+        }.font(RoomTokens.Typography.body)
     }
 
     private var orphans: some View {
@@ -92,19 +92,19 @@ struct RoomDeveloperRoomsView: View {
                     }
             }
             Text("\(measured(summary.orphanBytes, partial: summary.partial)) · no selected project refers to these")
-                .font(.system(size: 12)).foregroundStyle(.secondary)
+                .font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
             let largest = summary.orphans.map { $0.artifact.bytes }.max() ?? 1
             ForEach(orphanRows, id: \.artifact.id) { row in
                 HStack(spacing: 9) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(row.artifact.version).fontWeight(.medium).lineLimit(1)
-                        Text(row.artifact.kind.title).font(.system(size: 11)).foregroundStyle(.secondary)
+                        Text(row.artifact.kind.title).font(RoomTokens.Typography.micro).foregroundStyle(.secondary)
                     }.frame(width: 142, alignment: .leading)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(row.reason.text).foregroundStyle(.secondary)
                         if let caption = RoomDevUnreferenced.caption(since: unreferenced.since[row.artifact.key],
                                                                      now: Date(), thresholdDays: threshold) {
-                            Text(caption).font(.system(size: 11)).foregroundStyle(.secondary)
+                            Text(caption).font(RoomTokens.Typography.micro).foregroundStyle(.secondary)
                         }
                     }.frame(maxWidth: .infinity, alignment: .leading)
                     Capsule().fill(RoomTokens.Surface.used)
@@ -121,7 +121,7 @@ struct RoomDeveloperRoomsView: View {
                 }.padding(.vertical, 4)
                 Divider()
             }
-        }.font(.system(size: 13))
+        }.font(RoomTokens.Typography.body)
     }
 
     private var rows: [RoomDevProjectRow] {
@@ -183,8 +183,8 @@ struct RoomDeveloperRoomsView: View {
 
     private func figure(_ label: String, _ bytes: Int64) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(label).font(.system(size: 12)).foregroundStyle(.secondary)
-            Text(measured(bytes, partial: summary.partial)).font(RoomType.figure(22)).monospacedDigit()
+            Text(label).font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
+            Text(measured(bytes, partial: summary.partial)).font(RoomTokens.Typography.figure).monospacedDigit()
         }.frame(maxWidth: .infinity, alignment: .leading).accessibilityElement(children: .combine)
     }
 
