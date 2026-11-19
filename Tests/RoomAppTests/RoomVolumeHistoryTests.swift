@@ -30,9 +30,10 @@ struct RoomVolumeHistoryTests {
         #expect(!log.shouldRecord(.scanCompleted, now: date(19, 10), calendar: calendar))
         #expect(!log.shouldRecord(.activation, now: date(19, 11, 50), calendar: calendar))
         #expect(log.shouldRecord(.activation, now: date(19, 12), calendar: calendar))
-        #expect(!log.record(sample(date(19, 12), free: 1_000), calendar: calendar))
-        #expect(log.record(sample(date(19, 12), free: 311), calendar: calendar))
-        #expect(!log.record(sample(date(19, 12, 59), free: 309), calendar: calendar))
+        let rejected = log.record(sample(date(19, 12), free: 1_000), calendar: calendar)
+        let rolled = log.record(sample(date(19, 12), free: 311), calendar: calendar)
+        let sameBucket = log.record(sample(date(19, 12, 59), free: 309), calendar: calendar)
+        #expect(!rejected && rolled && !sameBucket)
         #expect(log.latest?.freeBytes == 309 * gb)
 
         var hourly = RoomVolumeSampleLog()
