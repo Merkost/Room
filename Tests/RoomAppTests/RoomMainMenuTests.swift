@@ -7,9 +7,10 @@ import Testing
 struct RoomMainMenuTests {
     @Test func realMenuContainsBuiltCommands() async throws {
         let files = FileManager.default
-        let fixture = files.temporaryDirectory.appendingPathComponent("RoomMainMenuTests-\(UUID())")
+        let executable = try #require(Self.executableProduct(), "Room executable beside the SwiftPM test bundle")
+        let fixture = executable.deletingLastPathComponent().appendingPathComponent("RoomMainMenuTests-\(UUID())")
         defer { try? files.removeItem(at: fixture) }
-        let bundle = try await Self.prepareApp(at: fixture)
+        let bundle = try await Self.prepareApp(at: fixture, using: executable)
 
         let output = fixture.appendingPathComponent("menu.json")
         let application = Process()
@@ -84,11 +85,10 @@ struct RoomMainMenuTests {
     }
 
     @concurrent
-    private static func prepareApp(at fixture: URL) async throws -> URL {
+    private static func prepareApp(at fixture: URL, using executable: URL) async throws -> URL {
         let files = FileManager.default
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-        let executable = try #require(executableProduct(), "Room executable beside the SwiftPM test bundle")
         let bundle = fixture.appendingPathComponent("Room.app")
         let contents = bundle.appendingPathComponent("Contents")
         let binaries = contents.appendingPathComponent("MacOS")
