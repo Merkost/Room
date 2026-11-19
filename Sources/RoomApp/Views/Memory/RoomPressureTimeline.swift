@@ -1,3 +1,4 @@
+import Accessibility
 import Charts
 import SwiftUI
 
@@ -17,6 +18,7 @@ struct RoomPressureTimeline: View {
     let series: RoomPressureSeries
     let now: Date
     let level: RoomPressureLevel?
+    let finding: String
     @Binding var range: RoomMemoryRange
     @Environment(\.roomMotion) private var motion
     @State private var selection: Date?
@@ -46,9 +48,11 @@ struct RoomPressureTimeline: View {
             }
             chart
                 .frame(height: 210)
+                .animation(motion.animation(RoomTokens.Motion.fade, fallback: nil), value: range)
+                .accessibilityChartDescriptor(RoomPressureChartAccessibility(series: series, now: now, finding: finding))
                 .focusable()
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Pressure timeline")
+                .accessibilityLabel(finding)
                 .accessibilityValue(readout)
                 .accessibilityHint("Use left and right arrow keys to move by one bucket. Hold Option to jump.")
                 .accessibilityAdjustableAction { direction in
@@ -61,6 +65,7 @@ struct RoomPressureTimeline: View {
                 .onKeyPress(keys: [.leftArrow, .rightArrow], phases: [.down, .repeat]) { press in
                     let jump = press.modifiers.contains(.option) ? range.keyboardJump : 1
                     move(by: press.key == .leftArrow ? -jump : jump)
+                    AccessibilityNotification.Announcement(readout).post()
                     return .handled
                 }
                 .onKeyPress(.escape) {
@@ -140,6 +145,7 @@ struct RoomPressureTimeline: View {
         }
         .chartXSelection(value: Binding(get: { selection }, set: {
             keyboardSelection = false
+            if $0 == nil && selection != nil { AccessibilityNotification.Announcement(readout).post() }
             selection = $0
         }))
     }
@@ -179,5 +185,40 @@ struct RoomPressureTimeline: View {
             }
         }
         return result
+    }
+}
+
+nonisolated struct RoomPressureChartAccessibility: AXChartDescriptorRepresentable {
+    let series: RoomPressureSeries
+    let now: Date
+    let finding: String
+
+    func makeChartDescriptor() -> AXChartDescriptor {
+        let first = series.bucketIndex(now) - Int64(series.capacity) + 1
+        let x = AXNumericDataAxisDescriptor(title: "Time", range: 0...Double(series.capacity - 1), gridlinePositions: []) { offset in
+            series.start(of: first + Int64(offset.rounded()))
+                .formatted(.dateTime.weekday(.abbreviated).hour().minute())
+        }
+        let y = AXNumericDataAxisDescriptor(title: "Pressure", range: 0...2, gridlinePositions: [0, 1, 2]) { value in
+            RoomPressureLevel(rawValue: Int(value.rounded()))?.word ?? "Pressure unavailable"
+        }
+        let columns = series.columns(now: now)
+        let lanes = RoomPressureLevel.allCases.map { level in
+            let points = columns.enumerated().compactMap { index, bucket -> AXDataPoint? in
+                guard bucket?.worst == level else { return nil }
+                return AXDataPoint(x: Double(index), y: Double(level.rawValue))
+            }
+            return AXDataSeriesDescriptor(name: level.word, isContinuous: false, dataPoints: points)
+        }
+        return AXChartDescriptor(title: "Memory pressure", summary: finding,
+                                 xAxis: x, yAxis: y, additionalAxes: [], series: lanes)
+    }
+
+    func updateChartDescriptor(_ descriptor: AXChartDescriptor) {
+        let next = makeChartDescriptor()
+        descriptor.summary = next.summary
+        descriptor.xAxis = next.xAxis
+        descriptor.yAxis = next.yAxis
+        descriptor.series = next.series
     }
 }

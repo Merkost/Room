@@ -1,3 +1,4 @@
+import AppKit
 import RoomCore
 import SwiftUI
 
@@ -39,8 +40,9 @@ struct RoomMemoryView: View {
             let now = Date()
             let level = insights.memoryReport.flatMap { RoomPressureLevel(memoryPressureRaw: $0.pressure.rawValue) }
             let series = range.series(in: insights.pressureHistory)
-            pressureOverview(level: level, series: series, now: now)
-            RoomPressureTimeline(series: series, now: now, level: level, range: $range)
+            let finding = pressureFinding(series: series, now: now)
+            pressureOverview(level: level, finding: finding)
+            RoomPressureTimeline(series: series, now: now, level: level, finding: finding, range: $range)
             if let report = insights.memoryReport, countersAvailable(report) {
                 memorySummary(report, now: now)
             }
@@ -86,8 +88,11 @@ struct RoomMemoryView: View {
             memoryActions.refresh(from: insights.memoryReport)
 
         }
-        .onChange(of: scenePhase, initial: true) { _, phase in
-            insights.setMemoryActive(phase == .active)
+        .onChange(of: scenePhase, initial: true) { _, _ in updateMonitoring() }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didChangeOcclusionStateNotification)) { notification in
+            guard let window = notification.object as? NSWindow,
+                  window.identifier == RoomApplicationDelegate.primaryWindowID else { return }
+            updateMonitoring(in: window)
         }
         .onDisappear { insights.setMemoryActive(false) }
         .onChange(of: insights.memoryReport?.id) { _, _ in memoryActions.refresh(from: insights.memoryReport) }
@@ -107,6 +112,12 @@ struct RoomMemoryView: View {
         #endif
     }
 
+    private func updateMonitoring(in window: NSWindow? = nil) {
+        let primary = window ?? NSApp?.windows.first { $0.identifier == RoomApplicationDelegate.primaryWindowID }
+        let visible = primary?.occlusionState.contains(.visible) ?? true
+        insights.setMemoryActive(scenePhase == .active && visible)
+    }
+
     private var memoryIntroduction: String {
         #if ROOM_APP_STORE
         "Memory pressure, compression, and swap on your Mac."
@@ -118,7 +129,7 @@ struct RoomMemoryView: View {
     #if ROOM_APP_STORE
     @ViewBuilder private func storeMeasuredProcesses(_ report: MemoryReport) -> some View {
         if !report.processes.isEmpty {
-            DisclosureGroup("Measured processes") {
+            DisclosureGroup("Apps using the most") {
                 VStack(spacing: 12) {
                     ForEach(Array(report.processes.prefix(8))) { process in
                         HStack(spacing: 16) {
@@ -173,6 +184,7 @@ struct RoomMemoryView: View {
                 VStack(spacing: 2) {
                     ForEach(Array(memoryActions.applications.prefix(showingAllApps ? .max : 7))) { application in
                         MemoryApplicationRow(application: application,
+                            maximumBytes: memoryActions.applications.first?.residentBytes ?? 0,
                             selected: memoryActions.selection.contains(application.id), disabled: memoryActions.isApplying,
                             toggle: { memoryActions.toggleSelection(id: application.id) })
                     }
@@ -249,7 +261,7 @@ struct RoomMemoryView: View {
 
     #endif
 
-    private func pressureOverview(level: RoomPressureLevel?, series: RoomPressureSeries, now: Date) -> some View {
+    private func pressureOverview(level: RoomPressureLevel?, finding: String) -> some View {
         HStack(alignment: .top, spacing: 25) {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Memory pressure").font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
@@ -259,7 +271,7 @@ struct RoomMemoryView: View {
                     Text(level?.word ?? "—").font(RoomTokens.Typography.figure)
                         .foregroundStyle(RoomPocketScrubber.color(level))
                 }.accessibilityElement(children: .combine)
-                Text(pressureFinding(level: level, series: series, now: now))
+                Text(finding)
                     .font(RoomTokens.Typography.body).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 if insights.memoryReport?.pressure == .unknown {
@@ -277,7 +289,7 @@ struct RoomMemoryView: View {
         }
     }
 
-    private func pressureFinding(level: RoomPressureLevel?, series: RoomPressureSeries, now: Date) -> String {
+    private func pressureFinding(series: RoomPressureSeries, now: Date) -> String {
         if insights.memoryReport?.pressure == .unknown {
             return "Room can't read memory pressure right now. Activity Monitor can."
         }
@@ -376,9 +388,22 @@ struct RoomMemoryView: View {
     }
 }
 
+private struct RoomMemoryProcessBar: View {
+    let bytes: Int64
+    let maximum: Int64
+
+    var body: some View {
+        Capsule().fill(RoomTokens.Surface.used)
+            .frame(width: 60 * Double(max(0, min(bytes, maximum))) / Double(max(1, maximum)), height: 4)
+            .frame(width: 60, alignment: .leading)
+            .accessibilityHidden(true)
+    }
+}
+
 #if !ROOM_APP_STORE
 private struct MemoryApplicationRow: View {
     let application: MemoryApplication
+    let maximumBytes: Int64
     let selected: Bool
     let disabled: Bool
     let toggle: () -> Void
@@ -396,6 +421,7 @@ private struct MemoryApplicationRow: View {
                 Spacer(minLength: 10)
                 if let resident = application.residentBytes {
                     Text("≈ \(RoomFormat.memoryBytes(resident))").font(RoomTokens.Typography.body).monospacedDigit().foregroundStyle(.secondary)
+                    RoomMemoryProcessBar(bytes: resident, maximum: maximumBytes)
                 } else {
                     Text("Not in this sample").font(RoomTokens.Typography.caption).foregroundStyle(.tertiary)
                 }

@@ -24,8 +24,18 @@ enum RoomDebugMainMenuProbe {
             var menus: [Menu] = []
             repeat {
                 try? await Task.sleep(for: .milliseconds(50))
+                if NSApp.keyWindow?.identifier != RoomApplicationDelegate.primaryWindowID,
+                   let window = NSApp.windows.first(where: { $0.identifier == RoomApplicationDelegate.primaryWindowID }) {
+                    NSApp.activate()
+                    window.makeKeyAndOrderFront(nil)
+                }
                 menus = readMainMenu()
-            } while !menus.contains(where: { $0.title == "View" && $0.rows.contains { $0.title == "Refresh Free Space" } })
+            } while !menus.contains(where: { menu in
+                guard menu.title == "View" else { return false }
+                let titles = menu.rows.map(\.title)
+                return titles.contains("Refresh Free Space") && titles.contains("Customise Overview…")
+                    && titles.contains(where: { $0.contains("Full Screen") })
+            })
                 && ContinuousClock.now < deadline
 
             if let data = try? JSONEncoder().encode(menus) {
