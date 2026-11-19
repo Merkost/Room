@@ -12,6 +12,7 @@ struct RoomScreenActions {
     var canEnclose = false
     var enclose: () -> Void = {}
     var showHistory: (() -> Void)?
+    var customise: () -> Void = {}
 }
 
 extension FocusedValues {
@@ -144,6 +145,8 @@ struct RoomCommands: Commands {
         case .welcome: if !isWorking() { showWelcome() }
         case .hideOverviewSizes:
             if window == .main, screen?.destination == .overview { hide.toggle() }
+        case .customiseOverview:
+            if window == .main, screen?.destination == .overview { screen?.customise() }
         case .showHistory:
             if window == .main { screen?.showHistory?() }
         case .enclosing:

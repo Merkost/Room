@@ -4,16 +4,29 @@ import Observation
 @Observable @MainActor
 final class RoomOverviewModel {
     private(set) var snapshot: RoomOverviewSnapshot
-    private(set) var greeting: String
+    private(set) var greeting: String?
+    private(set) var nextGreetingUpdateAt: Date?
+    @ObservationIgnored private var name: String?
+    @ObservationIgnored private let fullName: () -> String
+    @ObservationIgnored private let loginName: () -> String
+    @ObservationIgnored private let givenName: (String) -> String?
     private(set) var cacheCaption: String?
     private(set) var nextCacheUpdateAt: Date?
     @ObservationIgnored private let now: () -> Date
 
-    init(now: @escaping () -> Date = Date.init) {
+    init(now: @escaping () -> Date = Date.init,
+         fullName: @escaping () -> String = NSFullUserName,
+         loginName: @escaping () -> String = NSUserName,
+         givenName: @escaping (String) -> String? = {
+            PersonNameComponentsFormatter().personNameComponents(from: $0)?.givenName
+         }) {
         self.now = now
+        self.fullName = fullName
+        self.loginName = loginName
+        self.givenName = givenName
         let date = now()
         snapshot = Self.makeSnapshot(capacity: nil, goalBytes: nil, now: date)
-        greeting = Self.greeting(at: date)
+        updateGreeting(enabled: true, hidden: false)
     }
 
     func update(capacity: RoomVolumeCapacity?, goalBytes: Int64?, caches: RoomCachesCheck? = nil,
@@ -25,8 +38,6 @@ final class RoomOverviewModel {
                                      invalidatedAt: invalidatedAt, now: date, homeKinds: homeKinds,
                                      mapActionAvailable: mapActionAvailable, mapping: mapping, stoppedMapping: stoppedMapping)
         if snapshot != next { snapshot = next }
-        let nextGreeting = Self.greeting(at: date, calendar: calendar)
-        if greeting != nextGreeting { greeting = nextGreeting }
 
         let checkedAt = next.cachesCheckedAt
         let caption = checkedAt == nil ? nil : caches?.caption(now: date, calendar: calendar)
@@ -51,7 +62,14 @@ final class RoomOverviewModel {
             mapping: mapping, stoppedMapping: stoppedMapping), format: RoomFormat.overviewBytes)
     }
 
-    private static func greeting(at date: Date, calendar: Calendar = .current) -> String {
-        RoomOverviewCopy.greeting(hour: calendar.component(.hour, from: date))
+    func updateGreeting(enabled: Bool, hidden: Bool, refreshName: Bool = false) {
+        if refreshName, enabled, !hidden {
+            name = RoomGreetingName.resolve(fullName: fullName(), loginName: loginName(), givenName: givenName)
+        }
+        let date = now()
+        let calendar = Calendar.current
+        greeting = RoomGreetingName.line(hour: calendar.component(.hour, from: date),
+                                         enabled: enabled, name: name, hidden: hidden)
+        nextGreetingUpdateAt = enabled ? RoomGreetingName.nextBoundary(after: date, calendar: calendar) : nil
     }
 }

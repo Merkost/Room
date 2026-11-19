@@ -39,6 +39,7 @@ nonisolated enum RoomMenuModel {
         case autoFill
         case dictation
         case emoji
+        case customiseOverview
         case refreshOverview
         case hideOverviewSizes
         case rescanDisk
@@ -113,6 +114,7 @@ nonisolated enum RoomMenuModel {
             case .autoFill: "AutoFill"
             case .dictation: "Start Dictation"
             case .emoji: "Emoji & Symbols"
+            case .customiseOverview: String(localized: "menu.customiseOverview", defaultValue: "Customise Overview…")
             case .refreshOverview: String(localized: "menu.refreshOverview", defaultValue: "Refresh Free Space")
             case .hideOverviewSizes: RoomOverviewPrivacy.menuTitle
             case .rescanDisk: String(localized: "menu.rescanDisk", defaultValue: "Rescan Disk Map")
@@ -319,6 +321,9 @@ nonisolated enum RoomMenuModel {
         }
         add(.view, .sidebarLabels, .init("s", [.control, .command]), enabled: main,
             title: input.sidebarIconsOnly ? String(localized: "menu.sidebarLabels.show", defaultValue: "Show Sidebar Labels", bundle: RoomCopy.bundle) : nil)
+        if main && input.destination == .overview {
+            add(.view, .customiseOverview, .init("c", [.option, .command]))
+        }
         add(.view, .fullScreen, .init("f", [.control, .command]), enabled: hasKeyWindow, native: true)
 
         add(.go, .back, .init("["), enabled: main && input.canGoBack)

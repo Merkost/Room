@@ -45,6 +45,7 @@ struct RoomMainMenuTests {
         let view = try menu("View")
         #expect(view.contains { $0.title == "Refresh Free Space" && $0.key == "r" && $0.enabled })
         #expect(view.contains { $0.title.contains("Full Screen") })
+        #expect(view.contains { $0.title == "Customise Overview…" && $0.key == "c" && $0.enabled })
 
         let go = try menu("Go")
         #expect(go.map(\.title) == ["Back", "Forward", "Overview", "Disk Map", "Caches", "Developer", "Memory", "Show History", "Enclosing Folder"])
@@ -72,7 +73,7 @@ struct RoomMainMenuTests {
         #expect(allRows.filter { $0.key == "r" && $0.modifiers == command }.count == 1)
         #expect(!allRows.contains { $0.key.lowercased() == "r" && $0.modifiers == shiftCommand })
         let deferred = ["Scan Caches", "Stop Cache Scan", "Show Inspector",
-                        "Customise Overview…", "Toggle Sidebar"]
+                        "Toggle Sidebar"]
         #expect(allRows.allSatisfy { !deferred.contains($0.title) })
     }
 

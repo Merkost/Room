@@ -9,13 +9,15 @@ struct RoomOverviewView: View {
     let navigate: (RoomDestination) -> Void
     let refresh: () -> Void
     var cacheModel: RoomViewModel? = nil
+    var editingRoom: UUID? = nil
+    var showAllRooms: () -> Void = {}
     @Environment(\.roomHide) private var hide
     private var hidden: Bool { hide.masksNow }
 
     @AppStorage(RoomMenuBarSettings.goalBytesKey) private var storedGoal = Int(RoomMenuBarSettings.defaultGoalBytes)
-    @AppStorage("RoomChapterRoomsShown") private var showRooms = true
-    @State private var editingRoom: UUID?
-    @State private var showRoomsList = false
+    @AppStorage(RoomOverviewPreferences.roomsChapterKey) private var showRooms = true
+    @AppStorage(RoomOverviewPreferences.greetingKey) private var greetByName = true
+    @Environment(\.controlActiveState) private var controlActiveState
     @AppStorage("RoomGoalEnabled") private var goalEnabled = true
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.roomMotion) private var motion
@@ -53,10 +55,12 @@ struct RoomOverviewView: View {
         VStack(alignment: .leading, spacing: RoomTokens.Space.breath4) {
             VStack(alignment: .leading, spacing: RoomTokens.Density.calm.betweenGroups) {
                 VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
-                    Text(model.greeting)
-                        .font(RoomTokens.Typography.lead)
-                        .lineHeight(.exact(points: RoomTokens.Overview.greetingLineHeight))
-                        .foregroundStyle(RoomTokens.Ink.secondary)
+                    if let greeting = model.greeting {
+                        Text(greeting)
+                            .font(RoomTokens.Typography.lead)
+                            .lineHeight(.exact(points: RoomTokens.Overview.greetingLineHeight))
+                            .foregroundStyle(RoomTokens.Ink.secondary)
+                    }
                     answerGroup(snapshot)
                 }
                 if let plan = snapshot.plan, plan.fitsDotBudget {
@@ -75,27 +79,8 @@ struct RoomOverviewView: View {
             .frame(minHeight: RoomTokens.Density.calm.firstScreenMinHeight, alignment: .topLeading)
             if showRooms && (!rooms.rooms.isEmpty || rooms.canChooseFolder) {
                 RoomChapterRooms(rooms: rooms, calendar: .current, editing: editingRoom, openRoom: openPinned,
-                                 showAll: { showRoomsList = true })
+                                 showAll: showAllRooms)
             }
-        }
-        .popover(isPresented: $showRoomsList) {
-            VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
-                Text("Your Rooms").font(RoomTokens.Typography.section)
-                ScrollView {
-                    VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
-                        ForEach(rooms.visibleRooms) { room in
-                            Button(hidden ? "Room" : room.name) {
-                                if let url = rooms.url(for: room.id) { openPinned(url) }
-                                else { rooms.chooseFolder(replacingApprovalFor: room.id) }
-                                showRoomsList = false
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
-            .padding(RoomTokens.Space.group)
         }
         .frame(maxWidth: RoomTokens.Space.measure, alignment: .leading)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -107,6 +92,23 @@ struct RoomOverviewView: View {
                 AccessibilityNotification.Announcement(presentedSnapshot.accessibilityAnswer).post()
             }
         }
+        .onChange(of: controlActiveState, initial: true) { _, state in
+            model.updateGreeting(enabled: greetByName, hidden: hidden, refreshName: state == .key)
+        }
+        .onChange(of: greetByName) { _, _ in
+            model.updateGreeting(enabled: greetByName, hidden: hidden, refreshName: true)
+        }
+        .onChange(of: hidden) { _, _ in
+            model.updateGreeting(enabled: greetByName, hidden: hidden, refreshName: true)
+        }
+        .task(id: scenePhase == .active ? model.nextGreetingUpdateAt : nil) {
+            guard scenePhase == .active, let deadline = model.nextGreetingUpdateAt else { return }
+            do {
+                try await Task.sleep(for: .seconds(max(0, deadline.timeIntervalSinceNow)))
+                guard !Task.isCancelled else { return }
+                model.updateGreeting(enabled: greetByName, hidden: hidden)
+            } catch {}
+        }
         .onAppear { updateCapacityMonitoring() }
         .task {
             await insights.refreshHomeMap()
@@ -114,7 +116,10 @@ struct RoomOverviewView: View {
         }
         .onChange(of: scenePhase) { _, _ in
             updateCapacityMonitoring()
-            if isActive { updateSnapshot(inputs) }
+            if isActive {
+                updateSnapshot(inputs)
+                model.updateGreeting(enabled: greetByName, hidden: hidden)
+            }
         }
         .task(id: isActive ? model.nextCacheUpdateAt : nil) {
             guard isActive, let deadline = model.nextCacheUpdateAt else { return }
