@@ -164,7 +164,7 @@ actor RoomStateStore {
     }
 
     func forgetHistory() -> [String] {
-        let history: [RoomStateFile] = [.roomSizes, .volumeSamples, .reports, .weeklyCheck, .pressure, .treeIndex]
+        let history: [RoomStateFile] = [.roomSizes, .volumeSamples, .reports, .weeklyCheck, .pressure, .treeIndex, .developerUnreferenced]
         let treeFolder = directory.appendingPathComponent("trees", isDirectory: true)
         let treeNames = (try? disk.names(in: treeFolder)) ?? []
         let trees = treeNames.compactMap { name -> RoomStateFile? in

@@ -22,7 +22,9 @@ final class RoomFileAccess {
     private let defaults: UserDefaults
     private let key = "RoomApprovedFolderBookmarks"
     private var records: [Record]
-    private(set) var folders: [RoomAccessFolder] = []
+    private var resolvedFolders: [RoomAccessFolder] = []
+    private var stagedRemovalIDs: Set<String> = []
+    var folders: [RoomAccessFolder] { resolvedFolders.filter { !stagedRemovalIDs.contains($0.id) } }
     private(set) var note: String?
 
     init(defaults: UserDefaults = .standard) {
@@ -54,9 +56,14 @@ final class RoomFileAccess {
         return approved.url
     }
 
+    func stageRemoval(id: String) { stagedRemovalIDs.insert(id) }
+
+    func undoRemoval(id: String) { stagedRemovalIDs.remove(id) }
+
     func forget(id: String) {
         reloadRecords()
         records.removeAll { $0.id == id }
+        stagedRemovalIDs.remove(id)
         persist()
         resolveBookmarks()
     }
@@ -91,7 +98,7 @@ final class RoomFileAccess {
 
     private func resolveBookmarks() {
         note = nil
-        folders = records.compactMap { record in
+        resolvedFolders = records.compactMap { record in
             do {
                 var stale = false
                 let url = try URL(resolvingBookmarkData: record.bookmark, options: [.withSecurityScope, .withoutUI],

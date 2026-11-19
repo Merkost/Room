@@ -12,6 +12,8 @@ final class RoomRoomsModel {
 
     private(set) var rooms: [RoomPinnedRoom]
     private var sizes: [String: RoomSizeLog]
+    private var stagedUnpins: Set<UUID> = []
+    private var historySuspended = false
     private var failedMeasurements: Set<UUID> = []
     private(set) var selectedRoomID: UUID?
     private(set) var notice: String?
@@ -69,7 +71,10 @@ final class RoomRoomsModel {
         observeWorking()
     }
 
-    var popoverRoom: RoomPinnedRoom? { rooms.first }
+    var visibleRooms: [RoomPinnedRoom] { rooms.filter { !stagedUnpins.contains($0.id) } }
+    var popoverRoom: RoomPinnedRoom? { visibleRooms.first }
+    var savedRoomID: UUID? { rooms.first?.id }
+    var canUnpin: Bool { !isWorking() && !isStateLoading && !isReadOnly }
     var pinnedRoom: RoomPinnedRoom? { popoverRoom }
     var pinnedURL: URL? { popoverRoom.flatMap { url(for: $0.id) } }
 
@@ -77,7 +82,7 @@ final class RoomRoomsModel {
         Set(rooms.lazy.filter { self.failedMeasurements.contains($0.id) || self.url(for: $0.id) == nil }.map(\.id))
     }
 
-    func log(for id: UUID) -> RoomSizeLog? { sizes[id.uuidString] }
+    func log(for id: UUID) -> RoomSizeLog? { historySuspended ? nil : sizes[id.uuidString] }
 
     func url(for id: UUID) -> URL? {
         guard let room = rooms.first(where: { $0.id == id }),
@@ -94,7 +99,7 @@ final class RoomRoomsModel {
     var state: State {
         guard let room = popoverRoom else { return .empty }
         guard pinnedURL != nil, !failedMeasurements.contains(room.id) else { return .unavailable(room) }
-        guard let log = sizes[room.id.uuidString], log.latest != nil else { return .measuring(room) }
+        guard let log = log(for: room.id), log.latest != nil else { return .measuring(room) }
         return .measured(room, log)
     }
 
@@ -168,6 +173,48 @@ final class RoomRoomsModel {
         measureNext()
     }
 
+    func stageUnpin(_ id: UUID) {
+        guard canUnpin, rooms.contains(where: { $0.id == id }) else { return }
+        if measuringRoomID == id { cancelCurrentMeasurement() }
+        stagedUnpins.insert(id)
+    }
+
+    func undoUnpin(_ id: UUID) { stagedUnpins.remove(id) }
+
+    func commitUnpin(_ id: UUID) {
+        guard stagedUnpins.remove(id) != nil else { return }
+        removeRoom(id)
+    }
+
+    func suspendSizeHistory(_ suspended: Bool) {
+        historySuspended = suspended
+        if suspended { cancelCurrentMeasurement() }
+    }
+
+    func clearSizeHistory() {
+        cancelCurrentMeasurement()
+        sizes = [:]
+        failedMeasurements = []
+        store.discardPendingSizes()
+    }
+
+    func applyMap(_ map: RoomStoredTree, root: URL) {
+        guard !historySuspended, !isStateLoading, !isReadOnly, !map.cancelled else { return }
+        var changed = false
+        for room in visibleRooms {
+            guard let url = url(for: room.id), RoomFileAccess.contains(parent: root, child: url) else { continue }
+            let components = url.standardizedFileURL.pathComponents.dropFirst(root.standardizedFileURL.pathComponents.count)
+            guard let node = map.tree.descendant(at: components.joined(separator: "/")) else { continue }
+            var log = sizes[room.id.uuidString] ?? RoomSizeLog()
+            if let last = log.latest, last.at >= map.scannedAt { continue }
+            log.record(.init(at: map.scannedAt, bytes: node.allocatedBytes, partial: node.isPartial), calendar: calendar)
+            sizes[room.id.uuidString] = log
+            failedMeasurements.remove(room.id)
+            changed = true
+        }
+        if changed { store.saveSizes(sizes) }
+    }
+
     func unpin() {
         guard let room = popoverRoom else { return }
         unpin(id: room.id)
@@ -175,7 +222,12 @@ final class RoomRoomsModel {
 
     func unpin(id: UUID) {
         guard !isStateLoading, !isReadOnly else { return }
-        guard !isWorking(), rooms.contains(where: { $0.id == id }) else { return }
+        guard !isWorking() else { return }
+        removeRoom(id)
+    }
+
+    private func removeRoom(_ id: UUID) {
+        guard rooms.contains(where: { $0.id == id }) else { return }
         if measuringRoomID == id { cancelCurrentMeasurement() }
         pinQueue.removeAll(where: { $0 == id })
         rooms = RoomRoomsCatalog.remove(rooms, id: id)
@@ -258,7 +310,7 @@ final class RoomRoomsModel {
     }
 
     func measureNext() {
-        guard !isStateLoading, !isReadOnly else { return }
+        guard !historySuspended, !isStateLoading, !isReadOnly else { return }
         guard measurementTask == nil, pickerTask == nil, !isWorking() else { return }
         let unavailable = self.unavailable
         pinQueue.removeAll { unavailable.contains($0) }
@@ -268,7 +320,7 @@ final class RoomRoomsModel {
             id = pinQueue.removeFirst()
             owner = .pin
         } else {
-            guard let next = RoomRoomsMeasureQueue.next(rooms: rooms, sizes: sizes, unavailable: unavailable, now: now()) else { return }
+            guard let next = RoomRoomsMeasureQueue.next(rooms: visibleRooms, sizes: sizes, unavailable: unavailable, now: now()) else { return }
             id = next
             owner = overviewChapterActive ? .overview : popoverActive ? .popover : .manual
         }

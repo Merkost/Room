@@ -13,7 +13,7 @@ struct RoomRootView: View {
     @AppStorage("RoomAppearance") private var appearance = "dark"
     @Environment(\.openSettings) private var openSettings
     @Environment(\.roomMotion) private var motion
-    @State private var developer = RoomDeveloperModel()
+    @State private var developer = RoomDeveloperModel(unreferencedStore: .init(writer: .shared))
     @State private var sheet: RoomSheet?
     @AppStorage(RoomOverviewPrivacy.key) private var overviewSizesHidden = false
 
@@ -78,6 +78,9 @@ struct RoomRootView: View {
             Button("OK") { model.errorMessage = nil }
         } message: { Text(model.errorMessage ?? "") }
         .onAppear { if navigation.needsWelcome { sheet = .welcome } }
+        .onReceive(NotificationCenter.default.publisher(for: .roomSavedHistoryForgotten)) { _ in
+            developer.clearUnreferencedHistory()
+        }
         .onChange(of: developer.accessRevision) { _, _ in developer.accessChanged() }
         #if ROOM_APP_STORE
         .onChange(of: model.storeAccessRevision) { _, _ in model.storeAccessChanged() }
@@ -89,6 +92,9 @@ struct RoomRootView: View {
             guard let id else { return }
             openPinnedRoom(id)
             insights.requestedPinnedRoom = nil
+        }
+        .onChange(of: insights.diskMap.current) { _, map in
+            if let map, let root = insights.diskMap.rootURL { rooms.applyMap(map, root: root) }
         }
         .onChange(of: navigation.route) { _, route in
             guard case .room(let id) = route, let url = rooms.url(for: id) else { return }

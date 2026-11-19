@@ -25,6 +25,7 @@ nonisolated struct RoomStateFile: Hashable, Sendable {
     static let ledger = RoomStateFile(name: "ledger.json", schema: 1, maxBytes: 256_000, survivesForget: true)
     static let ignore = RoomStateFile(name: "ignore.json", schema: 1, maxBytes: 128_000, survivesForget: true)
     static let views = RoomStateFile(name: "views.json", schema: 1, maxBytes: 64_000, survivesForget: true)
+    static let developerUnreferenced = RoomStateFile(name: "developer-unreferenced.json", schema: 1, maxBytes: 512_000, survivesForget: false)
     static let pressure = RoomStateFile(name: "pressure.json", schema: 1, maxBytes: 512_000, survivesForget: false)
     static let treeIndex = RoomStateFile(name: "trees/index.json", schema: 1, maxBytes: 64_000, survivesForget: false)
     static func tree(rootID: String) -> RoomStateFile {

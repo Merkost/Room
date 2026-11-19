@@ -68,6 +68,8 @@ final class RoomDeveloperModel {
     private(set) var summary: RoomDevSummary?
     private(set) var unreferenced: RoomDevUnreferenced
     @ObservationIgnored private let unreferencedStore: RoomDeveloperUnreferencedStore
+    @ObservationIgnored private var unreferencedLoad: Task<Void, Never>?
+    @ObservationIgnored private var unreferencedReadOnly = false
     @ObservationIgnored private let home: URL?
     private(set) var isScanning = false
     private(set) var isChoosingFolder = false
@@ -82,10 +84,18 @@ final class RoomDeveloperModel {
         self.defaults = defaults
         self.home = home
         self.unreferencedStore = unreferencedStore
-        self.unreferenced = unreferencedStore.load()
+        self.unreferenced = unreferencedStore.writer == nil ? unreferencedStore.load() : .init()
         let engine = DeveloperResourcesEngine()
         self.scanResources = scanner ?? { request, progress in await engine.scan(request: request, progress: progress) }
         records = defaults.data(forKey: key).flatMap { try? JSONDecoder().decode([RoleRecord].self, from: $0) } ?? []
+        if unreferencedStore.writer != nil {
+            unreferencedLoad = Task { [weak self] in
+                let saved = await unreferencedStore.loadState()
+                guard let self, !Task.isCancelled else { return }
+                if let record = saved.value { self.unreferenced = record }
+                self.unreferencedReadOnly = saved.isReadOnly
+            }
+        }
     }
 
     static var standardHome: URL? {
@@ -208,6 +218,7 @@ final class RoomDeveloperModel {
                     self.progress = "\(update.phase) · \(update.inspectedCount.formatted()) items"
                 }
             }
+            await self?.unreferencedLoad?.value
             guard let self, self.generation == token else { return }
             self.report = result
             let summary = RoomDeveloperRooms.summarize(projects: result.projects, artifacts: result.toolchains,
@@ -219,12 +230,19 @@ final class RoomDeveloperModel {
                                                    scanComplete: !summary.partial, now: result.scannedAt)
             if updated != self.unreferenced {
                 self.unreferenced = updated
-                self.unreferencedStore.save(updated)
+                if !self.unreferencedReadOnly { self.unreferencedStore.save(updated) }
             }
             self.isScanning = false
             self.task = nil
             self.progress = result.cancelled ? "Stopped · partial review" : (result.isPartial ? "Partial review" : "Review complete")
         }
+    }
+
+    func clearUnreferencedHistory() {
+        unreferencedLoad?.cancel()
+        unreferencedLoad = nil
+        unreferencedStore.writer?.discardPending(for: .developerUnreferenced)
+        unreferenced = RoomDevUnreferenced()
     }
 
     func stop() { task?.cancel(); progress = "Stopping…" }

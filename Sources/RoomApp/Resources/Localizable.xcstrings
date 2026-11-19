@@ -736,7 +736,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Some saved history could not be read."
+            "value": "Some saved history couldn't be read and was set aside."
           }
         }
       }

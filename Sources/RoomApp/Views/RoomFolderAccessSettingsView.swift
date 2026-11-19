@@ -5,6 +5,10 @@ import SwiftUI
 @MainActor
 struct RoomFolderAccessSettingsView: View {
     @Bindable var insights: RoomInsightsModel
+    let rooms: RoomRoomsModel
+    let isWorking: () -> Bool
+    private let removalPrefix = "settings:access:"
+    private let confirmation = RoomInlineConfirmCenter.shared
     @Environment(\.controlActiveState) private var controlActiveState
     @State private var accessRevision = 0
     @Environment(\.roomMotion) private var motion
@@ -53,6 +57,10 @@ struct RoomFolderAccessSettingsView: View {
                 }
             }
 
+            if !confirmation.stagedLines(prefix: removalPrefix).isEmpty {
+                Section { RoomInlineUndoRows(prefix: removalPrefix) }
+            }
+
             Section {
                 HStack(spacing: RoomTokens.Space.row) {
                     Button("Add folder…") { insights.chooseAccessFolder() }
@@ -82,6 +90,7 @@ struct RoomFolderAccessSettingsView: View {
         }
         .formStyle(.grouped).scrollDisabled(true)
         .fixedSize(horizontal: false, vertical: true)
+        .onDisappear { confirmation.finishAll(prefix: removalPrefix) }
         .onChange(of: controlActiveState) { _, state in
             if state == .key { accessRevision += 1 }
         }
@@ -115,8 +124,16 @@ struct RoomFolderAccessSettingsView: View {
             }
             // A saved folder can always be forgotten, readable or not (a stale or locked one most of all).
             if let savedID = folder.savedID {
-                Button("Remove") { insights.forgetAccessFolder(id: savedID) }
-                    .accessibilityLabel("Remove access to \(folder.name)").transition(.opacity)
+                let question = String(localized: "confirm.removeAccess", defaultValue: "Remove access to %@?", bundle: RoomCopy.bundle)
+                let done = String(localized: "confirm.removeAccess.done", defaultValue: "Room no longer reads %@.", bundle: RoomCopy.bundle)
+                RoomInlineConfirmButton(id: removalPrefix + savedID, title: "Remove",
+                    confirmTitle: String.localizedStringWithFormat(question, folder.name),
+                    doneLine: String.localizedStringWithFormat(done, folder.name), isAllowed: !isWorking(),
+                    stage: {
+                        if rooms.pinnedRoom?.accessFolderID == savedID { rooms.cancelMeasurement() }
+                        insights.stageAccessRemoval(id: savedID)
+                    }, commit: { insights.forgetAccessFolder(id: savedID) },
+                    undo: { insights.undoAccessRemoval(id: savedID) })
             }
         }
         .frame(minHeight: RoomTokens.Settings.folderRowHeight)

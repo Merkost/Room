@@ -142,6 +142,7 @@ enum RoomTokens {
         static let innerPadding: CGFloat = 8
         static let pitchGap: CGFloat = 2
         static let barHeight: CGFloat = 4
+        static let minimumTarget: CGFloat = 24
     }
 
     // MARK: Identity

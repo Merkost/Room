@@ -4,8 +4,11 @@ import Observation
 /// Keeps the last completed scan separate from the in-progress Caches review.
 @Observable @MainActor
 final class RoomCachesCheckStore {
-    private(set) var check: RoomCachesCheck?
-    private(set) var invalidatedAt: Date?
+    private var savedCheck: RoomCachesCheck?
+    private var savedInvalidatedAt: Date?
+    private var historySuspended = false
+    var check: RoomCachesCheck? { historySuspended ? nil : savedCheck }
+    var invalidatedAt: Date? { historySuspended ? nil : savedInvalidatedAt }
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let writer: RoomStateWriter?
     @ObservationIgnored private var loading: Task<Void, Never>?
@@ -53,42 +56,44 @@ final class RoomCachesCheckStore {
     func save(_ check: RoomCachesCheck) {
         guard !readOnly else { return }
         revision += 1
-        self.check = check
+        self.savedCheck = check
         persist()
     }
 
     func invalidate(at date: Date) {
         guard !readOnly else { return }
-        if let invalidatedAt, date <= invalidatedAt { return }
+        if let savedInvalidatedAt, date <= savedInvalidatedAt { return }
         revision += 1
-        invalidatedAt = date
+        savedInvalidatedAt = date
         persist()
     }
 
+    func suspendHistory(_ suspended: Bool) { historySuspended = suspended }
+
     func clearInMemory() {
         revision += 1
-        check = nil
-        invalidatedAt = nil
+        savedCheck = nil
+        savedInvalidatedAt = nil
         writer?.discardPending(for: .reports)
     }
 
     private func apply(_ reports: RoomReports) {
-        check = reports.caches.map { RoomCachesCheck(at: $0.at, bytes: $0.bytes, partial: $0.partial) }
-        invalidatedAt = reports.invalidatedAt ?? reports.caches?.invalidatedAt
+        savedCheck = reports.caches.map { RoomCachesCheck(at: $0.at, bytes: $0.bytes, partial: $0.partial) }
+        savedInvalidatedAt = reports.invalidatedAt ?? reports.caches?.invalidatedAt
     }
 
     private func persist() {
-        let record = check.map { RoomLegacyCachesCheck(at: $0.at, bytes: $0.bytes, partial: $0.partial, invalidatedAt: invalidatedAt) }
+        let record = savedCheck.map { RoomLegacyCachesCheck(at: $0.at, bytes: $0.bytes, partial: $0.partial, invalidatedAt: savedInvalidatedAt) }
         if let writer {
-            writer.submit(RoomReports(caches: record, invalidatedAt: invalidatedAt), to: .reports)
+            writer.submit(RoomReports(caches: record, invalidatedAt: savedInvalidatedAt), to: .reports)
         } else {
             let keys = RoomLegacyCachesCheck.keys
-            if let check {
+            if let check = savedCheck {
                 defaults.set(check.bytes, forKey: keys.bytes)
                 defaults.set(check.partial, forKey: keys.partial)
                 defaults.set(check.at, forKey: keys.at)
             }
-            defaults.set(invalidatedAt, forKey: keys.invalidatedAt)
+            defaults.set(savedInvalidatedAt, forKey: keys.invalidatedAt)
         }
     }
 }

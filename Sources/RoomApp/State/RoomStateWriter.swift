@@ -10,10 +10,17 @@ final class RoomStateWriter {
     private var generations: [String: UInt64] = [:]
     private var pending: [String: Pending] = [:]
     private var timers: [String: Task<Void, Never>] = [:]
-    private var active: [UUID: Task<Void, Never>] = [:]
+    private var active: [UUID: Running] = [:]
+    private var isForgettingHistory = false
+
+    private struct Running {
+        let history: Bool
+        let task: Task<Void, Never>
+    }
 
     private struct Pending {
         let generation: UInt64
+        let history: Bool
         let write: @Sendable () async -> Void
     }
 
@@ -25,9 +32,10 @@ final class RoomStateWriter {
     var hasPendingWrites: Bool { !pending.isEmpty || !active.isEmpty }
 
     func submit<Value: Codable & Sendable>(_ value: Value, to file: RoomStateFile) {
+        guard !isForgettingHistory || file.survivesForget else { return }
         let generation = generations[file.name, default: 0] + 1
         generations[file.name] = generation
-        pending[file.name] = Pending(generation: generation) { [store] in
+        pending[file.name] = Pending(generation: generation, history: !file.survivesForget) { [store] in
             do {
                 try await store.write(value, to: file, generation: generation)
             } catch {
@@ -44,13 +52,34 @@ final class RoomStateWriter {
     }
 
     func discardPending(for file: RoomStateFile) {
-        pending[file.name] = nil
-        timers.removeValue(forKey: file.name)?.cancel()
+        discardPending(named: file.name)
+    }
+
+    private func discardPending(named name: String) {
+        pending[name] = nil
+        timers.removeValue(forKey: name)?.cancel()
+    }
+
+    func forgetHistory(completion: @escaping ([String]) -> Void) {
+        guard !isForgettingHistory else { return }
+        isForgettingHistory = true
+        for name in pending.filter({ $0.value.history }).keys { discardPending(named: name) }
+        let previousWrites = active.values.filter(\.history).map(\.task)
+        let id = UUID()
+        let task = Task { [weak self, store] in
+            for write in previousWrites { await write.value }
+            let forgotten = await store.forgetHistory()
+            guard let self else { return }
+            self.active[id] = nil
+            self.isForgettingHistory = false
+            completion(forgotten)
+        }
+        active[id] = Running(history: true, task: task)
     }
 
     func flush(deadline: Duration) async {
         for name in Array(pending.keys) { start(name) }
-        let running = Array(active.values)
+        let running = active.values.map(\.task)
         guard !running.isEmpty else { return }
 
         // Waiting for the deadline must not wait for a cancelled filesystem operation.
@@ -74,9 +103,14 @@ final class RoomStateWriter {
         timers.removeValue(forKey: name)?.cancel()
         guard let entry = pending.removeValue(forKey: name) else { return }
         let id = UUID()
-        active[id] = Task { [weak self] in
+        let task = Task { [weak self] in
             await entry.write()
             self?.active[id] = nil
         }
+        active[id] = Running(history: entry.history, task: task)
     }
+}
+
+extension Notification.Name {
+    static let roomSavedHistoryForgotten = Notification.Name("RoomSavedHistoryForgotten")
 }

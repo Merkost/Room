@@ -96,7 +96,7 @@ struct RoomApp: App {
             #endif
         }
         Settings {
-            RoomSettingsView(model: model, insights: insights, rooms: rooms)
+            RoomSettingsView(model: model, insights: insights, rooms: rooms, isWorking: { isWorking })
                 .modifier(RoomMotionRoot())
                 .modifier(RoomAccentRoot())
         }
@@ -190,6 +190,7 @@ final class RoomApplicationDelegate: NSObject, NSApplicationDelegate {
             return .terminateCancel
         }
         if waitingForStateWrites { return .terminateLater }
+        RoomInlineConfirmCenter.shared.finishAll()
         insights?.volumeHistory.prepareForTermination()
         insights?.savePressureHistory()
         let writer = RoomStateWriter.shared

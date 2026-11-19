@@ -46,6 +46,7 @@ final class RoomInsightsModel {
     @ObservationIgnored private var pressureLoad: Task<Void, Never>?
     @ObservationIgnored private var bufferedPressure: [MemoryReport] = []
     @ObservationIgnored private var pressureReadOnly = false
+    @ObservationIgnored private var savedHistorySuspended = false
     @ObservationIgnored private var pressureDirty = false
     @ObservationIgnored private var monitorEnabled = false
     @ObservationIgnored private var memoryActive = false
@@ -217,7 +218,7 @@ final class RoomInsightsModel {
     }
 
     private func recordPressure(_ report: MemoryReport) {
-        guard RoomPressureLevel(memoryPressureRaw: report.pressure.rawValue) != nil else { return }
+        guard !savedHistorySuspended, RoomPressureLevel(memoryPressureRaw: report.pressure.rawValue) != nil else { return }
         if pressureLoad != nil {
             bufferedPressure.append(report)
             if bufferedPressure.count > RoomPressureHistory.dayCount { bufferedPressure.removeFirst() }
@@ -235,6 +236,27 @@ final class RoomInsightsModel {
         if let pressureWriter { pressureWriter.submit(pressureHistory, to: .pressure) }
         else { pressureStore.save(pressureHistory) }
         pressureDirty = false
+    }
+
+    func suspendSavedHistory(_ value: Bool) {
+        savedHistorySuspended = value
+        if value, isScanningDisk {
+            diskTask?.cancel()
+            diskGeneration = UUID()
+            diskTask = nil
+            isScanningDisk = false
+            isMappingHome = false
+        }
+    }
+
+    func clearDiskHistory() async {
+        await treeStore.clearMemory()
+        homeTree = nil
+        applicationsTree = nil
+        diskURL = nil
+        diskReport = nil
+        diskMap.removeCurrent()
+        stoppedMappingHome = false
     }
 
     func clearPressureHistory() {
@@ -317,6 +339,7 @@ final class RoomInsightsModel {
     }
 
     private func scanAuthorizedDisk(url: URL, scope: URL, spliceAt: String? = nil) {
+        guard !savedHistorySuspended else { return }
         diskTask?.cancel()
         cancelStorageAnalysis()
         analysisReport = nil
@@ -447,7 +470,25 @@ final class RoomInsightsModel {
         isAnalyzingStorage = false
     }
 
+    func stageAccessRemoval(id: String) {
+        stopReadingAccessFolder(id: id)
+        fileAccess.stageRemoval(id: id)
+    }
+
+    func undoAccessRemoval(id: String) { fileAccess.undoRemoval(id: id) }
+
     func forgetAccessFolder(id: String) {
+        stopReadingAccessFolder(id: id)
+        fileAccess.forget(id: id)
+        Task {
+            await updateTreeApprovals()
+            await treeStore.forget(approvalID: id)
+            await refreshHomeMap()
+        }
+        fileAccess.setNote("Folder removed from Room. System access can be changed in Privacy & Security.")
+    }
+
+    private func stopReadingAccessFolder(id: String) {
         if let folder = accessFolders.first(where: { $0.id == id }),
            let diskURL, RoomFileAccess.contains(parent: folder.url, child: diskURL) {
             cancelDiskScan()
@@ -461,12 +502,6 @@ final class RoomInsightsModel {
             isScanningDisk = false
             isMappingHome = false
         }
-        fileAccess.forget(id: id)
-        Task {
-            await updateTreeApprovals()
-            await treeStore.forget(approvalID: id)
-        }
-        fileAccess.setNote("Folder removed from Room. System access can be changed in Privacy & Security.")
     }
 
     func openPrivacySettings() {

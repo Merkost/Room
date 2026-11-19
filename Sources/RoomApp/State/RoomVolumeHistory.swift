@@ -132,7 +132,9 @@ nonisolated struct RoomVolumeSampleLog: Codable, Equatable, Sendable {
 final class RoomVolumeHistory {
     static let shared = RoomVolumeHistory(writer: .shared)
 
-    private(set) var log = RoomVolumeSampleLog()
+    private var savedLog = RoomVolumeSampleLog()
+    private var historySuspended = false
+    var log: RoomVolumeSampleLog { historySuspended ? RoomVolumeSampleLog() : savedLog }
     @ObservationIgnored private let writer: RoomStateWriter?
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private let calendar: Calendar
@@ -156,10 +158,10 @@ final class RoomVolumeHistory {
                 let stored = await writer.store.load(RoomVolumeSampleLog.self, from: .volumeSamples)
                 guard let self else { return }
                 switch stored {
-                case .loaded(let value, _): self.log = value
+                case .loaded(let value, _): self.savedLog = value
                 case .newerReadOnly(let value):
                     self.readOnly = true
-                    if let value { self.log = value }
+                    if let value { self.savedLog = value }
                 case .missing, .damaged: break
                 }
                 let events = self.buffered ?? []
@@ -181,17 +183,20 @@ final class RoomVolumeHistory {
     }
 
     func prepareForTermination() {
-        if dirty { persist() }
+        if dirty && !historySuspended { persist() }
     }
+
+    func suspendHistory(_ suspended: Bool) { historySuspended = suspended }
 
     func clearInMemory() {
         buffered?.removeAll()
-        log = RoomVolumeSampleLog()
+        savedLog = RoomVolumeSampleLog()
         dirty = false
         writer?.discardPending(for: .volumeSamples)
     }
 
     private func enqueue(_ event: Event) {
+        guard !historySuspended else { return }
         if buffered != nil {
             buffered?.append(event)
         } else {
@@ -203,24 +208,24 @@ final class RoomVolumeHistory {
         guard !readOnly else { return }
         switch event {
         case .capacity(let sample, let trigger):
-            guard log.shouldRecord(trigger, now: sample.at, calendar: calendar) else { return }
-            var next = log
+            guard savedLog.shouldRecord(trigger, now: sample.at, calendar: calendar) else { return }
+            var next = savedLog
             let rolled = next.record(sample, calendar: calendar)
-            guard next != log else { return }
-            log = next
+            guard next != savedLog else { return }
+            savedLog = next
             dirty = true
             if rolled { persist() }
         case .kinds(let kinds, let at, let complete, let volumeID):
-            var next = log
+            var next = savedLog
             next.recordKinds(kinds, at: at, complete: complete, volumeID: volumeID, calendar: calendar)
-            guard next != log else { return }
-            log = next
+            guard next != savedLog else { return }
+            savedLog = next
             persist()
         }
     }
 
     private func persist() {
-        writer?.submit(log, to: .volumeSamples)
+        writer?.submit(savedLog, to: .volumeSamples)
         dirty = false
     }
 }

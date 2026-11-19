@@ -27,8 +27,21 @@ nonisolated struct RoomDevUnreferenced: Codable, Equatable, Sendable {
 }
 
 struct RoomDeveloperUnreferencedStore {
-    var directory: URL = RoomRoomsStore.defaultDirectory
+    var directory: URL
+    var writer: RoomStateWriter?
     private var file: URL { directory.appendingPathComponent("developer-unreferenced.json") }
+
+    init(directory: URL = RoomRoomsStore.defaultDirectory, writer: RoomStateWriter? = nil) {
+        self.directory = writer?.store.directory ?? directory
+        self.writer = writer
+    }
+
+    func loadState() async -> RoomStateLoad<RoomDevUnreferenced> {
+        guard let writer else { return .loaded(load(), rewrite: false) }
+        return await writer.store.load(RoomDevUnreferenced.self, from: .developerUnreferenced, legacy: { data in
+            try JSONDecoder().decode(RoomDevUnreferenced.self, from: data)
+        })
+    }
 
     func load() -> RoomDevUnreferenced {
         guard let size = try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize,
@@ -40,6 +53,10 @@ struct RoomDeveloperUnreferencedStore {
     }
 
     func save(_ record: RoomDevUnreferenced) {
+        if let writer {
+            writer.submit(record, to: .developerUnreferenced)
+            return
+        }
         do {
             let data = try JSONEncoder().encode(record)
             guard data.count <= 512 * 1_024 else { return }
