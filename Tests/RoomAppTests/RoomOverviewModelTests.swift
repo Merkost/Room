@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import Testing
 @testable import RoomApp
@@ -8,17 +9,18 @@ struct RoomOverviewModelTests {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
 
     private func input(free: Int64? = 312_000_000_000, capacity: Int64? = 994_000_000_000,
-                       goal: Int64? = 50_000_000_000, caches: RoomCachesCheck? = nil) -> RoomOverviewInput {
+                       goal: Int64? = 50_000_000_000, caches: RoomCachesCheck? = nil,
+                       invalidatedAt: Date? = nil, hidden: Bool = false) -> RoomOverviewInput {
         .init(capacityBytes: capacity, freeBytes: free, goalBytes: goal, caches: caches,
-              cachesInvalidatedAt: nil, now: now, hidden: false)
+              cachesInvalidatedAt: invalidatedAt, now: now, hidden: hidden)
     }
 
     private func snapshot(_ input: RoomOverviewInput) -> RoomOverviewSnapshot {
         RoomOverviewSnapshot.make(input, format: RoomMenuBarFormat.fixtureGigabytes.memory)
     }
 
-    private func caches(_ bytes: Int64 = 8_400_000_000) -> RoomCachesCheck {
-        .init(at: now.addingTimeInterval(-60), bytes: bytes, partial: false)
+    private func caches(_ bytes: Int64 = 8_400_000_000, partial: Bool = false, age: TimeInterval = 60) -> RoomCachesCheck {
+        .init(at: now.addingTimeInterval(-age), bytes: bytes, partial: partial)
     }
 
     @Test("OVC-01_AnswerUsesMeasuredFree") func answerUsesMeasuredFree() {
@@ -110,5 +112,163 @@ struct RoomOverviewModelTests {
 
     @Test("OVC-50_NonpositiveGoalDisabled") func nonpositiveGoalDisabled() {
         #expect([Int64(0), -1].allSatisfy { snapshot(input(goal: $0)).plan?.goalBytes == nil })
+    }
+
+    @Test("OVC-19_PositiveCachesMakeRoom") func positiveCachesMakeRoom() {
+        #expect(snapshot(input(caches: caches())).action == .makeRoom(bytes: 8_400_000_000, partial: false))
+    }
+
+    @Test("OVC-20_PartialPositiveHasLowerBound") func partialPositiveHasLowerBound() {
+        #expect(snapshot(input(caches: caches(partial: true))).actionTitle == "Make room · ≥ 8.4 GB")
+    }
+
+    @Test("OVC-21_PartialZeroIsNotNone") func partialZeroIsNotNone() {
+        #expect(snapshot(input(caches: caches(0, partial: true))).action == .checkCaches)
+    }
+
+    @Test("OVC-22_CompleteBelow100MBLinkOnly") func completeBelow100MBLinkOnly() {
+        #expect(snapshot(input(caches: caches(99_999_999))).action == .usingSpaceOnly)
+    }
+
+    @Test("OVC-23_Exactly100MBIsActionable") func exactly100MBIsActionable() {
+        #expect(snapshot(input(caches: caches(100_000_000))).action == .makeRoom(bytes: 100_000_000, partial: false))
+    }
+
+    @Test("OVC-24_Exactly24HoursIsStale") func exactly24HoursIsStale() {
+        #expect(snapshot(input(caches: caches(age: 86_400))).action == .checkCaches)
+    }
+
+    @Test("OVC-25_Before24HoursIsFresh") func before24HoursIsFresh() {
+        #expect(snapshot(input(caches: caches(age: 86_399))).action != .checkCaches)
+    }
+
+    @Test("OVC-26_FutureTimestampRejected") func futureTimestampRejected() {
+        #expect(snapshot(input(caches: caches(age: -1))).cachesCheckedAt == nil)
+    }
+
+    @Test("OVC-27_NegativeCachesRejected") func negativeCachesRejected() {
+        #expect(snapshot(input(caches: caches(-1))).action == .checkCaches)
+    }
+
+    @Test("OVC-28_MutationAfterCheckInvalidates") func mutationAfterCheckInvalidates() {
+        #expect(snapshot(input(caches: caches(), invalidatedAt: now)).action == .checkCaches)
+    }
+
+    @Test("OVC-29_OlderMutationKeepsCheck") func olderMutationKeepsCheck() {
+        #expect(snapshot(input(caches: caches(), invalidatedAt: now.addingTimeInterval(-120))).action != .checkCaches)
+    }
+
+    @Test("OVC-30_DateRetainedForQuietLine") func dateRetainedForQuietLine() {
+        #expect(snapshot(input(caches: caches(age: 90_000))).cachesCheckedAt == now.addingTimeInterval(-90_000))
+    }
+
+    @Test("OVC-31_HideMasksAllDigits") func hideMasksAllDigits() {
+        let hidden = snapshot(input(caches: caches(partial: true), hidden: true))
+        #expect(!hidden.answer.contains(where: \.isNumber) && !hidden.sentence.contains(where: \.isNumber))
+    }
+
+    @Test("OVC-32_HideActionDropsSize") func hideActionDropsSize() {
+        let hidden = snapshot(input(caches: caches(partial: true), hidden: true))
+        #expect(hidden.actionTitle == "Make room")
+    }
+
+    @Test("OVC-33_HideAXHasNoRawSizes") func hideAXHasNoRawSizes() {
+        let hidden = snapshot(input(caches: caches(partial: true), hidden: true))
+        #expect(hidden.accessibilityAnswer == "Free space and goal hidden." && hidden.accessibilityAction == "Make room. Opens Caches. Sizes hidden.")
+    }
+
+    @Test("OVC-34_HidePreservesGeometry") func hidePreservesGeometry() {
+        let normal = snapshot(input())
+        let hidden = snapshot(input(caches: caches(partial: true), hidden: true))
+        #expect(hidden.plan == normal.plan)
+    }
+
+    @Test("OVC-36_BoardUnmappedCounts") func boardUnmappedCounts() {
+        let normal = snapshot(input())
+        #expect(normal.plan?.freeDots == 78 && normal.plan?.notMappedDots == 0 && normal.plan?.gbPerDot == 4)
+    }
+
+    @Test("OVC-37_NoInventedKindDots") func noInventedKindDots() throws {
+        let blankPlan = try #require(snapshot(input()).plan).layout(size: CGSize(width: 560, height: 288))
+        #expect(blankPlan.dots.count == 78 && blankPlan.dots.allSatisfy { $0.room == .free })
+    }
+
+    @Test("OVC-38_ExistingBoardFixture250") func existingBoardFixture250() {
+        let full = RoomDotPlan.make(capacityGB: 994, freeGB: 312,
+            kinds: [("developer", 239), ("system", 174), ("apps", 102), ("media", 94),
+                    ("documents", 41), ("archives", 20), ("hidden", 12)], size: CGSize(width: 560, height: 288))
+        #expect(full.dots.count == 250 && full.dots.filter { $0.room == .free }.count == 78)
+    }
+
+    @Test("OVC-39_ExistingFixtureErrorSixGB") func existingFixtureErrorSixGB() {
+        let full = RoomDotPlan.make(capacityGB: 994, freeGB: 312,
+            kinds: [("developer", 239), ("system", 174), ("apps", 102), ("media", 94),
+                    ("documents", 41), ("archives", 20), ("hidden", 12)], size: CGSize(width: 560, height: 288))
+        #expect(abs(full.drawnErrorGB - 6) < 0.0001)
+    }
+
+    @Test("OVC-40_UnderOneDotAccessible") func underOneDotAccessible() throws {
+        let tiny = snapshot(input(free: gb))
+        let tinyLayout = try #require(tiny.plan).layout(size: CGSize(width: 560, height: 288))
+        #expect(tiny.plan?.freeDots == 0 && tinyLayout.underOneDot.contains(.free))
+    }
+
+    @Test("OVC-41_AllFreeHasNoRemainder") func allFreeHasNoRemainder() {
+        #expect(snapshot(input(free: 994 * gb)).plan?.notMappedBytes == 0)
+    }
+
+    @Test("OVC-42_PartialNoGoalSpeaksAtLeast") func partialNoGoalSpeaksAtLeast() {
+        #expect(snapshot(input(goal: nil, caches: caches(partial: true))).accessibilityAnswer.contains("at least 8.4 GB"))
+    }
+
+    @Test("OVC-43_UnknownNoGoalOmitsOutline") func unknownNoGoalOmitsOutline() {
+        let disabled = snapshot(input(goal: nil))
+        #expect(disabled.plan?.goalBytes == nil)
+    }
+
+    @Test("OVC-44_BelowGoalHidesGoalOutline") func belowGoalHidesGoalOutline() {
+        let below = snapshot(input(free: 41 * gb, caches: caches()))
+        #expect(below.plan?.goalBytes == nil)
+    }
+
+    @Test("OVC-45_AboveGoalKeepsGoalOutline") func aboveGoalKeepsGoalOutline() {
+        let normal = snapshot(input())
+        #expect(normal.plan?.goalBytes == 50 * gb)
+    }
+
+    @Test("OVC-46_EqualTimestampInvalidates") func equalTimestampInvalidates() {
+        #expect(snapshot(input(caches: caches(), invalidatedAt: now.addingTimeInterval(-60))).action == .checkCaches)
+    }
+
+    @Test("OVC-47_PartialSmallNoReassurance") func partialSmallNoReassurance() {
+        #expect(snapshot(input(goal: nil, caches: caches(500_000_000, partial: true))).sentence == "Nothing moves until you say so.")
+    }
+
+    @Test("OVC-48_StaleNoGoalNoReassurance") func staleNoGoalNoReassurance() {
+        #expect(snapshot(input(goal: nil, caches: caches(age: 86_400))).sentence == "Nothing moves until you say so.")
+    }
+
+    @Test("OVC-49_InvalidatedNoGoalNoReassurance") func invalidatedNoGoalNoReassurance() {
+        #expect(snapshot(input(goal: nil, caches: caches(), invalidatedAt: now)).sentence == "Nothing moves until you say so.")
+    }
+
+    @Test("OVC-51_ZeroFreeLayoutHonest") func zeroFreeLayoutHonest() throws {
+        let zeroFree = try #require(snapshot(input(free: 0)).plan).layout(size: CGSize(width: 560, height: 288))
+        #expect(zeroFree.dots.isEmpty && zeroFree.rooms.map(\.id) == [.notMapped])
+    }
+
+    @Test("OVC-52_LadderThroughEightTB") func ladderThroughEightTB() {
+        #expect([128.0, 256, 512, 994, 2_000, 8_000].map(RoomPure.gbPerDot(capacityGB:)) == [1, 1, 2, 4, 10, 50])
+    }
+
+    @Test("OVC-53_HiddenNoGoalNoLeak") func hiddenNoGoalNoLeak() {
+        let hiddenNoGoal = snapshot(input(goal: nil, caches: caches(partial: true), hidden: true))
+        #expect(hiddenNoGoal.accessibilityAnswer == "Free space and goal hidden." && !hiddenNoGoal.sentence.contains(where: \.isNumber))
+    }
+
+    @Test("OVC-54_CheckAtExactlyNowIsUsable") func checkAtExactlyNowIsUsable() {
+        let finished = snapshot(input(caches: caches(age: 0)))
+        #expect(finished.action == .makeRoom(bytes: 8_400_000_000, partial: false))
+        #expect(finished.cachesCheckedAt == now)
     }
 }

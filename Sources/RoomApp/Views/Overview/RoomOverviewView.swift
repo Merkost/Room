@@ -7,6 +7,8 @@ struct RoomOverviewView: View {
     let insights: RoomInsightsModel
     let navigate: (RoomDestination) -> Void
     let refresh: () -> Void
+    var cacheModel: RoomViewModel? = nil
+    var hidden = false
 
     @AppStorage(RoomMenuBarSettings.goalBytesKey) private var storedGoal = Int(RoomMenuBarSettings.defaultGoalBytes)
     @AppStorage("RoomGoalEnabled") private var goalEnabled = true
@@ -14,20 +16,26 @@ struct RoomOverviewView: View {
     @Environment(\.roomMotion) private var motion
     @Environment(\.roomAccent) private var accent
     @State private var model = RoomOverviewModel()
+    @State private var isActive = false
 
     private struct Inputs: Equatable {
         let capacity: RoomVolumeCapacity?
         let sampledAt: Date?
         let goalBytes: Int64?
+        let caches: RoomCachesCheck?
+        let invalidatedAt: Date?
     }
 
     private var inputs: Inputs {
-        Inputs(capacity: insights.volumeCapacity, sampledAt: insights.diskCapacitySampledAt,
-               goalBytes: goalEnabled ? Int64(storedGoal) : nil)
+        let saved = cacheModel?.cachesCheckStore.invalidatedAt
+        let known = cacheModel?.activity.first?.date
+        return Inputs(capacity: insights.volumeCapacity, sampledAt: insights.diskCapacitySampledAt,
+               goalBytes: goalEnabled ? Int64(storedGoal) : nil,
+               caches: cacheModel?.cachesCheckStore.check, invalidatedAt: [saved, known].compactMap { $0 }.max())
     }
 
     var body: some View {
-        let snapshot = model.snapshot
+        let snapshot = presentedSnapshot
         VStack(alignment: .leading, spacing: RoomTokens.Density.calm.betweenGroups) {
             VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
                 Text(model.greeting)
@@ -36,26 +44,67 @@ struct RoomOverviewView: View {
                     .foregroundStyle(RoomTokens.Ink.secondary)
                 answerGroup(snapshot)
             }
+            if let plan = snapshot.plan, plan.fitsDotBudget {
+                RoomDotPlanView(plan: plan, belowGoal: snapshot.state == .belowGoal, hidden: hidden, openDiskMap: openDiskMap)
+            }
             actions(snapshot)
+            if let caption = model.cacheCaption {
+                Text(caption)
+                    .font(RoomTokens.Typography.body)
+                    .foregroundStyle(RoomTokens.Ink.secondary)
+            }
         }
         .frame(maxWidth: RoomTokens.Space.measure, alignment: .leading)
         .frame(maxWidth: .infinity, alignment: .leading)
         .foregroundStyle(RoomTokens.Ink.graphite)
         .onChange(of: inputs, initial: true) { previous, updated in
-            model.update(capacity: updated.capacity, goalBytes: updated.goalBytes)
+            updateSnapshot(updated)
             if previous.sampledAt != nil, (previous.capacity == nil) != (updated.capacity == nil),
                scenePhase == .active {
-                AccessibilityNotification.Announcement(model.snapshot.accessibilityAnswer).post()
+                AccessibilityNotification.Announcement(presentedSnapshot.accessibilityAnswer).post()
             }
         }
         .onAppear { updateCapacityMonitoring() }
-        .onChange(of: scenePhase) { _, _ in updateCapacityMonitoring() }
+        .onChange(of: scenePhase) { _, _ in
+            updateCapacityMonitoring()
+            if isActive { updateSnapshot(inputs) }
+        }
+        .task(id: isActive ? model.nextCacheUpdateAt : nil) {
+            guard isActive, let deadline = model.nextCacheUpdateAt else { return }
+            do {
+                while Date() < deadline {
+                    try await Task.sleep(for: .seconds(max(0, deadline.timeIntervalSinceNow)))
+                }
+                guard !Task.isCancelled else { return }
+                updateSnapshot(inputs)
+            } catch {
+                return
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
+            if isActive { updateSnapshot(inputs) }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .NSSystemClockDidChange)) { _ in
+            if isActive { updateSnapshot(inputs) }
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didChangeOcclusionStateNotification)) { notification in
             guard let window = notification.object as? NSWindow,
                   window.identifier == RoomApplicationDelegate.primaryWindowID else { return }
             updateCapacityMonitoring(in: window)
         }
-        .onDisappear { insights.setOverviewActive(false) }
+        .onDisappear {
+            isActive = false
+            insights.setOverviewActive(false)
+        }
+    }
+
+    private var presentedSnapshot: RoomOverviewSnapshot {
+        hidden ? model.snapshot.hidingSizes() : model.snapshot
+    }
+
+    private func updateSnapshot(_ inputs: Inputs) {
+        model.update(capacity: inputs.capacity, goalBytes: inputs.goalBytes,
+                     caches: inputs.caches, invalidatedAt: inputs.invalidatedAt)
     }
 
     private func answerGroup(_ snapshot: RoomOverviewSnapshot) -> some View {
@@ -76,6 +125,7 @@ struct RoomOverviewView: View {
                 .foregroundStyle(snapshot.state == .belowGoal ? RoomTokens.Status.elevated : RoomTokens.Ink.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
+        .focusable()
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(snapshot.accessibilityAnswer)
         .accessibilityHeading(.h1)
@@ -139,7 +189,8 @@ struct RoomOverviewView: View {
     private func updateCapacityMonitoring(in window: NSWindow? = nil) {
         let primary = window ?? NSApp?.windows.first { $0.identifier == RoomApplicationDelegate.primaryWindowID }
         let windowVisible = primary?.occlusionState.contains(.visible) ?? true
-        insights.setOverviewActive(scenePhase == .active && windowVisible)
+        isActive = scenePhase == .active && windowVisible
+        insights.setOverviewActive(isActive)
     }
 }
 

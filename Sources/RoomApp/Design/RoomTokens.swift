@@ -69,6 +69,27 @@ enum RoomTokens {
         static let actionHeight: CGFloat = 34
     }
 
+    enum OverviewPlan {
+        static let pad: CGFloat = 5
+        static let captionHeight: CGFloat = 14
+        static let outerRadius: CGFloat = 10
+        static let wall: CGFloat = 1.5
+        static let elevatedWall: CGFloat = 2
+        static let dashedWall = StrokeStyle(lineWidth: 1, dash: [4, 3])
+        static let focusWall: CGFloat = 2
+        static let focusOffset: CGFloat = 1
+        static let roomGap: CGFloat = 2
+        static let labelInset: CGFloat = 8
+        static let labelLineHeight: CGFloat = 14
+        static let freeLabelHeight: CGFloat = 28
+        static let goalInset: CGFloat = 6
+        static let minimumGoalWidth: CGFloat = 20
+        static let goalLabelSize = CGSize(width: 72, height: 18)
+        static let gridPoint: CGFloat = 1
+        static let gridPitchFactor: CGFloat = 0.5
+        static let freeLabel = Font.system(size: 12, weight: .semibold)
+    }
+
     // MARK: Spacing (pt). Calm is the default density; Compact is v2's spacing.
     enum Space {
         static let tight: CGFloat = 6

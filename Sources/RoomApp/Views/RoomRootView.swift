@@ -11,6 +11,7 @@ struct RoomRootView: View {
     @Bindable var agentWork: AgentWorkModel
     #endif
     @AppStorage("RoomAppearance") private var appearance = "dark"
+    @AppStorage(RoomOverviewPrivacy.key) private var overviewSizesHidden = false
     @Environment(\.openSettings) private var openSettings
     @Environment(\.roomMotion) private var motion
     @State private var developer = RoomDeveloperModel()
@@ -45,7 +46,8 @@ struct RoomRootView: View {
     private var screenActions: RoomScreenActions {
         switch destination {
         case .overview:
-            RoomScreenActions(destination: .overview, canRescan: true, rescan: insights.refreshDiskCapacity)
+            RoomScreenActions(destination: .overview, canRescan: true, rescan: insights.refreshDiskCapacity,
+                              overviewSizesHidden: overviewSizesHidden, toggleOverviewSizes: { overviewSizesHidden.toggle() })
         case .clean:
             RoomScreenActions(destination: .clean, canRescan: model.canRescanFromMenu, isScanning: model.isScanning,
                               rescan: model.rescanFromMenu, stop: model.cancelScan)
@@ -78,7 +80,8 @@ struct RoomRootView: View {
                     VStack(alignment: .leading, spacing: 24) {
                         switch destination {
                         case .overview:
-                            RoomOverviewView(insights: insights, navigate: navigation.select, refresh: insights.refreshDiskCapacity)
+                            RoomOverviewView(insights: insights, navigate: navigation.select, refresh: insights.refreshDiskCapacity,
+                                             cacheModel: model, hidden: overviewSizesHidden)
                         case .clean:
                             cachesContent
                                 .animation(animate, value: expanded)
@@ -132,6 +135,7 @@ struct RoomRootView: View {
             }
             .sharedBackgroundVisibility(.hidden)
             ToolbarItemGroup(placement: .primaryAction) {
+                if destination == .overview { RoomOverviewHideControl(hidden: $overviewSizesHidden) }
                 Button { openSettings() } label: { Image(systemName: "slider.horizontal.3") }
                     .help("Settings")
                     .accessibilityLabel("Settings")

@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 nonisolated struct RoomOverviewInput: Sendable {
@@ -19,12 +20,21 @@ nonisolated enum RoomOverviewAction: Equatable, Sendable {
 }
 
 nonisolated struct RoomOverviewPlanInput: Equatable, Sendable {
-    // The measured inputs are available here before OVB-2 registers the shared drawing geometry.
     let capacityBytes: Int64
     let freeBytes: Int64
     let goalBytes: Int64?                     // dashed goal outline; nil below goal or when disabled
     var notMappedBytes: Int64 { capacityBytes - freeBytes }
+    var capacityGB: Double { Double(capacityBytes) / 1e9 }
+    var gbPerDot: Double { RoomPure.gbPerDot(capacityGB: capacityGB) }
+    var fitsDotBudget: Bool { capacityGB / gbPerDot <= Double(RoomPure.targetDots) }
+    var freeDots: Int {
+        RoomPure.dotAlloc([(key: "free", gb: Double(freeBytes) / 1e9)], unit: gbPerDot)[0].dots
+    }
     var notMappedDots: Int { 0 }
+
+    func layout(size: CGSize) -> RoomDotPlan {
+        RoomDotPlan.make(capacityGB: capacityGB, freeGB: Double(freeBytes) / 1e9, kinds: [], size: size)
+    }
 }
 
 nonisolated struct RoomOverviewSnapshot: Equatable, Sendable {
@@ -106,32 +116,40 @@ nonisolated struct RoomOverviewSnapshot: Equatable, Sendable {
             rawTitle = RoomOverviewCopy.usingSpace
             spokenAction = RoomOverviewCopy.usingSpaceAccessibility
         case .makeRoom(let bytes, let partial):
-            if input.hidden {
-                rawTitle = String(localized: "overview.action.makeRoom.hidden", defaultValue: "Make room")
-                spokenAction = String(localized: "overview.action.makeRoom.hidden.a11y",
-                    defaultValue: "Make room. Opens Caches. Sizes hidden.")
-            } else {
-                let size = format(bytes)
-                let displayedSize = partial ? "≥ \(size)" : size
-                let spokenSize = partial ? String(localized: "overview.a11y.atLeast", defaultValue: "at least \(size)") : size
-                rawTitle = String(localized: "overview.action.makeRoom", defaultValue: "Make room · \(displayedSize)")
-                spokenAction = String(localized: "overview.action.makeRoom.a11y",
-                    defaultValue: "Make room, \(spokenSize) at last check. Opens Caches.")
-            }
+            let size = format(bytes)
+            let displayedSize = partial ? "≥ \(size)" : size
+            let spokenSize = partial ? String(localized: "overview.a11y.atLeast", defaultValue: "at least \(size)") : size
+            rawTitle = String(localized: "overview.action.makeRoom", defaultValue: "Make room · \(displayedSize)")
+            spokenAction = String(localized: "overview.action.makeRoom.a11y",
+                defaultValue: "Make room, \(spokenSize) at last check. Opens Caches.")
         }
-        func visible(_ string: String) -> String {
-            input.hidden ? String(string.map { $0.isNumber ? "•" : $0 }) : string
+        let snapshot = Self(state: below ? .belowGoal : .notMapped,
+                            answer: rawAnswer, sentence: rawSentence, action: action,
+                            actionTitle: rawTitle, accessibilityAnswer:
+                                "\(rawAnswer) \(rawSentence.replacingOccurrences(of: "≥ ", with: "at least "))",
+                            accessibilityAction: spokenAction,
+                            plan: .init(capacityBytes: capacity, freeBytes: free, goalBytes: below ? nil : goal),
+                            cachesCheckedAt: recorded?.at)
+        return input.hidden ? snapshot.hidingSizes() : snapshot
+    }
+
+    func hidingSizes() -> Self {
+        guard state != .capacityUnreadable else { return self }
+        let title: String
+        let spokenAction: String
+        if case .makeRoom = action {
+            title = String(localized: "overview.action.makeRoom.hidden", defaultValue: "Make room")
+            spokenAction = String(localized: "overview.action.makeRoom.hidden.a11y",
+                                  defaultValue: "Make room. Opens Caches. Sizes hidden.")
+        } else {
+            title = actionTitle
+            spokenAction = accessibilityAction
         }
-        let spokenAnswer = input.hidden
-            ? String(localized: "overview.answer.hidden.a11y", defaultValue: "Free space and goal hidden.")
-            : "\(rawAnswer) \(rawSentence.replacingOccurrences(of: "≥ ", with: "at least "))"
-        return Self(state: below ? .belowGoal : .notMapped,
-                    answer: visible(rawAnswer), sentence: visible(rawSentence), action: action,
-                    actionTitle: visible(rawTitle),
-                    accessibilityAnswer: spokenAnswer,
-                    accessibilityAction: spokenAction,
-                    plan: .init(capacityBytes: capacity, freeBytes: free, goalBytes: below ? nil : goal),
-                    cachesCheckedAt: recorded?.at)
+        return Self(state: state, answer: RoomPure.mask(answer, first: .max, lettersToo: false),
+                    sentence: RoomPure.mask(sentence, first: .max, lettersToo: false), action: action,
+                    actionTitle: title,
+                    accessibilityAnswer: String(localized: "overview.answer.hidden.a11y", defaultValue: "Free space and goal hidden."),
+                    accessibilityAction: spokenAction, plan: plan, cachesCheckedAt: cachesCheckedAt)
     }
 }
 

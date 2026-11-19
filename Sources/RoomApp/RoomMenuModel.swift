@@ -40,6 +40,7 @@ nonisolated enum RoomMenuModel {
         case dictation
         case emoji
         case refreshOverview
+        case hideOverviewSizes
         case rescanDisk
         case rescanCaches
         case rescanDeveloper
@@ -106,6 +107,7 @@ nonisolated enum RoomMenuModel {
             case .dictation: "Start Dictation"
             case .emoji: "Emoji & Symbols"
             case .refreshOverview: String(localized: "menu.refreshOverview", defaultValue: "Refresh Free Space")
+            case .hideOverviewSizes: RoomOverviewPrivacy.menuTitle
             case .rescanDisk: String(localized: "menu.rescanDisk", defaultValue: "Rescan Disk Map")
             case .rescanCaches: String(localized: "menu.rescanCaches", defaultValue: "Check Caches Again")
             case .rescanDeveloper: String(localized: "menu.rescanDeveloper", defaultValue: "Rescan Developer")
@@ -230,6 +232,7 @@ nonisolated enum RoomMenuModel {
         var canRescan = false
         var isScanning = false
         var canEnclose = false
+        var overviewSizesHidden = false
         var menuBarEnabled = true
         var edition: Edition = .direct
         var window: Window = .none
@@ -247,15 +250,16 @@ nonisolated enum RoomMenuModel {
         let enabled: Bool
         let visible: Bool
         let native: Bool
+        let checked: Bool?
         var title: String { id.title }
     }
 
     static func make(_ input: Input) -> [Item] {
         var items: [Item] = []
         func add(_ section: Section, _ id: ID, _ shortcut: Shortcut? = nil,
-                 enabled: Bool = true, visible: Bool = true, native: Bool = false) {
+                 enabled: Bool = true, visible: Bool = true, native: Bool = false, checked: Bool? = nil) {
             items.append(Item(id: id, section: section, shortcut: shortcut,
-                              enabled: enabled, visible: visible, native: native))
+                              enabled: enabled, visible: visible, native: native, checked: checked))
         }
 
         let modal = input.window == .modal
@@ -294,6 +298,9 @@ nonisolated enum RoomMenuModel {
             if destination.canStop {
                 add(.view, .stop, .init("."), enabled: input.isScanning && !input.isWorking)
             }
+        }
+        if main, input.destination == .overview {
+            add(.view, .hideOverviewSizes, .init("h", [.command, .shift]), checked: input.overviewSizesHidden)
         }
         add(.view, .fullScreen, .init("f", [.control, .command]), enabled: hasKeyWindow, native: true)
 

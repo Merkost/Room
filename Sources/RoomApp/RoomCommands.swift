@@ -11,6 +11,8 @@ struct RoomScreenActions {
     var stop: () -> Void = {}
     var canEnclose = false
     var enclose: () -> Void = {}
+    var overviewSizesHidden: Bool = false
+    var toggleOverviewSizes: () -> Void = {}
 }
 
 extension FocusedValues {
@@ -56,7 +58,7 @@ struct RoomCommands: Commands {
         #endif
         return RoomMenuModel.make(.init(destination: screen?.destination, canRescan: screen?.canRescan ?? false,
             isScanning: screen?.isScanning ?? false, canEnclose: screen?.canEnclose ?? false,
-            menuBarEnabled: menuBarEnabled, edition: edition, window: windowContext.window, isWorking: isWorking(),
+            overviewSizesHidden: screen?.overviewSizesHidden ?? false, menuBarEnabled: menuBarEnabled, edition: edition, window: windowContext.window, isWorking: isWorking(),
             canPin: rooms.canChooseFolder, supportAvailable: links.support != nil, privacyAvailable: links.privacy != nil))
     }
 
@@ -88,13 +90,19 @@ struct RoomCommands: Commands {
 
     private func rows(_ section: RoomMenuModel.Section, in items: [RoomMenuModel.Item]) -> some View {
         ForEach(items.filter { $0.section == section && $0.visible && !$0.native }, id: \.id) { item in
-            Button {
-                perform(item)
-            } label: {
-                if let destination = RoomMenuModel.Destination.allCases.first(where: { $0.item == item.id }) {
-                    Label(item.title, systemImage: destination.symbol)
+            Group {
+                if let checked = item.checked {
+                    Toggle(item.title, isOn: Binding(get: { checked }, set: { _ in perform(item) }))
                 } else {
-                    Text(item.title)
+                    Button {
+                        perform(item)
+                    } label: {
+                        if let destination = RoomMenuModel.Destination.allCases.first(where: { $0.item == item.id }) {
+                            Label(item.title, systemImage: destination.symbol)
+                        } else {
+                            Text(item.title)
+                        }
+                    }
                 }
             }
             .keyboardShortcut(item.shortcut.map { $0.keyboardShortcut })
@@ -127,6 +135,8 @@ struct RoomCommands: Commands {
         case .pin: if !isWorking() { rooms.chooseFolder() }
         case .trash: openTrash()
         case .welcome: if !isWorking() { showWelcome() }
+        case .hideOverviewSizes:
+            if window == .main, screen?.destination == .overview { screen?.toggleOverviewSizes() }
         case .enclosing:
             if window == .main, !isWorking(), let screen, screen.canEnclose, !screen.isScanning {
                 withoutNavigationAnimation(screen.enclose)
