@@ -91,6 +91,15 @@ struct RoomApp: App {
                     insights.recordCapacityOnLaunch()
                     #if !ROOM_APP_STORE
                     delegate.agentWork = agentWork
+                    RoomWeeklyCheckScheduler.shared.configure(source: {
+                        guard !isWorking, !model.isScanning else { return nil }
+                        let report = await CacheEngine(configuration: .standard).scan()
+                        return RoomWeeklyCheckRecord(at: report.scannedAt, eligibleBytes: report.eligibleBytes,
+                                                     partial: report.isPartial, scope: "quick")
+                    }, openCaches: {
+                        navigation.select(.clean)
+                        openMainWindow()
+                    })
                     #endif
                     delegate.configureMonitor(insights: insights, cacheModel: model, rooms: rooms, enabled: menuBarEnabled, openRoom: {
                         openWindow(id: "room")
@@ -233,6 +242,7 @@ final class RoomApplicationDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         #if !ROOM_APP_STORE
         agentWork?.shutdown()
+        RoomWeeklyCheckScheduler.shared.stop()
         #endif
         StorageAIEngine.shutdownOwnedWorkers()
         statusMonitor?.setEnabled(false)

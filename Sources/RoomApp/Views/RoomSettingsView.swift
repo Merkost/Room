@@ -78,6 +78,9 @@ private struct RoomGeneralSettingsView: View {
     let insights: RoomInsightsModel
     let rooms: RoomRoomsModel
     let isWorking: () -> Bool
+    #if !ROOM_APP_STORE
+    private let weeklyCheck = RoomWeeklyCheckScheduler.shared
+    #endif
     @State private var isForgettingHistory = false
     @State private var hasDamagedHistory = false
     private let confirmation = RoomInlineConfirmCenter.shared
@@ -158,6 +161,9 @@ private struct RoomGeneralSettingsView: View {
                 .animation(motion.animation(RoomTokens.Motion.standard), value: loginItem.errorMessage)
             }
 
+            #if !ROOM_APP_STORE
+            weeklyCheckRow
+            #endif
             RoomSettingsFormRow("History", hint: String(localized: "settings.general.forget.help",
                     defaultValue: "Receipts stay so Restore keeps working.", bundle: RoomCopy.bundle)) {
                 VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
@@ -200,6 +206,30 @@ private struct RoomGeneralSettingsView: View {
             if state == .key { loginItem.refreshStatus() }
         }
     }
+
+    #if !ROOM_APP_STORE
+    private var weeklyCheckRow: some View {
+        let threshold = weeklyCheck.thresholdGB
+        let thresholdLabel = RoomFormat.overviewBytes(Int64(threshold) * 1_000_000_000)
+        let format = String(localized: "settings.general.weekly", defaultValue: "Tell me when caches grow by more than %@ in a week", bundle: RoomCopy.bundle)
+        return RoomSettingsFormRow("Weekly check", hint: String(localized: "settings.general.weekly.help",
+                defaultValue: "A notification, never an automatic cleanup.", bundle: RoomCopy.bundle)) {
+            VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
+                RoomSettingsSwitch(title: String.localizedStringWithFormat(format, thresholdLabel), isOn: Binding(
+                    get: { weeklyCheck.enabled || weeklyCheck.permissionPending },
+                    set: { weeklyCheck.setEnabled($0) }))
+                    .disabled(weeklyCheck.permissionPending)
+                    .accessibilityIdentifier("RoomWeeklyCachesCheck")
+                Stepper(value: Binding(get: { weeklyCheck.thresholdGB }, set: { weeklyCheck.thresholdGB = $0 }),
+                        in: RoomWeeklyCheck.thresholdRangeGB) {
+                    Text(thresholdLabel).monospacedDigit()
+                }
+                .accessibilityLabel("Weekly cache growth threshold")
+                if weeklyCheck.permissionDenied { hint("Notifications are off in System Settings.") }
+            }
+        }
+    }
+    #endif
 
     private func suspendHistory(_ value: Bool) {
         insights.volumeHistory.suspendHistory(value)
