@@ -57,6 +57,10 @@ struct RoomRootView: View {
         .preferredColorScheme(colorScheme)
         .focusedSceneValue(\.roomScreen, screenActions)
         .toolbar {
+            ToolbarItem(placement: .principal) {
+                RoomActivityPill(stop: stopActivity, restore: restoreActivity, showHistory: { sheet = .history })
+            }
+            .sharedBackgroundVisibility(.hidden)
             ToolbarItemGroup(placement: .primaryAction) {
                 RoomHistoryButton(model: model, show: { sheet = .history }, restore: restoreFromCaches)
                 if destination == .overview {
@@ -81,9 +85,15 @@ struct RoomRootView: View {
             #endif
             }
         }
-        .alert("Room couldn’t complete that", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) {
-            Button("OK") { model.errorMessage = nil }
-        } message: { Text(model.errorMessage ?? "") }
+        .alert(model.operationAlert?.title ?? "Room couldn’t complete that",
+               isPresented: Binding(get: { model.operationAlert != nil || model.errorMessage != nil }, set: { if !$0 { dismissAlert() } })) {
+            if let alert = model.operationAlert {
+                Button(alert.primary.rawValue) { performAlertAction(alert.primary) }
+                if let secondary = alert.secondary { Button(secondary, role: .cancel, action: dismissAlert) }
+            } else {
+                Button("OK", action: dismissAlert)
+            }
+        } message: { Text(model.operationAlert?.message ?? model.errorMessage ?? "") }
         .onAppear { if navigation.needsWelcome { sheet = .welcome } }
         .onReceive(NotificationCenter.default.publisher(for: .roomSavedHistoryForgotten)) { _ in
             developer.clearUnreferencedHistory()
@@ -167,6 +177,35 @@ struct RoomRootView: View {
         #else
         Task { await model.restore(record: record) }
         #endif
+    }
+
+    private func restoreActivity(_ id: UUID) {
+        guard !model.isScanning, !model.isWorking, let receipt = model.activity.first(where: { $0.id == id && $0.canRestore }) else { return }
+        restoreFromCaches(receipt)
+    }
+
+    private func stopActivity(_ tool: RoomActivityPillState.Tool) {
+        switch tool {
+        case .caches: model.cancelScan()
+        case .diskMap: insights.cancelDiskScan()
+        case .developer: developer.stop()
+        }
+    }
+
+    private func dismissAlert() {
+        model.operationAlert = nil
+        model.errorMessage = nil
+    }
+
+    private func performAlertAction(_ action: RoomActionAlert.Primary) {
+        dismissAlert()
+        switch action {
+        case .checkAgain: model.scan()
+        case .reviewAgain: if model.canReviewCleanup { sheet = .review }
+        case .showSkipped, .showWhy: sheet = .history
+        case .showInTrash: model.openTrash()
+        case .ok: break
+        }
     }
 }
 

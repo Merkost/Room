@@ -126,7 +126,8 @@ actor RoomTreeStore {
         }
         guard !affected.isEmpty else { return }
         for id in affected {
-            index.roots[id]?.changedAt = max(index.roots[id]?.changedAt ?? date, date)
+            let previous = index.roots[id]?.changedAt ?? date
+            index.roots[id]?.changedAt = max(previous, date)
             publish(id)
         }
         enqueue()

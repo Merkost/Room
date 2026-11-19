@@ -47,6 +47,7 @@ final class RoomInsightsModel {
     @ObservationIgnored private var bufferedPressure: [MemoryReport] = []
     @ObservationIgnored private var pressureReadOnly = false
     @ObservationIgnored private var savedHistorySuspended = false
+    @ObservationIgnored private let activityCenter: RoomActivityCenter?
     @ObservationIgnored private var pressureDirty = false
     @ObservationIgnored private var monitorEnabled = false
     @ObservationIgnored private var memoryActive = false
@@ -77,12 +78,14 @@ final class RoomInsightsModel {
          },
          pressureStore: RoomPressureHistoryStore = .init(),
          pressureWriter: RoomStateWriter? = nil,
+         activityCenter: RoomActivityCenter? = nil,
          readMemory: (@MainActor () async -> MemoryReport)? = nil,
          waitForMemoryTick: @escaping @MainActor () async throws -> Void = {
              try await Task.sleep(for: RoomInsightsModel.monitorInterval)
          }) {
         self.pressureStore = pressureStore
         self.pressureWriter = pressureWriter
+        self.activityCenter = activityCenter
         pressureHistory = pressureWriter == nil ? pressureStore.load() : RoomPressureHistory()
         let engine = MemoryEngine()
         self.readMemory = readMemory ?? { await engine.scan() }
@@ -246,6 +249,7 @@ final class RoomInsightsModel {
             diskTask = nil
             isScanningDisk = false
             isMappingHome = false
+            activityCenter?.clear(.diskMap)
         }
     }
 
@@ -363,6 +367,7 @@ final class RoomInsightsModel {
         diskProgress = nil
         isScanningDisk = true
         statusMessage = nil
+        activityCenter?.reportScanLabel(.diskMap, label: displayPath, files: 0, bytes: 0)
         #if ROOM_APP_STORE
         let approved = fileAccess.folders.map(\.url)
         let home = RoomStoreEnvironment.userHome
@@ -380,6 +385,8 @@ final class RoomInsightsModel {
                     guard let self, self.diskGeneration == generation, self.isScanningDisk else { return }
                     self.diskProgress = progress
                     self.diskMap.accept(progress)
+                    self.activityCenter?.reportScanLabel(.diskMap, label: displayPath,
+                        files: progress.visitedFiles, bytes: progress.allocatedBytes)
                     if mapsHome {
                         for folder in progress.completedTopLevel {
                             for (kind, bytes) in folder.kindBytes {
@@ -391,6 +398,7 @@ final class RoomInsightsModel {
             }
             guard let self, self.diskGeneration == generation else { return }
             let result = mapped.report
+            self.activityCenter?.clear(.diskMap)
             if let spliceAt {
                 self.diskMap.replaceSubtree(at: spliceAt, with: mapped)
                 self.isScanningDisk = false
@@ -501,6 +509,7 @@ final class RoomInsightsModel {
             diskMap.removeCurrent()
             isScanningDisk = false
             isMappingHome = false
+            activityCenter?.clear(.diskMap)
         }
     }
 

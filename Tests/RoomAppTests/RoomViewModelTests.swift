@@ -49,8 +49,10 @@ struct RoomViewModelTests {
     @Test func cancelledRescanKeepsMeasurementsWithoutAllowingCleanup() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
+        let activity = RoomActivityCenter()
         let model = RoomViewModel(engine: CacheEngine(configuration: fixture.configuration,
-            activityDirectory: fixture.directory.appendingPathComponent("activity")), cachesCheckStore: fixture.cachesCheckStore)
+            activityDirectory: fixture.directory.appendingPathComponent("activity")), cachesCheckStore: fixture.cachesCheckStore,
+            activityCenter: activity)
         model.scan()
         try await waitForScan(model)
         let previousID = try #require(model.sources.first?.id)
@@ -69,7 +71,7 @@ struct RoomViewModelTests {
         model.toggleSelection(id: previousID)
         model.selectRecommended()
         #expect(model.selection.isEmpty)
-        #expect(model.statusMessage?.contains("Scan stopped") == true)
+        if case .stopped = activity.visible {} else { Issue.record("The Activity pill should show the stopped check.") }
     }
 
     @Test func scanActionDoesNotDependOnCleanupSelection() async throws {

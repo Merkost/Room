@@ -9,6 +9,7 @@ final class RoomViewModel {
     let cachesCheckStore: RoomCachesCheckStore
     let makeRoomStore: RoomMakeRoomStore?
     @ObservationIgnored private let mapStore: RoomTreeStore?
+    let activityCenter: RoomActivityCenter?
     private(set) var sources: [RoomSource] = []
     private(set) var protectedSources: [RoomProtectedSource] = []
     private(set) var selection: Set<String> = []
@@ -28,7 +29,7 @@ final class RoomViewModel {
     private(set) var scanProgress: Double?
     private(set) var lastScanned: Date?
     var errorMessage: String?
-    private(set) var statusMessage: String?
+    var operationAlert: RoomActionAlert?
     private(set) var scanIssues: [String] = []
     private(set) var availableBytes: Int64 = 0
     private(set) var capacityBytes: Int64 = 0
@@ -124,9 +125,11 @@ final class RoomViewModel {
     }
 
     init(engine: CacheEngine? = nil, cachesCheckStore: RoomCachesCheckStore = RoomCachesCheckStore(),
-         makeRoomStore: RoomMakeRoomStore? = nil, mapStore: RoomTreeStore? = nil) {
+         makeRoomStore: RoomMakeRoomStore? = nil, activityCenter: RoomActivityCenter? = nil,
+         mapStore: RoomTreeStore? = nil) {
         self.cachesCheckStore = cachesCheckStore
         self.makeRoomStore = makeRoomStore
+        self.activityCenter = activityCenter
         self.mapStore = mapStore
         #if ROOM_APP_STORE
         let initialEngine = engine ?? Self.makeStoreEngine(approvedFolders: RoomFileAccess.shared.folders.map(\.url))
@@ -155,7 +158,7 @@ final class RoomViewModel {
         selection = []
         lastScanned = nil
         isPartialScan = false
-        statusMessage = nil
+        activityCenter?.clear(.caches)
         scanIssues = []
         scanProgress = nil
         currentScanPath = ""
@@ -202,7 +205,7 @@ final class RoomViewModel {
         if let previous = report { apply(previous, selectInitially: false, allowsCleanup: false) }
         report = nil
         selection = []
-        statusMessage = nil
+        activityCenter?.reportScanLabel(.caches, label: "Checking caches…", files: 0, bytes: 0)
         scanIssues = []
         scanProgress = 0
         scannedLocationCount = 0
@@ -221,7 +224,7 @@ final class RoomViewModel {
             self.scanTask = nil
             if result.cancelled {
                 if !result.groups.isEmpty { self.apply(result, selectInitially: false, allowsCleanup: false) }
-                self.statusMessage = "Scan stopped. Partial measurements are kept; finish a scan before cleanup."
+                self.activityCenter?.post(.stopped(measured: self.scannedLocationCount, of: self.scanLocationCount), from: .caches)
                 self.selection = []
                 self.report = nil
                 self.lastScanned = nil
@@ -236,6 +239,9 @@ final class RoomViewModel {
                 self.cachesCheckStore.save(RoomCachesCheck(at: at, bytes: self.clearableBytes,
                                                            partial: self.hasPartialMeasurements))
             }
+            let checked: RoomActivityPillState = self.measuredSourceCount > 0 && self.readableSourceCount == 0
+                ? .failed(action: "Room couldn't read any caches.") : .ok(sentence: "Caches checked")
+            self.activityCenter?.post(checked, from: .caches)
             await self.refreshHistory()
         }
     }
@@ -248,6 +254,13 @@ final class RoomViewModel {
         scanProgress = progress.totalRoots > 0 ? Double(progress.completedRoots) / Double(progress.totalRoots) : nil
         if !progress.partialReport.groups.isEmpty {
             apply(progress.partialReport, selectInitially: false, allowsCleanup: false)
+        }
+        if !progress.currentPath.isEmpty {
+            let name = progress.partialReport.groups.last(where: { $0.rootURL.path == progress.currentPath })?.title
+                ?? URL(fileURLWithPath: progress.currentPath).lastPathComponent
+            let label = "\(name) · \(progress.completedRoots) of \(progress.totalRoots) places"
+            let files = progress.partialReport.groups.reduce(0) { $0 + $1.entries.reduce(0) { $0 + $1.fileCount } }
+            activityCenter?.reportScanLabel(.caches, label: label, files: files, bytes: progress.partialReport.totalBytes)
         }
     }
 
@@ -290,6 +303,7 @@ final class RoomViewModel {
         guard !isScanning, !isWorking, report != nil else { return }
         let ids = selectedEntryIDs
         guard !ids.isEmpty else { return }
+        operationAlert = nil
         #if ROOM_APP_STORE
         lastStoreMoveCompleted = false
         guard canRunStoreCleanup else { errorMessage = RoomStoreAccessError.approvalRequired.localizedDescription; return }
@@ -325,10 +339,15 @@ final class RoomViewModel {
             movedReceiptID = receipt.id
             movedEntryIDs.formUnion(receipt.items.filter { $0.status == .trashed }.map(\.id))
             if let report { apply(report, selectInitially: false) }
-            statusMessage = nil
-        } else {
-            statusMessage = "Nothing was moved. Review the activity notes and scan again."
         }
+        var reasons: [RoomMoveFailure: Int] = [:]
+        for item in receipt.items where item.status == .failed { reasons[item.failure ?? .other, default: 0] += 1 }
+        if receipt.items.count < ids.count { reasons[.staleScan] = ids.count - receipt.items.count }
+        let outcome = RoomMoveOutcome(movedCount: receipt.trashedCount, movedBytes: receipt.trashedBytes, failures: reasons,
+            withoutRecoveryInfo: receipt.items.filter { $0.status == .trashed && $0.trashIdentity == nil }.count)
+        activityCenter?.clear(.caches)
+        activityCenter?.post(outcome.pill(receiptID: receipt.id, format: RoomFormat.overviewBytes), from: .makeRoom)
+        operationAlert = outcome.alert(format: RoomFormat.overviewBytes)
         if !receipt.issues.isEmpty { errorMessage = receipt.issues.prefix(4).map(\.message).joined(separator: "\n\n") }
         await refreshHistory()
     }
@@ -339,6 +358,7 @@ final class RoomViewModel {
 
     func restore(record: RoomActivity) async {
         guard !isWorking, !isScanning, record.canRestore else { return }
+        operationAlert = nil
         #if ROOM_APP_STORE
         lastStoreRestoreCompleted = false
         guard storeReviewKey == .restore(record.id), canRunStoreRestore else {
@@ -374,10 +394,15 @@ final class RoomViewModel {
         await cachesCheckStore.invalidateBeforeFileChange(at: Date())
         let result = await recoveryEngine.restore(receiptID: record.id)
         #endif
-        statusMessage = result.restoredCount > 0
-            ? "Restored \(result.restoredCount) \(result.restoredCount == 1 ? "item to its original location" : "items to their original locations")."
-            : "Nothing was restored. Existing files were kept."
-        if !result.issues.isEmpty { errorMessage = result.issues.prefix(4).map(\.message).joined(separator: "\n\n") }
+        let outcome = RoomRestoreOutcome(restored: result.restoredCount, skipped: result.skips)
+        if let toast = outcome.toast {
+            activityCenter?.clear(.makeRoom)
+            activityCenter?.post(.ok(sentence: toast), from: .restore)
+        }
+        operationAlert = outcome.alert
+        if result.restoredCount == 0 && !result.issues.isEmpty {
+            errorMessage = result.issues.prefix(4).map(\.message).joined(separator: "\n\n")
+        }
         if result.restoredCount > 0 {
             report = nil
             selection = []
@@ -528,7 +553,7 @@ final class RoomViewModel {
         isPartialScan = true
         lastScanned = nil
         discardStoreReview()
-        statusMessage = "Folder access changed. Scan the approved folders again before cleanup."
+        activityCenter?.post(.failed(action: "Folder access changed. Check caches again."), from: .caches)
     }
 
     func prepareStoreCleanupReview() async {
@@ -560,6 +585,7 @@ final class RoomViewModel {
         storeReview.narrow(to: Set(locations.map(\.path)))
         try storeReview.add(locations)
         storeReviewKey = .cleanup(report.id, selectedEntryIDs)
+        postStoreApprovalNeeds()
     }
 
     func prepareStoreRestoreReview(_ record: RoomActivity) async {
@@ -600,6 +626,13 @@ final class RoomViewModel {
         defer { isWorking = false }
         do { try await storeReview.allow(url) }
         catch { errorMessage = error.localizedDescription }
+        postStoreApprovalNeeds()
+    }
+
+    private func postStoreApprovalNeeds() {
+        let missing = Set(storeReview.locations.map(\.path)).subtracting(storeReview.grantedPaths).count
+        if missing > 0 { activityCenter?.post(.needsAccess(folders: missing), from: .access) }
+        else { activityCenter?.clear(.access) }
     }
 
     func discardStoreReview() {
@@ -609,6 +642,7 @@ final class RoomViewModel {
         storeReviewKey = nil
         isPreparingStoreReview = false
         storeReview.discard()
+        activityCenter?.clear(.access)
     }
 
     private func beginStoreReadAccess() -> [(URL, Bool)] {

@@ -6,7 +6,7 @@ import SwiftUI
 struct RoomApp: App {
     @NSApplicationDelegateAdaptor(RoomApplicationDelegate.self) private var delegate
     @State private var model: RoomViewModel
-    @State private var insights = RoomInsightsModel(volumeHistory: .shared, pressureWriter: .shared)
+    @State private var insights = RoomInsightsModel(volumeHistory: .shared, pressureWriter: .shared, activityCenter: .shared)
     @State private var navigation = RoomWindowNavigation()
     @State private var memoryActions = MemoryActionsModel()
     @State private var rooms: RoomRoomsModel
@@ -23,8 +23,15 @@ struct RoomApp: App {
         #else
         let home = FileManager.default.homeDirectoryForCurrentUser
         #endif
-        let cacheModel = RoomViewModel(cachesCheckStore: RoomCachesCheckStore(writer: .shared),
-                                       makeRoomStore: RoomMakeRoomStore(home: home), mapStore: .shared)
+        let activity = RoomActivityCenter.shared
+        let ledger = RoomMakeRoomStore(home: home)
+        ledger.didObserveGain = { entry in
+            activity.post(.made(.init(id: entry.id,
+                sentence: RoomMakeRoomCopy.headline(entry, format: RoomFormat.overviewBytes),
+                canRestore: entry.stillInTrashBytes > 0)), from: .makeRoom)
+        }
+                let cacheModel = RoomViewModel(cachesCheckStore: RoomCachesCheckStore(writer: .shared),
+                                       makeRoomStore: ledger, activityCenter: activity, mapStore: .shared)
         _model = State(initialValue: cacheModel)
         #if ROOM_APP_STORE
         _rooms = State(initialValue: RoomRoomsModel(isWorking: { cacheModel.isWorking }))
@@ -60,6 +67,7 @@ struct RoomApp: App {
     var body: some Scene {
         Window("Room", id: "room") {
             rootView
+                .environment(\.roomActivityCenter, model.activityCenter)
                 .modifier(RoomMotionRoot())
                 .modifier(RoomAccentRoot())
                 .modifier(RoomHideRoot())
@@ -84,6 +92,7 @@ struct RoomApp: App {
                 }
                 .task {
                     await insights.updateTreeApprovals()
+                    if insights.diskCapacitySampledAt == nil { insights.refreshDiskCapacity() }
                     await model.refreshHistory()
                     await model.makeRoomStore?.checkNow()
                 }
@@ -96,6 +105,9 @@ struct RoomApp: App {
                 }
                 .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didWakeNotification)) { _ in
                     Task { await model.makeRoomStore?.checkNow() }
+                }
+                .onChange(of: insights.volumeCapacity, initial: true) { _, capacity in
+                    model.activityCenter?.setIdle(freeBytes: capacity?.freeBytes)
                 }
         }
         .defaultSize(width: 1000, height: 760)

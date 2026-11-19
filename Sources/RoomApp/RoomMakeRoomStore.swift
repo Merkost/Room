@@ -8,6 +8,7 @@ import RoomCore
 final class RoomMakeRoomStore {
     private(set) var entries: [RoomMakeRoomEntry] = []
     private(set) var hadWriteFailure = false
+    @ObservationIgnored var didObserveGain: ((RoomMakeRoomEntry) -> Void)?
     @ObservationIgnored private let state: RoomStateStore
     @ObservationIgnored private let home: URL
     @ObservationIgnored private let sample: @Sendable () async -> RoomCapacitySample?
@@ -79,8 +80,12 @@ final class RoomMakeRoomStore {
         guard revision == receiptRevision else { return }
         let next = RoomMakeRoomLedger.advance(entries, observations: observations, sample: measurement, now: measurement.at)
         guard next != entries else { return }
+        let previousGains = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0.observedGain) })
         entries = next
         await save()
+        for entry in next where entry.observedGain > (previousGains[entry.id] ?? 0) {
+            didObserveGain?(entry)
+        }
     }
 
     private func load() async {
