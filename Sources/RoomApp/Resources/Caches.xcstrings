@@ -1,5 +1,126 @@
 {
   "sourceLanguage": "en",
-  "strings": {},
+  "strings": {
+    "caches.action.check": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check caches"
+          }
+        }
+      }
+    },
+    "caches.action.choose": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose Folder & Check"
+          }
+        }
+      }
+    },
+    "caches.history.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "History"
+          }
+        }
+      }
+    },
+    "caches.ignore.confirm": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove rule?"
+          }
+        }
+      }
+    },
+    "caches.ignore.remove": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove…"
+          }
+        }
+      }
+    },
+    "caches.ignore.removed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rule removed."
+          }
+        }
+      }
+    },
+    "caches.ignore.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Never suggest"
+          }
+        }
+      }
+    },
+    "caches.kept.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "What stays"
+          }
+        }
+      }
+    },
+    "caches.receipt.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Receipt"
+          }
+        }
+      }
+    },
+    "caches.review.intro": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Review what will move to Trash."
+          }
+        }
+      }
+    },
+    "caches.review.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Make room"
+          }
+        }
+      }
+    },
+    "caches.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Caches"
+          }
+        }
+      }
+    }
+  },
   "version": "1.0"
 }

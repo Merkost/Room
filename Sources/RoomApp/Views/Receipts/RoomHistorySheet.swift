@@ -17,7 +17,7 @@ struct RoomHistorySheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
-            Text("History").font(RoomTokens.Typography.figure).accessibilityHeading(.h1)
+            Text("caches.history.title", tableName: "Caches", bundle: RoomCopy.bundle).font(RoomTokens.Typography.figure).accessibilityHeading(.h1)
             if let header = model.makeRoomStore?.summary.header(format: { RoomCachesVisibility.bytes($0, hidden: hidden) },
                 month: { $0.formatted(.dateTime.month(.wide).year()) }) {
                 Text(header).accessibilityLabel(hidden ? "History summary sizes hidden" : header).font(RoomTokens.Typography.lead).fixedSize(horizontal: false, vertical: true)

@@ -51,7 +51,7 @@ struct RoomCachesView: View {
         let presentation = hero
         VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
             VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
-                Text("Caches").font(RoomTokens.Typography.section).accessibilityHeading(.h1)
+                Text("caches.title", tableName: "Caches", bundle: RoomCopy.bundle).font(RoomTokens.Typography.section).accessibilityHeading(.h1)
                 Text(subtitle)
                     .font(RoomTokens.Typography.caption)
                     .foregroundStyle(RoomTokens.Ink.secondary)
@@ -143,13 +143,13 @@ struct RoomCachesView: View {
     @ViewBuilder
     private func primary(_ hero: RoomCachesHero) -> some View {
         if model.isAfterRestore {
-            Button("Check caches", action: { model.scan() }).roomPrimary(accent).disabled(!model.canScan)
+            Button(String(localized: "caches.action.check", defaultValue: "Check caches", table: "Caches", bundle: RoomCopy.bundle), action: { model.scan() }).roomPrimary(accent).disabled(!model.canScan)
         } else {
             switch hero.primary {
             case .check, .checkAgain:
-                Button("Check caches", action: { model.scan() }).roomPrimary(accent).disabled(!model.canScan)
+                Button(String(localized: "caches.action.check", defaultValue: "Check caches", table: "Caches", bundle: RoomCopy.bundle), action: { model.scan() }).roomPrimary(accent).disabled(!model.canScan)
             case .chooseFolderAndCheck:
-                Button("Choose Folder & Check") {
+                Button(String(localized: "caches.action.choose", defaultValue: "Choose Folder & Check", table: "Caches", bundle: RoomCopy.bundle)) {
                     #if ROOM_APP_STORE
                     model.chooseStoreFolder(scanAfterApproval: true)
                     #else

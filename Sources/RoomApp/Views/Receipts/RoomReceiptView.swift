@@ -17,7 +17,7 @@ struct RoomReceiptView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
             HStack {
-                Label("Receipt", systemImage: receipt.canRestore ? "trash" : "checkmark.circle")
+                Label(String(localized: "caches.receipt.title", defaultValue: "Receipt", table: "Caches", bundle: RoomCopy.bundle), systemImage: receipt.canRestore ? "trash" : "checkmark.circle")
                     .font(RoomTokens.Typography.section)
                 Spacer()
                 Text(receipt.date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).year().hour().minute()))

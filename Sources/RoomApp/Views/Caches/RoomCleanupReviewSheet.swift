@@ -27,8 +27,8 @@ struct RoomCleanupReviewSheet: View {
         let ticked = review.tickedRows(reported: saved)
         VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
             VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
-                Text("Make room").font(RoomTokens.Typography.lead.weight(.semibold)).accessibilityHeading(.h1)
-                Text("Review what will move to Trash.").foregroundStyle(RoomTokens.Ink.secondary)
+                Text("caches.review.title", tableName: "Caches", bundle: RoomCopy.bundle).font(RoomTokens.Typography.lead.weight(.semibold)).accessibilityHeading(.h1)
+                Text("caches.review.intro", tableName: "Caches", bundle: RoomCopy.bundle).foregroundStyle(RoomTokens.Ink.secondary)
             }
             ScrollView {
                 VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
