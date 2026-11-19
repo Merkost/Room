@@ -11,6 +11,10 @@ final class RoomViewModel {
     private(set) var protectedSources: [RoomProtectedSource] = []
     private(set) var selection: Set<String> = []
     private(set) var activity: [RoomActivity] = []
+    private(set) var isAfterRestore = false
+    private(set) var measuredSourceCount = 0
+    private(set) var readableSourceCount = 0
+    private var movedReceiptID: UUID?
     private(set) var isScanning = false
     private(set) var scanScope: RoomCacheScanScope = .full
     private(set) var isPartialScan = false
@@ -33,6 +37,7 @@ final class RoomViewModel {
     @ObservationIgnored private var scanTask: Task<Void, Never>?
     @ObservationIgnored private var scanGeneration = UUID()
     @ObservationIgnored private var sourceGroups: [String: [CacheGroup]] = [:]
+    @ObservationIgnored private var movedEntryIDs: Set<UUID> = []
 
     #if ROOM_APP_STORE
     @ObservationIgnored private let fileAccess = RoomFileAccess.shared
@@ -71,6 +76,15 @@ final class RoomViewModel {
     var clearableBytes: Int64 { sources.reduce(0) { $0 + $1.eligibleBytes } }
     var heldBytes: Int64 { max(0, totalBytes - clearableBytes) }
     var hasPartialMeasurements: Bool { isPartialScan || !scanIssues.isEmpty || sources.contains(where: \.isPartial) }
+    var hasReport: Bool { lastScanned != nil && report != nil }
+    var movedReceipt: RoomActivity? { activity.first { $0.id == movedReceiptID } }
+    var checkLocations: [String] {
+        #if ROOM_APP_STORE
+        fileAccess.folders.map { $0.url.path }
+        #else
+        CacheConfiguration.standard.roots.map { $0.url.path }
+        #endif
+    }
     var canScan: Bool {
         #if ROOM_APP_STORE
         !isWorking && !isPreparingStoreReview
@@ -140,7 +154,7 @@ final class RoomViewModel {
         scan()
     }
 
-    func scan(completionMessage: String? = nil) {
+    func scan() {
         guard !isWorking, !isScanning else { return }
         #if ROOM_APP_STORE
         guard !isPreparingStoreReview else { return }
@@ -160,6 +174,9 @@ final class RoomViewModel {
         #endif
         let generation = UUID()
         scanGeneration = generation
+        movedReceiptID = nil
+        movedEntryIDs = []
+        isAfterRestore = false
         isScanning = true
         isPartialScan = true
         lastScanned = nil
@@ -200,7 +217,6 @@ final class RoomViewModel {
                 self.cachesCheckStore.save(RoomCachesCheck(at: at, bytes: self.clearableBytes,
                                                            partial: self.hasPartialMeasurements))
             }
-            self.statusMessage = completionMessage
             await self.refreshHistory()
         }
     }
@@ -239,6 +255,7 @@ final class RoomViewModel {
 
     private var selectedEntryIDs: Set<UUID> {
         Set(selection.flatMap { sourceGroups[$0, default: []].flatMap(\.eligibleEntries).map(\.id) })
+            .subtracting(movedEntryIDs)
     }
 
     func cleanSelected() async {
@@ -271,18 +288,15 @@ final class RoomViewModel {
         lastStoreMoveCompleted = receipt.trashedCount > 0
         #endif
         if receipt.trashedCount > 0 {
-            statusMessage = "Moved \(ByteCountFormatter.string(fromByteCount: receipt.trashedBytes, countStyle: .file)) to Trash. Disk space is released when Trash is emptied."
+            movedReceiptID = receipt.id
+            movedEntryIDs.formUnion(receipt.items.filter { $0.status == .trashed }.map(\.id))
+            if let report { apply(report, selectInitially: false) }
+            statusMessage = nil
         } else {
             statusMessage = "Nothing was moved. Review the activity notes and scan again."
         }
         if !receipt.issues.isEmpty { errorMessage = receipt.issues.prefix(4).map(\.message).joined(separator: "\n\n") }
         await refreshHistory()
-        isWorking = false
-        #if ROOM_APP_STORE
-        if !fileAccess.folders.isEmpty || usesInjectedEngine { scan(completionMessage: statusMessage) }
-        #else
-        scan(completionMessage: statusMessage)
-        #endif
     }
 
     func restore(record: RoomActivity) async {
@@ -326,13 +340,13 @@ final class RoomViewModel {
             ? "Restored \(result.restoredCount) \(result.restoredCount == 1 ? "item to its original location" : "items to their original locations")."
             : "Nothing was restored. Existing files were kept."
         if !result.issues.isEmpty { errorMessage = result.issues.prefix(4).map(\.message).joined(separator: "\n\n") }
+        if result.restoredCount > 0 {
+            report = nil
+            selection = []
+            movedReceiptID = nil
+            isAfterRestore = true
+        }
         await refreshHistory()
-        isWorking = false
-        #if ROOM_APP_STORE
-        if !fileAccess.folders.isEmpty || usesInjectedEngine { scan(completionMessage: statusMessage) }
-        #else
-        scan(completionMessage: statusMessage)
-        #endif
     }
 
     func reveal(source: RoomSource) {
@@ -361,11 +375,13 @@ final class RoomViewModel {
         availableBytes = result.volume.availableBytes
         capacityBytes = result.volume.totalBytes
         scanIssues = result.issues.map { "\($0.url.path): \($0.message)" }
+        measuredSourceCount = result.groups.count
+        readableSourceCount = result.groups.filter { !$0.entries.isEmpty || $0.issues.isEmpty }.count
         let groups = result.groups.filter { !$0.entries.isEmpty || !$0.issues.isEmpty }
         sourceGroups = Dictionary(grouping: groups) { familyID($0.id) }
         sources = sourceGroups.map { key, groups in
-            let entries = groups.flatMap(\.entries)
-            let eligible = allowsCleanup ? groups.flatMap(\.eligibleEntries) : []
+            let entries = groups.flatMap(\.entries).filter { !movedEntryIDs.contains($0.id) }
+            let eligible = allowsCleanup ? entries.filter(\.eligibility.isEligible) : []
             let reasons = Array(Set(entries.compactMap(\.eligibility.reason))).sorted()
             let title = familyTitle(key, fallback: groups.first?.title ?? key)
             let paths = groups.map { $0.rootURL.path }.sorted().joined(separator: "\n")
@@ -390,7 +406,7 @@ final class RoomViewModel {
                 notes: ([consequences, eligibilityNote] + reasons + issues).filter { !$0.isEmpty }.joined(separator: "\n\n"),
                 symbol: groups.first?.symbol ?? "shippingbox",
                 category: RoomCategory(rawValue: groups.first?.category ?? "developer") ?? .developer,
-                bytes: groups.reduce(0) { $0 + $1.totalBytes },
+                bytes: entries.reduce(0) { $0 + $1.byteCount },
                 eligibleBytes: eligible.reduce(0) { $0 + $1.byteCount },
                 entryCount: entries.count,
                 selectableCount: eligible.count,
@@ -403,7 +419,7 @@ final class RoomViewModel {
                 isInspectionOnly: inspectionOnly,
                 cleanupConsequences: cleanupConsequences
             )
-        }.sorted {
+        }.filter { $0.entryCount > 0 || $0.isPartial || $0.blockedReason != nil && movedEntryIDs.isEmpty }.sorted {
             if ($0.category == .agents) != ($1.category == .agents) { return $0.category == .agents }
             return $0.eligibleBytes > $1.eligibleBytes
         }

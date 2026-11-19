@@ -107,6 +107,7 @@ struct RoomCachesCheckStoreTests {
         let check = try #require(store.check)
 
         await model.cleanSelected()
+        #expect(!model.isScanning)
         model.cancelScan()
         try await fixture.waitForScan(model)
         let cleanup = try #require(store.invalidatedAt)
@@ -116,6 +117,7 @@ struct RoomCachesCheckStoreTests {
         #expect(record.details.filter(\.canRestore).count == 1)
 
         await model.restore(record: record)
+        #expect(!model.isScanning)
         model.cancelScan()
         try await fixture.waitForScan(model)
         let restored = try #require(store.invalidatedAt)
