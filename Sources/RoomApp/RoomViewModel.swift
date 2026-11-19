@@ -264,6 +264,7 @@ final class RoomViewModel {
             try storeReview.validate(exactly: required)
         } catch { errorMessage = error.localizedDescription; return }
         #endif
+        cachesCheckStore.invalidate(at: Date())
         let receipt = await engine.clean(entryIDs: ids)
         selection = []
         #if ROOM_APP_STORE
@@ -314,9 +315,11 @@ final class RoomViewModel {
             let reviewedTrash = storeReview.locations.filter { storeReview.trashPaths.contains($0.path) }
             try storeReview.validate(exactly: parents + reviewedTrash)
         } catch { errorMessage = error.localizedDescription; return }
+        cachesCheckStore.invalidate(at: Date())
         let result = await recoveryEngine.restore(receiptID: record.id, approvedTrashItems: storeReview.approvedTrashItems)
         lastStoreRestoreCompleted = result.restoredCount > 0
         #else
+        cachesCheckStore.invalidate(at: Date())
         let result = await recoveryEngine.restore(receiptID: record.id)
         #endif
         statusMessage = result.restoredCount > 0
