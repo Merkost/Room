@@ -90,15 +90,15 @@ struct RoomRootView: View {
                                 .animation(animate, value: model.totalBytes)
                                 .animation(animate, value: model.isScanning)
                         case .memory:
-                            #if ROOM_APP_STORE
                             RoomMemoryView(insights: insights, memoryActions: memoryActions)
-                            #else
-                            RoomMemoryView(insights: insights, memoryActions: memoryActions, agentWork: agentWork)
-                            #endif
                         case .disk:
                             EmptyView()
                         case .developer:
+                            #if ROOM_APP_STORE
                             RoomDeveloperView(model: developer)
+                            #else
+                            RoomDeveloperView(model: developer, agentWork: agentWork, memoryReport: insights.memoryReport)
+                            #endif
                         case .activity:
                             RoomActivityView(model: model)
                                 .task { await model.refreshHistory() }

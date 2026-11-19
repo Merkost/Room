@@ -30,9 +30,9 @@ struct RoomAgentWorkView: View {
                 Button {
                     if isReading { model.stop() } else { model.scan() }
                 } label: {
-                    Label(isReading ? "Stop" : "Scan worktrees", systemImage: isReading ? "stop.fill" : "magnifyingglass")
+                    Label(isReading ? "Stop" : "Scan Worktrees", systemImage: isReading ? "stop.fill" : "magnifyingglass")
                 }
-                .buttonStyle(.glassProminent)
+                .roomSecondary()
                 .tint(Color(red: 0.60, green: 0.79, blue: 0.91))
                 .disabled(model.isWorking)
                 .accessibilityIdentifier("RoomAgentWorkScanButton")

@@ -71,6 +71,7 @@ struct RoomSettingsView: View {
 
 @MainActor
 private struct RoomGeneralSettingsView: View {
+    @AppStorage(RoomDevUnreferenced.preferenceKey) private var unpinnedFlagDays = RoomDevUnreferenced.defaultThreshold
     @AppStorage("RoomAppearance") private var appearance = "dark"
     @AppStorage("RoomOpenOn") private var openOn = RoomOpenOn.last.rawValue
     @AppStorage("RoomMotionEnabled") private var motionEnabled = true
@@ -119,6 +120,14 @@ private struct RoomGeneralSettingsView: View {
                 RoomSettingsSwitch(title: "Gentle motion", isOn: reduceMotion ? .constant(false) : $motionEnabled)
                     .disabled(reduceMotion)
                     .accessibilityHint("Follows Reduce Motion in System Settings.")
+            }
+
+            RoomSettingsFormRow("Developer") {
+                Picker("Flag unpinned versions after", selection: $unpinnedFlagDays) {
+                    ForEach(RoomDevUnreferenced.thresholdChoices, id: \.self) { days in
+                        Text("\(days) days").tag(days)
+                    }
+                }.fixedSize()
             }
 
             RoomSettingsFormRow("Login") {

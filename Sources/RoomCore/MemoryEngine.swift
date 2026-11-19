@@ -46,6 +46,25 @@ public struct MemoryReport: Identifiable, Sendable {
     public let processes: [MemoryProcess]
     public let recommendations: [MemoryRecommendation]
     public let issues: [String]
+    public let wiredBytes: Int64?
+
+    init(id: UUID, scannedAt: Date, totalBytes: Int64, usedBytes: Int64, availableBytes: Int64,
+         compressedBytes: Int64, swapUsedBytes: Int64, pressure: MemoryPressure,
+         processes: [MemoryProcess], recommendations: [MemoryRecommendation], issues: [String],
+         wiredBytes: Int64? = nil) {
+        self.id = id
+        self.scannedAt = scannedAt
+        self.totalBytes = totalBytes
+        self.usedBytes = usedBytes
+        self.availableBytes = availableBytes
+        self.compressedBytes = compressedBytes
+        self.swapUsedBytes = swapUsedBytes
+        self.pressure = pressure
+        self.processes = processes
+        self.recommendations = recommendations
+        self.issues = issues
+        self.wiredBytes = wiredBytes
+    }
 }
 
 /// Reads host memory counters and executable RSS only. It never purges memory,
@@ -58,7 +77,7 @@ public actor MemoryEngine {
         var issues: [String] = []
         let physicalMemory = ProcessInfo.processInfo.physicalMemory
         let total = Int64(clamping: physicalMemory)
-        var metrics = MemoryMetrics(totalBytes: total, usedBytes: 0, availableBytes: 0, compressedBytes: 0)
+        var metrics = MemoryMetrics(totalBytes: total, usedBytes: 0, availableBytes: 0, compressedBytes: 0, wiredBytes: nil)
         do { metrics = try Self.readHostMetrics(totalBytes: total) }
         catch { issues.append(error.localizedDescription) }
 
@@ -85,7 +104,7 @@ public actor MemoryEngine {
             compressedBytes: metrics.compressedBytes, swapUsedBytes: swapUsed, pressure: pressure,
             processes: processes,
             recommendations: Self.recommendations(pressure: pressure, totalBytes: total,
-                swapUsedBytes: swapUsed, processes: processes), issues: issues)
+                swapUsedBytes: swapUsed, processes: processes), issues: issues, wiredBytes: metrics.wiredBytes)
     }
 
     private static func readHostMetrics(totalBytes: Int64) throws -> MemoryMetrics {
@@ -217,6 +236,7 @@ struct MemoryMetrics: Equatable, Sendable {
     let usedBytes: Int64
     let availableBytes: Int64
     let compressedBytes: Int64
+    let wiredBytes: Int64?
 
     static func calculate(totalBytes: Int64, pageSize: UInt64, internalPages: UInt64,
                           purgeablePages: UInt64, wiredPages: UInt64, compressorPages: UInt64) -> MemoryMetrics {
@@ -241,9 +261,10 @@ struct MemoryMetrics: Equatable, Sendable {
         // reclaimable RAM; it is not just free pages or an OS pressure signal.
         let anonymous = bytes(internalPages > purgeablePages ? internalPages - purgeablePages : 0)
         let compressed = min(total, bytes(compressorPages))
-        let used = min(total, sum(sum(anonymous, bytes(wiredPages)), compressed))
+        let wired = bytes(wiredPages)
+        let used = min(total, sum(sum(anonymous, wired), compressed))
         return MemoryMetrics(totalBytes: total, usedBytes: used,
-            availableBytes: total - used, compressedBytes: compressed)
+            availableBytes: total - used, compressedBytes: compressed, wiredBytes: min(used - compressed, wired))
     }
 }
 

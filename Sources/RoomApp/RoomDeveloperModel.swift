@@ -4,27 +4,54 @@ import RoomCore
 
 /// Roles reference shared read-only bookmarks; no second set of permissions is stored.
 enum RoomDeveloperFolderRole: String, CaseIterable, Codable, Identifiable {
-    case android, gradle, project
+    case android, gradle, project, sdk, xcode, konan
     var id: String { rawValue }
     var title: String {
-        switch self { case .android: "Android devices"; case .gradle: "Gradle home"; case .project: "Project folder" }
-    }
-    var symbol: String {
-        switch self { case .android: "iphone.gen3"; case .gradle: "shippingbox"; case .project: "folder" }
-    }
-    var pickerMessage: String {
         switch self {
-        case .android: "Choose an AVD directory, usually .android/avd. Room reads device sizes and available activity evidence."
-        case .gradle: "Choose a Gradle user home, usually .gradle. Room measures distributions and version caches."
-        case .project: "Choose a project or projects folder. Room reads Gradle wrapper versions to link selected projects to resources."
+        case .android: "Android devices"
+        case .gradle: "Gradle home"
+        case .project: "Projects folder"
+        case .sdk: "Android SDK"
+        case .xcode: "Xcode DerivedData"
+        case .konan: "Kotlin/Native home"
         }
     }
+    var symbol: String {
+        switch self {
+        case .android: "iphone.gen3"
+        case .gradle: "shippingbox"
+        case .project: "folder"
+        case .sdk: "hammer"
+        case .xcode: "hammer.fill"
+        case .konan: "terminal"
+        }
+    }
+    func suggestedURL(in home: URL?) -> URL? {
+        guard let home else { return nil }
+        let path: String
+        switch self {
+        case .android: path = ".android/avd"
+        case .gradle: path = ".gradle"
+        case .project: return home
+        case .sdk: path = "Library/Android/sdk"
+        case .xcode: path = "Library/Developer/Xcode/DerivedData"
+        case .konan: path = ".konan"
+        }
+        return home.appendingPathComponent(path, isDirectory: true)
+    }
+
 }
 
 struct RoomDeveloperLocation: Identifiable {
     let role: RoomDeveloperFolderRole
     let folder: RoomAccessFolder
     var id: String { role.rawValue + ":" + folder.id }
+}
+
+struct RoomDeveloperFolderSuggestion: Identifiable {
+    let role: RoomDeveloperFolderRole
+    let url: URL?
+    var id: String { role.rawValue }
 }
 
 @Observable @MainActor
@@ -38,17 +65,71 @@ final class RoomDeveloperModel {
     private var task: Task<Void, Never>?
     private var generation = UUID()
     private(set) var report: DeveloperResourcesReport?
+    private(set) var summary: RoomDevSummary?
+    private(set) var unreferenced: RoomDevUnreferenced
+    @ObservationIgnored private let unreferencedStore: RoomDeveloperUnreferencedStore
+    @ObservationIgnored private let home: URL?
     private(set) var isScanning = false
     private(set) var isChoosingFolder = false
     private(set) var progress = ""
     var errorMessage: String?
 
     init(access: RoomFileAccess = .shared, defaults: UserDefaults = .standard,
+         unreferencedStore: RoomDeveloperUnreferencedStore = .init(),
+         home: URL? = RoomDeveloperModel.standardHome,
          scanner: (@Sendable (DeveloperResourcesRequest, (@Sendable (DeveloperResourcesProgress) -> Void)?) async -> DeveloperResourcesReport)? = nil) {
-        self.access = access; self.defaults = defaults
+        self.access = access
+        self.defaults = defaults
+        self.home = home
+        self.unreferencedStore = unreferencedStore
+        self.unreferenced = unreferencedStore.load()
         let engine = DeveloperResourcesEngine()
         self.scanResources = scanner ?? { request, progress in await engine.scan(request: request, progress: progress) }
         records = defaults.data(forKey: key).flatMap { try? JSONDecoder().decode([RoleRecord].self, from: $0) } ?? []
+    }
+
+    static var standardHome: URL? {
+        #if ROOM_APP_STORE
+        RoomStoreEnvironment.userHome
+        #else
+        FileManager.default.homeDirectoryForCurrentUser
+        #endif
+    }
+
+    var projectRootLabel: String? {
+        guard let root = locations.first(where: { $0.role == .project })?.folder.url else { return nil }
+        let path = root.standardizedFileURL.path
+        guard let home else { return path }
+        let homePath = home.standardizedFileURL.path
+        if path == homePath { return "~" }
+        guard path.hasPrefix(homePath + "/") else { return path }
+        return "~" + path.dropFirst(homePath.count)
+    }
+
+    var folderSuggestions: [RoomDeveloperFolderSuggestion] {
+        let configured = Set(locations.map(\.role))
+        return RoomDeveloperFolderRole.allCases.filter { $0 != .project && !configured.contains($0) }.compactMap { role in
+            let url = role.suggestedURL(in: home)
+            #if ROOM_APP_STORE
+            return RoomDeveloperFolderSuggestion(role: role, url: url)
+            #else
+            var directory: ObjCBool = false
+            guard let url, FileManager.default.fileExists(atPath: url.path, isDirectory: &directory),
+                  directory.boolValue else { return nil }
+            return RoomDeveloperFolderSuggestion(role: role, url: url)
+            #endif
+        }
+    }
+
+    func useSuggestion(_ suggestion: RoomDeveloperFolderSuggestion) {
+        #if ROOM_APP_STORE
+        addFolder(role: suggestion.role)
+        #else
+        guard !isScanning, !isChoosingFolder,
+              folderSuggestions.contains(where: { $0.role == suggestion.role && $0.url == suggestion.url }),
+              let url = suggestion.url else { return }
+        remember(url, role: suggestion.role)
+        #endif
     }
 
     var locations: [RoomDeveloperLocation] {
@@ -69,25 +150,19 @@ final class RoomDeveloperModel {
         Task { [weak self] in
             guard let self else { return }
             defer { self.isChoosingFolder = false }
-            #if ROOM_APP_STORE
-            let home = RoomStoreEnvironment.userHome
-            #else
-            let home: URL? = FileManager.default.homeDirectoryForCurrentUser
-            #endif
-            let initial: URL?
-            switch role {
-            case .android: initial = home?.appendingPathComponent(".android/avd", isDirectory: true)
-            case .gradle: initial = home?.appendingPathComponent(".gradle", isDirectory: true)
-            case .project: initial = home
-            }
             guard let selected = await RoomNativeFolderPicker.shared.choose(title: role.title,
-                message: role.pickerMessage, prompt: "Allow Read Access", initialURL: initial) else { return }
-            do {
-                let url = try self.access.remember(selected)
-                guard let folder = self.access.folders.first(where: { $0.url.standardizedFileURL == url.standardizedFileURL }) else { return }
-                self.attach(role: role, to: folder.id)
-            } catch { self.errorMessage = error.localizedDescription }
+                message: "Room reads sizes and version files here. It never changes anything in this folder.",
+                prompt: "Allow", initialURL: role.suggestedURL(in: self.home)) else { return }
+            self.remember(selected, role: role)
         }
+    }
+
+    private func remember(_ selected: URL, role: RoomDeveloperFolderRole) {
+        do {
+            let url = try access.remember(selected)
+            guard let folder = access.folders.first(where: { $0.url.standardizedFileURL == url.standardizedFileURL }) else { return }
+            attach(role: role, to: folder.id)
+        } catch { errorMessage = error.localizedDescription }
     }
 
     /// Reuses only an already-approved shared bookmark; this never grants access.
@@ -95,19 +170,19 @@ final class RoomDeveloperModel {
         guard !isScanning, access.folders.contains(where: { $0.id == folderID }) else { return }
         let record = RoleRecord(role: role, folderID: folderID)
         if !records.contains(record) { records.append(record); persist() }
-        report = nil
+        report = nil; summary = nil
     }
 
     func remove(_ location: RoomDeveloperLocation) {
         guard !isScanning else { return }
         records.removeAll { $0.role == location.role && $0.folderID == location.folder.id }
-        persist(); report = nil
+        persist(); report = nil; summary = nil
     }
 
     func accessChanged() {
         generation = UUID()
         task?.cancel(); task = nil; isScanning = false
-        report = nil; progress = ""
+        report = nil; summary = nil; progress = ""
     }
 
     func scan() {
@@ -117,7 +192,10 @@ final class RoomDeveloperModel {
         let request = DeveloperResourcesRequest(approvedFolders: approved,
             avdRoots: current.filter { $0.role == .android }.map(\.folder.url),
             gradleHomes: current.filter { $0.role == .gradle }.map(\.folder.url),
-            projectRoots: current.filter { $0.role == .project }.map(\.folder.url))
+            projectRoots: current.filter { $0.role == .project }.map(\.folder.url),
+            sdkRoots: current.filter { $0.role == .sdk }.map(\.folder.url),
+            derivedDataRoots: current.filter { $0.role == .xcode }.map(\.folder.url),
+            konanRoots: current.filter { $0.role == .konan }.map(\.folder.url))
         let token = UUID(); generation = token
         isScanning = true; errorMessage = nil; progress = "Preparing review…"
         let scanner = scanResources
@@ -131,7 +209,20 @@ final class RoomDeveloperModel {
                 }
             }
             guard let self, self.generation == token else { return }
-            self.report = result; self.isScanning = false; self.task = nil
+            self.report = result
+            let summary = RoomDeveloperRooms.summarize(projects: result.projects, artifacts: result.toolchains,
+                                                       scanPartial: result.isPartial || result.cancelled)
+            self.summary = summary
+            let orphanKeys = Set(summary.orphans.map { $0.artifact.key })
+            let referencedKeys = Set(result.toolchains.map(\.key)).subtracting(orphanKeys)
+            let updated = self.unreferenced.updated(orphanKeys: orphanKeys, referencedKeys: referencedKeys,
+                                                   scanComplete: !summary.partial, now: result.scannedAt)
+            if updated != self.unreferenced {
+                self.unreferenced = updated
+                self.unreferencedStore.save(updated)
+            }
+            self.isScanning = false
+            self.task = nil
             self.progress = result.cancelled ? "Stopped · partial review" : (result.isPartial ? "Partial review" : "Review complete")
         }
     }
