@@ -93,8 +93,9 @@ package nonisolated enum RoomMakeRoomLedger {
                         sample: RoomCapacitySample?, now: Date) -> [RoomMakeRoomEntry] {
         guard let sample else { return entries }
         func attributable(_ e: RoomMakeRoomEntry) -> Bool {
-            e.movedBytes > noiseBytes && e.freeAtMove != nil && e.lastFree != nil && e.volumeDevice == sample.device
-                && now.timeIntervalSince(e.lastChecked) <= maxCheckGap
+            let gap = now.timeIntervalSince(e.lastChecked)
+            return e.movedBytes > noiseBytes && e.freeAtMove != nil && e.lastFree != nil && e.volumeDevice == sample.device
+                && gap >= 0 && gap <= maxCheckGap
         }
         func newly(_ e: RoomMakeRoomEntry) -> Int64 {
             guard e.isObserved, let o = observations[e.id], o.canObserve else { return 0 }
@@ -109,7 +110,7 @@ package nonisolated enum RoomMakeRoomLedger {
         }
         func step(_ e: RoomMakeRoomEntry) -> RoomMakeRoomEntry {
             var next = e
-            guard e.isObserved, let o = observations[e.id] else { return next }
+            guard e.isObserved, now >= e.lastChecked, let o = observations[e.id] else { return next }
             next.lastChecked = now
             next.lastFree = e.volumeDevice == sample.device ? sample.freeBytes : nil
             guard o.canObserve else {
@@ -180,13 +181,13 @@ package nonisolated enum RoomTrashPresence {
         let expected = trashIdentity ?? originalIdentity
         switch trash {
         case .failed: return .unknown
-        case .object(let d, let i, let m) where d == expected.device && i == expected.inode && m == expected.mode:
-            return .present
+        case .object(let d, let i, let m) where d == expected.device && i == expected.inode:
+            return m == expected.mode ? .present : .unknown
         case .object, .missing:
             switch original {
             case .object(let d, let i, let m)
-                where d == originalIdentity.device && i == originalIdentity.inode && m == originalIdentity.mode:
-                return .putBack
+                where d == originalIdentity.device && i == originalIdentity.inode:
+                return m == originalIdentity.mode ? .putBack : .unknown
             case .failed: return .unknown
             case .object, .missing: return .gone
             }

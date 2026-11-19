@@ -143,6 +143,10 @@ public struct ActivityReceipt: Identifiable, Codable, Equatable, Sendable {
     public let date: Date
     public var items: [ActivityItem]
     public var issues: [ScanIssue]
+    /// Only the just-completed operation can report a failed final write. A loaded receipt was already saved.
+    public internal(set) var finalWriteFailed = false
+
+    private enum CodingKeys: String, CodingKey { case id, date, items, issues }
     public var trashedBytes: Int64 { items.filter { $0.status == .trashed }.reduce(0) { $0 + $1.byteCount } }
     public var trashedCount: Int { items.filter { $0.status == .trashed }.count }
     public var canRestore: Bool { items.contains { $0.status == .trashed } }

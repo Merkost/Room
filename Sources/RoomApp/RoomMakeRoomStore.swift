@@ -51,7 +51,7 @@ final class RoomMakeRoomStore {
 
     func recordMove(receipt: ActivityReceipt) async {
         guard receipt.trashedCount > 0 else { return }
-        let measured = await sample()
+        let measured = receipt.finalWriteFailed ? nil : await sample()
         await load()
         let devices = Set(receipt.items.filter { $0.status == .trashed }.map(\.originalIdentity.device))
         guard let entry = RoomMakeRoomEntry.stageOne(receiptID: receipt.id, movedAt: receipt.date,

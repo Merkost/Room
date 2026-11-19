@@ -455,11 +455,14 @@ public actor CacheEngine {
             }
             await progress?(id, receipt.items[index].status)
         }
-        upsert(receipt)
-        if (try? persist(receipt)) != nil {
+        do {
+            try persist(receipt)
             for item in receipt.items where item.failure == .cancelled {
                 await progress?(item.id, item.status)
             }
+        } catch {
+            receipt.finalWriteFailed = true
+            upsert(receipt)
         }
         return receipt
     }
@@ -471,7 +474,7 @@ public actor CacheEngine {
             includingPropertiesForKeys: nil) {
             for file in files where file.pathExtension == "json" {
                 guard let metadata = try? Self.metadata(file), metadata.isRegular,
-                      metadata.owner == getuid(), metadata.identity.byteCount < 8_000_000,
+                      metadata.owner == getuid(), metadata.identity.byteCount < Self.maximumReceiptBytes,
                       let data = try? Data(contentsOf: file),
                       var receipt = try? JSONDecoder().decode(ActivityReceipt.self, from: data),
                       file.lastPathComponent == "\(receipt.id.uuidString).json",
@@ -756,6 +759,8 @@ public actor CacheEngine {
     }
     #endif
 
+    private static let maximumReceiptBytes: Int64 = 8_000_000
+
     private func persist(_ receipt: ActivityReceipt) throws {
         try Self.validateAncestors(activityDirectory, allowMissing: true)
         try FileManager.default.createDirectory(at: activityDirectory, withIntermediateDirectories: true,
@@ -768,7 +773,11 @@ public actor CacheEngine {
             let value = try Self.metadata(url)
             guard value.isRegular, value.owner == getuid() else { throw EngineError.message("The activity receipt is not a regular owned file.") }
         }
-        try encoder.encode(receipt).write(to: url, options: [.atomic])
+        let data = try encoder.encode(receipt)
+        guard data.count < Self.maximumReceiptBytes else {
+            throw EngineError.message("This selection is too large to save a recovery receipt. Choose fewer items.")
+        }
+        try data.write(to: url, options: [.atomic])
         _ = chmod(url.path, 0o600)
         upsert(receipt)
     }

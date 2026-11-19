@@ -34,6 +34,21 @@ struct RoomMakeRoomLedgerTests {
         #expect(RoomMakeRoomLedger.advance([entry], observations: [entry.id: gone], sample: nil, now: later) == [entry])
     }
 
+    @Test func changedModeDoesNotEstablishThatAnItemLeftTrash() {
+        let identity: (device: UInt64, inode: UInt64, mode: UInt16) = (11, 50, 0o100600)
+        let altered = RoomStatProbe.object(device: 11, inode: 50, mode: 0o100640)
+        #expect(RoomTrashPresence.direct(hasTrashURL: true, trash: altered, original: .missing,
+            trashIdentity: identity, originalIdentity: identity) == .unknown)
+        #expect(RoomTrashPresence.direct(hasTrashURL: true, trash: .missing, original: altered,
+            trashIdentity: identity, originalIdentity: identity) == .unknown)
+    }
+
+    @Test func backwardsClockLeavesEvidenceUnchanged() throws {
+        let entry = try stageOne(bytes: 600_000_000)
+        let rolledBack = try after(entry, freeGain: 600_000_000, afterSeconds: -1)
+        #expect(rolledBack == entry)
+    }
+
     @Test func adoptedReceiptsNeverBecomeMade() throws {
         let entry = try #require(RoomMakeRoomEntry.adopted(receiptID: UUID(), movedAt: now, movedBytes: 600_000_000, itemCount: 1))
         let result = try after(entry, freeGain: 600_000_000)
