@@ -15,16 +15,19 @@ nonisolated struct RoomBlueprint: Sendable {
         var bytes: Int64
         var kind: String?
         var state: RoomState
+        var isPartial = false
     }
 
     static let reflowInterval: TimeInterval = 1
 
+    let id = UUID()
     let earlier: [String: (bytes: Int64, kind: String?)]   // last map's top level (rescan); empty on a first scan
     let earlierDate: Date?
     private(set) var topLevelTotal: Int?                    // from the walker's first readdir of the root
     private(set) var drawn: [Room] = []                    // measured rooms the layout uses now
     private(set) var pending: [Room] = []                  // finished, waiting for the next re-flow
     private(set) var lastReflow: Date?
+    private(set) var beforeLastReflow: [Room] = []
     private(set) var files = 0
     private(set) var bytesSoFar: Int64 = 0
     private(set) var phase: Phase = .scanning
@@ -46,9 +49,9 @@ nonisolated struct RoomBlueprint: Sendable {
 
     /// A top-level child finished. Returns true when the drawn layout changed (the view animates with Motion.page).
     @discardableResult
-    mutating func completed(name: String, bytes: Int64, kind: String?, at now: Date) -> Bool {
+    mutating func completed(name: String, bytes: Int64, kind: String?, isPartial: Bool = false, at now: Date) -> Bool {
         guard phase == .scanning else { return false }
-        pending.append(Room(name: name, bytes: max(0, bytes), kind: kind, state: .measured))
+        pending.append(Room(name: name, bytes: max(0, bytes), kind: kind, state: .measured, isPartial: isPartial))
         return tick(now)
     }
 
@@ -65,6 +68,7 @@ nonisolated struct RoomBlueprint: Sendable {
     mutating func finish(at now: Date) { guard phase == .scanning else { return }; if !pending.isEmpty { commit(now) }; phase = .done }
 
     private mutating func commit(_ now: Date) {
+        beforeLastReflow = rooms
         for room in pending {
             if let i = drawn.firstIndex(where: { $0.name == room.name }) { drawn[i] = room } else { drawn.append(room) }
         }
@@ -100,19 +104,29 @@ nonisolated struct RoomBlueprint: Sendable {
     }
 }
 
-nonisolated extension RoomBlueprint {
-    var earlierNames: Set<String> {
-        Set(rooms.compactMap { room in if case .earlier = room.state { room.name } else { nil } })
+nonisolated extension RoomBlueprint.Room {
+    var isEarlier: Bool {
+        if case .earlier = state { return true }
+        return false
     }
+}
 
-    func tree(rootName: String) -> RoomTreeNode {
-        let children = rooms.map { room in
+nonisolated extension RoomBlueprint {
+    static func tree(rooms: [Room], maximumTiles: Int) -> RoomTreeNode {
+        let ordered = rooms.filter { $0.bytes > 0 }.sorted {
+            $0.bytes != $1.bytes ? $0.bytes > $1.bytes : $0.name < $1.name
+        }
+        let keep = ordered.count > maximumTiles ? max(0, maximumTiles - 1) : maximumTiles
+        let hidden = ordered.dropFirst(keep)
+        let children = ordered.prefix(keep).map { room in
             RoomTreeNode(name: room.name, relativePath: room.name, allocatedBytes: room.bytes, fileCount: 0,
-                         kindBytes: room.kind.map { [$0: room.bytes] } ?? [:], isPartial: false, isDirectory: true,
+                         kindBytes: room.kind.map { [$0: room.bytes] } ?? [:], isPartial: room.isPartial, isDirectory: true,
                          children: [], other: nil)
         }
-        return RoomTreeNode(name: rootName, relativePath: "", allocatedBytes: children.reduce(0) { $0 + $1.allocatedBytes },
-                            fileCount: files, kindBytes: [:], isPartial: totalIsLowerBound, isDirectory: true,
-                            children: children, other: nil)
+        let other: RoomTreeNode.OtherGroup? = hidden.isEmpty ? nil : .init(itemCount: hidden.count,
+            allocatedBytes: hidden.reduce(0) { $0 + $1.bytes }, isPartial: hidden.contains(where: \.isPartial))
+        return RoomTreeNode(name: "", relativePath: "", allocatedBytes: ordered.reduce(0) { $0 + $1.bytes },
+                            fileCount: 0, kindBytes: [:], isPartial: true, isDirectory: true,
+                            children: children, other: other)
     }
 }

@@ -264,6 +264,9 @@ enum RoomTokens {
         static let hatchPitch: CGFloat = 6.5
         static let pendingTileOpacity = 0.34
         static let pendingGroupOpacity = 0.4
+        static let blueprintGridPitch: CGFloat = 12
+        static let blueprintGridDot: CGFloat = 1
+        static let blueprintWallStroke: CGFloat = 1
     }
 
     // MARK: Motion values (the environment value in RoomMotion folds in Gentle motion + Reduce Motion)
@@ -271,7 +274,8 @@ enum RoomTokens {
         static let quick = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.12)
         static let standard = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.20)
         static let exit = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.12)
-        static let page = Animation.spring(response: 0.32, dampingFraction: 1)
+        static let pageResponse = 0.32
+        static let page = Animation.spring(response: pageResponse, dampingFraction: 1)
         static let compareGlide = Animation.spring(response: 0.36, dampingFraction: 1)
         static let receiptLead = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.28)
         static let onboardingText = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.24).delay(0.07)

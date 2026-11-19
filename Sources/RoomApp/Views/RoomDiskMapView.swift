@@ -227,18 +227,16 @@ struct RoomDiskMapView: View {
     private func blueprintDetail(_ blueprint: RoomBlueprint, isWide: Bool) -> some View {
         HStack(alignment: .top, spacing: RoomTokens.Space.inner) {
             VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
-                RoomMapCanvas(level: blueprint.tree(rootName: model.rootURL?.lastPathComponent ?? "Disk Map"),
-                              selection: nil, hidden: hidden, pending: blueprint.earlierNames, interactive: false)
+                RoomBlueprintArtwork(blueprint: blueprint, hidden: hidden)
+                    .equatable()
                     .frame(minHeight: RoomTokens.Map.minimumHeight)
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
                 if blueprint.phase == .stopped {
                     Text(hidden ? "Scan stopped" : blueprint.stoppedSummary)
                         .font(RoomTokens.Typography.caption)
                         .foregroundStyle(RoomTokens.Ink.secondary)
                 }
-                if let earlier = blueprint.earlierDate, !blueprint.earlierNames.isEmpty {
-                    Text("Hatched sizes are from \(earlier.formatted(.dateTime.month().day())).")
+                if let earlier = blueprint.earlierDate, blueprint.rooms.contains(where: \.isEarlier) {
+                    Text("Pending rooms show sizes from \(earlier.formatted(.dateTime.month().day())).")
                         .font(RoomTokens.Typography.caption)
                         .foregroundStyle(RoomTokens.Ink.secondary)
                 }
@@ -264,7 +262,15 @@ struct RoomDiskMapView: View {
         }
     }
 
-    private var inspector: some View {
+    @ViewBuilder private var inspector: some View {
+        if insights.isScanningDisk, let blueprint = model.blueprint, blueprint.phase == .scanning {
+            RoomBlueprintInspector(blueprint: blueprint, hidden: hidden)
+        } else {
+            mapInspector
+        }
+    }
+
+    private var mapInspector: some View {
         let shown = model.selectedPath.flatMap { model.current?.tree.descendant(at: $0) } ?? model.level
         return RoomMapInspector(node: shown, url: shown.flatMap { model.url(for: $0.relativePath) },
             parent: model.level, pin: rooms.map { $0.pin(url:) }, showSizes: !hidden,

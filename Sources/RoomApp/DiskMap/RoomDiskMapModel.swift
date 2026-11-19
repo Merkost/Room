@@ -50,7 +50,7 @@ final class RoomDiskMapModel {
         blueprint?.progress(files: update.visitedFiles, bytes: update.allocatedBytes)
         for room in update.completedTopLevel {
             blueprint?.completed(name: room.name, bytes: room.bytes,
-                kind: StorageKind.dominant(room.kindBytes)?.rawValue, at: now)
+                kind: StorageKind.dominant(room.kindBytes)?.rawValue, isPartial: room.isPartial, at: now)
         }
         blueprint?.tick(now)
     }

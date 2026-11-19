@@ -2,6 +2,38 @@ import AppKit
 import RoomCore
 import SwiftUI
 
+struct RoomBlueprintInspector: View {
+    let blueprint: RoomBlueprint
+    let hidden: Bool
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: RoomTokens.Space.row) {
+                Text("Measured so far").font(RoomTokens.Typography.title).accessibilityAddTraits(.isHeader)
+                if hidden {
+                    Text("Details hidden").foregroundStyle(RoomTokens.Ink.secondary)
+                } else {
+                    Text(blueprint.counter(files: { $0.formatted() }, bytes: RoomFormat.bytes))
+                        .font(RoomTokens.Typography.caption).foregroundStyle(RoomTokens.Ink.secondary)
+                    ForEach(blueprint.drawn.reversed(), id: \.name) { room in
+                        HStack {
+                            Text(room.name).lineLimit(1).truncationMode(.middle)
+                            Spacer(minLength: RoomTokens.Space.tight)
+                            Text((room.isPartial ? "≥ " : "") + RoomFormat.bytes(room.bytes))
+                                .monospacedDigit().fixedSize()
+                        }
+                        .font(RoomTokens.Typography.caption)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(RoomTokens.Space.group)
+        }
+        .background(RoomTokens.Surface.group, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.group))
+        .accessibilityIdentifier("RoomDiskMapInspector")
+    }
+}
+
 struct RoomMapInspector: View {
     let node: RoomTreeNode?
     let url: URL?

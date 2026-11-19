@@ -5,7 +5,7 @@ struct RoomMapCanvas: View {
     let level: RoomTreeNode
     let selection: String?
     let hidden: Bool
-    var pending: Set<String> = []
+    var blueprint: RoomBlueprint?
     var placedLayer: RoomMapLayer?
     var interactive = true
     var suppressLabels = false
@@ -14,15 +14,21 @@ struct RoomMapCanvas: View {
     var reveal: (String) -> Void = { _ in }
 
     var body: some View {
+        let animatedLayouts = motion.isFull
         GeometryReader { geometry in
             let layer = placedLayer ?? RoomMapLayer.make(level: level, size: geometry.size)
+            let scan = blueprint.map {
+                RoomBlueprintMotion(blueprint: $0, items: layer.items, size: geometry.size, animates: animatedLayouts)
+            }
             RoomMapCanvasSurface(layer: layer, level: level, selection: selection, hidden: hidden,
-                pending: pending, interactive: interactive, suppressLabels: suppressLabels,
+                scan: scan, interactive: interactive, suppressLabels: suppressLabels,
                 activate: activate, preview: preview, reveal: reveal)
         }
         .background(RoomTokens.Surface.canvas, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.card))
         .accessibilityIdentifier("RoomDiskMapCanvas")
     }
+
+    @Environment(\.roomMotion) private var motion
 }
 
 private struct RoomMapCanvasSurface: View {
@@ -31,11 +37,12 @@ private struct RoomMapCanvasSurface: View {
     @FocusState private var hasFocus: Bool
     @State private var hovered: String?
     @State private var keyboardSelection: String?
+    @State private var settledScan: Date?
     let layer: RoomMapLayer
     let level: RoomTreeNode
     let selection: String?
     let hidden: Bool
-    let pending: Set<String>
+    let scan: RoomBlueprintMotion?
     let interactive: Bool
     let suppressLabels: Bool
     let activate: (String, Bool, Bool) -> Void
@@ -47,13 +54,75 @@ private struct RoomMapCanvasSurface: View {
     }
 
     var body: some View {
-        if interactive { interactiveCanvas }
+        if let scan { blueprintArtwork(scan) }
+        else if interactive { interactiveCanvas }
         else { artwork }
     }
 
     private var artwork: some View {
         Canvas { context, _ in
             for tile in layer.items { draw(tile, in: context) }
+        }
+    }
+
+    private func blueprintArtwork(_ scan: RoomBlueprintMotion) -> some View {
+        ZStack {
+            if scan.firstScan { blueprintGrid }
+            if let start = scan.startedAt, settledScan != start {
+                TimelineView(.animation) { tick in
+                    scanArtwork(scan, elapsed: tick.date.timeIntervalSince(start))
+                }
+            } else {
+                scanArtwork(scan, elapsed: RoomBlueprintMotion.duration)
+            }
+        }
+        .task(id: scan.startedAt) {
+            guard let start = scan.startedAt else { return }
+            let remaining = start.addingTimeInterval(RoomBlueprintMotion.duration).timeIntervalSinceNow
+            do {
+                if remaining > 0 { try await Task.sleep(for: .seconds(remaining)) }
+                guard !Task.isCancelled else { return }
+                settledScan = start
+            } catch {}
+        }
+    }
+
+    private var blueprintGrid: some View {
+        Canvas { context, size in
+            let pitch = RoomTokens.Map.blueprintGridPitch
+            let dot = RoomTokens.Map.blueprintGridDot
+            let grid = Path { path in
+                for y in stride(from: pitch / 2, to: size.height, by: pitch) {
+                    for x in stride(from: pitch / 2, to: size.width, by: pitch) {
+                        path.addEllipse(in: CGRect(x: x, y: y, width: dot, height: dot))
+                    }
+                }
+            }
+            context.fill(grid, with: .color(RoomTokens.Surface.line2))
+        }
+    }
+
+    private func scanArtwork(_ scan: RoomBlueprintMotion, elapsed: TimeInterval) -> some View {
+        Canvas { context, _ in
+            let geometry = scan.geometry(at: elapsed)
+            for item in layer.items {
+                let frame = scan.place(item, at: geometry)
+                let reveal = scan.reveal(item.id, at: elapsed)
+                let mixed = item.isOther && !scan.pending.isEmpty
+                if reveal.fill < 1, scan.previousPending.contains(item.id), var earlier = scan.previous[item.id] {
+                    earlier.drawRect = frame.drawRect
+                    draw(earlier, in: context, pending: true, opacity: 1 - reveal.fill)
+                }
+                draw(frame, in: context, pending: scan.pending.contains(item.id) || mixed,
+                     opacity: reveal.fill, hideFigure: mixed)
+                if reveal.wall > 0 {
+                    let shape = Path(roundedRect: frame.drawRect, cornerRadius: RoomTokens.Radius.tile)
+                    var wall = context
+                    wall.opacity = 1 - reveal.fill
+                    wall.stroke(shape.trimmedPath(from: 0, to: reveal.wall), with: .color(RoomTokens.Ink.secondary),
+                                lineWidth: RoomTokens.Map.blueprintWallStroke)
+                }
+            }
         }
     }
 
@@ -117,14 +186,15 @@ private struct RoomMapCanvasSurface: View {
                             spoken: RoomFormat.bytes, hidden: hidden)
     }
 
-    private func draw(_ tile: RoomMapItem, in canvas: GraphicsContext) {
-        guard tile.drawRect.width > 0, tile.drawRect.height > 0 else { return }
+    private func draw(_ tile: RoomMapItem, in canvas: GraphicsContext, pending isPending: Bool = false,
+                      opacity: Double = 1, hideFigure: Bool = false) {
+        guard opacity > 0, tile.drawRect.width > 0, tile.drawRect.height > 0 else { return }
         var context = canvas
         let style = tile.kind.flatMap(RoomTokens.Kind.init(rawValue:))
-        let isPending = pending.contains(tile.id)
         let shape = Path(roundedRect: tile.drawRect, cornerRadius: tile.role == .group ? RoomTokens.Radius.field : RoomTokens.Radius.tile)
         let fill = tile.role == .group ? RoomTokens.Surface.track : style?.fill ?? RoomTokens.Surface.track
-        context.opacity = isPending ? (tile.role == .group ? RoomTokens.Map.pendingGroupOpacity : RoomTokens.Map.pendingTileOpacity) : 1
+        context.opacity = opacity * (isPending
+            ? (tile.role == .group ? RoomTokens.Map.pendingGroupOpacity : RoomTokens.Map.pendingTileOpacity) : 1)
         context.fill(shape, with: .color(fill))
         if tile.isPartial || isPending {
             var clipped = context
@@ -147,7 +217,7 @@ private struct RoomMapCanvasSurface: View {
             let figure = Text("  " + size).font(RoomTokens.Typography.micro).foregroundStyle(RoomTokens.Kind.tileInk2)
             let label = Text("\(name)\(figure)")
             context.draw(label, in: labelBox)
-        } else if tile.label == .nameAndSize {
+        } else if tile.label == .nameAndSize, !hideFigure {
             let figure = Text("\n" + size).font(RoomTokens.Typography.captionNumeric).foregroundStyle(RoomTokens.Kind.tileInk2)
             let label = Text("\(name)\(figure)")
             context.draw(label, in: labelBox)
