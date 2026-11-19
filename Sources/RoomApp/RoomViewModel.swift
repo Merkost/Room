@@ -14,6 +14,7 @@ final class RoomViewModel {
     private(set) var isAfterRestore = false
     private(set) var measuredSourceCount = 0
     private(set) var readableSourceCount = 0
+    private(set) var cleanupProgress: [UUID: ActivityStatus] = [:]
     private var movedReceiptID: UUID?
     private(set) var isScanning = false
     private(set) var scanScope: RoomCacheScanScope = .full
@@ -304,7 +305,10 @@ final class RoomViewModel {
         } catch { errorMessage = error.localizedDescription; return }
         #endif
         cachesCheckStore.invalidate(at: Date())
-        let receipt = await engine.clean(entryIDs: ids)
+        cleanupProgress = [:]
+        let receipt = await engine.clean(entryIDs: ids) { [weak self] id, status in
+            await self?.reportCleanupProgress(id: id, status: status)
+        }
         selection = []
         #if ROOM_APP_STORE
         lastStoreMoveCompleted = receipt.trashedCount > 0
@@ -319,6 +323,10 @@ final class RoomViewModel {
         }
         if !receipt.issues.isEmpty { errorMessage = receipt.issues.prefix(4).map(\.message).joined(separator: "\n\n") }
         await refreshHistory()
+    }
+
+    private func reportCleanupProgress(id: UUID, status: ActivityStatus) {
+        cleanupProgress[id] = status
     }
 
     func restore(record: RoomActivity) async {

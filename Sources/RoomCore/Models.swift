@@ -110,6 +110,14 @@ public enum ActivityStatus: String, Codable, Sendable {
     case failed
 }
 
+public enum RoomMoveFailure: String, Codable, Sendable, CaseIterable {
+    case changed, inUse, access, staleScan, receiptNotSaved, cancelled, other
+}
+
+public enum RoomRestoreSkip: String, Codable, Sendable, CaseIterable {
+    case occupied, missing, changed, access, other
+}
+
 public struct ActivityItem: Identifiable, Codable, Equatable, Sendable {
     public let id: UUID
     public let rootID: String
@@ -127,6 +135,7 @@ public struct ActivityItem: Identifiable, Codable, Equatable, Sendable {
     /// Store receipts retain OS-granted access to the exact moved item, never
     /// broad access to the user's Trash. Older/direct receipts decode as nil.
     public var trashAccessBookmark: Data? = nil
+    public var failure: RoomMoveFailure? = nil
 }
 
 public struct ActivityReceipt: Identifiable, Codable, Equatable, Sendable {
@@ -143,6 +152,24 @@ public struct RestoreReport: Codable, Equatable, Sendable {
     public let receipt: ActivityReceipt
     public let restoredCount: Int
     public let issues: [ScanIssue]
+    public var skips: [RoomRestoreSkip: Int] = [:]
+
+    init(receipt: ActivityReceipt, restoredCount: Int, issues: [ScanIssue], skips: [RoomRestoreSkip: Int] = [:]) {
+        self.receipt = receipt
+        self.restoredCount = restoredCount
+        self.issues = issues
+        self.skips = skips
+    }
+
+    private enum CodingKeys: String, CodingKey { case receipt, restoredCount, issues, skips }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        receipt = try values.decode(ActivityReceipt.self, forKey: .receipt)
+        restoredCount = try values.decode(Int.self, forKey: .restoredCount)
+        issues = try values.decode([ScanIssue].self, forKey: .issues)
+        skips = try values.decodeIfPresent([RoomRestoreSkip: Int].self, forKey: .skips) ?? [:]
+    }
 }
 
 public enum CacheScope: Sendable {

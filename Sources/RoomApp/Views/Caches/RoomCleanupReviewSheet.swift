@@ -19,6 +19,10 @@ struct RoomCleanupReviewSheet: View {
 
     var body: some View {
         let review = presentation
+        let saved = review.phase == .moving
+            ? Set(model.cleanupProgress.filter { $0.value == .trashed }.keys)
+            : []
+        let ticked = review.tickedRows(reported: saved)
         VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
             VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
                 Text("Make room").font(RoomTokens.Typography.lead.weight(.semibold)).accessibilityHeading(.h1)
@@ -36,6 +40,12 @@ struct RoomCleanupReviewSheet: View {
                                 }
                                 Spacer()
                                 Text(format(row.bytes)).font(RoomTokens.Typography.section.monospacedDigit())
+                                if ticked.contains(row.id) {
+                                    Image(systemName: "checkmark").foregroundStyle(accent.text)
+                                        .accessibilityLabel("Saved in receipt")
+                                } else if review.phase == .moving, row.entryIDs.contains(where: { model.cleanupProgress[$0] == .failed }) {
+                                    Text("Kept").foregroundStyle(RoomTokens.Ink.secondary)
+                                }
                             }
                         }
                         .toggleStyle(.checkbox)
