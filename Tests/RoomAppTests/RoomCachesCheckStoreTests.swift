@@ -112,7 +112,8 @@ struct RoomCachesCheckStoreTests {
         let cleanup = try #require(store.invalidatedAt)
         #expect(cleanup > check.at)
         let record = try #require(model.activity.first)
-        #expect(record.trashedCount == 1)
+        #expect(record.canRestore)
+        #expect(record.details.filter(\.canRestore).count == 1)
 
         await model.restore(record: record)
         model.cancelScan()
@@ -137,7 +138,8 @@ struct RoomCachesCheckStoreTests {
         try await fixture.waitForScan(model)
         let invalidatedAt = try #require(store.invalidatedAt)
         #expect(invalidatedAt > check.at)
-        #expect(model.activity.first?.trashedCount == 0)
+        #expect(model.activity.first?.bytes == 0)
+        #expect(model.activity.first?.canRestore == false)
         #expect(RoomCachesCheckStore(defaults: fixture.defaults).invalidatedAt == invalidatedAt)
     }
     #endif
