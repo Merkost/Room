@@ -18,7 +18,13 @@ struct RoomApp: App {
     @Environment(\.openSettings) private var openSettings
 
     init() {
-        let cacheModel = RoomViewModel(cachesCheckStore: RoomCachesCheckStore(writer: .shared))
+        #if ROOM_APP_STORE
+        let home = RoomStoreEnvironment.userHome ?? FileManager.default.homeDirectoryForCurrentUser
+        #else
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        #endif
+        let cacheModel = RoomViewModel(cachesCheckStore: RoomCachesCheckStore(writer: .shared),
+                                       makeRoomStore: RoomMakeRoomStore(home: home), mapStore: .shared)
         _model = State(initialValue: cacheModel)
         #if ROOM_APP_STORE
         _rooms = State(initialValue: RoomRoomsModel(isWorking: { cacheModel.isWorking }))
@@ -75,6 +81,21 @@ struct RoomApp: App {
                 }
                 .onChange(of: menuBarEnabled, initial: true) { _, enabled in
                     delegate.statusMonitor?.setEnabled(enabled)
+                }
+                .task {
+                    await insights.updateTreeApprovals()
+                    await model.refreshHistory()
+                    await model.makeRoomStore?.checkNow()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                    Task { await model.makeRoomStore?.checkNow() }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { notification in
+                    guard (notification.object as? NSWindow)?.identifier == RoomApplicationDelegate.primaryWindowID else { return }
+                    Task { await model.makeRoomStore?.checkNow() }
+                }
+                .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didWakeNotification)) { _ in
+                    Task { await model.makeRoomStore?.checkNow() }
                 }
         }
         .defaultSize(width: 1000, height: 760)

@@ -60,6 +60,11 @@ final class RoomCachesCheckStore {
         persist()
     }
 
+    func invalidateBeforeFileChange(at date: Date) async {
+        invalidate(at: date)
+        await writer?.flush(deadline: .milliseconds(500))
+    }
+
     func invalidate(at date: Date) {
         guard !readOnly else { return }
         if let savedInvalidatedAt, date <= savedInvalidatedAt { return }

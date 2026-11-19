@@ -603,7 +603,7 @@ final class RoomInsightsModel {
         diskMap.restore(map, previous: previous, root: root, url: url)
     }
 
-    private func updateTreeApprovals() async {
+    func updateTreeApprovals() async {
         await treeStore.setApprovals(Dictionary(uniqueKeysWithValues: accessFolders.map { ($0.id, $0.url) }))
     }
 

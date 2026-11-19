@@ -169,6 +169,7 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         insights.scanMemory()
         insights.refreshDiskCapacity()
+        Task { await cacheModel.makeRoomStore?.checkNow() }
         rooms.setPopoverActive(true)
         if let window = popover.contentViewController?.view.window {
             window.title = "Room Monitor"

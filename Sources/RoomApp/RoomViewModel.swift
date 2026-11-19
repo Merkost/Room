@@ -7,6 +7,8 @@ import RoomCore
 @MainActor
 final class RoomViewModel {
     let cachesCheckStore: RoomCachesCheckStore
+    let makeRoomStore: RoomMakeRoomStore?
+    @ObservationIgnored private let mapStore: RoomTreeStore?
     private(set) var sources: [RoomSource] = []
     private(set) var protectedSources: [RoomProtectedSource] = []
     private(set) var selection: Set<String> = []
@@ -121,8 +123,11 @@ final class RoomViewModel {
         }
     }
 
-    init(engine: CacheEngine? = nil, cachesCheckStore: RoomCachesCheckStore = RoomCachesCheckStore()) {
+    init(engine: CacheEngine? = nil, cachesCheckStore: RoomCachesCheckStore = RoomCachesCheckStore(),
+         makeRoomStore: RoomMakeRoomStore? = nil, mapStore: RoomTreeStore? = nil) {
         self.cachesCheckStore = cachesCheckStore
+        self.makeRoomStore = makeRoomStore
+        self.mapStore = mapStore
         #if ROOM_APP_STORE
         let initialEngine = engine ?? Self.makeStoreEngine(approvedFolders: RoomFileAccess.shared.folders.map(\.url))
         #else
@@ -304,11 +309,14 @@ final class RoomViewModel {
             try storeReview.validate(exactly: required)
         } catch { errorMessage = error.localizedDescription; return }
         #endif
-        cachesCheckStore.invalidate(at: Date())
+        await cachesCheckStore.invalidateBeforeFileChange(at: Date())
         cleanupProgress = [:]
         let receipt = await engine.clean(entryIDs: ids) { [weak self] id, status in
             await self?.reportCleanupProgress(id: id, status: status)
         }
+        await makeRoomStore?.recordMove(receipt: receipt)
+        let movedPaths = receipt.items.filter { $0.status == .trashed }.map(\.originalURL)
+        for url in movedPaths { await mapStore?.markChanged(under: url, at: receipt.date) }
         selection = []
         #if ROOM_APP_STORE
         lastStoreMoveCompleted = receipt.trashedCount > 0
@@ -359,11 +367,11 @@ final class RoomViewModel {
             let reviewedTrash = storeReview.locations.filter { storeReview.trashPaths.contains($0.path) }
             try storeReview.validate(exactly: parents + reviewedTrash)
         } catch { errorMessage = error.localizedDescription; return }
-        cachesCheckStore.invalidate(at: Date())
+        await cachesCheckStore.invalidateBeforeFileChange(at: Date())
         let result = await recoveryEngine.restore(receiptID: record.id, approvedTrashItems: storeReview.approvedTrashItems)
         lastStoreRestoreCompleted = result.restoredCount > 0
         #else
-        cachesCheckStore.invalidate(at: Date())
+        await cachesCheckStore.invalidateBeforeFileChange(at: Date())
         let result = await recoveryEngine.restore(receiptID: record.id)
         #endif
         statusMessage = result.restoredCount > 0
@@ -377,6 +385,12 @@ final class RoomViewModel {
             isAfterRestore = true
         }
         await refreshHistory()
+        let previouslyRestored = Set(record.details.filter(\.isRestored).map(\.id))
+        let restoredAt = Date.now
+        for item in result.receipt.items where item.status == .restored && !previouslyRestored.contains(item.id) {
+            await mapStore?.markChanged(under: item.originalURL, at: restoredAt)
+        }
+        await makeRoomStore?.checkNow()
     }
 
     func reveal(source: RoomSource) {
@@ -466,6 +480,7 @@ final class RoomViewModel {
         if !usesInjectedEngine { recoveryEngine = Self.makeStoreEngine(approvedFolders: fileAccess.folders.map(\.url)) }
         #endif
         let receipts = await recoveryEngine.history()
+        await makeRoomStore?.updateReceipts(receipts)
         activity = receipts.map { receipt in
             let restored = receipt.items.filter { $0.status == .restored }.count
             let failed = receipt.items.filter { $0.status == .failed || $0.status == .pending }.count
