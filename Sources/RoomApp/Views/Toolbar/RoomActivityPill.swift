@@ -2,6 +2,7 @@ import Accessibility
 import SwiftUI
 
 struct RoomActivityPill: View {
+    private static let markSize: CGFloat = 14
     var stop: (RoomActivityPillState.Tool) -> Void = { _ in }
     var restore: (UUID) -> Void = { _ in }
     var showHistory: () -> Void = {}
@@ -24,7 +25,7 @@ struct RoomActivityPill: View {
             } label: {
                 HStack(spacing: RoomTokens.Space.row) {
                     mark(state)
-                        .frame(width: 14, height: 14)
+                        .frame(width: Self.markSize, height: Self.markSize)
                     RoomChangingLabel(value: text, animates: !hidden) {
                         Text(text).font(RoomTokens.Typography.caption.monospacedDigit())
                             .lineLimit(1).truncationMode(.middle)
@@ -98,18 +99,18 @@ struct RoomActivityPill: View {
     }
 
     private func markPath(phase: Double?, ink: Color) -> some View {
-        Canvas { context, size in
-            let outline = Path(RoomPocketMark.outerPath(in: CGRect(origin: .zero, size: size)))
-            context.stroke(outline, with: .color(ink.opacity(phase == nil ? 0.75 : 0.35)), lineWidth: 1)
+        let bounds = CGRect(x: 0, y: 0, width: Self.markSize, height: Self.markSize)
+        let outline = Path(RoomPocketMark.outerPath(in: bounds))
+        return ZStack {
+            outline.stroke(ink.opacity(phase == nil ? 0.75 : 0.35), lineWidth: 1)
             if let phase {
                 let end = phase + RoomTokens.Motion.traceDashFraction
-                context.stroke(outline.trimmedPath(from: phase, to: min(1, end)), with: .color(accent.text), lineWidth: 1.4)
+                outline.trim(from: phase, to: min(1, end)).stroke(accent.text, lineWidth: 1.4)
                 if end > 1 {
-                    context.stroke(outline.trimmedPath(from: 0, to: end - 1), with: .color(accent.text), lineWidth: 1.4)
+                    outline.trim(from: 0, to: end - 1).stroke(accent.text, lineWidth: 1.4)
                 }
             } else {
-                let dot = CGRect(x: size.width / 2 - 1, y: size.height / 2 - 1, width: 2, height: 2)
-                context.fill(Path(ellipseIn: dot), with: .color(ink))
+                Circle().fill(ink).frame(width: 2, height: 2)
             }
         }
     }
