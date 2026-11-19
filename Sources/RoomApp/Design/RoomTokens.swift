@@ -44,6 +44,7 @@ enum RoomTokens {
         static let bodyStrong = Font.system(size: 13, weight: .medium)
         static let numeric = Font.system(size: 13, weight: .regular).monospacedDigit()
         static let caption = Font.system(size: 12, weight: .regular)
+        static let sidebarGroup = Font.system(size: 11, weight: .semibold)
         static let navigationLabel = Font.system(size: 12, weight: .medium)
         static let captionNumeric = Font.system(size: 12, weight: .regular).monospacedDigit()
         static let aboutHeading = Font.system(size: 22, weight: .semibold)
@@ -130,6 +131,13 @@ enum RoomTokens {
         static let sheet: CGFloat = 20
         static let planRoom: CGFloat = 3
         static let plan: CGFloat = 11
+    }
+
+    enum Sidebar {
+        static let iconWidth: CGFloat = 16
+        static let innerPadding: CGFloat = 8
+        static let pitchGap: CGFloat = 2
+        static let barHeight: CGFloat = 4
     }
 
     // MARK: Identity
@@ -287,6 +295,7 @@ enum RoomTokens {
         static let skeletonStagger: TimeInterval = 0.06
         /// Sidebar collapse: labels 100 ms, then the panel 220 ms starting at 110 ms.
         static let sidebarLabels = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.10)
+        static let sidebarWidth = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.22)
         static let sidebarPanel = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.22).delay(0.11)
         /// Make room: stage 1 lift 260 ms, 16 ms per dot; stage 2 lights 640 ms per dot, 60 ms apart.
         static let liftDuration: TimeInterval = 0.26, liftPerDot: TimeInterval = 0.016

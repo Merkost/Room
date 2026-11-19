@@ -43,6 +43,7 @@ struct RoomCommands: Commands {
     let menuBarEnabled: Bool
     let isWorking: () -> Bool
     let rooms: RoomRoomsModel
+    let navigation: RoomWindowNavigation
     let showMonitor: () -> Void
     let openTrash: () -> Void
     let showWelcome: () -> Void
@@ -58,8 +59,11 @@ struct RoomCommands: Commands {
         #endif
         return RoomMenuModel.make(.init(destination: screen?.destination, canRescan: screen?.canRescan ?? false,
             isScanning: screen?.isScanning ?? false, canEnclose: screen?.canEnclose ?? false,
-            overviewSizesHidden: screen?.overviewSizesHidden ?? false, menuBarEnabled: menuBarEnabled, edition: edition, window: windowContext.window, isWorking: isWorking(),
-            canPin: rooms.canChooseFolder, supportAvailable: links.support != nil, privacyAvailable: links.privacy != nil))
+            overviewSizesHidden: screen?.overviewSizesHidden ?? false,
+            menuBarEnabled: menuBarEnabled, edition: edition, window: windowContext.window, isWorking: isWorking(),
+            canPin: rooms.canChooseFolder, supportAvailable: links.support != nil, privacyAvailable: links.privacy != nil,
+            sidebarIconsOnly: navigation.prefersSidebarIcons, canGoBack: navigation.canGoBack,
+            canGoForward: navigation.canGoForward))
     }
 
     var body: some Commands {
@@ -131,6 +135,9 @@ struct RoomCommands: Commands {
             return
         }
         switch id {
+        case .back: if window == .main { navigation.back() }
+        case .forward: if window == .main { navigation.forward() }
+        case .sidebarLabels: if window == .main { navigation.toggleSidebarLabels() }
         case .monitor: if menuBarEnabled { showMonitor() }
         case .pin: if !isWorking() { rooms.chooseFolder() }
         case .trash: openTrash()

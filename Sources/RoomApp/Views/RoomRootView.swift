@@ -11,10 +11,11 @@ struct RoomRootView: View {
     @Bindable var agentWork: AgentWorkModel
     #endif
     @AppStorage("RoomAppearance") private var appearance = "dark"
-    @AppStorage(RoomOverviewPrivacy.key) private var overviewSizesHidden = false
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.roomMotion) private var motion
     @State private var developer = RoomDeveloperModel()
     @State private var sheet: RoomSheet?
+    @AppStorage(RoomOverviewPrivacy.key) private var overviewSizesHidden = false
 
     private var destination: RoomDestination { navigation.destination }
     private var colorScheme: ColorScheme? {
@@ -44,82 +45,17 @@ struct RoomRootView: View {
     }
 
     var body: some View {
-        ZStack {
-            if destination == .overview {
-                RoomTokens.Surface.canvas.ignoresSafeArea()
-            } else {
-                RoomAmbientBackground()
-            }
-            if destination == .disk {
-                RoomDiskMapView(insights: insights)
-            } else {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
-                        switch destination {
-                        case .overview:
-                            RoomOverviewView(insights: insights, navigate: navigation.select, refresh: insights.refreshDiskCapacity,
-                                             cacheModel: model, hidden: overviewSizesHidden)
-                        case .clean:
-                            RoomCachesView(model: model, review: { sheet = .review },
-                                inspect: { sheet = .source($0) }, showKept: { sheet = .protectedSources },
-                                showScanNotes: { sheet = .scanIssues }, restore: restoreFromCaches)
-                        case .memory:
-                            RoomMemoryView(insights: insights, memoryActions: memoryActions)
-                        case .disk:
-                            EmptyView()
-                        case .developer:
-                            #if ROOM_APP_STORE
-                            RoomDeveloperView(model: developer)
-                            #else
-                            RoomDeveloperView(model: developer, agentWork: agentWork, memoryReport: insights.memoryReport)
-                            #endif
-                        case .activity:
-                            RoomActivityView(model: model)
-                                .task { await model.refreshHistory() }
-                        }
-                    }
-                    .padding(.horizontal, destination == .overview ? RoomTokens.Density.calm.gutter : 28)
-                    .padding(.top, RoomTokens.Density.calm.topInset)
-                    .padding(.bottom, 28)
-                    .frame(maxWidth: 1120, minHeight: destination == .overview ? RoomTokens.Density.calm.firstScreenMinHeight : nil,
-                           alignment: .topLeading)
-                    .frame(maxWidth: .infinity)
-                }
-                .scrollIndicators(.hidden)
+        RoomShellView(navigation: navigation, rooms: rooms, insights: insights, selectRoom: openPinnedRoom) {
+            RoomScreenScaffold(title: screenActions.title, subtitle: screenSubtitle, scrolls: destination != .disk) {
+                screenContent
+                    .frame(minHeight: destination == .overview ? RoomTokens.Density.calm.firstScreenMinHeight : nil, alignment: .topLeading)
             }
         }
-        .frame(minWidth: 800, minHeight: 650)
         .preferredColorScheme(colorScheme)
         .focusedSceneValue(\.roomScreen, screenActions)
         .toolbar {
-            ToolbarItem(placement: .navigation) {
-                HStack(spacing: 6) {
-                    RoomMark().fill(.primary, style: FillStyle(eoFill: true))
-                        .frame(width: 24, height: 24)
-                        .accessibilityHidden(true)
-                    Text("Room").font(RoomType.heading(15))
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .accessibilityElement(children: .combine)
-            }
-            .sharedBackgroundVisibility(.hidden)
-            ToolbarItem(placement: .principal) {
-                RoomNavigationBar(selection: Binding(get: { destination }, set: navigation.select))
-            }
-            .sharedBackgroundVisibility(.hidden)
-            ToolbarItemGroup(placement: .primaryAction) {
-                if destination == .overview { RoomOverviewHideControl(hidden: $overviewSizesHidden) }
-                if destination == .clean, model.hasReport {
-                    Button(action: model.rescanFromMenu) {
-                        Label("Check again", systemImage: "arrow.clockwise")
-                    }
-                    .disabled(!model.canRescanFromMenu || model.isScanning)
-                    .help("Check caches again")
-                }
-                Button { openSettings() } label: { Image(systemName: "slider.horizontal.3") }
-                    .help("Settings")
-                    .accessibilityLabel("Settings")
+            if destination == .overview {
+                ToolbarItem(placement: .primaryAction) { RoomOverviewHideControl(hidden: $overviewSizesHidden) }
             }
         }
         .sheet(item: $sheet) { selected in
@@ -149,6 +85,18 @@ struct RoomRootView: View {
         .onChange(of: insights.requestedDestination, initial: true) { _, _ in
             navigation.consumeRequest(from: insights)
         }
+        .onChange(of: insights.requestedPinnedRoom, initial: true) { _, id in
+            guard let id else { return }
+            openPinnedRoom(id)
+            insights.requestedPinnedRoom = nil
+        }
+        .onChange(of: navigation.route) { _, route in
+            guard case .room(let id) = route, rooms.pinnedRoom?.id == id, let url = rooms.pinnedURL else { return }
+            insights.openDiskMap(rootURL: url, requestNavigation: false)
+        }
+        .onChange(of: rooms.pinnedRoom?.id) { old, new in
+            if let old, old != new { navigation.removeRoute(.room(old)) }
+        }
         .onChange(of: insights.requestedSettings, initial: true) { _, requested in
             guard requested else { return }
             openSettings()
@@ -158,6 +106,47 @@ struct RoomRootView: View {
             guard requested else { return }
             sheet = .welcome
             insights.requestedWelcome = false
+        }
+    }
+
+    private var screenSubtitle: String? {
+        switch destination {
+        case .overview: nil
+        case .disk: insights.diskURL?.lastPathComponent
+        case .clean, .memory, .developer, .activity: nil
+        }
+    }
+
+    private func openPinnedRoom(_ id: UUID) {
+        guard rooms.pinnedRoom?.id == id, rooms.pinnedURL != nil else {
+            rooms.chooseFolder()
+            return
+        }
+        navigation.select(.room(id), origin: .pointer)
+    }
+
+    @ViewBuilder private var screenContent: some View {
+        switch destination {
+        case .overview:
+            RoomOverviewView(insights: insights, navigate: navigation.select, refresh: insights.refreshDiskCapacity,
+                             cacheModel: model, hidden: overviewSizesHidden)
+        case .clean:
+            RoomCachesView(model: model, review: { sheet = .review },
+                inspect: { sheet = .source($0) }, showKept: { sheet = .protectedSources },
+                showScanNotes: { sheet = .scanIssues }, restore: restoreFromCaches)
+        case .memory:
+            RoomMemoryView(insights: insights, memoryActions: memoryActions)
+        case .disk:
+            RoomDiskMapView(insights: insights)
+        case .developer:
+            #if ROOM_APP_STORE
+            RoomDeveloperView(model: developer)
+            #else
+            RoomDeveloperView(model: developer, agentWork: agentWork, memoryReport: insights.memoryReport)
+            #endif
+        case .activity:
+            RoomActivityView(model: model)
+                .task { await model.refreshHistory() }
         }
     }
 

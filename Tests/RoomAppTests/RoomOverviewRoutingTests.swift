@@ -6,7 +6,7 @@ import Testing
 @Suite("Overview routing") @MainActor
 struct RoomOverviewRoutingTests {
     @Test func shortcutsUseSpecOrder() {
-        let numbered = RoomNavigationBar.items.filter { $0.shortcut != nil }
+        let numbered = RoomSidebar.items.filter { $0.shortcut != nil }
         #expect(numbered.map(\.destination) == [.overview, .disk, .clean, .developer, .memory])
         #expect(numbered.compactMap(\.shortcut) == Array("12345"))
         #expect(numbered.first?.id == "overview")
@@ -14,7 +14,7 @@ struct RoomOverviewRoutingTests {
     }
 
     @Test func activityRemainsReachable() throws {
-        let activity = try #require(RoomNavigationBar.items.last)
+        let activity = try #require(RoomSidebar.items.last)
         let fixture = try RoutingFixture()
         defer { fixture.remove() }
         fixture.navigation.select(activity.destination)

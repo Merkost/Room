@@ -82,12 +82,12 @@ struct RoomApp: App {
         .windowBackgroundDragBehavior(.enabled)
         .commands {
             RoomCommands(windowContext: delegate.commandWindow, menuBarEnabled: menuBarEnabled, isWorking: { isWorking },
-                         rooms: rooms, showMonitor: { delegate.statusMonitor?.showMonitor() },
+                         rooms: rooms, navigation: navigation, showMonitor: { delegate.statusMonitor?.showMonitor() },
                          openTrash: model.openTrash, showWelcome: {
                 insights.requestedWelcome = true
                 openMainWindow()
             }, navigate: { destination in
-                navigation.select(destination)
+                navigation.select(.screen(destination), origin: .keyboard)
                 openMainWindow()
             })
             #if DEBUG

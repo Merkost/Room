@@ -47,9 +47,13 @@ struct RoomMainMenuTests {
         #expect(view.contains { $0.title.contains("Full Screen") })
 
         let go = try menu("Go")
-        #expect(go.map(\.title) == ["Overview", "Disk Map", "Caches", "Developer", "Memory", "Activity", "Enclosing Folder"])
-        #expect(go.prefix(5).map(\.key) == ["1", "2", "3", "4", "5"])
+        #expect(go.map(\.title) == ["Back", "Forward", "Overview", "Disk Map", "Caches", "Developer", "Memory", "Activity", "Enclosing Folder"])
+        #expect(go.dropFirst(2).prefix(5).map(\.key) == ["1", "2", "3", "4", "5"])
         #expect(go.first { $0.title == "Enclosing Folder" }?.enabled == false)
+        #expect(go.first { $0.title == "Back" }?.key == "[")
+        #expect(go.first { $0.title == "Forward" }?.key == "]")
+        #expect(go.first { $0.title == "Forward" }?.enabled == false)
+        #expect(view.first { $0.title == "Hide Sidebar Labels" }?.key == "s")
         let window = try menu("Window")
         #expect(window.contains { $0.title == "Minimize" && $0.key == "m" })
         #expect(!window.contains { $0.title == "Close" && !$0.alternate })
@@ -64,8 +68,8 @@ struct RoomMainMenuTests {
         #expect(allRows.filter { $0.key == "w" && $0.modifiers == command }.count == 1)
         #expect(allRows.filter { $0.key == "r" && $0.modifiers == command }.count == 1)
         #expect(!allRows.contains { $0.key.lowercased() == "r" && $0.modifiers == shiftCommand })
-        let deferred = ["Scan Caches", "Stop Cache Scan", "Show History", "Back", "Forward", "Show Inspector",
-                        "Customise Overview…", "Hide Sidebar Labels", "Toggle Sidebar"]
+        let deferred = ["Scan Caches", "Stop Cache Scan", "Show History", "Show Inspector",
+                        "Customise Overview…", "Toggle Sidebar"]
         #expect(allRows.allSatisfy { !deferred.contains($0.title) })
     }
 

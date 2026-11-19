@@ -1,0 +1,233 @@
+import AppKit
+import SwiftUI
+
+struct RoomSidebar: View {
+    let navigation: RoomWindowNavigation
+    let rooms: RoomRoomsModel
+    let mode: RoomSidebarMode
+    let showsLabels: Bool
+    let foot: RoomSidebarFoot
+    let openRoom: (UUID) -> Void
+
+    @Environment(\.roomMotion) private var motion
+    @Environment(\.roomAccent) private var accent
+    @FocusState private var focusedScreen: RoomDestination?
+    @Namespace private var selection
+    @State private var hoveredScreen: RoomDestination?
+
+    static let items: [NavigationItem] = RoomMenuModel.Destination.allCases.compactMap { menu in
+        guard let destination = RoomDestination(rawValue: menu.rawValue) else { return nil }
+        return NavigationItem(destination: destination, title: menu.item.title, symbol: menu.symbol,
+                              shortcut: menu.shortcut?.key)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: RoomTokens.Sidebar.pitchGap) {
+                    ForEach(Self.items) { screenRow($0) }
+                    roomsHeading
+                    roomRow
+                }
+            }
+            .scrollIndicators(.hidden)
+            if mode == .labelled, showsLabels, let freeText = foot.freeText, let used = foot.usedFraction {
+                volumeFoot(freeText: freeText, used: used)
+            }
+        }
+        .padding(.horizontal, RoomTokens.Space.row)
+        .padding(.vertical, RoomTokens.Space.inner)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .disabled(RoomCommandWindowContext.current == .modal)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Room views")
+    }
+
+    private func screenRow(_ item: NavigationItem) -> some View {
+        let route = RoomRoute.screen(item.destination)
+        let selected = navigation.route == route
+        return Button {
+            withAnimation(motion.animation(RoomTokens.Motion.standard, fallback: nil)) {
+                navigation.select(route, origin: .pointer)
+            }
+        } label: {
+            row(icon: {
+                if item.destination == .overview {
+                    RoomMark().fill(style: FillStyle(eoFill: true)).frame(width: 16, height: 16)
+                } else {
+                    Image(systemName: item.symbol)
+                }
+            }, iconColor: selected ? accent.text : RoomTokens.Ink.secondary) {
+                Text(item.title).font(RoomTokens.Typography.body).lineLimit(1)
+                Spacer(minLength: 0)
+                if let shortcut = item.shortcut {
+                    Text("⌘\(shortcut)").font(RoomTokens.Typography.micro)
+                        .foregroundStyle(RoomTokens.Ink.secondary)
+                }
+            }
+            .background(alignment: .leading) {
+                if selected {
+                    pill.fill(RoomTokens.Surface.line)
+                        .matchedGeometryEffect(id: "sidebar-selection", in: selection)
+                } else if hoveredScreen == item.destination {
+                    pill.fill(RoomTokens.Surface.hover)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .focused($focusedScreen, equals: item.destination)
+        .onHover { hovered in
+            if hovered { hoveredScreen = item.destination }
+            else if hoveredScreen == item.destination { hoveredScreen = nil }
+        }
+        .onKeyPress(.return) {
+            navigation.select(route, origin: .keyboard)
+            return .handled
+        }
+        .onMoveCommand(perform: moveFocus)
+        .help(item.help)
+        .accessibilityLabel(item.title)
+        .accessibilityHint(item.shortcut.map { "Command \($0)" } ?? "")
+        .accessibilityIdentifier("RoomNavigation-\(item.id)")
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
+    }
+
+    private var pill: some Shape { RoundedRectangle(cornerRadius: RoomTokens.Radius.row) }
+
+    private func moveFocus(_ direction: MoveCommandDirection) {
+        guard let focusedScreen, let current = Self.items.firstIndex(where: { $0.destination == focusedScreen }) else { return }
+        let next: Int
+        switch direction {
+        case .up: next = max(0, current - 1)
+        case .down: next = min(Self.items.count - 1, current + 1)
+        default: return
+        }
+        self.focusedScreen = Self.items[next].destination
+    }
+
+    @ViewBuilder private var roomsHeading: some View {
+        if mode == .labelled && showsLabels {
+            Text("nav.rooms", bundle: RoomCopy.bundle)
+                .font(RoomTokens.Typography.sidebarGroup)
+                .foregroundStyle(RoomTokens.Ink.secondary)
+                .padding(.horizontal, RoomTokens.Space.row)
+                .padding(.top, RoomTokens.Space.group)
+                .padding(.bottom, RoomTokens.Sidebar.pitchGap)
+                .accessibilityAddTraits(.isHeader)
+        } else {
+            Color.clear.frame(height: RoomTokens.Space.inner)
+        }
+    }
+
+    @ViewBuilder private var roomRow: some View {
+        switch rooms.state {
+        case .empty:
+            Button(action: rooms.chooseFolder) {
+                row(icon: { Image(systemName: "pin") }, iconColor: RoomTokens.Ink.secondary) {
+                    Text("nav.rooms.pin", bundle: RoomCopy.bundle).font(RoomTokens.Typography.body).lineLimit(1)
+                }
+            }
+            .buttonStyle(.plain)
+            .disabled(!rooms.canChooseFolder)
+            .help(rooms.isReadOnly ? String(localized: "state.readOnly", defaultValue: "Saved by a newer Room.", bundle: RoomCopy.bundle)
+                  : String(localized: "nav.rooms.pin", defaultValue: "Pin a folder…", bundle: RoomCopy.bundle))
+            .accessibilityLabel(Text("nav.rooms.pin", bundle: RoomCopy.bundle))
+        case .unavailable(let room):
+            pinned(room, size: String(localized: "nav.room.needsAccess", defaultValue: "Needs access", bundle: RoomCopy.bundle), spokenSize: nil, needsAccess: true)
+        case .measuring(let room):
+            pinned(room, size: "—", spokenSize: String(localized: "nav.room.notMeasured", defaultValue: "Not measured yet", bundle: RoomCopy.bundle))
+        case .measured(let room, let log):
+            if let sample = log.latest {
+                let size = RoomFormat.bytes(sample.bytes)
+                pinned(room, size: sample.partial ? "≥ \(size)" : size,
+                       spokenSize: sample.partial ? "at least \(size)" : size)
+            }
+        }
+    }
+
+    private func pinned(_ room: RoomPinnedRoom, size: String, spokenSize: String?, needsAccess: Bool = false) -> some View {
+        let selected = navigation.route == .room(room.id)
+        let spokenFormat = String(localized: "nav.room.a11y", defaultValue: "%1$@, Room, %2$@", bundle: RoomCopy.bundle)
+        return Button { openRoom(room.id) } label: {
+            row(icon: {
+                Image(systemName: "folder")
+                    .background(RoomTokens.Surface.track, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.tile))
+            }, iconColor: selected ? accent.text : RoomTokens.Ink.secondary) {
+                Text(room.name).font(RoomTokens.Typography.body).lineLimit(1).truncationMode(.middle)
+                Spacer(minLength: RoomTokens.Sidebar.pitchGap)
+                Text(size).font(RoomTokens.Typography.micro).monospacedDigit().lineLimit(1)
+                    .foregroundStyle(needsAccess ? accent.text : RoomTokens.Ink.secondary)
+            }
+            .background {
+                if selected { pill.fill(RoomTokens.Surface.line).matchedGeometryEffect(id: "sidebar-selection", in: selection) }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("\(room.name), \(spokenSize ?? size)")
+        .accessibilityLabel(String.localizedStringWithFormat(spokenFormat, room.name, spokenSize ?? size))
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
+        .contextMenu {
+            if let url = rooms.pinnedURL {
+                Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+            }
+        }
+    }
+
+    private func row<Icon: View, Label: View>(@ViewBuilder icon: () -> Icon, iconColor: Color,
+                                              @ViewBuilder label: () -> Label) -> some View {
+        HStack(spacing: RoomTokens.Space.row) {
+            icon()
+                .frame(width: RoomTokens.Sidebar.iconWidth, height: RoomTokens.Sidebar.iconWidth)
+                .foregroundStyle(iconColor)
+                .accessibilityHidden(true)
+            if mode == .labelled {
+                label().opacity(showsLabels ? 1 : 0)
+            }
+        }
+        .padding(.horizontal, RoomTokens.Sidebar.innerPadding)
+        .frame(maxWidth: mode == .labelled ? .infinity : nil,
+               minHeight: RoomSidebarLayout.rowHeight, alignment: .leading)
+    }
+
+    private func volumeFoot(freeText: String, used: Double) -> some View {
+        VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
+            HStack(spacing: RoomTokens.Space.tight) {
+                if let name = foot.volumeName {
+                    Text(name).lineLimit(1).truncationMode(.middle)
+                }
+                Spacer(minLength: 0)
+                if foot.belowGoal {
+                    Image(nsImage: RoomPocketMark.image(fill: 0.5, pointSize: 11))
+                        .foregroundStyle(RoomTokens.Status.elevated)
+                }
+                Text(freeText)
+                    .fontWeight(foot.belowGoal ? .semibold : .regular)
+                    .foregroundStyle(foot.belowGoal ? RoomTokens.Status.elevated : RoomTokens.Ink.secondary)
+                    .monospacedDigit().fixedSize()
+            }
+            .font(RoomTokens.Typography.micro)
+            .foregroundStyle(RoomTokens.Ink.secondary)
+            GeometryReader { geometry in
+                Capsule().fill(RoomTokens.Surface.track)
+                    .overlay(alignment: .leading) {
+                        Capsule().fill(RoomTokens.Surface.used).frame(width: geometry.size.width * used)
+                    }
+            }
+            .frame(height: RoomTokens.Sidebar.barHeight)
+        }
+        .padding(.horizontal, RoomTokens.Space.row)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(foot.accessibilityLabel)
+    }
+}
+
+nonisolated struct NavigationItem: Identifiable, Sendable {
+    let destination: RoomDestination
+    let title: String
+    let symbol: String
+    let shortcut: Character?
+    var id: String { destination.rawValue }
+    var help: String { shortcut.map { "\(title) (⌘\($0))" } ?? title }
+}

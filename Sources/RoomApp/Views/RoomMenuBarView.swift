@@ -212,13 +212,13 @@ struct RoomMenuBarView: View {
     }
 
     func openPinnedRoom() {
-        guard let url = rooms.pinnedURL, !isUnreadableRoom else {
+        guard let room = rooms.pinnedRoom, !isUnreadableRoom else {
             openRoom()
             rooms.chooseFolder()
             return
         }
-        open(.disk)
-        insights.scanDisk(url: url)
+        insights.requestedPinnedRoom = room.id
+        openRoom()
     }
 }
 

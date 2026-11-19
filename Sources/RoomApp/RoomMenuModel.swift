@@ -47,6 +47,9 @@ nonisolated enum RoomMenuModel {
         case refreshMemory
         case stop
         case fullScreen
+        case sidebarLabels
+        case back
+        case forward
         case overview
         case disk
         case caches
@@ -114,6 +117,9 @@ nonisolated enum RoomMenuModel {
             case .refreshMemory: String(localized: "menu.refreshMemory", defaultValue: "Refresh Memory")
             case .stop: String(localized: "menu.stop", defaultValue: "Stop Scan")
             case .fullScreen: "Enter Full Screen"
+            case .sidebarLabels: String(localized: "menu.sidebarLabels.hide", defaultValue: "Hide Sidebar Labels", bundle: RoomCopy.bundle)
+            case .back: String(localized: "menu.back", defaultValue: "Back", bundle: RoomCopy.bundle)
+            case .forward: String(localized: "menu.forward", defaultValue: "Forward", bundle: RoomCopy.bundle)
             case .overview: String(localized: "menu.overview", defaultValue: "Overview")
             case .disk: String(localized: "menu.disk", defaultValue: "Disk Map")
             case .caches: String(localized: "menu.caches", defaultValue: "Caches")
@@ -241,6 +247,9 @@ nonisolated enum RoomMenuModel {
         var supportAvailable = true
         var privacyAvailable = true
         var debug = false
+        var sidebarIconsOnly = false
+        var canGoBack = false
+        var canGoForward = false
     }
 
     struct Item: Equatable, Sendable {
@@ -250,16 +259,18 @@ nonisolated enum RoomMenuModel {
         let enabled: Bool
         let visible: Bool
         let native: Bool
-        let checked: Bool?
-        var title: String { id.title }
+        var checked: Bool? = nil
+        var titleOverride: String? = nil
+        var title: String { titleOverride ?? id.title }
     }
 
     static func make(_ input: Input) -> [Item] {
         var items: [Item] = []
         func add(_ section: Section, _ id: ID, _ shortcut: Shortcut? = nil,
-                 enabled: Bool = true, visible: Bool = true, native: Bool = false, checked: Bool? = nil) {
-            items.append(Item(id: id, section: section, shortcut: shortcut,
-                              enabled: enabled, visible: visible, native: native, checked: checked))
+                 enabled: Bool = true, visible: Bool = true, native: Bool = false,
+                 checked: Bool? = nil, title: String? = nil) {
+            items.append(Item(id: id, section: section, shortcut: shortcut, enabled: enabled,
+                              visible: visible, native: native, checked: checked, titleOverride: title))
         }
 
         let modal = input.window == .modal
@@ -302,8 +313,12 @@ nonisolated enum RoomMenuModel {
         if main, input.destination == .overview {
             add(.view, .hideOverviewSizes, .init("h", [.command, .shift]), checked: input.overviewSizesHidden)
         }
+        add(.view, .sidebarLabels, .init("s", [.control, .command]), enabled: main,
+            title: input.sidebarIconsOnly ? String(localized: "menu.sidebarLabels.show", defaultValue: "Show Sidebar Labels", bundle: RoomCopy.bundle) : nil)
         add(.view, .fullScreen, .init("f", [.control, .command]), enabled: hasKeyWindow, native: true)
 
+        add(.go, .back, .init("["), enabled: main && input.canGoBack)
+        add(.go, .forward, .init("]"), enabled: main && input.canGoForward)
         for destination in Destination.allCases {
             add(.go, destination.item, destination.shortcut, enabled: !modal)
         }

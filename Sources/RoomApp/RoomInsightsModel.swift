@@ -34,6 +34,7 @@ final class RoomInsightsModel {
     var diskAvailableBytes: Int64 { volumeCapacity?.freeBytes ?? 0 }
     var diskCapacityBytes: Int64 { volumeCapacity?.capacityBytes ?? 0 }
     var requestedDestination: RoomInsightDestination?
+    var requestedPinnedRoom: UUID?
     var requestedSettings = false
     var requestedSettingsTab: RoomSettingsTab?
     var requestedWelcome = false
@@ -440,9 +441,9 @@ final class RoomInsightsModel {
         NSWorkspace.shared.open(url)
     }
 
-    func openDiskMap(rootURL: URL, relativePath: String? = nil) {
+    func openDiskMap(rootURL: URL, relativePath: String? = nil, requestNavigation: Bool = true) {
         guard fileAccess.scope(for: rootURL) != nil else { return }
-        requestedDestination = .disk
+        if requestNavigation { requestedDestination = .disk }
         if diskMap.openRetained(rootURL) {
             if let relativePath {
                 let path = [diskMap.levelPath, relativePath].filter { !$0.isEmpty }.joined(separator: "/")

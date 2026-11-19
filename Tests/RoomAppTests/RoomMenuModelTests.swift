@@ -17,13 +17,13 @@ struct RoomMenuModelTests {
         #expect(running.first { $0.id == .stop }?.enabled == (destination.canStop ? true : nil))
     }
 
-    @Test func shortcutsAreUniqueAndMatchToolbar() {
+    @Test func shortcutsAreUniqueAndMatchSidebar() {
         let items = Menu.make(.init(destination: .overview, canRescan: true, window: .main)).filter(\.visible)
         let keys = items.compactMap(\.shortcut)
         #expect(Set(keys).count == keys.count)
         #expect(!keys.contains(.init("r", [.shift, .command])))
-        #expect(items.filter { $0.section == .go }.dropLast().map(\.title) == RoomNavigationBar.items.map(\.title))
-        #expect(items.filter { $0.section == .go }.dropLast().map { $0.shortcut?.key } == RoomNavigationBar.items.map(\.shortcut))
+        #expect(items.filter { $0.section == .go }.dropFirst(2).dropLast().map(\.title) == RoomSidebar.items.map(\.title))
+        #expect(items.filter { $0.section == .go }.dropFirst(2).dropLast().map { $0.shortcut?.key } == RoomSidebar.items.map(\.shortcut))
     }
 
     @Test func modalAndWorkingGuards() {
