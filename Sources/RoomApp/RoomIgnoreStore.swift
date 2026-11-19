@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import RoomCore
 
 nonisolated struct RoomIgnoreRule: Codable, Equatable, Sendable, Identifiable {
     var id: UUID
@@ -43,7 +44,7 @@ final class RoomIgnoreStore {
         await load()
         var existing = Set(rules.map(\.path))
         let added = folders.compactMap { folder -> RoomIgnoreRule? in
-            let path = folder.url.standardizedFileURL.path
+            let path = folder.url.roomLexicallyNormalized.path
             guard folder.url.isFileURL, path.hasPrefix("/"), path != "/", existing.insert(path).inserted else { return nil }
             return RoomIgnoreRule(id: UUID(), path: path, accessFolderID: folder.accessFolderID, addedAt: Date())
         }
