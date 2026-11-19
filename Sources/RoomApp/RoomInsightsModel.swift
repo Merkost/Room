@@ -9,6 +9,9 @@ final class RoomInsightsModel {
     private(set) var memoryReport: MemoryReport?
     private(set) var memorySamples = RoomMemorySampleRing()
     private(set) var isScanningMemory = false
+    let diskMap = RoomDiskMapModel()
+    @ObservationIgnored let treeStore: RoomTreeStore
+    @ObservationIgnored private var restoredDiskMap = false
     private(set) var diskReport: DiskMapReport?
     private(set) var isScanningDisk = false
     private(set) var diskProgress: DiskScanProgress?
@@ -46,12 +49,14 @@ final class RoomInsightsModel {
     private static let monitorInterval: Duration = .seconds(20)
 
     init(access: RoomFileAccess = .shared,
+         treeStore: RoomTreeStore = .shared,
          folderPicker: (@MainActor (String, String, String, URL?) async -> URL?)? = nil,
          capacityReader: @escaping @MainActor () throws -> RoomVolumeCapacity? = RoomVolumeCapacity.read,
          waitForCapacityTick: @escaping @MainActor () async throws -> Void = {
              try await Task.sleep(for: RoomInsightsModel.monitorInterval)
          }) {
         self.fileAccess = access
+        self.treeStore = treeStore
         self.capacityReader = capacityReader
         self.waitForCapacityTick = waitForCapacityTick
         self.folderPicker = folderPicker ?? { title, message, prompt, initial in
@@ -203,15 +208,21 @@ final class RoomInsightsModel {
         scanAuthorizedDisk(url: url, scope: scope)
     }
 
-    private func scanAuthorizedDisk(url: URL, scope: URL) {
+    private func scanAuthorizedDisk(url: URL, scope: URL, spliceAt: String? = nil) {
         diskTask?.cancel()
         cancelStorageAnalysis()
         analysisReport = nil
         analysisStatus = nil
         let generation = UUID()
         diskGeneration = generation
-        diskURL = url
-        diskReport = nil
+        let visibleRoot = spliceAt == nil ? url : diskURL ?? url
+        let rootID = diskRootID(url: visibleRoot, scope: scope)
+        let location = diskLocation(url: visibleRoot, scope: scope)
+        let isHome = visibleRoot.standardizedFileURL == suggestedHome.standardizedFileURL
+        let displayPath = diskDisplayPath(visibleRoot)
+        if diskURL?.standardizedFileURL != visibleRoot.standardizedFileURL { diskReport = nil }
+        diskURL = visibleRoot
+        diskMap.begin(url: visibleRoot)
         diskProgress = nil
         isScanningDisk = true
         statusMessage = nil
@@ -227,14 +238,29 @@ final class RoomInsightsModel {
             let scopedAccess = scope.startAccessingSecurityScopedResource()
             defer { if scopedAccess { scope.stopAccessingSecurityScopedResource() } }
             #endif
-            let result = await diskEngine.scan(url: url) { [weak self] progress in
+            let mapped = await diskEngine.scanTree(url: url) { [weak self] progress in
                 Task { @MainActor [weak self] in
                     guard let self, self.diskGeneration == generation, self.isScanningDisk else { return }
                     self.diskProgress = progress
+                    self.diskMap.accept(progress)
                 }
             }
             guard let self, self.diskGeneration == generation else { return }
+            let result = mapped.report
+            if let spliceAt {
+                self.diskMap.replaceSubtree(at: spliceAt, with: mapped)
+                self.isScanningDisk = false
+                self.diskTask = nil
+                return
+            }
+            self.diskMap.record(mapped, rootID: rootID, displayPath: displayPath, isHome: isHome)
             self.diskReport = result
+            if let location, let map = self.diskMap.current {
+                await self.updateTreeApprovals()
+                await self.treeStore.record(map, location: location, isHome: isHome)
+                guard self.diskGeneration == generation else { return }
+                self.diskMap.updateChangeDate(nil)
+            }
             #if ROOM_APP_STORE
             let configuration = await Task.detached(priority: .utility) {
                 home.map { CacheConfiguration.store(approvedFolders: approved + [scope], userHome: $0) }
@@ -299,9 +325,14 @@ final class RoomInsightsModel {
             diskProgress = nil
             analysisReport = nil
             self.diskURL = nil
+            diskMap.removeCurrent()
             isScanningDisk = false
         }
         fileAccess.forget(id: id)
+        Task {
+            await updateTreeApprovals()
+            await treeStore.forget(approvalID: id)
+        }
         fileAccess.setNote("Folder removed from Room. System access can be changed in Privacy & Security.")
     }
 
@@ -315,6 +346,77 @@ final class RoomInsightsModel {
         NSWorkspace.shared.open(url)
     }
 
+    func openDiskMap(rootURL: URL, relativePath: String? = nil) {
+        guard fileAccess.scope(for: rootURL) != nil else { return }
+        requestedDestination = .disk
+        if diskMap.openRetained(rootURL) {
+            if let relativePath {
+                let path = [diskMap.levelPath, relativePath].filter { !$0.isEmpty }.joined(separator: "/")
+                diskMap.go(to: path)
+            }
+            return
+        }
+        let approval = fileAccess.scope(for: rootURL) ?? rootURL
+        let id = diskRootID(url: rootURL, scope: approval)
+        Task {
+            guard !isScanningDisk else { return }
+            if let map = await treeStore.current(rootID: id), let root = await treeStore.root(for: id) {
+                let previous = await treeStore.previous(rootID: id)
+                guard !isScanningDisk else { return }
+                showStored(map, previous: previous, root: root)
+                if let relativePath { diskMap.go(to: relativePath) }
+                await treeStore.open(id)
+            } else if !isScanningDisk {
+                diskURL = rootURL
+                diskReport = nil
+                diskMap.showUnmapped(rootURL)
+            }
+        }
+    }
+
+    func restoreDiskMap() async {
+        guard !restoredDiskMap else { return }
+        restoredDiskMap = true
+        await updateTreeApprovals()
+        guard let saved = await treeStore.lastOpened(), diskURL == nil, !isScanningDisk else { return }
+        showStored(saved.current, previous: saved.previous, root: saved.root)
+    }
+
+    func observeTreeChanges() async {
+        let updates = await treeStore.changes
+        for await id in updates {
+            guard diskMap.current?.rootID == id, !isScanningDisk else { continue }
+            let root = await treeStore.root(for: id)
+            guard diskMap.current?.rootID == id, !isScanningDisk else { continue }
+            if let root {
+                diskMap.updateChangeDate(root.changedAt)
+            } else {
+                diskURL = nil
+                diskReport = nil
+                diskMap.removeCurrent()
+            }
+        }
+    }
+
+    private func showStored(_ map: RoomStoredTree, previous: RoomStoredTree?, root: RoomTreeStore.Root) {
+        let url = accessFolders.first(where: { $0.id == root.location.approvalID })
+            .flatMap { root.location.resolve(under: $0.url) }
+        diskURL = url
+        diskReport = nil
+        analysisReport = nil
+        diskMap.restore(map, previous: previous, root: root, url: url)
+    }
+
+    private func updateTreeApprovals() async {
+        await treeStore.setApprovals(Dictionary(uniqueKeysWithValues: accessFolders.map { ($0.id, $0.url) }))
+    }
+
+    func rescanMappedFolder(_ relativePath: String) {
+        guard !isScanningDisk, !relativePath.isEmpty, let url = diskMap.url(for: relativePath),
+              let scope = fileAccess.scope(for: url) else { return }
+        scanAuthorizedDisk(url: url, scope: scope, spliceAt: relativePath)
+    }
+
     var canRescanDisk: Bool {
         guard let diskURL else { return false }
         return fileAccess.scope(for: diskURL) != nil
@@ -325,24 +427,34 @@ final class RoomInsightsModel {
         scanAuthorizedDisk(url: diskURL, scope: scope)
     }
 
-    var canGoUpInApprovedMap: Bool {
-        guard let diskURL else { return false }
-        let parent = diskURL.deletingLastPathComponent()
-        return parent.path != diskURL.path && fileAccess.scope(for: parent) != nil
+    var canGoUpInApprovedMap: Bool { diskMap.canStepOut }
+
+    func encloseApprovedDiskFolder() { diskMap.stepOut() }
+
+    func diskGoUp() { diskMap.stepOut() }
+
+    @discardableResult
+    func stepInsideDisk(_ item: DiskMapItem) -> Bool { diskMap.openRetained(item.url) }
+
+    private func diskLocation(url: URL, scope: URL) -> RoomTreeLocation? {
+        guard let folder = fileAccess.folders.first(where: { $0.url == scope }) else { return nil }
+        let parts = url.standardizedFileURL.pathComponents.dropFirst(scope.standardizedFileURL.pathComponents.count)
+        return RoomTreeLocation(approvalID: folder.id, relativePath: parts.joined(separator: "/"))
     }
 
-    func encloseApprovedDiskFolder() {
-        guard !isScanningDisk, let diskURL else { return }
-        let parent = diskURL.deletingLastPathComponent()
-        guard parent.path != diskURL.path, let scope = fileAccess.scope(for: parent) else { return }
-        scanAuthorizedDisk(url: parent, scope: scope)
+    private func diskRootID(url: URL, scope: URL) -> String {
+        #if ROOM_APP_STORE
+        if let location = diskLocation(url: url, scope: scope) {
+            return location.approvalID + "-" + RoomTreeRootID.direct(standardizedPath: location.relativePath)
+        }
+        #endif
+        return RoomTreeRootID.direct(standardizedPath: url.standardizedFileURL.path)
     }
 
-    func diskGoUp() {
-        guard let diskURL else { return }
-        let parent = diskURL.deletingLastPathComponent()
-        guard parent.path != diskURL.path else { return }
-        scanDisk(url: parent)
+    private func diskDisplayPath(_ url: URL) -> String {
+        guard RoomFileAccess.contains(parent: suggestedHome, child: url) else { return url.lastPathComponent }
+        let parts = url.standardizedFileURL.pathComponents.dropFirst(suggestedHome.standardizedFileURL.pathComponents.count)
+        return parts.isEmpty ? "~" : "~/" + parts.joined(separator: "/")
     }
 
     func reveal(item: DiskMapItem) { NSWorkspace.shared.activateFileViewerSelecting([item.url]) }

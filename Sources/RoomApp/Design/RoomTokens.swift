@@ -203,6 +203,23 @@ enum RoomTokens {
         static let tileInk2 = Color.room(light: 0x3E4448, dark: 0xC5CCD0, name: "room.tile.ink2")
     }
 
+    enum Map {
+        static let inspectorWidth: CGFloat = 260
+        static let inspectorBreakpoint: CGFloat = 900
+        static let minimumHeight: CGFloat = 360
+        static let controlsHeight: CGFloat = 36
+        static let readoutHeight: CGFloat = 28
+        static let largestRowHeight: CGFloat = 23
+        static let kindBarHeight: CGFloat = 12
+        static let focusStroke: CGFloat = 2
+        static let labelPaddingX: CGFloat = 7
+        static let labelPaddingY: CGFloat = 3
+        static let hatchStroke: CGFloat = 1.5
+        static let hatchPitch: CGFloat = 6.5
+        static let pendingTileOpacity = 0.34
+        static let pendingGroupOpacity = 0.4
+    }
+
     // MARK: Motion values (the environment value in RoomMotion folds in Gentle motion + Reduce Motion)
     enum Motion {
         static let quick = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.12)

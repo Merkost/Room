@@ -71,41 +71,45 @@ struct RoomRootView: View {
             } else {
                 RoomAmbientBackground()
             }
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    switch destination {
-                    case .overview:
-                        RoomOverviewView(insights: insights, navigate: navigation.select, refresh: insights.refreshDiskCapacity)
-                    case .clean:
-                        cachesContent
-                            .animation(animate, value: expanded)
-                            .animation(animate, value: category)
-                            .animation(animate, value: model.selectedBytes)
-                            .animation(animate, value: model.totalBytes)
-                            .animation(animate, value: model.isScanning)
-                    case .memory:
-                        #if ROOM_APP_STORE
-                        RoomMemoryView(insights: insights, memoryActions: memoryActions)
-                        #else
-                        RoomMemoryView(insights: insights, memoryActions: memoryActions, agentWork: agentWork)
-                        #endif
-                    case .disk:
-                        RoomDiskMapView(insights: insights)
-                    case .developer:
-                        RoomDeveloperView(model: developer)
-                    case .activity:
-                        RoomActivityView(model: model)
-                            .task { await model.refreshHistory() }
+            if destination == .disk {
+                RoomDiskMapView(insights: insights)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 24) {
+                        switch destination {
+                        case .overview:
+                            RoomOverviewView(insights: insights, navigate: navigation.select, refresh: insights.refreshDiskCapacity)
+                        case .clean:
+                            cachesContent
+                                .animation(animate, value: expanded)
+                                .animation(animate, value: category)
+                                .animation(animate, value: model.selectedBytes)
+                                .animation(animate, value: model.totalBytes)
+                                .animation(animate, value: model.isScanning)
+                        case .memory:
+                            #if ROOM_APP_STORE
+                            RoomMemoryView(insights: insights, memoryActions: memoryActions)
+                            #else
+                            RoomMemoryView(insights: insights, memoryActions: memoryActions, agentWork: agentWork)
+                            #endif
+                        case .disk:
+                            EmptyView()
+                        case .developer:
+                            RoomDeveloperView(model: developer)
+                        case .activity:
+                            RoomActivityView(model: model)
+                                .task { await model.refreshHistory() }
+                        }
                     }
+                    .padding(.horizontal, destination == .overview ? RoomTokens.Density.calm.gutter : 28)
+                    .padding(.top, RoomTokens.Density.calm.topInset)
+                    .padding(.bottom, 28)
+                    .frame(maxWidth: 1120, minHeight: destination == .overview ? RoomTokens.Density.calm.firstScreenMinHeight : nil,
+                           alignment: .topLeading)
+                    .frame(maxWidth: .infinity)
                 }
-                .padding(.horizontal, destination == .overview ? RoomTokens.Density.calm.gutter : 28)
-                .padding(.top, RoomTokens.Density.calm.topInset)
-                .padding(.bottom, 28)
-                .frame(maxWidth: 1120, minHeight: destination == .overview ? RoomTokens.Density.calm.firstScreenMinHeight : nil,
-                       alignment: .topLeading)
-                .frame(maxWidth: .infinity)
+                .scrollIndicators(.hidden)
             }
-            .scrollIndicators(.hidden)
         }
         .frame(minWidth: 800, minHeight: 650)
         .preferredColorScheme(colorScheme)
