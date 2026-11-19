@@ -6,7 +6,18 @@ import RoomCore
 
 @Observable @MainActor
 final class RoomMakeRoomStore {
-    private(set) var entries: [RoomMakeRoomEntry] = []
+    private var storedEntries: [RoomMakeRoomEntry] = []
+    #if DEBUG
+    private var simulatedEntries: [RoomMakeRoomEntry]?
+    #endif
+
+    var entries: [RoomMakeRoomEntry] {
+        #if DEBUG
+        simulatedEntries ?? storedEntries
+        #else
+        storedEntries
+        #endif
+    }
     private(set) var hadWriteFailure = false
     @ObservationIgnored var didObserveGain: ((RoomMakeRoomEntry) -> Void)?
     @ObservationIgnored private let state: RoomStateStore
@@ -47,8 +58,8 @@ final class RoomMakeRoomStore {
             itemsDevice: devices.count == 1 ? devices.first : nil, sample: measured) else { return }
         receipts[receipt.id] = receipt
         receiptRevision &+= 1
-        entries.removeAll { $0.id == receipt.id }
-        entries.append(entry)
+        storedEntries.removeAll { $0.id == receipt.id }
+        storedEntries.append(entry)
         await save()
         scheduleCheck()
     }
@@ -57,12 +68,12 @@ final class RoomMakeRoomStore {
         await load()
         for receipt in history { receipts[receipt.id] = receipt }
         receiptRevision &+= 1
-        let known = Set(entries.map(\.id))
+        let known = Set(storedEntries.map(\.id))
         let adopted = history.filter { !known.contains($0.id) }.compactMap {
             RoomMakeRoomEntry.adopted(receiptID: $0.id, movedAt: $0.date, movedBytes: $0.trashedBytes, itemCount: $0.trashedCount)
         }
         if !adopted.isEmpty {
-            entries.append(contentsOf: adopted)
+            storedEntries.append(contentsOf: adopted)
             await save()
         }
         scheduleCheck()
@@ -70,23 +81,40 @@ final class RoomMakeRoomStore {
 
     func checkNow() async {
         await load()
-        guard !checking, RoomMakeRoomLedger.needsChecks(entries) else { return }
+        guard !checking, RoomMakeRoomLedger.needsChecks(storedEntries) else { return }
         checking = true
         defer { checking = false; scheduleCheck() }
         let revision = receiptRevision
-        let observed = entries.filter { $0.isObserved && $0.stage != .unobservable }.compactMap { receipts[$0.id] }
+        let observed = storedEntries.filter { $0.isObserved && $0.stage != .unobservable }.compactMap { receipts[$0.id] }
         guard !observed.isEmpty, let measurement = await sample() else { return }
         let observations = await Self.probe(observed, home: home)
         guard revision == receiptRevision else { return }
-        let next = RoomMakeRoomLedger.advance(entries, observations: observations, sample: measurement, now: measurement.at)
-        guard next != entries else { return }
-        let previousGains = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0.observedGain) })
-        entries = next
+        let next = RoomMakeRoomLedger.advance(storedEntries, observations: observations, sample: measurement, now: measurement.at)
+        guard next != storedEntries else { return }
+        let previousGains = Dictionary(uniqueKeysWithValues: storedEntries.map { ($0.id, $0.observedGain) })
+        storedEntries = next
         await save()
         for entry in next where entry.observedGain > (previousGains[entry.id] ?? 0) {
             didObserveGain?(entry)
         }
     }
+
+    #if DEBUG
+    func simulateTrash(at now: Date = Date()) async {
+        await load()
+        guard let simulation = RoomDebugTrashSimulator.simulate(storedEntries, now: now) else { return }
+        let virtual = RoomMakeRoomLedger.advance(
+            storedEntries, observations: simulation.observations, sample: simulation.sample, now: now
+        )
+        simulatedEntries = virtual
+        let realGains = Dictionary(uniqueKeysWithValues: storedEntries.map { ($0.id, $0.observedGain) })
+        if let gain = virtual.first(where: { $0.observedGain > (realGains[$0.id] ?? 0) }) {
+            didObserveGain?(gain)
+        }
+    }
+
+    func resetSimulatedTrash() { simulatedEntries = nil }
+    #endif
 
     private func load() async {
         guard !loaded else { return }
@@ -95,19 +123,19 @@ final class RoomMakeRoomStore {
         }
         let result = await loading?.value
         guard !loaded else { return }
-        if case .loaded(let entries, _) = result { self.entries = entries }
+        if case .loaded(let entries, _) = result { self.storedEntries = entries }
         loaded = true
         loading = nil
     }
 
     private func save() async {
         generation &+= 1
-        do { try await state.write(entries, to: .ledger, generation: generation) }
+        do { try await state.write(storedEntries, to: .ledger, generation: generation) }
         catch { hadWriteFailure = true }
     }
 
     private func scheduleCheck() {
-        guard RoomMakeRoomLedger.needsChecks(entries) else {
+        guard RoomMakeRoomLedger.needsChecks(storedEntries) else {
             checkTask?.cancel()
             checkTask = nil
             return

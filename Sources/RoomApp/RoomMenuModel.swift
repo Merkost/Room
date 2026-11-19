@@ -83,6 +83,10 @@ nonisolated enum RoomMenuModel {
         case debugBoth
         case debugStacked
         case debugIcon
+        #if DEBUG
+        case debugSimulateTrash
+        case debugResetTrash
+        #endif
 
         var title: String {
             switch self {
@@ -153,6 +157,10 @@ nonisolated enum RoomMenuModel {
             case .debugBoth: String(localized: "menu.debugBoth", defaultValue: "Both (elevated and below goal)")
             case .debugStacked: String(localized: "menu.debugStacked", defaultValue: "Both stacked (elevated and below goal)")
             case .debugIcon: String(localized: "menu.debugIcon", defaultValue: "Icon only (elevated)")
+            #if DEBUG
+            case .debugSimulateTrash: String(localized: "debug.simulateTrash", defaultValue: "Simulate Trash Emptied")
+            case .debugResetTrash: String(localized: "debug.resetTrash", defaultValue: "Reset Simulated Trash")
+            #endif
             }
         }
     }
@@ -344,6 +352,10 @@ nonisolated enum RoomMenuModel {
             for id in debugItems {
                 add(.debug, id, enabled: input.menuBarEnabled && !modal)
             }
+            #if DEBUG
+            add(.debug, .debugSimulateTrash, enabled: main && !input.isWorking)
+            add(.debug, .debugResetTrash, enabled: main && !input.isWorking)
+            #endif
         }
         return items
     }

@@ -63,6 +63,8 @@ struct RoomMainMenuTests {
             == ["Show Welcome", "Room Support", "Privacy"])
         let debug = try menu("Debug")
         #expect(debug.contains { $0.title == "Menu bar state" && !$0.enabled })
+        #expect(debug.contains { $0.title == "Simulate Trash Emptied" && $0.enabled })
+        #expect(debug.contains { $0.title == "Reset Simulated Trash" && $0.enabled })
 
         let command = NSEvent.ModifierFlags.command.rawValue
         let shiftCommand = NSEvent.ModifierFlags([.shift, .command]).rawValue

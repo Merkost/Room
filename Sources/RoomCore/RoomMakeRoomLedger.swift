@@ -9,6 +9,13 @@ package nonisolated struct RoomTrashObservation: Sendable {
     package var goneBytes: Int64
     package var restoredBytes: Int64
     package var canObserve: Bool
+
+    package init(presentBytes: Int64, goneBytes: Int64, restoredBytes: Int64, canObserve: Bool) {
+        self.presentBytes = presentBytes
+        self.goneBytes = goneBytes
+        self.restoredBytes = restoredBytes
+        self.canObserve = canObserve
+    }
 }
 
 // MARK: - Capacity sample

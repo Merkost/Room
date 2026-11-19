@@ -1,4 +1,5 @@
 #if DEBUG
+import AppKit
 import Observation
 import SwiftUI
 
@@ -13,6 +14,13 @@ struct RoomDebugMenuCommands: Commands {
     let windowContext: RoomCommandWindowContext
     let enabled: Bool
     var monitor: () -> RoomStatusMonitor?
+    var simulateTrash: () -> Void = {}
+    var resetTrash: () -> Void = {}
+
+    private var canSimulate: Bool {
+        windowContext.window != .modal
+            && NSApp.windows.contains { $0.identifier == RoomApplicationDelegate.primaryWindowID }
+    }
 
     var body: some Commands {
         CommandMenu(RoomMenuModel.Section.debug.title) {
@@ -31,6 +39,9 @@ struct RoomDebugMenuCommands: Commands {
             } else {
                 Button(RoomMenuModel.ID.debugState.title) {}.disabled(true)
             }
+            Divider()
+            Button(RoomMenuModel.ID.debugSimulateTrash.title, action: simulateTrash).disabled(!canSimulate)
+            Button(RoomMenuModel.ID.debugResetTrash.title, action: resetTrash).disabled(!canSimulate)
         }
     }
 }

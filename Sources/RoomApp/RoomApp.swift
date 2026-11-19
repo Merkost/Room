@@ -126,7 +126,14 @@ struct RoomApp: App {
             })
             #if DEBUG
             RoomDebugMenuCommands(windowContext: delegate.commandWindow, enabled: menuBarEnabled,
-                                  monitor: { delegate.statusMonitor })
+                monitor: { delegate.statusMonitor },
+                simulateTrash: {
+                    guard !model.isWorking else { return }
+                    Task { await model.makeRoomStore?.simulateTrash() }
+                }, resetTrash: {
+                    model.makeRoomStore?.resetSimulatedTrash()
+                    model.activityCenter?.clear(.makeRoom)
+                })
             #endif
         }
         Settings {
