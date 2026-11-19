@@ -77,7 +77,7 @@ struct RoomSettingsLogicTests {
         #expect(summary.count == 2)
         #expect(summary.since == early)
         #expect(summary.sinceMonth == "March 2025")
-        #expect(summary.caption == "of room made since March 2025, across 2 cleanups")
+        #expect(summary.caption == "moved to Trash since March 2025, across 2 cleanups")
     }
 
     @Test func noKeptCleanupsHasNoSummary() {
@@ -94,7 +94,7 @@ struct RoomSettingsLogicTests {
         #expect(summary.bytes == 0)
         #expect(summary.count == 1)
         #expect(summary.sinceMonth == "mars 2026")
-        #expect(summary.caption == "of room made since mars 2026, across 1 cleanup")
+        #expect(summary.caption == "moved to Trash since mars 2026, across 1 cleanup")
     }
 
     private static func calendar(locale: String) -> Calendar {
