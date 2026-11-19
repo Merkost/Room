@@ -20,6 +20,7 @@ settings:
     ONLY_ACTIVE_ARCH: NO
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: complete
+    OTHER_SWIFT_FLAGS: "$(inherited) -package-name Room"
     SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) ROOM_APP_STORE"
     DEVELOPMENT_TEAM: P47X2292CM
   configs:
