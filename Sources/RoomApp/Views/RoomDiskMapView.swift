@@ -9,6 +9,7 @@ struct RoomDiskMapView: View {
     @Environment(\.openSettings) private var openSettings
     @Environment(\.roomAccent) private var accent
     @Environment(\.roomHide) private var privacy
+    @Environment(\.roomMotion) private var motion
     private var hidden: Bool { privacy.masksNow }
     @State private var layout: Display = .map
     @State private var filter: String?
@@ -18,6 +19,8 @@ struct RoomDiskMapView: View {
     @State private var showsOther = false
     @State private var previewURL: URL?
     @State private var previewScope: URL?
+    @State private var mapGeneration = 0
+    @State private var mapStep: RoomMapStep?
 
     private enum Display: String, CaseIterable { case map = "Map", largest = "Largest 20", compare = "Compare" }
     private var model: RoomDiskMapModel { insights.diskMap }
@@ -67,11 +70,20 @@ struct RoomDiskMapView: View {
         .onDisappear { releasePreviewScope() }
         .task { await insights.restoreDiskMap() }
         .task { await insights.observeTreeChanges() }
-        .onChange(of: model.levelPath) { _, _ in filter = nil }
+        .onChange(of: model.levelPath) { _, path in
+            filter = nil
+            if mapStep?.destination != path { mapStep = nil }
+        }
         .onChange(of: model.current?.rootID) { _, _ in
             filter = nil
             layout = .map
+            mapStep = nil
         }
+        .onChange(of: layout) { _, _ in mapStep = nil }
+        .onChange(of: model.canCompare) { _, available in
+            if !available, layout == .compare { layout = .map }
+        }
+        .onChange(of: motion.isFull) { _, _ in roomWithoutMotion { mapStep = nil } }
         .sheet(isPresented: $showsIssues) {
             RoomScanIssuesSheet(issues: insights.diskReport?.issues.map { hidden ? "Path hidden" : "\($0.url.path): \($0.message)" } ?? [])
         }
@@ -109,7 +121,9 @@ struct RoomDiskMapView: View {
             Text("Disk Map").font(RoomTokens.Typography.title).accessibilityAddTraits(.isHeader)
         } else {
             VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
-                RoomBreadcrumbs(trail: model.trail, hidden: hidden) { model.go(to: $0) }
+                RoomBreadcrumbs(trail: model.trail, hidden: hidden) {
+                    step(to: $0, animated: NSApp.currentEvent?.type == .leftMouseUp)
+                }
                 if let date = model.current?.scannedAt {
                     Text("Scanned \(date.formatted(.dateTime.month().day()))")
                         .font(RoomTokens.Typography.caption).foregroundStyle(RoomTokens.Ink.secondary)
@@ -191,14 +205,18 @@ struct RoomDiskMapView: View {
             VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
                 if layout == .map {
                     RoomMapKindControl(node: level, hidden: hidden, filter: $filter)
-                    RoomMapCanvas(level: filtered(level), selection: model.selectedPath, hidden: hidden,
-                                  activate: activate, preview: quickLook, reveal: reveal)
+                    RoomMapViewport(level: filtered(level), selection: model.selectedPath, hidden: hidden,
+                                    generation: mapGeneration,
+                                    step: mapStep?.destination == level.relativePath ? mapStep : nil,
+                                    activate: activate, preview: quickLook, reveal: reveal)
                         .frame(minHeight: RoomTokens.Map.minimumHeight)
                 } else if layout == .compare, let compared = model.comparison {
-                    RoomCompareOverlay(earlier: compared.earlier, current: level, earlierDate: compared.date, hidden: hidden)
+                    RoomCompareOverlay(earlier: compared.earlier, current: level, earlierDate: compared.date, hidden: hidden) {
+                        layout = .map
+                    }
                         .frame(minHeight: RoomTokens.Map.minimumHeight)
                 } else {
-                    RoomLargestTable(level: level, hidden: hidden) { activate($0, false) }
+                    RoomLargestTable(level: level, hidden: hidden) { activate($0, false, false) }
                 }
                 readout(level)
             }
@@ -210,7 +228,7 @@ struct RoomDiskMapView: View {
         HStack(alignment: .top, spacing: RoomTokens.Space.inner) {
             VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
                 RoomMapCanvas(level: blueprint.tree(rootName: model.rootURL?.lastPathComponent ?? "Disk Map"),
-                              selection: nil, hidden: hidden, pending: blueprint.earlierNames)
+                              selection: nil, hidden: hidden, pending: blueprint.earlierNames, interactive: false)
                     .frame(minHeight: RoomTokens.Map.minimumHeight)
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
@@ -251,19 +269,42 @@ struct RoomDiskMapView: View {
         return RoomMapInspector(node: shown, url: shown.flatMap { model.url(for: $0.relativePath) },
             parent: model.level, pin: rooms.map { $0.pin(url:) }, showSizes: !hidden,
             isScanning: insights.isScanningDisk, analysis: insights.analysisReport, isAnalyzing: insights.isAnalyzingStorage,
-            stepIn: { if let shown { model.go(to: shown.relativePath) } },
+            stepIn: {
+                if let shown { step(to: shown.relativePath, animated: NSApp.currentEvent?.type == .leftMouseUp) }
+            },
             map: { if let url = shown.flatMap({ model.url(for: $0.relativePath) }) { insights.scanDisk(url: url) } },
             rescan: { if let shown { insights.rescanMappedFolder(shown.relativePath) } },
             inspect: insights.analyzeStorage)
     }
 
-    private func activate(_ path: String, _ open: Bool) {
+    private func activate(_ path: String, _ open: Bool, _ pointer: Bool) {
         if path.hasSuffix("\u{0}other") {
             if open { showsOther = true }
             return
         }
-        if open, model.go(to: path) { return }
+        if open, step(to: path, animated: pointer) { return }
         model.select(path)
+    }
+
+    @discardableResult
+    private func step(to path: String, animated: Bool) -> Bool {
+        guard animated, layout == .map, let prior = model.level, prior.relativePath != path else {
+            return model.go(to: path)
+        }
+        let previous = filtered(prior)
+        let selection = model.selectedPath
+        guard model.go(to: path) else { return false }
+        filter = nil
+        let generation = mapGeneration + 1
+        withAnimation(motion.animation(RoomTokens.Motion.page)) {
+            mapGeneration = generation
+            mapStep = RoomMapStep(generation: generation, previous: previous, selection: selection,
+                                  destination: path, into: prior.relativePath.isEmpty || path.hasPrefix(prior.relativePath + "/"))
+        } completion: {
+            guard mapStep?.generation == generation else { return }
+            roomWithoutMotion { mapStep = nil }
+        }
+        return true
     }
 
     private func quickLook(_ path: String) -> Bool {

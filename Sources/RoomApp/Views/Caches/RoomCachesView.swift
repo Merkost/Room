@@ -70,7 +70,9 @@ struct RoomCachesView: View {
                 let entry = model.makeRoomStore?.entry(for: receipt.id)
                 moved(receipt, entry: entry)
                 RoomReceiptView(receipt: receipt, entry: entry,
-                    restore: model.isWorking || model.isScanning ? nil : { restore(receipt) })
+                    restore: model.isWorking || model.isScanning ? nil : { restore(receipt) },
+                    printsOnArrival: true)
+                    .id(receipt.id)
             }
             if !model.sources.isEmpty {
                 ViewThatFits(in: .horizontal) {

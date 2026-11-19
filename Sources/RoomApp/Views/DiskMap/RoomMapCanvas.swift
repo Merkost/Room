@@ -6,15 +6,19 @@ struct RoomMapCanvas: View {
     let selection: String?
     let hidden: Bool
     var pending: Set<String> = []
-    var activate: (String, Bool) -> Void = { _, _ in }
+    var placedLayer: RoomMapLayer?
+    var interactive = true
+    var suppressLabels = false
+    var activate: (String, Bool, Bool) -> Void = { _, _, _ in }
     var preview: (String) -> Bool = { _ in false }
     var reveal: (String) -> Void = { _ in }
 
     var body: some View {
         GeometryReader { geometry in
-            let layer = RoomMapLayer.make(level: level, size: geometry.size)
+            let layer = placedLayer ?? RoomMapLayer.make(level: level, size: geometry.size)
             RoomMapCanvasSurface(layer: layer, level: level, selection: selection, hidden: hidden,
-                pending: pending, activate: activate, preview: preview, reveal: reveal)
+                pending: pending, interactive: interactive, suppressLabels: suppressLabels,
+                activate: activate, preview: preview, reveal: reveal)
         }
         .background(RoomTokens.Surface.canvas, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.card))
         .accessibilityIdentifier("RoomDiskMapCanvas")
@@ -32,7 +36,9 @@ private struct RoomMapCanvasSurface: View {
     let selection: String?
     let hidden: Bool
     let pending: Set<String>
-    let activate: (String, Bool) -> Void
+    let interactive: Bool
+    let suppressLabels: Bool
+    let activate: (String, Bool, Bool) -> Void
     let preview: (String) -> Bool
     let reveal: (String) -> Void
 
@@ -41,9 +47,18 @@ private struct RoomMapCanvasSurface: View {
     }
 
     var body: some View {
+        if interactive { interactiveCanvas }
+        else { artwork }
+    }
+
+    private var artwork: some View {
         Canvas { context, _ in
             for tile in layer.items { draw(tile, in: context) }
         }
+    }
+
+    private var interactiveCanvas: some View {
+        artwork
         .contentShape(Rectangle())
         .onContinuousHover { phase in
             switch phase {
@@ -61,7 +76,7 @@ private struct RoomMapCanvasSurface: View {
         .onKeyPress(.downArrow) { move(.down) }
         .onKeyPress(.return) {
             guard let item = keyboardSelection ?? selection ?? ordered.first?.id else { return .ignored }
-            activate(item, true)
+            activate(item, true, false)
             return .handled
         }
         .onKeyPress(.space) {
@@ -72,10 +87,14 @@ private struct RoomMapCanvasSurface: View {
             keyboardSelection = nil
             return .handled
         }
+        .onChange(of: level.relativePath) { _, _ in
+            hovered = nil
+            keyboardSelection = nil
+        }
         .accessibilityLabel("Disk Map")
         .accessibilityChildren {
             ForEach(ordered, id: \.id) { item in
-                Button(spoken(item)) { activate(item.id, item.canStepInside) }
+                Button(spoken(item)) { activate(item.id, item.canStepInside, false) }
                     .accessibilityRotorEntry(id: item.id, in: rotor)
                     .accessibilityAction(named: "Show in Finder") { reveal(item.id) }
             }
@@ -118,7 +137,7 @@ private struct RoomMapCanvasSurface: View {
         if hasFocus, keyboardSelection == tile.id {
             context.stroke(shape, with: .color(accent.fill), lineWidth: RoomTokens.Map.focusStroke)
         }
-        guard tile.label != .none else { return }
+        guard !suppressLabels, tile.label != .none else { return }
         let labelBox = (tile.headerRect ?? tile.drawRect).insetBy(dx: RoomTokens.Map.labelPaddingX, dy: RoomTokens.Map.labelPaddingY)
         guard labelBox.width > 0, labelBox.height > 0 else { return }
         let size = hidden ? "Hidden" : (tile.isPartial && !isPending ? "≥ " : "") + RoomFormat.bytes(tile.bytes)
@@ -149,7 +168,7 @@ private struct RoomMapCanvasSurface: View {
     private func hit(_ point: CGPoint, open: Bool) {
         guard let tile = layer.hit(point) else { return }
         keyboardSelection = nil
-        activate(tile.id, open || tile.isHeader)
+        activate(tile.id, open || tile.isHeader, true)
     }
 
     private func move(_ direction: RoomMapDirection) -> KeyPress.Result {
@@ -159,7 +178,7 @@ private struct RoomMapCanvasSurface: View {
         } else {
             keyboardSelection = first
         }
-        if let keyboardSelection { activate(keyboardSelection, false) }
+        if let keyboardSelection { activate(keyboardSelection, false, false) }
         return .handled
     }
 }

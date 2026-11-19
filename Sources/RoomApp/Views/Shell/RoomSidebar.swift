@@ -91,6 +91,10 @@ struct RoomSidebar: View {
             navigation.select(route, origin: .keyboard)
             return .handled
         }
+        .onKeyPress(.space) {
+            navigation.select(route, origin: .keyboard)
+            return .handled
+        }
         .onMoveCommand(perform: moveFocus)
         .help(item.help)
         .accessibilityLabel(item.title)

@@ -6,7 +6,6 @@ struct RoomCleanupReviewSheet: View {
     let model: RoomViewModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.roomAccent) private var accent
-    @Environment(\.roomMotion) private var motion
     @State private var committed: RoomCleanupReview?
 
     private var presentation: RoomCleanupReview {
@@ -37,7 +36,8 @@ struct RoomCleanupReviewSheet: View {
                         Toggle(isOn: Binding(get: { selected }, set: { _ in model.toggleSelection(id: row.id) })) {
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(row.name).font(RoomTokens.Typography.section).strikethrough(!selected)
+                                    Text(hidden ? "Name hidden" : row.name)
+                                        .font(RoomTokens.Typography.section).strikethrough(!selected)
                                     Text(row.consequence).foregroundStyle(RoomTokens.Ink.secondary)
                                 }
                                 Spacer()
@@ -57,7 +57,7 @@ struct RoomCleanupReviewSheet: View {
                     VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
                         Text("Before you move").font(RoomTokens.Typography.section)
                         ForEach(review.beforeYouMove(keptBytes: model.heldBytes,
-                            keptExample: model.protectedSources.first?.name, format: format), id: \.self) { line in
+                            keptExample: hidden ? nil : model.protectedSources.first?.name, format: format), id: \.self) { line in
                             Label(line, systemImage: "circle.fill")
                                 .font(RoomTokens.Typography.caption).foregroundStyle(RoomTokens.Ink.secondary)
                         }
@@ -82,10 +82,21 @@ struct RoomCleanupReviewSheet: View {
                 Button {
                     move(review)
                 } label: {
-                    if review.phase == .moving {
-                        ProgressView().controlSize(.small).accessibilityLabel("Moving to Trash")
-                    } else {
-                        Text(commitLabel(review.commit))
+                    ZStack {
+                        if review.phase == .moving {
+                            Text(commitLabel(.move(review.selectedBytes))).hidden().accessibilityHidden(true)
+                        }
+                        // Keep the primary button's position while it acknowledges the operation.
+                        RoomChangingLabel(value: review.phase == .moving, animates: !hidden, alignment: .center) {
+                            if review.phase == .moving {
+                                HStack(spacing: RoomTokens.Space.row) {
+                                    ProgressView().controlSize(.small)
+                                    Text(commitLabel(review.commit))
+                                }
+                            } else {
+                                Text(commitLabel(review.commit))
+                            }
+                        }
                     }
                 }
                 .roomPrimary(accent).keyboardShortcut(.defaultAction)
@@ -108,7 +119,7 @@ struct RoomCleanupReviewSheet: View {
         guard canCommit(review) else { return }
         var moving = review
         moving.phase = .moving
-        withAnimation(motion.animation(RoomTokens.Motion.standard)) { committed = moving }
+        committed = moving
         Task {
             await model.cleanSelected()
             committed = nil

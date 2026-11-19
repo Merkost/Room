@@ -272,6 +272,8 @@ enum RoomTokens {
         static let standard = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.20)
         static let exit = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.12)
         static let page = Animation.spring(response: 0.32, dampingFraction: 1)
+        static let compareGlide = Animation.spring(response: 0.36, dampingFraction: 1)
+        static let receiptLead = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.28)
         static let onboardingText = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.24).delay(0.07)
         static let settle = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.24)
         static let success = Animation.spring(response: 0.28, dampingFraction: 0.7)  // the only overshoot

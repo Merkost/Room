@@ -17,16 +17,16 @@ struct RoomActivityPill: View {
     var body: some View {
         if let center {
             let state = center.visible
+            let text = label(state)
             Button {
                 expanded.toggle()
             } label: {
                 HStack(spacing: RoomTokens.Space.row) {
                     mark(state)
-                    Text(label(state))
-                        .font(RoomTokens.Typography.caption.monospacedDigit())
-                        .lineLimit(1)
-                        .contentTransition(.opacity)
-                        .animation(motion.animation(RoomTokens.Motion.fade), value: label(state))
+                    RoomChangingLabel(value: text, animates: !hidden) {
+                        Text(text).font(RoomTokens.Typography.caption.monospacedDigit())
+                            .lineLimit(1).truncationMode(.middle)
+                    }
                 }
                 .padding(.horizontal, 10)
                 .frame(minWidth: 160, idealWidth: 220, maxWidth: 360, minHeight: 28)
@@ -77,15 +77,17 @@ struct RoomActivityPill: View {
     private func mark(_ state: RoomActivityPillState) -> some View {
         if case .scanning = state, motion.isFull {
             TimelineView(.animation) { context in
-                let elapsed = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.4)
-                markPath(phase: elapsed / 1.4)
+                let lap = RoomTokens.Motion.traceLap
+                let elapsed = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: lap)
+                markPath(phase: elapsed / lap)
             }
             .frame(width: 16, height: 16)
             .accessibilityHidden(true)
         } else if case .made = state {
             Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(accent.text).accessibilityHidden(true)
-                .transition(motion.isFull ? .scale.combined(with: .opacity) : .opacity)
+                .foregroundStyle(accent.text)
+                .frame(width: 16, height: 16)
+                .accessibilityHidden(true)
         } else {
             markPath(phase: nil).frame(width: 16, height: 16).accessibilityHidden(true)
         }
@@ -96,7 +98,7 @@ struct RoomActivityPill: View {
             let outline = Path(RoomPocketMark.outerPath(in: CGRect(origin: .zero, size: size)))
             context.stroke(outline, with: .color(phase == nil ? accent.text.opacity(0.9) : RoomTokens.Ink.secondary.opacity(0.35)), lineWidth: 1.2)
             if let phase {
-                let end = phase + 0.22
+                let end = phase + RoomTokens.Motion.traceDashFraction
                 context.stroke(outline.trimmedPath(from: phase, to: min(1, end)), with: .color(accent.text), lineWidth: 1.4)
                 if end > 1 {
                     context.stroke(outline.trimmedPath(from: 0, to: end - 1), with: .color(accent.text), lineWidth: 1.4)

@@ -23,6 +23,7 @@ struct RoomRootView: View {
     @State private var sheet: RoomSheet?
     @State private var showingCustomise = false
     @State private var editingRoom: UUID?
+    @State private var leftOverviewAt: ContinuousClock.Instant?
 
     private var destination: RoomDestination { navigation.destination }
     private var colorScheme: ColorScheme? {
@@ -228,7 +229,9 @@ struct RoomRootView: View {
         case .overview:
             RoomOverviewView(insights: insights, rooms: rooms, navigate: navigation.select, refresh: insights.refreshDiskCapacity,
                              cacheModel: model, editingRoom: showingCustomise ? editingRoom : nil,
-                             showAllRooms: { showingCustomise = true }, restoreRecent: restoreFromCaches)
+                             showAllRooms: { showingCustomise = true }, restoreRecent: restoreFromCaches,
+                             animatesArrival: overviewArrival)
+                .onDisappear { leftOverviewAt = .now }
         case .clean:
             RoomCachesView(model: model, review: { sheet = .review },
                 inspect: { sheet = .source($0) }, showKept: { sheet = .protectedSources },
@@ -244,6 +247,12 @@ struct RoomRootView: View {
             RoomDeveloperView(model: developer, agentWork: agentWork, memoryReport: insights.memoryReport)
             #endif
         }
+    }
+
+    private var overviewArrival: Bool {
+        guard navigation.selectionOrigin != .keyboard, !navigation.needsWelcome else { return false }
+        guard let leftOverviewAt else { return true }
+        return leftOverviewAt.duration(to: .now) >= .seconds(600)
     }
 
     private func restoreFromCaches(_ record: RoomActivity) {

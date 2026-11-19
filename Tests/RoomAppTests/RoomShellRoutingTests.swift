@@ -26,11 +26,15 @@ struct RoomShellRoutingTests {
         let navigation = RoomWindowNavigation(defaults: defaults)
         navigation.select(.clean)
         navigation.select(.screen(.disk), origin: .keyboard)
+        #expect(navigation.selectionOrigin == .keyboard)
         navigation.back()
         #expect(navigation.route == .screen(.clean) && navigation.canGoForward)
+        #expect(navigation.selectionOrigin == .keyboard)
         navigation.forward()
         #expect(navigation.route == .screen(.disk) && !navigation.canGoForward)
         #expect(defaults.string(forKey: "RoomLastDestination") == "disk")
+        navigation.select(.screen(.overview), origin: .pointer)
+        #expect(navigation.selectionOrigin == .pointer)
     }
 
     @Test func backDisabledWhenModal() {

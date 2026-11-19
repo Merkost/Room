@@ -17,6 +17,7 @@ nonisolated enum RoomOpenOn: String, CaseIterable, Sendable {
 final class RoomWindowNavigation {
     private(set) var history: RoomNavigationHistory
     private(set) var prefersSidebarIcons: Bool
+    private(set) var selectionOrigin = RoomSelectionOrigin.programmatic
     var route: RoomRoute { history.current }
     var destination: RoomDestination { route.highlightedScreen ?? .disk }
     var canGoBack: Bool { history.canGoBack }
@@ -62,10 +63,15 @@ final class RoomWindowNavigation {
     }
 
     private func change(_ origin: RoomSelectionOrigin, operation: () -> Void) {
-        if case .keyboard = origin {
-            withTransaction(transaction(for: origin), operation)
-        } else {
+        let previous = route
+        func update() {
             operation()
+            if route != previous { selectionOrigin = origin }
+        }
+        if case .keyboard = origin {
+            withTransaction(transaction(for: origin), update)
+        } else {
+            update()
         }
         defaults.set(route.restorableRaw, forKey: "RoomLastDestination")
     }

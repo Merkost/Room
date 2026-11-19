@@ -30,6 +30,7 @@
 		224CB6B78C2E53E7C45F282A /* Caches.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = E0DC4B287B687C6F933C45FC /* Caches.xcstrings */; };
 		247149946293BF33BAD59647 /* RoomOverviewHideControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE34118C213382CD9A663510 /* RoomOverviewHideControl.swift */; };
 		27D8AF00AB56721379FA3CDD /* RoomMenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D76B0159E47EE20D2094A3BF /* RoomMenuBarView.swift */; };
+		29473E6776D0F2DF1760B3E1 /* RoomMapStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = 749AF9E0125E2DEDCB837401 /* RoomMapStep.swift */; };
 		29D8CB56CB18FE069F1A2D96 /* RoomMapReadout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FC3CB7ED1FFE2970270486C /* RoomMapReadout.swift */; };
 		2A02A1E431179BF2DA26F477 /* RoomFileAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03FE6F060223DDABDB245961 /* RoomFileAccess.swift */; };
 		2C5817C1FE23B5C9110F3F52 /* RoomOnboardingFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DF5AA8E6684553C3E2E5BC3 /* RoomOnboardingFlow.swift */; };
@@ -105,6 +106,7 @@
 		97872A17C246E360DD39079D /* RoomTrashProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB88A4D54C15871548B99A5A /* RoomTrashProbe.swift */; };
 		98105E6673323CB862F03592 /* DeveloperResourcesEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9D865A95607D5DCCE969EF9 /* DeveloperResourcesEngine.swift */; };
 		9E389833E051F56B6B78A017 /* StoreCatalogue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 337A806B1F7E0542B22D7D64 /* StoreCatalogue.swift */; };
+		A010B20887DD95589C50E738 /* RoomMicroMotion.swift in Sources */ = {isa = PBXBuildFile; fileRef = B63BA8B7CA78364EB10BE12A /* RoomMicroMotion.swift */; };
 		A10A09BD4BAAA9225D4D59AB /* RoomDeveloperView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54EDE3A87D12DE25FD309585 /* RoomDeveloperView.swift */; };
 		A2A9A7BFE74948D6B10B279C /* RoomPocketScrubber.swift in Sources */ = {isa = PBXBuildFile; fileRef = 957A209DADDF2941822C230C /* RoomPocketScrubber.swift */; };
 		A2D39E5136C22F835D2E83AF /* RoomFolderPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7638868EDDF7335487DFA587 /* RoomFolderPicker.swift */; };
@@ -260,6 +262,7 @@
 		6E3601491C84E525F8D7CCA2 /* RoomTreeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomTreeStore.swift; sourceTree = "<group>"; };
 		6EE7D1CAE8305F18E8C3AB99 /* RoomIgnoreStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomIgnoreStore.swift; sourceTree = "<group>"; };
 		7038662BE3F3239641511BFA /* RoomFolderAccessStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomFolderAccessStatus.swift; sourceTree = "<group>"; };
+		749AF9E0125E2DEDCB837401 /* RoomMapStep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomMapStep.swift; sourceTree = "<group>"; };
 		75753CB74069A8A8CEF2F390 /* Room.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = Room.icns; sourceTree = "<group>"; };
 		7638868EDDF7335487DFA587 /* RoomFolderPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomFolderPicker.swift; sourceTree = "<group>"; };
 		791783C51B361B535AED855C /* RoomHistoryButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomHistoryButton.swift; sourceTree = "<group>"; };
@@ -309,6 +312,7 @@
 		B2A33FFFD214CE106557CB84 /* RoomDeveloperRoomsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomDeveloperRoomsView.swift; sourceTree = "<group>"; };
 		B51E5BB7715F9BA6C950F8F0 /* RoomNavigationHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomNavigationHistory.swift; sourceTree = "<group>"; };
 		B5835208C7B8FEA8D32DD006 /* libRoomCore.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libRoomCore.a; sourceTree = BUILT_PRODUCTS_DIR; };
+		B63BA8B7CA78364EB10BE12A /* RoomMicroMotion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomMicroMotion.swift; sourceTree = "<group>"; };
 		B7A34F0BEC666C111EA71748 /* RoomDebugMenuCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomDebugMenuCommands.swift; sourceTree = "<group>"; };
 		B89FF5A8A8D621EC5A167F47 /* RoomSquarify.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomSquarify.swift; sourceTree = "<group>"; };
 		B8B08F310CBBAE2B1B5D30D9 /* RoomOverviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomOverviewView.swift; sourceTree = "<group>"; };
@@ -418,6 +422,7 @@
 				EE2247F8B8913FDA521D8108 /* RoomMapInspector.swift */,
 				FD7A8E8EF69AFDA4D85C9889 /* RoomMapLayer.swift */,
 				8FC3CB7ED1FFE2970270486C /* RoomMapReadout.swift */,
+				749AF9E0125E2DEDCB837401 /* RoomMapStep.swift */,
 			);
 			path = DiskMap;
 			sourceTree = "<group>";
@@ -590,6 +595,7 @@
 				7A30F240DA248E8C928A82EC /* RoomLayout.swift */,
 				38BBCC5584EF9D0FCCF8EC83 /* RoomMark.swift */,
 				16E08FFC42786A9AE0A84C28 /* RoomMarkShape.swift */,
+				B63BA8B7CA78364EB10BE12A /* RoomMicroMotion.swift */,
 				8A16E6F456DCBB83E5712AEB /* RoomPure.swift */,
 				CC76CE8FA2E434EA39BCD9AE /* RoomTokens.swift */,
 				A6D42D2B6D3C161D1D5476AF /* RoomTokens+AppKit.swift */,
@@ -903,6 +909,7 @@
 				3D6FBC383D1781DFA892BE1B /* RoomMapInspector.swift in Sources */,
 				0DA2BAA8CF747F8E914FDCE7 /* RoomMapLayer.swift in Sources */,
 				29D8CB56CB18FE069F1A2D96 /* RoomMapReadout.swift in Sources */,
+				29473E6776D0F2DF1760B3E1 /* RoomMapStep.swift in Sources */,
 				D19FF7D7FCE4D01D5C55E2EC /* RoomMark.swift in Sources */,
 				3ECC58F3B27F010290FBBCC0 /* RoomMarkShape.swift in Sources */,
 				D95A66047E3D9E4448131354 /* RoomMemoryView.swift in Sources */,
@@ -915,6 +922,7 @@
 				4627DF510A98F94FC7D8DD2A /* RoomMenuBarTitleTick.swift in Sources */,
 				27D8AF00AB56721379FA3CDD /* RoomMenuBarView.swift in Sources */,
 				6561CF8481D5036AF4F90726 /* RoomMenuModel.swift in Sources */,
+				A010B20887DD95589C50E738 /* RoomMicroMotion.swift in Sources */,
 				41CFD19563B9B574EF73683E /* RoomModels.swift in Sources */,
 				4AB52C46FAF7B5F28FAE4236 /* RoomMonitorPresentation.swift in Sources */,
 				C6D57754D190A5DFC075394C /* RoomNavigationHistory.swift in Sources */,

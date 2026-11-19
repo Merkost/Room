@@ -45,15 +45,14 @@ struct RoomFolderAccessSettingsView: View {
                                     RoomFolderRowHover { folderRow(folder) }
                                     if folder.id != folders.last?.id { Divider() }
                                 }
-                                // Reduce Motion: no travel (opacity only).
-                                .transition(motion.isFull ? .opacity.combined(with: .move(edge: .top)) : .opacity)
+                                .transition(motion.rowDisclosure)
                             }
                         }
                     }
                     .scrollDisabled(false)   // the list scrolls even though the tab itself never does
                     .frame(height: min(RoomTokens.Settings.folderListMaximumHeight,
                         CGFloat(folders.count) * RoomTokens.Settings.folderRowHeight))
-                    .animation(motion.animation(RoomTokens.Motion.settle, fallback: nil), value: folders.map(\.id))
+                    .animation(motion.animation(RoomTokens.Motion.standard), value: folders.map(\.id))
                 }
             }
 

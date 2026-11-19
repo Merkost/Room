@@ -39,4 +39,4 @@ nonisolated enum RoomRoute: Hashable, Sendable, Codable {
 }
 
 /// How a selection was made. Keyboard selections (⌘1–5, arrows, ⌘[ ⌘]) never animate (14 §5).
-nonisolated enum RoomSelectionOrigin: Sendable { case pointer, keyboard, programmatic }
+nonisolated enum RoomSelectionOrigin: Equatable, Sendable { case pointer, keyboard, programmatic }

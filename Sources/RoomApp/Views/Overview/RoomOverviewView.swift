@@ -3,6 +3,16 @@ import AppKit
 import CoreText
 import SwiftUI
 
+private struct RoomOverviewArrivalGroup: ViewModifier {
+    let visible: Bool
+    let index: Int
+
+    func body(content: Content) -> some View {
+        content.roomReveal(visible, from: RoomTokens.Space.group,
+                           animation: RoomTokens.Motion.settle.delay(Double(index) * RoomTokens.Motion.settleStagger))
+    }
+}
+
 struct RoomOverviewView: View {
     let insights: RoomInsightsModel
     let rooms: RoomRoomsModel
@@ -12,6 +22,7 @@ struct RoomOverviewView: View {
     var editingRoom: UUID? = nil
     var showAllRooms: () -> Void = {}
     var restoreRecent: ((RoomActivity) -> Void)? = nil
+    var animatesArrival = false
     @AppStorage(RoomOverviewPreferences.densityKey) private var density = RoomTokens.Density.calm
     @AppStorage(RoomOverviewPreferences.recentReceiptKey) private var showRecent = true
     @AppStorage(RoomOverviewStyle.preferenceKey) private var style = RoomOverviewStyle.dots
@@ -28,6 +39,7 @@ struct RoomOverviewView: View {
     @Environment(\.roomAccent) private var accent
     @State private var model = RoomOverviewModel()
     @State private var isActive = false
+    @State private var arrived = false
 
     private struct Inputs: Equatable {
         let capacity: RoomVolumeCapacity?
@@ -67,18 +79,24 @@ struct RoomOverviewView: View {
                     }
                     answerGroup(snapshot)
                 }
+                .modifier(arrivalGroup(0))
                 if let plan = snapshot.plan, plan.fitsDotBudget {
                     RoomDotPlanView(plan: plan, belowGoal: snapshot.state == .belowGoal, hidden: hidden,
                                     density: density, solidKinds: style == .rooms, openDiskMap: openDiskMap)
+                        .modifier(arrivalGroup(1))
                 }
-                actions(snapshot)
-                if snapshot.mapLinkAvailable {
-                    link(RoomOverviewCopy.mapMac, accessibilityLabel: RoomOverviewCopy.mapMac, action: insights.scanHome)
+                VStack(alignment: .leading, spacing: density.betweenGroups) {
+                    actions(snapshot)
+                    if snapshot.mapLinkAvailable {
+                        link(RoomOverviewCopy.mapMac, accessibilityLabel: RoomOverviewCopy.mapMac, action: insights.scanHome)
+                    }
                 }
+                .modifier(arrivalGroup(2))
                 if let caption = model.cacheCaption {
                     RoomMaskable(caption)
                         .font(RoomTokens.Typography.body)
                         .foregroundStyle(RoomTokens.Ink.secondary)
+                        .modifier(arrivalGroup(3))
                 }
             }
             .frame(minHeight: density.firstScreenMinHeight, alignment: .topLeading)
@@ -88,13 +106,17 @@ struct RoomOverviewView: View {
                                      showAll: showAllRooms)
                     recentLine(standalone: false)
                 }
+                .modifier(arrivalGroup(4))
             } else {
                 recentLine(standalone: true)
+                    .modifier(arrivalGroup(4))
             }
         }
         .frame(maxWidth: density.planSize.width, alignment: .leading)
         .frame(maxWidth: .infinity, alignment: .leading)
         .foregroundStyle(RoomTokens.Ink.graphite)
+        .roomReveal(!animatesArrival || motion.isFull || arrived, animation: RoomTokens.Motion.fade)
+        .task { arrived = true }
         .onChange(of: inputs, initial: true) { previous, updated in
             updateSnapshot(updated)
             if previous.sampledAt != nil, (previous.capacity == nil) != (updated.capacity == nil),
@@ -202,6 +224,10 @@ struct RoomOverviewView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(snapshot.accessibilityAnswer)
         .accessibilityHeading(.h1)
+    }
+
+    private func arrivalGroup(_ index: Int) -> RoomOverviewArrivalGroup {
+        RoomOverviewArrivalGroup(visible: !animatesArrival || !motion.isFull || arrived, index: index)
     }
 
     private func actions(_ snapshot: RoomOverviewSnapshot) -> some View {
