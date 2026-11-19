@@ -26,7 +26,7 @@ final class RoomInlineConfirmCenter {
 
     func press(_ id: String, doneLine: String, stage: @escaping () -> Void,
                commit: @escaping () -> Void, undo: @escaping () -> Void) {
-        for other in entries.keys where other != id { disarm(other) }
+        for other in Array(entries.keys) where other != id { disarm(other) }
         var entry = entries[id] ?? Entry(doneLine: doneLine, stage: stage, commit: commit, undo: undo)
         let effect = entry.state.press(at: Date())
         entries[id] = entry
@@ -97,6 +97,7 @@ struct RoomInlineConfirmButton: View {
         .buttonStyle(RoomPressStyle())
         .disabled(!isAllowed)
         .focused($focused)
+        .onAppear { if armed { focused = true } }
         .onChange(of: focused) { _, value in if !value { center.disarm(id) } }
         .onExitCommand { center.disarm(id) }
         .accessibilityLabel(armed ? confirmTitle : title)

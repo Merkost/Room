@@ -152,6 +152,8 @@ final class RoomApplicationDelegate: NSObject, NSApplicationDelegate {
                      NSWindow.willCloseNotification] {
             NotificationCenter.default.addObserver(self, selector: #selector(commandWindowChanged), name: name, object: nil)
         }
+        NotificationCenter.default.addObserver(self, selector: #selector(finishWindowConfirmations),
+                                               name: NSWindow.willCloseNotification, object: nil)
         commandWindow.update()
         #if DEBUG
         RoomDebugMainMenuProbe.start()
@@ -160,6 +162,12 @@ final class RoomApplicationDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func commandWindowChanged() {
         Task { @MainActor in commandWindow.update() }
+    }
+
+    @objc private func finishWindowConfirmations(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow, !(window is NSPanel), window.sheetParent == nil else { return }
+        let prefix = window.identifier == Self.primaryWindowID ? "sidebar:" : "settings:"
+        RoomInlineConfirmCenter.shared.finishAll(prefix: prefix)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

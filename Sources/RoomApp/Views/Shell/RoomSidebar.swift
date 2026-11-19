@@ -13,7 +13,6 @@ struct RoomSidebar: View {
     @Environment(\.roomAccent) private var accent
     @FocusState private var focusedScreen: RoomDestination?
     @Namespace private var selection
-    @State private var showUnpinControl: UUID?
     private let unpinPrefix = "sidebar:unpin:"
     private let confirmation = RoomInlineConfirmCenter.shared
     @State private var hoveredScreen: RoomDestination?
@@ -46,10 +45,7 @@ struct RoomSidebar: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Room views")
         .onDisappear { confirmation.finishAll(prefix: unpinPrefix) }
-        .onChange(of: navigation.route) { _, _ in
-            confirmation.finishAll(prefix: unpinPrefix)
-            showUnpinControl = nil
-        }
+        .onChange(of: navigation.route) { _, _ in confirmation.finishAll(prefix: unpinPrefix) }
     }
 
     private func screenRow(_ item: NavigationItem) -> some View {
@@ -157,6 +153,11 @@ struct RoomSidebar: View {
 
     private func pinned(_ room: RoomPinnedRoom, size: String, spokenSize: String?, needsAccess: Bool = false) -> some View {
         let selected = navigation.route == .room(room.id)
+        let unpinID = unpinPrefix + room.id.uuidString
+        let question = String(localized: "confirm.unpin", defaultValue: "Unpin %@?", bundle: RoomCopy.bundle)
+        let done = String(localized: "confirm.unpin.done", defaultValue: "Unpinned %@.", bundle: RoomCopy.bundle)
+        let confirmTitle = String.localizedStringWithFormat(question, room.name)
+        let doneLine = String.localizedStringWithFormat(done, room.name)
         let spokenFormat = String(localized: "nav.room.a11y", defaultValue: "%1$@, Room, %2$@", bundle: RoomCopy.bundle)
         return Button { openRoom(room.id) } label: {
             row(icon: {
@@ -181,19 +182,18 @@ struct RoomSidebar: View {
             if let url = rooms.pinnedURL {
                 Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
             }
-            Button("Unpin…") { showUnpinControl = room.id }
+            Button("Unpin…") {
+                confirmation.press(unpinID, doneLine: doneLine,
+                    stage: { rooms.stageUnpin(room.id) }, commit: { rooms.commitUnpin(room.id) },
+                    undo: { rooms.undoUnpin(room.id) })
+            }
                 .disabled(!rooms.canUnpin)
         }
         .overlay(alignment: .bottomLeading) {
-            if showUnpinControl == room.id {
-                let question = String(localized: "confirm.unpin", defaultValue: "Unpin %@?", bundle: RoomCopy.bundle)
-                let done = String(localized: "confirm.unpin.done", defaultValue: "Unpinned %@.", bundle: RoomCopy.bundle)
-                RoomInlineConfirmButton(id: unpinPrefix + room.id.uuidString, title: "Unpin…",
-                    confirmTitle: String.localizedStringWithFormat(question, room.name),
-                    doneLine: String.localizedStringWithFormat(done, room.name), isAllowed: rooms.canUnpin,
-                    stage: { rooms.stageUnpin(room.id) },
-                    commit: { rooms.commitUnpin(room.id); showUnpinControl = nil },
-                    undo: { rooms.undoUnpin(room.id); showUnpinControl = nil })
+            if case .armed = confirmation.phase(unpinID) {
+                RoomInlineConfirmButton(id: unpinID, title: "Unpin…", confirmTitle: confirmTitle,
+                    doneLine: doneLine, isAllowed: rooms.canUnpin, stage: { rooms.stageUnpin(room.id) },
+                    commit: { rooms.commitUnpin(room.id) }, undo: { rooms.undoUnpin(room.id) })
                     .padding(.horizontal, RoomTokens.Space.row)
                     .background(.regularMaterial, in: pill)
             }
