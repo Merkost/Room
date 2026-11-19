@@ -5,13 +5,19 @@ nonisolated struct RoomPinnedRoom: Codable, Equatable, Sendable, Identifiable {
     var accessFolderID: String
     var name: String
     var order: Int
+    var glyph: String? = nil
+    var colour: String? = nil
+    var budgetBytes: Int64? = nil
+
+    var resolvedGlyph: RoomRoomGlyph { glyph.flatMap(RoomRoomGlyph.init(rawValue:)) ?? .folder }
+    var resolvedColour: RoomRoomColour { colour.flatMap(RoomRoomColour.init(rawValue:)) ?? .developer }
 }
 
 /// Room references and size history stay in the app's own Application Support directory.
 /// Security-scoped bookmarks remain exclusively in RoomFileAccess.
 @MainActor
 struct RoomRoomsStore {
-    static let maximumRooms = 64
+    static let maximumRooms = RoomRoomsCatalog.maximumRooms
     static var defaultDirectory: URL { RoomStateStore.defaultDirectory }
 
     let directory: URL
@@ -31,7 +37,7 @@ struct RoomRoomsStore {
 
     func loadState() async -> (rooms: [RoomPinnedRoom], sizes: [String: RoomSizeLog], readOnly: Bool) {
         guard let writer else { return (loadRooms(), loadSizes(), false) }
-        let roomResult = await writer.store.load([RoomPinnedRoom].self, from: .rooms, legacy: Self.decodeLegacyRooms)
+        let roomResult = await writer.store.load([RoomPinnedRoom].self, from: .rooms, legacy: Self.decodeLegacyRooms, migrate: Self.migrateRooms)
         let sizeResult = await writer.store.load([String: RoomSizeLog].self, from: .roomSizes, legacy: Self.decodeLegacySizes)
         let rooms = normalized(roomResult.value ?? [])
         let sizes = normalized(sizeResult.value ?? [:])
@@ -41,7 +47,7 @@ struct RoomRoomsStore {
     func discardPendingSizes() { writer?.discardPending(for: .roomSizes) }
 
     func loadRooms() -> [RoomPinnedRoom] {
-        normalized(read([RoomPinnedRoom].self, file: .rooms, legacy: Self.decodeLegacyRooms) ?? [])
+        normalized(read([RoomPinnedRoom].self, file: .rooms, legacy: Self.decodeLegacyRooms, migrate: Self.migrateRooms) ?? [])
     }
 
     func loadSizes() -> [String: RoomSizeLog] {
@@ -55,10 +61,7 @@ struct RoomRoomsStore {
     func saveSizes(_ sizes: [String: RoomSizeLog]) -> Bool { write(normalized(sizes), file: .roomSizes) }
 
     private func normalized(_ rooms: [RoomPinnedRoom]) -> [RoomPinnedRoom] {
-        var ids: Set<UUID> = []
-        return Array(rooms.sorted {
-            $0.order == $1.order ? $0.id.uuidString < $1.id.uuidString : $0.order < $1.order
-        }.filter { ids.insert($0.id).inserted }.prefix(Self.maximumRooms))
+        RoomRoomsCatalog.normalized(rooms)
     }
 
     private func normalized(_ sizes: [String: RoomSizeLog]) -> [String: RoomSizeLog] {
@@ -67,7 +70,13 @@ struct RoomRoomsStore {
     }
 
     nonisolated private static func decodeLegacyRooms(_ bytes: Data) throws -> [RoomPinnedRoom] {
-        try JSONDecoder().decode([RoomPinnedRoom].self, from: bytes)
+        guard let rooms = RoomRoomsDecoding.rooms(from: bytes) else { throw CocoaError(.fileReadCorruptFile) }
+        return rooms
+    }
+
+    nonisolated private static func migrateRooms(_ schema: Int, _ data: Data) throws -> [RoomPinnedRoom] {
+        guard schema == 1 else { throw CocoaError(.fileReadCorruptFile) }
+        return try decodeLegacyRooms(data)
     }
 
     nonisolated private static func decodeLegacySizes(_ bytes: Data) throws -> [String: RoomSizeLog] {
@@ -75,10 +84,11 @@ struct RoomRoomsStore {
     }
 
     private func read<Value: Codable & Sendable>(_ type: Value.Type, file: RoomStateFile,
-                                                 legacy: @escaping (Data) throws -> Value) -> Value? {
+                                                 legacy: @escaping (Data) throws -> Value,
+                                                 migrate: ((Int, Data) throws -> Value)? = nil) -> Value? {
         let url = directory.appendingPathComponent(file.name)
         guard let data = try? RoomFileStateDisk().read(url, maximumBytes: file.maxBytes) else { return nil }
-        return RoomStateCodec.decode(data, as: type, file: file, legacy: legacy).value
+        return RoomStateCodec.decode(data, as: type, file: file, legacy: legacy, migrate: migrate).value
     }
 
     private func write<Value: Codable & Sendable>(_ value: Value, file: RoomStateFile) -> Bool {

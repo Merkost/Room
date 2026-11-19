@@ -35,6 +35,31 @@ struct RoomRoomsStoreTests {
         #expect(store.loadRooms().isEmpty)
     }
 
+    @Test func legacyFileDecodesAndOneDamagedEntryKeepsOthers() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("rooms.json")
+        let payload = Data(#"[{"id":"00000000-0000-0000-0000-000000000001","accessFolderID":"f1","name":"Work","order":0},{"id":"bad"},{"id":"00000000-0000-0000-0000-000000000002","accessFolderID":"f2","name":"Photos","order":1,"glyph":"photo"}]"#.utf8)
+        try payload.write(to: file)
+        let store = RoomRoomsStore(directory: directory)
+        #expect(store.loadRooms().map(\.name) == ["Work", "Photos"])
+        #expect(store.loadRooms().map(\.resolvedGlyph) == [.folder, .photo])
+        #expect(try Data(contentsOf: file) == payload)
+    }
+
+    @Test func failedReadNeverWritesEmpty() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("rooms.json")
+        let payload = Data("damage".utf8)
+        try payload.write(to: file)
+        let store = RoomRoomsStore(directory: directory)
+        #expect(store.loadRooms().isEmpty)
+        #expect(try Data(contentsOf: file) == payload)
+    }
+
     @Test func roomArrayIsOrderedUniqueAndLimitedTo64() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }

@@ -91,11 +91,11 @@ struct RoomRootView: View {
             insights.requestedPinnedRoom = nil
         }
         .onChange(of: navigation.route) { _, route in
-            guard case .room(let id) = route, rooms.pinnedRoom?.id == id, let url = rooms.pinnedURL else { return }
+            guard case .room(let id) = route, let url = rooms.url(for: id) else { return }
             insights.openDiskMap(rootURL: url, requestNavigation: false)
         }
-        .onChange(of: rooms.pinnedRoom?.id) { old, new in
-            if let old, old != new { navigation.removeRoute(.room(old)) }
+        .onChange(of: rooms.rooms.map(\.id)) { old, new in
+            for removed in Set(old).subtracting(new) { navigation.removeRoute(.room(removed)) }
         }
         .onChange(of: insights.requestedSettings, initial: true) { _, requested in
             guard requested else { return }
@@ -118,8 +118,8 @@ struct RoomRootView: View {
     }
 
     private func openPinnedRoom(_ id: UUID) {
-        guard rooms.pinnedRoom?.id == id, rooms.pinnedURL != nil else {
-            rooms.chooseFolder()
+        guard rooms.url(for: id) != nil else {
+            rooms.chooseFolder(replacingApprovalFor: id)
             return
         }
         navigation.select(.room(id), origin: .pointer)
@@ -128,7 +128,7 @@ struct RoomRootView: View {
     @ViewBuilder private var screenContent: some View {
         switch destination {
         case .overview:
-            RoomOverviewView(insights: insights, navigate: navigation.select, refresh: insights.refreshDiskCapacity,
+            RoomOverviewView(insights: insights, rooms: rooms, navigate: navigation.select, refresh: insights.refreshDiskCapacity,
                              cacheModel: model, hidden: overviewSizesHidden)
         case .clean:
             RoomCachesView(model: model, review: { sheet = .review },

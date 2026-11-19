@@ -41,7 +41,7 @@ struct RoomOverviewRoutingTests {
     @Test func retryCapacityReadsOnlyTheVolume() async throws {
         let fixture = try RoutingFixture()
         defer { fixture.remove() }
-        let view = RoomOverviewView(insights: fixture.insights, navigate: fixture.navigation.select,
+        let view = RoomOverviewView(insights: fixture.insights, rooms: fixture.rooms, navigate: fixture.navigation.select,
                                     refresh: fixture.insights.refreshDiskCapacity)
 
         view.retryCapacity()
@@ -113,7 +113,7 @@ struct RoomOverviewRoutingTests {
     @Test func overviewActionsNavigateWithoutStartingWork() async throws {
         let fixture = try RoutingFixture()
         defer { fixture.remove() }
-        let view = RoomOverviewView(insights: fixture.insights, navigate: fixture.navigation.select,
+        let view = RoomOverviewView(insights: fixture.insights, rooms: fixture.rooms, navigate: fixture.navigation.select,
                                     refresh: fixture.insights.refreshDiskCapacity)
 
         view.openCaches()
@@ -133,7 +133,7 @@ private final class RoutingFixture {
     let navigation: RoomWindowNavigation
     let insights: RoomInsightsModel
     private let cache: RoomViewModel
-    private let rooms: RoomRoomsModel
+    let rooms: RoomRoomsModel
     private let suite: String
     private let root: URL
     private let probe: RoutingProbe

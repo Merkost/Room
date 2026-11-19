@@ -16,7 +16,7 @@ nonisolated struct RoomStateFile: Hashable, Sendable {
     let survivesForget: Bool    // DP-9 and D-FND-6: kept by "Forget history…"
 
     // Owned by Job A
-    static let rooms = RoomStateFile(name: "rooms.json", schema: 1, maxBytes: 128_000, survivesForget: true)
+    static let rooms = RoomStateFile(name: "rooms.json", schema: 2, maxBytes: 128_000, survivesForget: true)
     static let roomSizes = RoomStateFile(name: "room-sizes.json", schema: 1, maxBytes: 512_000, survivesForget: false)
     static let volumeSamples = RoomStateFile(name: "snapshots.json", schema: 1, maxBytes: 256_000, survivesForget: false)
     static let reports = RoomStateFile(name: "reports.json", schema: 1, maxBytes: 128_000, survivesForget: false)

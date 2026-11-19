@@ -5,12 +5,16 @@ import SwiftUI
 
 struct RoomOverviewView: View {
     let insights: RoomInsightsModel
+    let rooms: RoomRoomsModel
     let navigate: (RoomDestination) -> Void
     let refresh: () -> Void
     var cacheModel: RoomViewModel? = nil
     var hidden = false
 
     @AppStorage(RoomMenuBarSettings.goalBytesKey) private var storedGoal = Int(RoomMenuBarSettings.defaultGoalBytes)
+    @AppStorage("RoomChapterRoomsShown") private var showRooms = true
+    @State private var editingRoom: UUID?
+    @State private var showRoomsList = false
     @AppStorage("RoomGoalEnabled") private var goalEnabled = true
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.roomMotion) private var motion
@@ -45,26 +49,52 @@ struct RoomOverviewView: View {
 
     var body: some View {
         let snapshot = presentedSnapshot
-        VStack(alignment: .leading, spacing: RoomTokens.Density.calm.betweenGroups) {
+        VStack(alignment: .leading, spacing: RoomTokens.Space.breath4) {
+            VStack(alignment: .leading, spacing: RoomTokens.Density.calm.betweenGroups) {
+                VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
+                    Text(model.greeting)
+                        .font(RoomTokens.Typography.lead)
+                        .lineHeight(.exact(points: RoomTokens.Overview.greetingLineHeight))
+                        .foregroundStyle(RoomTokens.Ink.secondary)
+                    answerGroup(snapshot)
+                }
+                if let plan = snapshot.plan, plan.fitsDotBudget {
+                    RoomDotPlanView(plan: plan, belowGoal: snapshot.state == .belowGoal, hidden: hidden, openDiskMap: openDiskMap)
+                }
+                actions(snapshot)
+                if snapshot.mapLinkAvailable {
+                    link(RoomOverviewCopy.mapMac, accessibilityLabel: RoomOverviewCopy.mapMac, action: insights.scanHome)
+                }
+                if let caption = model.cacheCaption {
+                    Text(caption)
+                        .font(RoomTokens.Typography.body)
+                        .foregroundStyle(RoomTokens.Ink.secondary)
+                }
+            }
+            .frame(minHeight: RoomTokens.Density.calm.firstScreenMinHeight, alignment: .topLeading)
+            if showRooms && (!rooms.rooms.isEmpty || rooms.canChooseFolder) {
+                RoomChapterRooms(rooms: rooms, calendar: .current, editing: editingRoom, openRoom: openPinned,
+                                 showAll: { showRoomsList = true })
+            }
+        }
+        .popover(isPresented: $showRoomsList) {
             VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
-                Text(model.greeting)
-                    .font(RoomTokens.Typography.lead)
-                    .lineHeight(.exact(points: RoomTokens.Overview.greetingLineHeight))
-                    .foregroundStyle(RoomTokens.Ink.secondary)
-                answerGroup(snapshot)
+                Text("Your Rooms").font(RoomTokens.Typography.section)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
+                        ForEach(rooms.rooms) { room in
+                            Button(hidden ? "Room" : room.name) {
+                                if let url = rooms.url(for: room.id) { openPinned(url) }
+                                else { rooms.chooseFolder(replacingApprovalFor: room.id) }
+                                showRoomsList = false
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
-            if let plan = snapshot.plan, plan.fitsDotBudget {
-                RoomDotPlanView(plan: plan, belowGoal: snapshot.state == .belowGoal, hidden: hidden, openDiskMap: openDiskMap)
-            }
-            actions(snapshot)
-            if snapshot.mapLinkAvailable {
-                link(RoomOverviewCopy.mapMac, accessibilityLabel: RoomOverviewCopy.mapMac, action: insights.scanHome)
-            }
-            if let caption = model.cacheCaption {
-                Text(caption)
-                    .font(RoomTokens.Typography.body)
-                    .foregroundStyle(RoomTokens.Ink.secondary)
-            }
+            .padding(RoomTokens.Space.group)
         }
         .frame(maxWidth: RoomTokens.Space.measure, alignment: .leading)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -199,6 +229,12 @@ struct RoomOverviewView: View {
         }
         .roomLink(accent)
         .accessibilityLabel(accessibilityLabel)
+    }
+
+    private func openPinned(_ url: URL) {
+        if let room = rooms.rooms.first(where: { rooms.url(for: $0.id) == url }) {
+            insights.requestedPinnedRoom = room.id
+        }
     }
 
     func openCaches() { navigate(.clean) }
