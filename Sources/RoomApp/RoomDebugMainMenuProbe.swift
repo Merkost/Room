@@ -20,13 +20,17 @@ enum RoomDebugMainMenuProbe {
     static func start() {
         guard let path = ProcessInfo.processInfo.environment["ROOM_MAIN_MENU_TEST_OUTPUT"] else { return }
         Task { @MainActor in
-            let deadline = ContinuousClock.now + .seconds(5)
+            let activationTimeout = ProcessInfo.processInfo.environment["ROOM_MAIN_MENU_ACTIVATION_TIMEOUT"]
+                .flatMap(Int.init) ?? 60
+            let deadline = ContinuousClock.now + .seconds(activationTimeout)
             var menus: [Menu] = []
             repeat {
                 try? await Task.sleep(for: .milliseconds(50))
                 if NSApp.keyWindow?.identifier != RoomApplicationDelegate.primaryWindowID,
                    let window = NSApp.windows.first(where: { $0.identifier == RoomApplicationDelegate.primaryWindowID }) {
+                    NSRunningApplication.current.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
                     NSApp.activate()
+                    window.makeMain()
                     window.makeKeyAndOrderFront(nil)
                 }
                 menus = readMainMenu()
@@ -38,6 +42,12 @@ enum RoomDebugMainMenuProbe {
             })
                 && ContinuousClock.now < deadline
 
+            let state = NSApp.windows.map { window in
+                [window.identifier?.rawValue ?? "unidentified", "key=\(window.isKeyWindow)",
+                 "visible=\(window.isVisible)", "sheet=\(window.attachedSheet != nil)"].joined(separator: " ")
+            }.joined(separator: "\n")
+            let diagnostic = "active=\(NSApp.isActive) context=\(RoomCommandWindowContext.current)\n" + state
+            try? diagnostic.write(to: URL(fileURLWithPath: path).appendingPathExtension("state"), atomically: true, encoding: .utf8)
             if let data = try? JSONEncoder().encode(menus) {
                 try? data.write(to: URL(fileURLWithPath: path), options: .atomic)
             }

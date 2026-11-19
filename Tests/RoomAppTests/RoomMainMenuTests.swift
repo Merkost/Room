@@ -14,14 +14,19 @@ struct RoomMainMenuTests {
         let output = fixture.appendingPathComponent("menu.json")
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.createsNewApplicationInstance = true
+        configuration.activates = true
         configuration.arguments = ["-RoomOnboardingVersion", String(RoomOnboardingFlow.version),
                                    "-RoomOpenOn", "overview", "-RoomMenuBarEnabled", "NO",
                                    "-RoomWeeklyCheckEnabled", "NO", "-AppleLanguages", "(en-US)"]
-        configuration.environment = ["ROOM_MAIN_MENU_TEST_OUTPUT": output.path]
+        let activationTimeout = ProcessInfo.processInfo.environment["ROOM_MAIN_MENU_ACTIVATION_TIMEOUT"]
+            .flatMap(Int.init) ?? 60
+        configuration.environment = ["ROOM_MAIN_MENU_TEST_OUTPUT": output.path,
+                                     "ROOM_MAIN_MENU_ACTIVATION_TIMEOUT": String(activationTimeout)]
         let application = try await NSWorkspace.shared.openApplication(at: bundle, configuration: configuration)
         defer { if !application.isTerminated { application.terminate() } }
 
-        let deadline = ContinuousClock.now + .seconds(15)
+        application.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+        let deadline = ContinuousClock.now + .seconds(activationTimeout + 15)
         while !files.fileExists(atPath: output.path), !application.isTerminated, ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(50))
         }
@@ -44,7 +49,8 @@ struct RoomMainMenuTests {
         let edit = try menu("Edit")
         #expect(edit.contains { $0.title == "Copy" && $0.key == "c" })
         let view = try menu("View")
-        #expect(view.contains { $0.title == "Refresh Free Space" && $0.key == "r" && $0.enabled })
+        let context = (try? String(contentsOf: output.appendingPathExtension("state"), encoding: .utf8)) ?? "No window context recorded"
+        #expect(view.contains { $0.title == "Refresh Free Space" && $0.key == "r" && $0.enabled }, Comment(rawValue: context))
         #expect(view.contains { $0.title.contains("Full Screen") })
         #expect(view.contains { $0.title == "Customise Overview…" && $0.key == "c" && $0.enabled })
 
@@ -89,6 +95,12 @@ struct RoomMainMenuTests {
         let binaries = contents.appendingPathComponent("MacOS")
         try files.createDirectory(at: binaries, withIntermediateDirectories: true)
         try files.copyItem(at: executable, to: binaries.appendingPathComponent("Room"))
+        let packagedResources = executable.deletingLastPathComponent().appendingPathComponent("Room_RoomApp.bundle")
+        if files.fileExists(atPath: packagedResources.path) {
+            let resources = contents.appendingPathComponent("Resources")
+            try files.createDirectory(at: resources, withIntermediateDirectories: true)
+            try files.copyItem(at: packagedResources, to: resources.appendingPathComponent(packagedResources.lastPathComponent))
+        }
         let data = try Data(contentsOf: root.appendingPathComponent("Resources/Info.plist"))
         var info = try #require(try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any])
         info["CFBundleIdentifier"] = "app.room.tests.menu.\(UUID().uuidString.lowercased())"
