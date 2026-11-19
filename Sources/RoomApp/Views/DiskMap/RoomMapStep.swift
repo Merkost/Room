@@ -55,6 +55,7 @@ struct RoomMapViewport: View {
     let hidden: Bool
     let generation: Int
     let step: RoomMapStep?
+    let onHoverItem: (RoomMapItem?) -> Void
     let activate: (String, Bool, Bool) -> Void
     let preview: (String) -> Bool
     let reveal: (String) -> Void
@@ -79,6 +80,7 @@ struct RoomMapViewport: View {
                                   selection: current ? selection : step?.selection,
                                   hidden: hidden, placedLayer: current ? currentLayer : outgoing,
                                   interactive: current, suppressLabels: !current && transforms != nil,
+                                  onHoverItem: onHoverItem,
                                   activate: activate, preview: preview, reveal: reveal)
                         .modifier(RoomMapLayerEffect(transform: current ? .identity : transforms?.outgoing ?? .identity))
                         .opacity(current ? 1 : 0)

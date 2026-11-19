@@ -42,7 +42,7 @@ struct RoomScreenScaffold<Content: View>: View {
                 }
                 .accessibilityElement(children: .combine)
                 .accessibilityAddTraits(requestedDensity == nil ? .isHeader : [])
-                .padding(.leading, scrolls && requestedDensity == nil ? RoomTokens.Space.breath1 - 4 : 0)
+                .padding(.leading, requestedDensity == nil ? (scrolls ? RoomTokens.Space.breath1 : RoomTokens.Space.group) - 4 : 0)
             }
             .sharedBackgroundVisibility(.hidden)
         }

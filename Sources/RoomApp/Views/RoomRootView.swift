@@ -213,7 +213,7 @@ struct RoomRootView: View {
     private var screenSubtitle: String? {
         switch destination {
         case .overview: nil
-        case .disk: insights.diskURL.map { RoomHideSpeech.value($0.lastPathComponent, hide: hide) }
+        case .disk: nil
         case .clean: model.cachesStatus
         case .memory, .developer: nil
         }

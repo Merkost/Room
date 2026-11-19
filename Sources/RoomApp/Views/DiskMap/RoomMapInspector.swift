@@ -58,58 +58,62 @@ struct RoomMapInspector: View {
                     Text(showSizes ? node.name : "Name hidden")
                         .font(RoomTokens.Typography.title)
                         .accessibilityAddTraits(.isHeader)
-                    Text(showSizes ? (node.isPartial ? "≥ " : "") + RoomFormat.bytes(node.allocatedBytes) : "Size hidden")
-                        .font(RoomTokens.Typography.figure)
-                    if let url, showSizes {
-                        Text(url.path).font(RoomTokens.Typography.path)
-                            .lineLimit(2).truncationMode(.middle)
-                    }
                     if showSizes {
+                        HStack(alignment: .firstTextBaseline, spacing: RoomTokens.Space.tight) {
+                            if node.isPartial { Text("≥").font(RoomTokens.Typography.figure) }
+                            RoomByteMetric(bytes: node.allocatedBytes, maximumSize: 26)
+                        }
+                    } else {
+                        Text("Size hidden").font(RoomTokens.Typography.caption)
+                            .foregroundStyle(RoomTokens.Ink.secondary)
+                    }
+                    if let url, showSizes {
+                        let path = RoomPillPath.abbreviate(url.path, home: FileManager.default.homeDirectoryForCurrentUser.path)
+                        Text(path).font(RoomTokens.Typography.path)
+                            .lineLimit(2).truncationMode(.middle)
+                            .foregroundStyle(RoomTokens.Ink.secondary)
+                    }
+                    VStack(spacing: RoomTokens.Space.tight) {
                         if let parent, parent.relativePath != node.relativePath, parent.allocatedBytes > 0 {
                             let ratio = Double(node.allocatedBytes) / Double(parent.allocatedBytes)
-                            Text("Share of \(parent.name) \(ratio.formatted(.percent.precision(.fractionLength(0))))")
-                                .font(RoomTokens.Typography.caption)
+                            if showSizes {
+                                fact("Share of \(parent.name)", ratio.formatted(.percent.precision(.fractionLength(0))))
+                            }
                         }
-                        Text("\(node.fileCount.formatted()) files").font(RoomTokens.Typography.caption)
+                        fact("Measured", node.isPartial ? "Partly · lower bound" : "Fully")
+                        if showSizes { fact("Files", node.fileCount.formatted()) }
                     }
-                    Text(node.isPartial ? "Measured partly. Lower bound." : "Measured fully.")
-                        .font(RoomTokens.Typography.caption)
-                        .foregroundStyle(RoomTokens.Ink.secondary)
                     if node.isDirectory, !node.children.isEmpty {
-                        Text("Inside").font(RoomTokens.Typography.section)
-                        ForEach(Array(node.children.prefix(4)), id: \.relativePath) { child in
-                            HStack {
-                                Text(showSizes ? child.name : "Hidden").lineLimit(1)
-                                Spacer()
-                                Text(showSizes ? RoomFormat.bytes(child.allocatedBytes) : "Hidden").monospacedDigit()
+                        let children = Array(node.children.prefix(4))
+                        VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
+                            Text("Inside").font(RoomTokens.Typography.section)
+                            insideBar(children, otherBytes: max(0, node.allocatedBytes - children.reduce(0) { $0 + $1.allocatedBytes }))
+                            ForEach(children, id: \.relativePath) { child in
+                                fact(showSizes ? child.name : "Name hidden", showSizes ?
+                                     (child.isPartial ? "≥ " : "") + RoomFormat.bytes(child.allocatedBytes) : "Size hidden")
                             }
-                            .font(RoomTokens.Typography.caption)
                         }
                     }
-                    ForEach(RoomKindStrip.totals(node), id: \.kind) { amount in
-                        HStack {
-                            Text(StorageKind(rawValue: amount.kind)?.title ?? "Other")
-                            Spacer()
-                            Text(showSizes ? RoomFormat.bytes(amount.bytes) : "Hidden")
-                                .monospacedDigit()
-                        }
-                        .font(RoomTokens.Typography.caption)
-                    }
-                    if node.isDirectory {
-                        if node.canStepInside {
-                            Button("Step inside", action: stepIn).roomSecondary()
-                            if !node.relativePath.isEmpty {
-                                Button("Rescan this folder", action: rescan).buttonStyle(.borderless)
-                                    .disabled(isScanning)
+                    VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
+                        if node.isDirectory, node.relativePath != parent?.relativePath {
+                            if node.canStepInside {
+                                action("Step inside", symbol: "chevron.right", perform: stepIn)
+                                if url != nil, !node.relativePath.isEmpty {
+                                    Button("Rescan this folder", action: rescan).buttonStyle(.borderless)
+                                        .disabled(isScanning)
+                                }
+                            } else if url != nil, !node.relativePath.isEmpty {
+                                action("Map this folder", symbol: "map", perform: map).disabled(isScanning)
                             }
-                        } else if !node.relativePath.isEmpty {
-                            Button("Map this folder", action: map).roomSecondary().disabled(isScanning)
                         }
-                    }
-                    if let url, showSizes {
-                        if node.isDirectory, let pin { Button("Pin as a Room") { pin(url) }.buttonStyle(.borderless) }
-                        Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
-                            .buttonStyle(.borderless)
+                        if let url, showSizes {
+                            action("Show in Finder", symbol: "arrow.up.right.square") {
+                                NSWorkspace.shared.activateFileViewerSelecting([url])
+                            }
+                            if node.isDirectory, let pin {
+                                action("Pin as a Room", symbol: "pin") { pin(url) }
+                            }
+                        }
                     }
                     if !showSizes { EmptyView() }
                     else if let finding = analysis?.findings.first(where: { $0.item.url == url }) {
@@ -138,5 +142,42 @@ struct RoomMapInspector: View {
         }
         .background(RoomTokens.Surface.group, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.group))
         .accessibilityIdentifier("RoomDiskMapInspector")
+    }
+
+    private func fact(_ label: String, _ value: String) -> some View {
+        HStack(spacing: RoomTokens.Space.row) {
+            Text(label).foregroundStyle(RoomTokens.Ink.secondary).lineLimit(1)
+            Spacer(minLength: 0)
+            Text(value).monospacedDigit().fixedSize()
+        }
+        .font(RoomTokens.Typography.caption)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func insideBar(_ children: [RoomTreeNode], otherBytes: Int64) -> some View {
+        let outside = "\u{0}outside"
+        let amounts = children.map { (kind: $0.relativePath, bytes: $0.allocatedBytes) }
+            + [(kind: outside, bytes: otherBytes)]
+        return GeometryReader { geometry in
+            HStack(spacing: RoomKindStrip.barGap) {
+                ForEach(RoomKindStrip.bar(amounts, width: geometry.size.width), id: \.kind) { part in
+                    let kind = children.first { $0.relativePath == part.kind }.flatMap { StorageKind.dominant($0.kindBytes) }
+                    RoundedRectangle(cornerRadius: RoomTokens.Radius.budgetFill)
+                        .fill(kind.flatMap { RoomTokens.Kind(rawValue: $0.rawValue) }?.mark ?? RoomTokens.Surface.track)
+                        .frame(width: part.width)
+                }
+            }
+        }
+        .frame(height: RoomTokens.Space.row)
+        .accessibilityHidden(true)
+    }
+
+    private func action(_ title: String, symbol: String, perform: @escaping () -> Void) -> some View {
+        Button(action: perform) {
+            Label(title, systemImage: symbol)
+                .labelStyle(.titleAndIcon)
+                .frame(maxWidth: .infinity)
+        }
+        .roomSecondary()
     }
 }

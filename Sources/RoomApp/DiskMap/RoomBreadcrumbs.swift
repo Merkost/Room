@@ -38,10 +38,19 @@ struct RoomBreadcrumbs: View {
         }
     }
 
-    private func crumb(_ node: RoomTreeNode) -> some View {
-        Button(hidden ? (node.relativePath.isEmpty ? "Root folder" : "Folder") : node.name) { go(node.relativePath) }
-            .buttonStyle(.borderless)
-            .lineLimit(1)
-            .disabled(node.relativePath == trail.last?.relativePath)
+    @ViewBuilder private func crumb(_ node: RoomTreeNode) -> some View {
+        let title = hidden ? (node.relativePath.isEmpty ? "Root folder" : "Folder") : node.name
+        if node.relativePath == trail.last?.relativePath {
+            Text(title)
+                .font(RoomTokens.Typography.section)
+                .lineLimit(1)
+                .padding(.horizontal, RoomTokens.Space.row)
+                .frame(minHeight: 24)
+                .background(RoomTokens.Surface.group, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.row))
+        } else {
+            Button(title) { go(node.relativePath) }
+                .buttonStyle(.borderless)
+                .lineLimit(1)
+        }
     }
 }

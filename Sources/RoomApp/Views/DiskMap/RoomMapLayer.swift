@@ -125,12 +125,12 @@ nonisolated struct RoomMapLayer: Sendable {
 
     // MARK: Hit testing (DM-17): a linear scan, headers first, then tiles, then group bodies.
 
-    struct Hit: Equatable, Sendable { var id: String; var isHeader: Bool }
+    struct Hit: Equatable, Sendable { let item: RoomMapItem; let isHeader: Bool }
 
     func hit(_ p: CGPoint) -> Hit? {
-        for item in items where item.role == .group { if item.headerRect?.contains(p) == true { return Hit(id: item.id, isHeader: true) } }
-        for item in items where item.role == .tile { if item.cell.contains(p) { return Hit(id: item.id, isHeader: false) } }
-        for item in items where item.role == .group { if item.cell.contains(p) { return Hit(id: item.id, isHeader: false) } }
+        for item in items where item.role == .group { if item.headerRect?.contains(p) == true { return Hit(item: item, isHeader: true) } }
+        for item in items where item.role == .tile { if item.cell.contains(p) { return Hit(item: item, isHeader: false) } }
+        for item in items where item.role == .group { if item.cell.contains(p) { return Hit(item: item, isHeader: false) } }
         return nil
     }
 

@@ -47,8 +47,29 @@ struct RoomMapMotionTests {
         #expect(divider.position == 0)
     }
 
+    @Test func mapReadoutPrefersHoverAndReturnsToSelection() throws {
+        let level = node("Projects", children: [node("Projects/Builds"), node("Projects/Sources")])
+        let layer = RoomMapLayer.make(level: level, size: CGSize(width: 600, height: 400))
+        let hovered = try #require(layer.items.first { $0.id == "Projects/Builds" })
+        func readout(_ item: RoomMapItem?, hidden: Bool = false) -> RoomMapReadoutContent {
+            .make(level: level, hovered: item, selectedPath: "Projects/Sources", hidden: hidden,
+                  showsHint: true, format: { "\($0) bytes" })
+        }
+        #expect(readout(hovered).title == "Builds")
+        #expect(readout(hovered).detail?.contains("of Projects") == true)
+        #expect(readout(nil).title == "Sources")
+        #expect(readout(hovered, hidden: true) == .init(title: "Name hidden", detail: "Size hidden"))
+        let home = node("", children: [level, node("Pictures")])
+        let rootReadout = RoomMapReadoutContent.make(level: home, hovered: hovered, selectedPath: nil,
+                                                     hidden: false, showsHint: true, format: { String($0) })
+        #expect(rootReadout.detail?.hasSuffix("of \(home.name)") == true)
+        #expect(RoomMapReadoutContent.make(level: level, hovered: nil, selectedPath: "Projects-old/Builds",
+                                          hidden: false, showsHint: true, format: { String($0) }).isHint)
+    }
+
     private func node(_ path: String, children: [RoomTreeNode] = []) -> RoomTreeNode {
-        RoomTreeNode(name: path, relativePath: path, allocatedBytes: Int64(max(1, children.count)) * 4_096,
+        RoomTreeNode(name: path.split(separator: "/").last.map(String.init) ?? path,
+                     relativePath: path, allocatedBytes: Int64(max(1, children.count)) * 4_096,
                      fileCount: 1, kindBytes: [:], isPartial: false, isDirectory: true, children: children, other: nil)
     }
 }

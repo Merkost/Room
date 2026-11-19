@@ -17,30 +17,27 @@ struct RoomDiskMapView: View {
     @State private var hidesWideInspector = false
     @State private var showsIssues = false
     @State private var showsOther = false
+    @State private var otherDetails: RoomTreeNode.OtherGroup?
     @State private var previewURL: URL?
     @State private var previewScope: URL?
     @State private var mapGeneration = 0
     @State private var mapStep: RoomMapStep?
+    @State private var pointer = RoomMapPointer()
 
     private enum Display: String, CaseIterable { case map = "Map", largest = "Largest 20", compare = "Compare" }
     private var model: RoomDiskMapModel { insights.diskMap }
 
     var body: some View {
         GeometryReader { geometry in
-            let isWide = (NSApp.keyWindow?.frame.width ?? geometry.size.width) >= RoomTokens.Map.inspectorBreakpoint
+            let isWide = geometry.size.width >= RoomTokens.Map.inspectorBreakpoint
             VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
                 controls(isWide: isWide)
                 if let blueprint = model.blueprint,
                    insights.isScanningDisk || (blueprint.phase == .stopped && layout == .map && model.levelPath.isEmpty) {
                     blueprintDetail(blueprint, isWide: isWide)
                 } else if let level = model.level {
-                    if model.hasLostAccess {
-                        Text(hidden ? "Room lost access to this folder." : "Room lost access to \(model.current?.displayPath ?? "this folder").")
-                            .foregroundStyle(RoomTokens.Ink.secondary)
-                        Button("Choose it again…", action: insights.chooseDiskFolder).roomPrimary(accent)
-                    }
+                    if model.hasLostAccess { accessNotice }
                     details(level, isWide: isWide)
-                        .opacity(model.hasLostAccess ? 0.42 : 1)
                 } else {
                     empty
                 }
@@ -48,9 +45,9 @@ struct RoomDiskMapView: View {
             .padding([.horizontal, .bottom], RoomTokens.Space.group)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .onChange(of: insights.diskInspectorRequest) { _, _ in
-                if isWide { hidesWideInspector.toggle() }
-                else { showsInspector.toggle() }
+                toggleInspector(isWide: isWide)
             }
+            .onChange(of: isWide) { _, wide in if wide { showsInspector = false } }
             .onChange(of: insights.diskComparisonRequest) { _, _ in
                 if model.canCompare { layout = .compare }
             }
@@ -72,6 +69,7 @@ struct RoomDiskMapView: View {
         .task { await insights.observeTreeChanges() }
         .onChange(of: model.levelPath) { _, path in
             filter = nil
+            pointer.item = nil
             if mapStep?.destination != path { mapStep = nil }
         }
         .onChange(of: model.current?.rootID) { _, _ in
@@ -79,7 +77,12 @@ struct RoomDiskMapView: View {
             layout = .map
             mapStep = nil
         }
-        .onChange(of: layout) { _, _ in mapStep = nil }
+        .onChange(of: model.current) { _, _ in pointer.item = nil }
+        .onChange(of: filter) { _, _ in pointer.item = nil }
+        .onChange(of: layout) { _, _ in
+            mapStep = nil
+            pointer.item = nil
+        }
         .onChange(of: model.canCompare) { _, available in
             if !available, layout == .compare { layout = .map }
         }
@@ -90,7 +93,7 @@ struct RoomDiskMapView: View {
         .sheet(isPresented: $showsOther) {
             VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
                 Text("Other").font(RoomTokens.Typography.title)
-                if let other = model.level?.other {
+                if let other = otherDetails {
                     Text(hidden ? "Size hidden" : "\(other.itemCount.formatted()) small items · \(other.isPartial ? "≥ " : "")\(RoomFormat.bytes(other.allocatedBytes))")
                 }
                 Text("These items were measured together. Open a mapped folder to see its retained items.")
@@ -117,19 +120,37 @@ struct RoomDiskMapView: View {
     }
 
     @ViewBuilder private var location: some View {
-        if model.trail.isEmpty {
-            Text("Disk Map").font(RoomTokens.Typography.title).accessibilityAddTraits(.isHeader)
-        } else {
-            VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
+        if let level = model.level {
+            HStack(spacing: RoomTokens.Space.row) {
                 RoomBreadcrumbs(trail: model.trail, hidden: hidden) {
                     step(to: $0, animated: NSApp.currentEvent?.type == .leftMouseUp)
                 }
-                if let date = model.current?.scannedAt {
-                    Text("Scanned \(date.formatted(.dateTime.month().day()))")
-                        .font(RoomTokens.Typography.caption).foregroundStyle(RoomTokens.Ink.secondary)
+                if !hidden {
+                    Text("\(level.isPartial ? "≥ " : "")\(RoomFormat.bytes(level.allocatedBytes)) · hidden files included")
+                        .font(RoomTokens.Typography.caption)
+                        .foregroundStyle(RoomTokens.Ink.secondary)
+                        .lineLimit(1)
                 }
             }
+            .help(model.current.map { "Scanned \($0.scannedAt.formatted(.dateTime.weekday(.abbreviated).month().day().hour().minute()))" } ?? "")
         }
+    }
+
+    private var accessNotice: some View {
+        HStack(spacing: RoomTokens.Space.inner) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Saved map").font(RoomTokens.Typography.section)
+                Text(hidden ? "Choose the folder again to rescan." :
+                     "Room lost access to \(model.current?.displayPath ?? "this folder").")
+                    .font(RoomTokens.Typography.caption)
+                    .foregroundStyle(RoomTokens.Ink.secondary)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 0)
+            Button("Choose it again…", action: insights.chooseDiskFolder).roomSecondary().fixedSize()
+        }
+        .padding(RoomTokens.Space.inner)
+        .background(RoomTokens.Surface.group, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.row))
     }
 
     private func viewActions(isWide: Bool) -> some View {
@@ -141,12 +162,16 @@ struct RoomDiskMapView: View {
                     if model.canCompare { Text(Display.compare.rawValue).tag(Display.compare) }
                 }
                 .pickerStyle(.segmented).labelsHidden()
-                if !isWide {
-                    Button {
-                        showsInspector.toggle()
-                    } label: { Label("Inspector", systemImage: "sidebar.right").labelStyle(.iconOnly) }
-                    .buttonStyle(.borderless)
+                let inspectorVisible = isWide ? !hidesWideInspector : showsInspector
+                Button {
+                    toggleInspector(isWide: isWide)
+                } label: {
+                    Image(systemName: "sidebar.right")
+                        .foregroundStyle(inspectorVisible ? accent.text : RoomTokens.Ink.secondary)
                 }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel(inspectorVisible ? "Hide inspector" : "Show inspector")
+                    .help(inspectorVisible ? "Hide inspector" : "Show inspector")
                 Button("Rescan", action: insights.rescanDisk)
                     .buttonStyle(.borderless)
                     .disabled(!insights.canRescanDisk)
@@ -157,6 +182,11 @@ struct RoomDiskMapView: View {
             folders
         }
         .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private func toggleInspector(isWide: Bool) {
+        if isWide { hidesWideInspector.toggle() }
+        else { showsInspector.toggle() }
     }
 
     private var folders: some View {
@@ -187,9 +217,9 @@ struct RoomDiskMapView: View {
                 .foregroundStyle(RoomTokens.Ink.secondary)
             if let pending = model.pendingFolder {
                 Button(hidden ? "Map folder" : "Map \(pending.lastPathComponent)") { insights.scanDisk(url: pending) }
-                    .roomPrimary(accent)
+                    .roomScreenPrimary(accent)
             } else if insights.accessFolders.isEmpty {
-                Button("Choose Folder…", action: insights.chooseDiskFolder).roomPrimary(accent)
+                Button("Choose Folder…", action: insights.chooseDiskFolder).roomScreenPrimary(accent)
             } else {
                 ForEach(insights.accessFolders) { folder in
                     Button(hidden ? "Map folder" : "Map \(folder.name)") { insights.scanDisk(url: folder.url) }
@@ -201,26 +231,31 @@ struct RoomDiskMapView: View {
     }
 
     private func details(_ level: RoomTreeNode, isWide: Bool) -> some View {
-        HStack(alignment: .top, spacing: RoomTokens.Space.inner) {
-            VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
-                if layout == .map {
-                    RoomMapKindControl(node: level, hidden: hidden, filter: $filter)
-                    RoomMapViewport(level: filtered(level), selection: model.selectedPath, hidden: hidden,
-                                    generation: mapGeneration,
-                                    step: mapStep?.destination == level.relativePath ? mapStep : nil,
-                                    activate: activate, preview: quickLook, reveal: reveal)
+        VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
+            if layout == .map { RoomMapKindControl(node: level, hidden: hidden, filter: $filter) }
+            HStack(alignment: .top, spacing: RoomTokens.Space.inner) {
+                VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
+                    if layout == .map {
+                        let visible = filtered(level)
+                        RoomMapViewport(level: visible, selection: model.selectedPath, hidden: hidden,
+                                        generation: mapGeneration,
+                                        step: mapStep?.destination == level.relativePath ? mapStep : nil,
+                                        onHoverItem: { pointer.item = $0 },
+                                        activate: activate, preview: quickLook, reveal: reveal)
+                            .frame(minHeight: RoomTokens.Map.minimumHeight)
+                        readout(visible, hint: true)
+                    } else if layout == .compare, let compared = model.comparison {
+                        RoomCompareOverlay(earlier: compared.earlier, current: level, earlierDate: compared.date, hidden: hidden) {
+                            layout = .map
+                        }
                         .frame(minHeight: RoomTokens.Map.minimumHeight)
-                } else if layout == .compare, let compared = model.comparison {
-                    RoomCompareOverlay(earlier: compared.earlier, current: level, earlierDate: compared.date, hidden: hidden) {
-                        layout = .map
+                    } else {
+                        RoomLargestTable(level: level, hidden: hidden) { activate($0, false, false) }
+                        readout(level, hint: false)
                     }
-                        .frame(minHeight: RoomTokens.Map.minimumHeight)
-                } else {
-                    RoomLargestTable(level: level, hidden: hidden) { activate($0, false, false) }
                 }
-                readout(level)
+                if isWide && !hidesWideInspector { inspector.frame(width: RoomTokens.Map.inspectorWidth) }
             }
-            if isWide && !hidesWideInspector { inspector.frame(width: RoomTokens.Map.inspectorWidth) }
         }
     }
 
@@ -247,13 +282,17 @@ struct RoomDiskMapView: View {
         }
     }
 
-    private func readout(_ level: RoomTreeNode) -> some View {
-        let shown = model.selectedPath.flatMap { model.current?.tree.descendant(at: $0) } ?? level
-        return HStack(spacing: RoomTokens.Space.row) {
-            RoomMapReadout(title: hidden ? "Name hidden" : shown.name, detail: hidden ? "Size hidden" :
-                (shown.isPartial ? "≥ " : "") + RoomFormat.bytes(shown.allocatedBytes))
+    private func readout(_ level: RoomTreeNode, hint: Bool) -> some View {
+        HStack(spacing: RoomTokens.Space.row) {
+            RoomMapContextReadout(level: level, pointer: pointer, selectedPath: model.selectedPath,
+                                  hidden: hidden, showsHint: hint)
             if let date = model.changedAt, date > model.current?.scannedAt ?? .distantPast {
                 Text("Changed since this scan").foregroundStyle(RoomTokens.Ink.secondary)
+            } else if let date = model.current?.scannedAt {
+                Text("Scanned \(date.formatted(.dateTime.month().day()))")
+                    .font(RoomTokens.Typography.caption)
+                    .foregroundStyle(RoomTokens.Ink.secondary)
+                    .lineLimit(1)
             }
             if let issueCount = model.current?.issueCount, issueCount > 0, insights.diskReport != nil {
                 Button(hidden ? "Read issues" : "\(issueCount) folders or items couldn’t be read") { showsIssues = true }
@@ -285,7 +324,11 @@ struct RoomDiskMapView: View {
 
     private func activate(_ path: String, _ open: Bool, _ pointer: Bool) {
         if path.hasSuffix("\u{0}other") {
-            if open { showsOther = true }
+            if open {
+                let parent = path.dropLast("\u{0}other".count)
+                otherDetails = model.current?.tree.descendant(at: String(parent)).flatMap { filtered($0).other }
+                showsOther = true
+            }
             return
         }
         if open, step(to: path, animated: pointer) { return }

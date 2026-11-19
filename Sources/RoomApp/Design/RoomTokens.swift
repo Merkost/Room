@@ -251,12 +251,13 @@ enum RoomTokens {
 
     enum Map {
         static let inspectorWidth: CGFloat = 260
-        static let inspectorBreakpoint: CGFloat = 900
+        static let inspectorBreakpoint: CGFloat = 688
         static let minimumHeight: CGFloat = 360
         static let controlsHeight: CGFloat = 36
         static let readoutHeight: CGFloat = 28
         static let largestRowHeight: CGFloat = 23
         static let kindBarHeight: CGFloat = 12
+        static let kindHoverOpacity = 0.18
         static let focusStroke: CGFloat = 2
         static let labelPaddingX: CGFloat = 7
         static let labelPaddingY: CGFloat = 3
