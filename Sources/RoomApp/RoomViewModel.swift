@@ -493,7 +493,8 @@ final class RoomViewModel {
                 details: receipt.items.map {
                     RoomActivityItem(id: $0.id, name: $0.originalURL.lastPathComponent, path: $0.originalURL.path,
                         message: $0.message ?? ($0.status == .trashed ? "In Trash" : $0.status == .restored ? "Restored" : "Not moved"),
-                        isRestored: $0.status == .restored, canRestore: $0.status == .trashed)
+                        isRestored: $0.status == .restored, canRestore: $0.status == .trashed, bytes: $0.byteCount,
+                        source: familyTitle(familyID($0.rootID), fallback: $0.originalURL.deletingLastPathComponent().lastPathComponent))
                 }
             )
         }

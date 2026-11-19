@@ -8,10 +8,7 @@ nonisolated enum RoomOpenOn: String, CaseIterable, Sendable {
     static func resolve(preference: String, last: String?) -> RoomDestination {
         guard preference == Self.last.rawValue,
               let last, let destination = RoomDestination(rawValue: last) else { return .overview }
-        switch destination {
-        case .overview, .clean, .memory, .disk, .developer: return destination
-        case .activity: return .overview
-        }
+        return destination
     }
 }
 

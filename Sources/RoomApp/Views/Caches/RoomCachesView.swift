@@ -1,3 +1,4 @@
+import RoomCore
 import SwiftUI
 
 struct RoomCachesView: View {
@@ -56,7 +57,12 @@ struct RoomCachesView: View {
                     .font(RoomTokens.Typography.body).foregroundStyle(RoomTokens.Ink.secondary)
             }
             if !model.isScanning { primary(presentation) }
-            if let receipt = model.movedReceipt { moved(receipt) }
+            if let receipt = model.movedReceipt {
+                let entry = model.makeRoomStore?.entry(for: receipt.id)
+                moved(receipt, entry: entry)
+                RoomReceiptView(receipt: receipt, entry: entry,
+                    restore: model.isWorking || model.isScanning ? nil : { restore(receipt) })
+            }
             if !model.sources.isEmpty {
                 ViewThatFits(in: .horizontal) {
                     HStack(alignment: .top, spacing: RoomTokens.Space.group) { comparison; sources }
@@ -197,16 +203,21 @@ struct RoomCachesView: View {
         return .handled
     }
 
-    private func moved(_ receipt: RoomActivity) -> some View {
-        HStack(spacing: RoomTokens.Space.group) {
-            Text("In Trash \(format(receipt.bytes))")
-                .font(RoomTokens.Typography.section).padding(.horizontal, 12).frame(height: 30)
-                .overlay {
-                    Capsule().stroke(RoomTokens.Surface.line2, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
-                }
-            Text("Moved \(format(receipt.bytes)) to Trash.").font(RoomTokens.Typography.section)
+    private func moved(_ receipt: RoomActivity, entry: RoomMakeRoomEntry?) -> some View {
+        let canRestore = RoomMakeRoomCopy.footerWord(entry, receiptCanRestore: receipt.canRestore) == nil
+        let present = entry?.stillInTrashBytes ?? receipt.bytes
+        let caption = entry.map { RoomMakeRoomCopy.headline($0, format: format) } ?? "Moved \(format(receipt.bytes)) to Trash."
+        return HStack(spacing: RoomTokens.Space.group) {
+            if present > 0, entry?.stage != .unobservable {
+                Text("In Trash \(format(present))")
+                    .font(RoomTokens.Typography.section).padding(.horizontal, 12).frame(height: 30)
+                    .overlay {
+                        Capsule().stroke(RoomTokens.Surface.line2, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                    }
+            }
+            Text(caption).font(RoomTokens.Typography.section)
             Spacer()
-            if receipt.canRestore { Button("Restore") { restore(receipt) }.roomSecondary() }
+            if canRestore { Button("Restore") { restore(receipt) }.roomSecondary().disabled(model.isWorking || model.isScanning) }
             Button("Open Trash", action: model.openTrash).roomSecondary()
         }
         .padding(RoomTokens.Space.group)

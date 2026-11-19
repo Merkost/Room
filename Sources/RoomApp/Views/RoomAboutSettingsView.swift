@@ -19,7 +19,8 @@ struct RoomAboutSettingsView: View {
     }
 
     var body: some View {
-        let madeRoom = RoomMadeRoom.summary(activities: model.activity)
+        let madeRoom = model.makeRoomStore?.summary.header(format: RoomFormat.overviewBytes,
+            month: { $0.formatted(.dateTime.month(.wide).year()) })
         Form {
             Section {
                 HStack(alignment: .top, spacing: RoomTokens.Space.breath1) {
@@ -63,15 +64,8 @@ struct RoomAboutSettingsView: View {
 
             if let summary = madeRoom {
                 Section {
-                    HStack(alignment: .firstTextBaseline, spacing: RoomTokens.Space.inner) {
-                        RoomMaskable(RoomFormat.bytes(summary.bytes)).font(RoomTokens.Typography.madeRoom)
-                            .fixedSize()
-                            .contentTransition(.numericText(value: Double(summary.bytes)))
-                            .animation(motion.animation(RoomTokens.Motion.standard, fallback: nil), value: summary.bytes)
-                        RoomMaskable(summary.caption).font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .accessibilityElement(children: .combine)
+                    RoomMaskable(summary).font(RoomTokens.Typography.caption)
+                        .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 .transition(.opacity)
             }

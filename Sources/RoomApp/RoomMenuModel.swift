@@ -55,7 +55,7 @@ nonisolated enum RoomMenuModel {
         case caches
         case developer
         case memory
-        case activity
+        case showHistory
         case enclosing
         case minimize
         case minimizeAll
@@ -125,7 +125,7 @@ nonisolated enum RoomMenuModel {
             case .caches: String(localized: "menu.caches", defaultValue: "Caches")
             case .developer: String(localized: "menu.developer", defaultValue: "Developer")
             case .memory: String(localized: "menu.memory", defaultValue: "Memory")
-            case .activity: String(localized: "menu.activity", defaultValue: "Activity")
+            case .showHistory: String(localized: "menu.showHistory", defaultValue: "Show History")
             case .enclosing: String(localized: "menu.enclosing", defaultValue: "Enclosing Folder")
             case .minimize: "Minimize"
             case .minimizeAll: "Minimize All"
@@ -158,7 +158,7 @@ nonisolated enum RoomMenuModel {
     }
 
     enum Destination: String, CaseIterable, Sendable {
-        case overview, disk, clean, developer, memory, activity
+        case overview, disk, clean, developer, memory
 
         var item: ID {
             switch self {
@@ -167,7 +167,6 @@ nonisolated enum RoomMenuModel {
             case .clean: .caches
             case .developer: .developer
             case .memory: .memory
-            case .activity: .activity
             }
         }
 
@@ -178,7 +177,6 @@ nonisolated enum RoomMenuModel {
             case .clean: .init("3")
             case .developer: .init("4")
             case .memory: .init("5")
-            case .activity: nil
             }
         }
 
@@ -189,7 +187,6 @@ nonisolated enum RoomMenuModel {
             case .clean: "sparkles"
             case .developer: "shippingbox"
             case .memory: "memorychip"
-            case .activity: "clock.arrow.circlepath"
             }
         }
 
@@ -200,14 +197,13 @@ nonisolated enum RoomMenuModel {
             case .clean: .rescanCaches
             case .developer: .rescanDeveloper
             case .memory: .refreshMemory
-            case .activity: nil
             }
         }
 
         var canStop: Bool {
             switch self {
             case .disk, .clean, .developer: true
-            case .overview, .memory, .activity: false
+            case .overview, .memory: false
             }
         }
     }
@@ -322,6 +318,7 @@ nonisolated enum RoomMenuModel {
         for destination in Destination.allCases {
             add(.go, destination.item, destination.shortcut, enabled: !modal)
         }
+        add(.go, .showHistory, .init("y"), enabled: main)
         add(.go, .enclosing, .init("↑"), enabled: main && input.destination == .disk && canStart && input.canEnclose && !input.isScanning)
 
         add(.window, .minimize, .init("m"), enabled: hasKeyWindow, native: true)

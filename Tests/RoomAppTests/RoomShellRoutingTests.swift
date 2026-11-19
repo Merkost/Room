@@ -12,7 +12,7 @@ struct RoomShellRoutingTests {
 
     @Test func restorableRawForActivityAndRooms() throws {
         let id = UUID()
-        #expect(RoomRoute.screen(.activity).restorableRaw == "overview")
+        #expect(RoomDestination(rawValue: "activity") == nil)
         #expect(RoomRoute.room(id).restorableRaw == "disk")
         #expect(RoomRoute.savedView(id).restorableRaw == "disk")
         let encoded = try JSONEncoder().encode(RoomRoute.room(id))

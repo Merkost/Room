@@ -22,8 +22,8 @@ struct RoomMenuModelTests {
         let keys = items.compactMap(\.shortcut)
         #expect(Set(keys).count == keys.count)
         #expect(!keys.contains(.init("r", [.shift, .command])))
-        #expect(items.filter { $0.section == .go }.dropFirst(2).dropLast().map(\.title) == RoomSidebar.items.map(\.title))
-        #expect(items.filter { $0.section == .go }.dropFirst(2).dropLast().map { $0.shortcut?.key } == RoomSidebar.items.map(\.shortcut))
+        #expect(items.filter { $0.section == .go }.dropFirst(2).prefix(5).map(\.title) == RoomSidebar.items.map(\.title))
+        #expect(items.filter { $0.section == .go }.dropFirst(2).prefix(5).map { $0.shortcut?.key } == RoomSidebar.items.map(\.shortcut))
     }
 
     @Test func modalAndWorkingGuards() {
@@ -44,7 +44,7 @@ struct RoomMenuModelTests {
         let direct = Menu.make(.init(edition: .direct))
         let store = Menu.make(.init(edition: .store))
         #expect(direct == store)
-        let deferred = ["Show History", "Show Inspector", "Customise Overview…"]
+        let deferred = ["Show Inspector", "Customise Overview…"]
         #expect(direct.allSatisfy { !deferred.contains($0.title) })
         #expect(direct.first { $0.id == .monitor }?.enabled == true)
         #expect(Menu.make(.init(menuBarEnabled: false)).first { $0.id == .monitor }?.enabled == false)

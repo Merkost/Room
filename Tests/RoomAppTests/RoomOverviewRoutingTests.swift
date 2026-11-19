@@ -13,13 +13,11 @@ struct RoomOverviewRoutingTests {
         #expect(numbered.first { $0.destination == .clean }?.title == "Caches")
     }
 
-    @Test func activityRemainsReachable() throws {
-        let activity = try #require(RoomSidebar.items.last)
-        let fixture = try RoutingFixture()
+    @Test func storedActivityOpensOverview() throws {
+        let fixture = try RoutingFixture(last: "activity")
         defer { fixture.remove() }
-        fixture.navigation.select(activity.destination)
-        #expect(fixture.navigation.destination == .activity)
-        #expect(activity.id == "activity" && activity.shortcut == nil)
+        #expect(fixture.navigation.destination == .overview)
+        #expect(RoomDestination(rawValue: "activity") == nil)
     }
 
     @Test func footerRequestsOverview() async throws {

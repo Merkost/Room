@@ -22,6 +22,12 @@ struct RoomRootView: View {
         switch appearance { case "light": .light; case "dark": .dark; default: nil }
     }
     private var screenActions: RoomScreenActions {
+        var commands = destinationActions
+        commands.showHistory = { sheet = .history }
+        return commands
+    }
+
+    private var destinationActions: RoomScreenActions {
         switch destination {
         case .overview:
             RoomScreenActions(destination: .overview, canRescan: true, rescan: insights.refreshDiskCapacity)
@@ -38,8 +44,6 @@ struct RoomRootView: View {
         case .memory:
             RoomScreenActions(destination: .memory, canRescan: true, isScanning: insights.isScanningMemory,
                               rescan: insights.scanMemory)
-        case .activity:
-            RoomScreenActions(destination: .activity)
         }
     }
 
@@ -54,6 +58,7 @@ struct RoomRootView: View {
         .focusedSceneValue(\.roomScreen, screenActions)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
+                RoomHistoryButton(model: model, show: { sheet = .history }, restore: restoreFromCaches)
                 if destination == .overview {
                     RoomGlobalHideButton(control: .shared, globalCoverage: false)
                 }
@@ -70,6 +75,7 @@ struct RoomRootView: View {
                 }
             case .protectedSources: RoomProtectedSheet(model: model)
             case .scanIssues: RoomScanIssuesSheet(issues: model.scanIssues)
+            case .history: RoomHistorySheet(model: model)
             #if ROOM_APP_STORE
             case .restore(let record): RoomStoreRestoreSheet(model: model, record: record)
             #endif
@@ -121,7 +127,7 @@ struct RoomRootView: View {
         switch destination {
         case .overview: nil
         case .disk: insights.diskURL.map { RoomHideSpeech.value($0.lastPathComponent, hide: hide) }
-        case .clean, .memory, .developer, .activity: nil
+        case .clean, .memory, .developer: nil
         }
     }
 
@@ -152,9 +158,6 @@ struct RoomRootView: View {
             #else
             RoomDeveloperView(model: developer, agentWork: agentWork, memoryReport: insights.memoryReport)
             #endif
-        case .activity:
-            RoomActivityView(model: model)
-                .task { await model.refreshHistory() }
         }
     }
 
@@ -168,7 +171,7 @@ struct RoomRootView: View {
 }
 
 private enum RoomSheet: Identifiable {
-    case review, source(RoomSource), welcome, protectedSources, scanIssues
+    case review, source(RoomSource), welcome, protectedSources, scanIssues, history
     #if ROOM_APP_STORE
     case restore(RoomActivity)
     #endif
@@ -179,6 +182,7 @@ private enum RoomSheet: Identifiable {
         case .welcome: "welcome"
         case .protectedSources: "protected"
         case .scanIssues: "issues"
+        case .history: "history"
         #if ROOM_APP_STORE
         case .restore(let record): "restore-\(record.id)"
         #endif

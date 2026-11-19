@@ -13,7 +13,7 @@ nonisolated enum RoomRoute: Hashable, Sendable, Codable {
     /// The raw value Open on › Last place may restore. Rooms and views restore as Disk Map (their bookmark may be gone).
     var restorableRaw: String {
         switch self {
-        case .screen(let d): d == .activity ? RoomDestination.overview.rawValue : d.rawValue
+        case .screen(let d): d.rawValue
         case .room, .savedView: RoomDestination.disk.rawValue
         }
     }
