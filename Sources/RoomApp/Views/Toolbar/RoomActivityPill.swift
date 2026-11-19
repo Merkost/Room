@@ -5,6 +5,7 @@ struct RoomActivityPill: View {
     var stop: (RoomActivityPillState.Tool) -> Void = { _ in }
     var restore: (UUID) -> Void = { _ in }
     var showHistory: () -> Void = {}
+    var prefersQuietIdleLabel = false
 
     @Environment(\.roomActivityCenter) private var center
     @Environment(\.roomMotion) private var motion
@@ -17,23 +18,27 @@ struct RoomActivityPill: View {
     var body: some View {
         if let center {
             let state = center.visible
-            let text = label(state)
+            let text = toolbarLabel(state)
             Button {
                 expanded.toggle()
             } label: {
                 HStack(spacing: RoomTokens.Space.row) {
                     mark(state)
+                        .frame(width: 14, height: 14)
                     RoomChangingLabel(value: text, animates: !hidden) {
                         Text(text).font(RoomTokens.Typography.caption.monospacedDigit())
                             .lineLimit(1).truncationMode(.middle)
+                            .frame(maxWidth: 200)
                     }
                 }
                 .padding(.horizontal, 10)
-                .frame(minWidth: 160, idealWidth: 220, maxWidth: 360, minHeight: 28)
+                .frame(minHeight: 28)
+                .fixedSize(horizontal: true, vertical: false)
                 .contentShape(Capsule())
             }
             .buttonStyle(.plain)
-            .background(.thinMaterial, in: Capsule())
+            .background(RoomTokens.Surface.group, in: Capsule())
+            .overlay { Capsule().strokeBorder(RoomTokens.Surface.line2).allowsHitTesting(false) }
             .accessibilityLabel(spoken(state))
             .accessibilityHint("Shows activity details")
             .onHover { inside in
@@ -79,30 +84,32 @@ struct RoomActivityPill: View {
             TimelineView(.animation) { context in
                 let lap = RoomTokens.Motion.traceLap
                 let elapsed = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: lap)
-                markPath(phase: elapsed / lap)
+                markPath(phase: elapsed / lap, ink: RoomTokens.Ink.secondary)
             }
-            .frame(width: 16, height: 16)
             .accessibilityHidden(true)
         } else if case .made = state {
             Image(systemName: "checkmark.circle.fill")
                 .foregroundStyle(accent.text)
-                .frame(width: 16, height: 16)
                 .accessibilityHidden(true)
         } else {
-            markPath(phase: nil).frame(width: 16, height: 16).accessibilityHidden(true)
+            let ink: Color = if case .needsAccess = state { RoomTokens.Status.elevated } else { RoomTokens.Ink.secondary }
+            markPath(phase: nil, ink: ink).accessibilityHidden(true)
         }
     }
 
-    private func markPath(phase: Double?) -> some View {
+    private func markPath(phase: Double?, ink: Color) -> some View {
         Canvas { context, size in
             let outline = Path(RoomPocketMark.outerPath(in: CGRect(origin: .zero, size: size)))
-            context.stroke(outline, with: .color(phase == nil ? accent.text.opacity(0.9) : RoomTokens.Ink.secondary.opacity(0.35)), lineWidth: 1.2)
+            context.stroke(outline, with: .color(ink.opacity(phase == nil ? 0.75 : 0.35)), lineWidth: 1)
             if let phase {
                 let end = phase + RoomTokens.Motion.traceDashFraction
                 context.stroke(outline.trimmedPath(from: phase, to: min(1, end)), with: .color(accent.text), lineWidth: 1.4)
                 if end > 1 {
                     context.stroke(outline.trimmedPath(from: 0, to: end - 1), with: .color(accent.text), lineWidth: 1.4)
                 }
+            } else {
+                let dot = CGRect(x: size.width / 2 - 1, y: size.height / 2 - 1, width: 2, height: 2)
+                context.fill(Path(ellipseIn: dot), with: .color(ink))
             }
         }
     }
@@ -140,6 +147,11 @@ struct RoomActivityPill: View {
         guard hidden else { return rawLabel(state) }
         if case .scanning = state { return "Checking · details hidden" }
         return RoomCachesVisibility.figure(rawLabel(state), hidden: hidden)
+    }
+
+    private func toolbarLabel(_ state: RoomActivityPillState) -> String {
+        if prefersQuietIdleLabel, case .idle(.some) = state { return String(localized: "Up to date") }
+        return label(state)
     }
 
     private func spoken(_ state: RoomActivityPillState) -> String {

@@ -22,7 +22,7 @@ nonisolated struct RoomOverviewMapping: Equatable, Sendable {
 }
 
 nonisolated enum RoomOverviewState: Equatable, Sendable {
-    case capacityUnreadable, belowGoal, notMapped, mapped, mapping, mappingStopped
+    case capacityUnreadable, firstRun, belowGoal, notMapped, mapped, mapping, mappingStopped
 }
 
 nonisolated enum RoomOverviewAction: Equatable, Sendable {
@@ -106,8 +106,15 @@ nonisolated struct RoomOverviewSnapshot: Equatable, Sendable {
         } else {
             action = .checkCaches
         }
-        let freeAnswer = String(localized: "overview.answer", defaultValue: "You have \(format(free)) of room.")
-        let rawAnswer = input.mapping == nil ? freeAnswer : String(localized: "overview.mapping.title", defaultValue: "Room is looking.")
+        let firstRun = action == .mapMac && recorded == nil && input.homeKinds == nil && !input.stoppedMapping
+        let rawAnswer: String
+        if input.mapping != nil {
+            rawAnswer = String(localized: "overview.mapping.title", defaultValue: "Room is looking.")
+        } else if firstRun {
+            rawAnswer = String(localized: "overview.first.title", defaultValue: "Room starts by looking.")
+        } else {
+            rawAnswer = String(localized: "overview.answer", defaultValue: "You have \(format(free)) of room.")
+        }
         let rawSentence: String
         let below = goal.map { free < $0 } ?? false
         if let mapping = input.mapping {
@@ -116,6 +123,8 @@ nonisolated struct RoomOverviewSnapshot: Equatable, Sendable {
             rawSentence = String(localized: "overview.mapping.progress", defaultValue: "Measured so far: \(size) in \(files) files.")
         } else if input.stoppedMapping {
             rawSentence = String(localized: "overview.mapping.stopped", defaultValue: "Mapping stopped. The plan shows what was measured.")
+        } else if firstRun {
+            rawSentence = String(localized: "overview.first.say", defaultValue: "Nothing moves until you say so.")
         } else if let goal {
             if below {
                 rawSentence = String(localized: "overview.goal.below",
@@ -164,6 +173,7 @@ nonisolated struct RoomOverviewSnapshot: Equatable, Sendable {
         let state: RoomOverviewState
         if input.mapping != nil { state = .mapping }
         else if input.stoppedMapping { state = .mappingStopped }
+        else if firstRun { state = .firstRun }
         else if below { state = .belowGoal }
         else if input.homeKinds != nil { state = .mapped }
         else { state = .notMapped }
@@ -172,7 +182,7 @@ nonisolated struct RoomOverviewSnapshot: Equatable, Sendable {
                             actionTitle: rawTitle, accessibilityAnswer:
                                 "\(rawAnswer) \(rawSentence.replacingOccurrences(of: "≥ ", with: "at least "))",
                             accessibilityAction: spokenAction,
-                            plan: .init(capacityBytes: capacity, freeBytes: free, goalBytes: below ? nil : goal,
+                            plan: .init(capacityBytes: capacity, freeBytes: free, goalBytes: below || firstRun ? nil : goal,
                                         homeKinds: input.homeKinds, mapping: input.mapping),
                             cachesCheckedAt: recorded?.at,
                             mapLinkAvailable: input.mapActionAvailable && action != .mapMac && action != .stopMapping)
@@ -180,7 +190,7 @@ nonisolated struct RoomOverviewSnapshot: Equatable, Sendable {
     }
 
     func hidingSizes() -> Self {
-        guard state != .capacityUnreadable else { return self }
+        guard state != .capacityUnreadable, state != .firstRun else { return self }
         let title: String
         let spokenAction: String
         if case .makeRoom = action {

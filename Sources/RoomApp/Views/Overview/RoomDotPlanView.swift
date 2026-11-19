@@ -72,6 +72,7 @@ struct RoomDotPlanView: View {
     var staticPreview = false
     var density = RoomTokens.Density.calm
     var solidKinds = false
+    var showsUnmappedFigure = true
     let openDiskMap: () -> Void
 
     @Environment(\.roomAccent) private var accent
@@ -133,6 +134,8 @@ struct RoomDotPlanView: View {
                     .onEnded { _ in didPress = false })
                 HStack {
                     Text(presentation.caption)
+                        .lineLimit(1)
+                        .layoutPriority(1)
                     Spacer(minLength: RoomTokens.Space.row)
                     if let readout = presentation.rows.first(where: { $0.id == (hover ?? selection) }) {
                         Text(readout.readout).lineLimit(1)
@@ -321,7 +324,8 @@ struct RoomDotPlanView: View {
         }
         if let room = geometry.notMapped, let row = presentation.rows.first(where: { $0.id == .notMapped }) {
             let bounds = room.insetBy(dx: Tokens.labelInset, dy: Tokens.labelInset)
-            drawLabel("\(row.name) · \(row.visualSize)", in: bounds, font: RoomTokens.Typography.micro,
+            let label = showsUnmappedFigure ? "\(row.name) · \(row.visualSize)" : row.name
+            drawLabel(label, in: bounds, font: RoomTokens.Typography.micro,
                       ink: RoomTokens.Ink.graphite, context: context)
         }
     }

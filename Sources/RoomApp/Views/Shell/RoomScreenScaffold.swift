@@ -14,8 +14,8 @@ struct RoomScreenScaffold<Content: View>: View {
                 if scrolls {
                     ScrollView {
                         content()
-                            .padding(.horizontal, density.gutter)
-                            .padding(.top, requestedDensity?.topInset ?? RoomTokens.Density.calm.topInset)
+                            .padding(.horizontal, requestedDensity == nil ? RoomTokens.Space.breath1 : density.gutter)
+                            .padding(.top, requestedDensity == nil ? 4 : density.topInset)
                             .padding(.bottom, RoomTokens.Space.breath1)
                             .frame(maxWidth: 1120, alignment: .topLeading)
                             .frame(maxWidth: .infinity)
@@ -32,14 +32,17 @@ struct RoomScreenScaffold<Content: View>: View {
         .navigationSubtitle(subtitle ?? "")
         .toolbar {
             ToolbarItem(placement: .navigation) {
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(title).font(RoomTokens.Typography.title)
+                HStack(alignment: .firstTextBaseline, spacing: RoomTokens.Space.inner) {
+                    Text(title).font(RoomTokens.Typography.title).fixedSize()
                     if let subtitle {
                         Text(subtitle).font(RoomTokens.Typography.caption)
                             .foregroundStyle(RoomTokens.Ink.secondary)
+                            .lineLimit(1)
                     }
                 }
                 .accessibilityElement(children: .combine)
+                .accessibilityAddTraits(requestedDensity == nil ? .isHeader : [])
+                .padding(.leading, scrolls && requestedDensity == nil ? RoomTokens.Space.breath1 - 4 : 0)
             }
             .sharedBackgroundVisibility(.hidden)
         }

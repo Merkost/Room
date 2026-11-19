@@ -24,10 +24,16 @@ nonisolated struct RoomOverviewPlanPresentation {
         let scale = solidKinds
             ? String(localized: "plan.area", defaultValue: "Area shows storage size", table: "Overview", bundle: RoomCopy.bundle)
             : String(localized: "plan.unit", defaultValue: "1 dot = about \(unit)")
-        let captionText = plan.homeKinds.map {
-            let day = $0.mappedAt.formatted(.dateTime.day().month())
-            return String(localized: "plan.mapped", defaultValue: "\(scale) · mapped \(day)")
-        } ?? scale
+        let captionText: String
+        if let homeKinds = plan.homeKinds {
+            let day = homeKinds.mappedAt.formatted(.dateTime.day().month())
+            captionText = String(localized: "plan.mapped", defaultValue: "\(scale) · mapped \(day)")
+        } else if plan.notMappedBytes > 0, !solidKinds {
+            captionText = String(localized: "plan.measuredOnly", defaultValue: "\(scale) · only what is measured gets dots",
+                                 table: "Overview", bundle: RoomCopy.bundle)
+        } else {
+            captionText = scale
+        }
         caption = Self.visible(captionText, hidden: hidden)
         if hidden {
             accessibilityLabel = String(localized: "plan.a11y.hidden", defaultValue: "Storage plan. Sizes hidden.")

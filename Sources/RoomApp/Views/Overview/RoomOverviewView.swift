@@ -82,7 +82,8 @@ struct RoomOverviewView: View {
                 .modifier(arrivalGroup(0))
                 if let plan = snapshot.plan, plan.fitsDotBudget {
                     RoomDotPlanView(plan: plan, belowGoal: snapshot.state == .belowGoal, hidden: hidden,
-                                    density: density, solidKinds: style == .rooms, openDiskMap: openDiskMap)
+                                    density: density, solidKinds: style == .rooms,
+                                    showsUnmappedFigure: snapshot.state != .firstRun, openDiskMap: openDiskMap)
                         .modifier(arrivalGroup(1))
                 }
                 VStack(alignment: .leading, spacing: density.betweenGroups) {
@@ -100,7 +101,7 @@ struct RoomOverviewView: View {
                 }
             }
             .frame(minHeight: density.firstScreenMinHeight, alignment: .topLeading)
-            if showRooms && (!rooms.visibleRooms.isEmpty || rooms.canChooseFolder) {
+            if showRooms && (!rooms.visibleRooms.isEmpty || (snapshot.state != .firstRun && rooms.canChooseFolder)) {
                 VStack(alignment: .leading, spacing: density.insideChapter) {
                     RoomChapterRooms(rooms: rooms, calendar: .current, editing: editingRoom, openRoom: openPinned,
                                      showAll: showAllRooms)
@@ -234,7 +235,7 @@ struct RoomOverviewView: View {
         Group {
             switch snapshot.action {
             case .mapMac:
-                Button(snapshot.actionTitle, action: insights.scanHome).roomPrimary(accent)
+                Button(snapshot.actionTitle, action: insights.scanHome).roomScreenPrimary(accent)
             case .stopMapping:
                 Button(snapshot.actionTitle, action: insights.cancelDiskScan).roomSecondary()
             case .retryCapacity:
@@ -265,8 +266,7 @@ struct RoomOverviewView: View {
             Text(snapshot.actionTitle)
                 .font(RoomTokens.Typography.section)
         }
-        .roomPrimary(accent)
-        .frame(minHeight: RoomTokens.Overview.actionHeight)
+        .roomScreenPrimary(accent)
         .accessibilityLabel(snapshot.accessibilityAction)
     }
 

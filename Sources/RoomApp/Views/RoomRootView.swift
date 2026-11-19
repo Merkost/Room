@@ -81,7 +81,8 @@ struct RoomRootView: View {
         .focusedSceneValue(\.roomScreen, screenActions)
         .toolbar {
             ToolbarItem(placement: .principal) {
-                RoomActivityPill(stop: stopActivity, restore: restoreActivity, showHistory: { sheet = .history })
+                RoomActivityPill(stop: stopActivity, restore: restoreActivity, showHistory: { sheet = .history },
+                                 prefersQuietIdleLabel: destination == .overview)
             }
             .sharedBackgroundVisibility(.hidden)
             ToolbarItemGroup(placement: .primaryAction) {
@@ -90,6 +91,7 @@ struct RoomRootView: View {
                 if destination == .overview {
                     Button { showingCustomise.toggle() } label: {
                         Label("Customise", systemImage: "slider.horizontal.3")
+                            .labelStyle(.titleAndIcon)
                     }
                     .help("Customise Overview")
                     .accessibilityIdentifier("RoomCustomiseOverview")
@@ -212,7 +214,8 @@ struct RoomRootView: View {
         switch destination {
         case .overview: nil
         case .disk: insights.diskURL.map { RoomHideSpeech.value($0.lastPathComponent, hide: hide) }
-        case .clean, .memory, .developer: nil
+        case .clean: model.cachesStatus
+        case .memory, .developer: nil
         }
     }
 

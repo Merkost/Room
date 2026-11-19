@@ -48,6 +48,22 @@ struct RoomOverviewModelTests {
         #expect(normal.action == .checkCaches)
     }
 
+    @Test func firstRunUsesBoardIntroWithMeasuredPlan() {
+        var new = input(free: 17 * gb, hidden: true)
+        new.mapActionAvailable = true
+        let intro = snapshot(new)
+        #expect(intro.state == .firstRun)
+        #expect(intro.answer == "Room starts by looking.")
+        #expect(intro.accessibilityAnswer == "Room starts by looking. Nothing moves until you say so.")
+        #expect(intro.action == .mapMac)
+        #expect(intro.plan?.freeBytes == 17 * gb)
+        #expect(intro.plan?.goalBytes == nil)
+
+        new.caches = caches(age: RoomOverviewSnapshot.cacheFreshness)
+        new.hidden = false
+        #expect(snapshot(new).state == .belowGoal)
+    }
+
     @Test("OVC-06_BelowGoalOutranksUnmapped") func belowGoalOutranksUnmapped() {
         let below = snapshot(input(free: 41 * gb, caches: caches()))
         #expect(below.state == .belowGoal)
