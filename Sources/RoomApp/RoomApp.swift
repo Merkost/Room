@@ -6,7 +6,7 @@ import SwiftUI
 struct RoomApp: App {
     @NSApplicationDelegateAdaptor(RoomApplicationDelegate.self) private var delegate
     @State private var model: RoomViewModel
-    @State private var insights = RoomInsightsModel(volumeHistory: .shared)
+    @State private var insights = RoomInsightsModel(volumeHistory: .shared, pressureWriter: .shared)
     @State private var navigation = RoomWindowNavigation()
     @State private var memoryActions = MemoryActionsModel()
     @State private var rooms: RoomRoomsModel
@@ -169,7 +169,6 @@ final class RoomApplicationDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        insights?.savePressureHistory()
         #if !ROOM_APP_STORE
         agentWork?.shutdown()
         #endif
@@ -192,6 +191,7 @@ final class RoomApplicationDelegate: NSObject, NSApplicationDelegate {
         }
         if waitingForStateWrites { return .terminateLater }
         insights?.volumeHistory.prepareForTermination()
+        insights?.savePressureHistory()
         let writer = RoomStateWriter.shared
         guard writer.hasPendingWrites else { return .terminateNow }
         waitingForStateWrites = true

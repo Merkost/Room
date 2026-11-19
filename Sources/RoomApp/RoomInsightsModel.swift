@@ -42,6 +42,10 @@ final class RoomInsightsModel {
     @ObservationIgnored private let readMemory: @MainActor () async -> MemoryReport
     @ObservationIgnored private let waitForMemoryTick: @MainActor () async throws -> Void
     @ObservationIgnored private let pressureStore: RoomPressureHistoryStore
+    @ObservationIgnored private let pressureWriter: RoomStateWriter?
+    @ObservationIgnored private var pressureLoad: Task<Void, Never>?
+    @ObservationIgnored private var bufferedPressure: [MemoryReport] = []
+    @ObservationIgnored private var pressureReadOnly = false
     @ObservationIgnored private var pressureDirty = false
     @ObservationIgnored private var monitorEnabled = false
     @ObservationIgnored private var memoryActive = false
@@ -71,12 +75,14 @@ final class RoomInsightsModel {
              try await Task.sleep(for: RoomInsightsModel.monitorInterval)
          },
          pressureStore: RoomPressureHistoryStore = .init(),
+         pressureWriter: RoomStateWriter? = nil,
          readMemory: (@MainActor () async -> MemoryReport)? = nil,
          waitForMemoryTick: @escaping @MainActor () async throws -> Void = {
              try await Task.sleep(for: RoomInsightsModel.monitorInterval)
          }) {
         self.pressureStore = pressureStore
-        pressureHistory = pressureStore.load()
+        self.pressureWriter = pressureWriter
+        pressureHistory = pressureWriter == nil ? pressureStore.load() : RoomPressureHistory()
         let engine = MemoryEngine()
         self.readMemory = readMemory ?? { await engine.scan() }
         self.waitForMemoryTick = waitForMemoryTick
@@ -87,6 +93,21 @@ final class RoomInsightsModel {
         self.waitForCapacityTick = waitForCapacityTick
         self.folderPicker = folderPicker ?? { title, message, prompt, initial in
             await RoomNativeFolderPicker.shared.choose(title: title, message: message, prompt: prompt, initialURL: initial)
+        }
+        if let pressureWriter {
+            pressureLoad = Task { [weak self] in
+                let saved = await pressureWriter.store.load(RoomPressureHistory.self, from: .pressure,
+                    legacy: { data in try JSONDecoder().decode(RoomPressureHistory.self, from: data) })
+                guard let self, self.pressureLoad != nil, !Task.isCancelled else { return }
+                self.pressureLoad = nil
+                self.pressureReadOnly = saved.isReadOnly
+                if let saved = saved.value, RoomPressureHistoryStore.isValid(saved) {
+                    self.pressureHistory = saved
+                }
+                let buffered = self.bufferedPressure
+                self.bufferedPressure.removeAll()
+                for report in buffered { self.recordPressure(report) }
+            }
         }
     }
 
@@ -197,6 +218,11 @@ final class RoomInsightsModel {
 
     private func recordPressure(_ report: MemoryReport) {
         guard RoomPressureLevel(memoryPressureRaw: report.pressure.rawValue) != nil else { return }
+        if pressureLoad != nil {
+            bufferedPressure.append(report)
+            if bufferedPressure.count > RoomPressureHistory.dayCount { bufferedPressure.removeFirst() }
+            return
+        }
         let previous = pressureHistory.day.buckets.last?.index
         pressureHistory.record(pressureRaw: report.pressure.rawValue, usedBytes: report.usedBytes,
                                swapBytes: RoomMonitorPresentation.measuredSwap(report), at: report.scannedAt)
@@ -205,9 +231,19 @@ final class RoomInsightsModel {
     }
 
     func savePressureHistory() {
-        guard pressureDirty else { return }
-        pressureStore.save(pressureHistory)
+        guard pressureDirty, !pressureReadOnly else { return }
+        if let pressureWriter { pressureWriter.submit(pressureHistory, to: .pressure) }
+        else { pressureStore.save(pressureHistory) }
         pressureDirty = false
+    }
+
+    func clearPressureHistory() {
+        pressureLoad?.cancel()
+        pressureLoad = nil
+        bufferedPressure = []
+        pressureHistory = RoomPressureHistory()
+        pressureDirty = false
+        pressureWriter?.discardPending(for: .pressure)
     }
 
     private var suggestedHome: URL {
@@ -344,6 +380,8 @@ final class RoomInsightsModel {
                 self.homeTree = self.diskMap.current
                 self.isMappingHome = false
                 self.stoppedMappingHome = result.cancelled
+                self.volumeHistory.recordKinds(mapped.tree.kindBytes, at: mapped.report.scannedAt,
+                    complete: !mapped.report.cancelled && !mapped.tree.isPartial, volumeID: mapped.volumeID)
             }
             #if !ROOM_APP_STORE
             if visibleRoot.standardizedFileURL == self.applicationsFolder { self.applicationsTree = self.diskMap.current }

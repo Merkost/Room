@@ -161,8 +161,7 @@ struct RoomPressureHistoryStore {
         guard let size = try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize, size <= 128 * 1_024,
               let data = try? Data(contentsOf: file),
               let history = try? JSONDecoder().decode(RoomPressureHistory.self, from: data),
-              isValid(history.day, seconds: RoomPressureHistory.dayBucket, count: RoomPressureHistory.dayCount),
-              isValid(history.week, seconds: RoomPressureHistory.weekBucket, count: RoomPressureHistory.weekCount) else {
+              Self.isValid(history) else {
             return RoomPressureHistory()
         }
         return history
@@ -178,7 +177,12 @@ struct RoomPressureHistoryStore {
         }
     }
 
-    private func isValid(_ series: RoomPressureSeries, seconds: Int64, count: Int) -> Bool {
+    nonisolated static func isValid(_ history: RoomPressureHistory) -> Bool {
+        isValid(history.day, seconds: RoomPressureHistory.dayBucket, count: RoomPressureHistory.dayCount)
+            && isValid(history.week, seconds: RoomPressureHistory.weekBucket, count: RoomPressureHistory.weekCount)
+    }
+
+    private nonisolated static func isValid(_ series: RoomPressureSeries, seconds: Int64, count: Int) -> Bool {
         guard series.bucketSeconds == seconds, series.capacity == count,
               series.buckets.count <= count else { return false }
         var previous: Int64?
