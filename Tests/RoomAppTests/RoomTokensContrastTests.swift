@@ -44,7 +44,7 @@ struct RoomTokensContrastTests {
     }
 
     private func contrast(_ a: [Double], _ b: [Double]) -> Double {
-        let luminances = [a, b].map { channels in
+        let luminances: [Double] = [a, b].map { channels in
             zip(channels, [0.2126, 0.7152, 0.0722]).map { value, weight in
                 let linear = value <= 0.04045 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
                 return linear * weight
