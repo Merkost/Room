@@ -7,27 +7,27 @@ import Testing
 struct RoomMainMenuTests {
     @Test func realMenuContainsBuiltCommands() async throws {
         let files = FileManager.default
-        let executable = try #require(Self.executableProduct(), "Room executable beside the SwiftPM test bundle")
-        let fixture = executable.deletingLastPathComponent().appendingPathComponent("RoomMainMenuTests-\(UUID())")
+        let fixture = files.temporaryDirectory.appendingPathComponent("RoomMainMenuTests-\(UUID())")
         defer { try? files.removeItem(at: fixture) }
-        let bundle = try await Self.prepareApp(at: fixture, using: executable)
+        let bundle = try await Self.prepareApp(at: fixture)
 
         let output = fixture.appendingPathComponent("menu.json")
-        let application = Process()
-        application.executableURL = bundle.appendingPathComponent("Contents/MacOS/Room")
-        application.arguments = ["-RoomOnboardingVersion", String(RoomOnboardingFlow.version),
-                                 "-RoomOpenOn", "overview", "-RoomMenuBarEnabled", "NO",
-                                 "-RoomWeeklyCheckEnabled", "NO", "-AppleLanguages", "(en-US)"]
-        var environment = ProcessInfo.processInfo.environment
-        let activationTimeout = environment["ROOM_MAIN_MENU_ACTIVATION_TIMEOUT"].flatMap(Int.init) ?? 60
-        environment["ROOM_MAIN_MENU_TEST_OUTPUT"] = output.path
-        environment["ROOM_MAIN_MENU_ACTIVATION_TIMEOUT"] = String(activationTimeout)
-        application.environment = environment
-        try application.run()
-        defer { if application.isRunning { application.terminate() } }
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.createsNewApplicationInstance = true
+        configuration.activates = true
+        configuration.arguments = ["-RoomOnboardingVersion", String(RoomOnboardingFlow.version),
+                                   "-RoomOpenOn", "overview", "-RoomMenuBarEnabled", "NO",
+                                   "-RoomWeeklyCheckEnabled", "NO", "-AppleLanguages", "(en-US)"]
+        let activationTimeout = ProcessInfo.processInfo.environment["ROOM_MAIN_MENU_ACTIVATION_TIMEOUT"]
+            .flatMap(Int.init) ?? 60
+        configuration.environment = ["ROOM_MAIN_MENU_TEST_OUTPUT": output.path,
+                                     "ROOM_MAIN_MENU_ACTIVATION_TIMEOUT": String(activationTimeout)]
+        let application = try await NSWorkspace.shared.openApplication(at: bundle, configuration: configuration)
+        defer { if !application.isTerminated { application.terminate() } }
 
+        application.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
         let deadline = ContinuousClock.now + .seconds(activationTimeout + 15)
-        while !files.fileExists(atPath: output.path), application.isRunning, ContinuousClock.now < deadline {
+        while !files.fileExists(atPath: output.path), !application.isTerminated, ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(50))
         }
         let menus = try JSONDecoder().decode([RoomDebugMainMenuProbe.Menu].self, from: Data(contentsOf: output))
@@ -85,10 +85,11 @@ struct RoomMainMenuTests {
     }
 
     @concurrent
-    private static func prepareApp(at fixture: URL, using executable: URL) async throws -> URL {
+    private static func prepareApp(at fixture: URL) async throws -> URL {
         let files = FileManager.default
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let executable = try #require(executableProduct(), "Room executable beside the SwiftPM test bundle")
         let bundle = fixture.appendingPathComponent("Room.app")
         let contents = bundle.appendingPathComponent("Contents")
         let binaries = contents.appendingPathComponent("MacOS")
