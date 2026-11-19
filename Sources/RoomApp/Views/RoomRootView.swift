@@ -124,7 +124,7 @@ struct RoomRootView: View {
         }
         .sheet(item: $sheet) { selected in
             switch selected {
-            case .review: RoomReviewSheet(model: model)
+            case .review: RoomCleanupReviewSheet(model: model)
             case .source(let source): RoomSourceSheet(source: source, model: model)
             case .welcome:
                 RoomOnboardingView {

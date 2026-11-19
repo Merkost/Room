@@ -1,83 +1,6 @@
 #if ROOM_APP_STORE
 import SwiftUI
 
-struct RoomStoreCacheReviewSheet: View {
-    @Bindable var model: RoomViewModel
-    @Environment(\.dismiss) private var dismiss
-    private var sources: [RoomSource] { model.sources.filter { model.selection.contains($0.id) && $0.isAvailable } }
-    private var impacts: [String] { Array(Set(sources.flatMap(\.cleanupConsequences))).sorted() }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            RoomSheetHeading(title: "Make a little room.", subtitle: "Review the selection and approve its exact folders.")
-            HStack(alignment: .firstTextBaseline) {
-                Text(RoomFormat.bytes(model.selectedBytes)).font(RoomType.figure(36)).monospacedDigit()
-                Spacer()
-                Text("\(sources.count) \(sources.count == 1 ? "source" : "sources")").font(.system(size: 13)).foregroundStyle(.secondary)
-            }
-            if !impacts.isEmpty {
-                VStack(alignment: .leading, spacing: 9) {
-                    Label("Before you move", systemImage: "exclamationmark.triangle")
-                        .font(.system(size: 13, weight: .medium)).foregroundStyle(.orange)
-                    ForEach(impacts, id: \.self) { impact in
-                        Text(impact).font(.system(size: 12)).lineSpacing(2)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                .padding(16).frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .accessibilityElement(children: .combine)
-                .accessibilityIdentifier("RoomStoreCleanupImpact")
-            }
-            ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
-                    ForEach(sources) { source in
-                        HStack(alignment: .top, spacing: 16) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(source.name).font(.system(size: 14, weight: .medium))
-                                Text(source.subtitle).font(.system(size: 12)).foregroundStyle(.secondary)
-                            }
-                            Spacer(minLength: 12)
-                            Text(RoomFormat.bytes(source.eligibleBytes)).font(.system(size: 13)).monospacedDigit()
-                        }
-                    }
-                    RoomStorePermissionSection(model: model, retry: { Task { await model.prepareStoreCleanupReview() } })
-                    Label("Items move to Trash; Room never empties it.", systemImage: "arrow.uturn.backward")
-                        .font(.system(size: 13)).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if let message = model.errorMessage {
-                        Text(message).font(.system(size: 13)).foregroundStyle(.red)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                .padding(16).frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .frame(maxHeight: 240)
-            .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            HStack {
-                Button("Cancel") { dismiss() }.buttonStyle(.glass).keyboardShortcut(.cancelAction)
-                    .disabled(model.isWorking)
-                Spacer()
-                if model.isWorking { ProgressView().controlSize(.small) }
-                Button {
-                    Task {
-                        await model.cleanSelected()
-                        if model.lastStoreMoveCompleted { dismiss() }
-                    }
-                } label: { Label("Move to Trash", systemImage: "trash") }
-                .buttonStyle(.glassProminent).keyboardShortcut(.defaultAction)
-                .disabled(!model.canRunStoreCleanup)
-                .accessibilityIdentifier("RoomStoreMoveToTrashButton")
-            }
-            .controlSize(.large)
-        }
-        .padding(28).frame(width: 600)
-        .interactiveDismissDisabled(model.isWorking)
-        .task { await model.prepareStoreCleanupReview() }
-        .onDisappear { model.discardStoreReview() }
-    }
-}
-
 struct RoomStoreRestoreSheet: View {
     @Bindable var model: RoomViewModel
     let record: RoomActivity
@@ -137,7 +60,7 @@ struct RoomStoreRestoreSheet: View {
     }
 }
 
-private struct RoomStorePermissionSection: View {
+struct RoomStorePermissionSection: View {
     @Bindable var model: RoomViewModel
     let retry: () -> Void
 

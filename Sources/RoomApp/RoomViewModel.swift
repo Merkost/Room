@@ -44,6 +44,7 @@ final class RoomViewModel {
     @ObservationIgnored private let storeReview = RoomStoreFolderReview()
     @ObservationIgnored private var storeReviewKey: StoreReviewKey?
     @ObservationIgnored private var storeReviewGeneration = UUID()
+    @ObservationIgnored private var cleanupReviewParents: [String: [URL]] = [:]
     @ObservationIgnored private var storeScanFolders: Set<String> = []
     private(set) var isPreparingStoreReview = false
     private(set) var lastStoreMoveCompleted = false
@@ -106,6 +107,18 @@ final class RoomViewModel {
     }
 
     var canReviewCleanup: Bool { report != nil && !isScanning && !isPartialScan && !isWorking && selectedBytes > 0 }
+    var cleanupRows: [RoomCleanupReview.Row] {
+        sources.filter(\.isAvailable).map { source in
+            #if ROOM_APP_STORE
+            let parents = Set(cleanupReviewParents[source.id, default: []].map(\.path))
+            #else
+            let parents = Set<String>()
+            #endif
+            return .init(id: source.id, name: source.name, bytes: source.eligibleBytes,
+                         consequence: source.cleanupConsequences.joined(separator: "\n"),
+                         entryIDs: entryIDs(for: source.id), parentFolders: parents)
+        }
+    }
 
     init(engine: CacheEngine? = nil, cachesCheckStore: RoomCachesCheckStore = RoomCachesCheckStore()) {
         self.cachesCheckStore = cachesCheckStore
@@ -241,6 +254,12 @@ final class RoomViewModel {
     func toggleSelection(id: String) {
         guard report != nil, !isScanning, !isPartialScan, !isWorking, sources.contains(where: { $0.id == id && $0.isAvailable }) else { return }
         if selection.contains(id) { selection.remove(id) } else { selection.insert(id) }
+        #if ROOM_APP_STORE
+        if case .cleanup = storeReviewKey {
+            do { try reconcileCleanupReview() }
+            catch { discardStoreReview(); errorMessage = error.localizedDescription }
+        }
+        #endif
     }
 
     func selectRecommended() {
@@ -254,8 +273,11 @@ final class RoomViewModel {
     }
 
     private var selectedEntryIDs: Set<UUID> {
-        Set(selection.flatMap { sourceGroups[$0, default: []].flatMap(\.eligibleEntries).map(\.id) })
-            .subtracting(movedEntryIDs)
+        selection.reduce(into: []) { $0.formUnion(entryIDs(for: $1)) }
+    }
+
+    private func entryIDs(for sourceID: String) -> Set<UUID> {
+        Set(sourceGroups[sourceID, default: []].flatMap(\.eligibleEntries).map(\.id)).subtracting(movedEntryIDs)
     }
 
     func cleanSelected() async {
@@ -491,16 +513,29 @@ final class RoomViewModel {
         errorMessage = nil
         lastStoreMoveCompleted = false
         let token = storeReviewGeneration
-        let ids = selectedEntryIDs
+        let rows = cleanupRows
         let scopes = beginStoreReadAccess()
         isPreparingStoreReview = true
         defer { Self.endStoreReadAccess(scopes); if token == storeReviewGeneration { isPreparingStoreReview = false } }
         do {
-            let locations = try await engine.authorizationLocations(entryIDs: Array(ids))
-            guard token == storeReviewGeneration, self.report?.id == report.id, selectedEntryIDs == ids else { return }
-            try storeReview.prepare(locations)
-            storeReviewKey = .cleanup(report.id, ids)
+            var locations: [String: [URL]] = [:]
+            for row in rows {
+                locations[row.id] = try await engine.authorizationLocations(entryIDs: Array(row.entryIDs))
+                guard token == storeReviewGeneration, self.report?.id == report.id else { return }
+            }
+            cleanupReviewParents = locations
+            try reconcileCleanupReview()
         } catch { if token == storeReviewGeneration { errorMessage = error.localizedDescription } }
+    }
+
+    private func reconcileCleanupReview() throws {
+        guard let report else { throw RoomStoreAccessError.reviewChanged }
+        let locations = selection.flatMap { cleanupReviewParents[$0, default: []] }
+        let scopes = beginStoreReadAccess()
+        defer { Self.endStoreReadAccess(scopes) }
+        storeReview.narrow(to: Set(locations.map(\.path)))
+        try storeReview.add(locations)
+        storeReviewKey = .cleanup(report.id, selectedEntryIDs)
     }
 
     func prepareStoreRestoreReview(_ record: RoomActivity) async {
@@ -545,6 +580,7 @@ final class RoomViewModel {
 
     func discardStoreReview() {
         guard !isWorking else { return }
+        cleanupReviewParents = [:]
         storeReviewGeneration = UUID()
         storeReviewKey = nil
         isPreparingStoreReview = false
