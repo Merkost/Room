@@ -2,6 +2,7 @@ import RoomCore
 import SwiftUI
 
 struct RoomCachesView: View {
+    @AppStorage(RoomCachesVisibility.preferenceKey) private var hidden = false
     let model: RoomViewModel
     let review: () -> Void
     let inspect: (RoomSource) -> Void
@@ -11,6 +12,7 @@ struct RoomCachesView: View {
 
     @Environment(\.roomAccent) private var accent
     @Environment(\.roomMotion) private var motion
+    @Environment(\.colorSchemeContrast) private var contrast
     @State private var filter = Filter.clearable
     @State private var undo: Undo?
     @FocusState private var focusedSource: String?
@@ -118,10 +120,10 @@ struct RoomCachesView: View {
             } else if !hero.lowerBound {
                 Text(hero.heroLabel).font(RoomTokens.Typography.lead)
             }
-            if let found = hero.foundBytes {
+            if let found = hero.foundBytes, !hero.lowerBound || found > 0 {
                 statistic("Caches found", bytes: found, lowerBound: hero.lowerBound)
             }
-            if let kept = hero.keptBytes {
+            if let kept = hero.keptBytes, !hero.lowerBound || kept > 0 {
                 statistic("Kept safe", bytes: kept, lowerBound: hero.lowerBound)
             }
             if !model.isScanning && hero.keptBytes != nil {
@@ -169,7 +171,7 @@ struct RoomCachesView: View {
         VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
             Text("Where Room looks").font(RoomTokens.Typography.section)
             ForEach(model.checkLocations, id: \.self) { path in
-                Text(path).font(RoomTokens.Typography.caption.monospaced())
+                Text(hidden ? "Location hidden" : path).font(RoomTokens.Typography.caption.monospaced())
                     .foregroundStyle(RoomTokens.Ink.secondary).textSelection(.enabled)
             }
         }
@@ -193,7 +195,8 @@ struct RoomCachesView: View {
                 .labelsHidden().pickerStyle(.segmented)
             }
             if model.hasReport {
-                Text("\(model.selection.count) of \(model.sources.filter(\.isAvailable).count) selected")
+                Text(RoomCachesVisibility.figure("\(model.selection.count) of \(model.sources.filter(\.isAvailable).count) selected", hidden: hidden))
+                    .accessibilityLabel(hidden ? "Selection count hidden" : "\(model.selection.count) of \(model.sources.filter(\.isAvailable).count) selected")
                     .font(RoomTokens.Typography.caption)
                     .foregroundStyle(RoomTokens.Ink.secondary)
             }
@@ -229,11 +232,28 @@ struct RoomCachesView: View {
         let caption = entry.map { RoomMakeRoomCopy.headline($0, format: format) } ?? "Moved \(format(receipt.bytes)) to Trash."
         return HStack(spacing: RoomTokens.Space.group) {
             if present > 0, entry?.stage != .unobservable {
-                Text("In Trash \(format(present))")
+                HStack(spacing: RoomTokens.Space.row) {
+                    let count = min(42, max(1, Int((Double(present) / 200_000_000).rounded())))
+                    Canvas { context, _ in
+                        let dots = Path { path in
+                            for dot in 0..<count {
+                                path.addEllipse(in: CGRect(x: (dot % 10) * 6, y: (dot / 10) * 6, width: 4, height: 4))
+                            }
+                        }
+                        context.stroke(dots, with: .color(RoomTokens.Ink.secondary), lineWidth: 1)
+                    }
+                    .frame(width: 62, height: 28)
+                    .accessibilityHidden(true)
+                    Text("In Trash \(format(present))")
+                        .accessibilityLabel(hidden ? "In Trash, size hidden" : "In Trash \(format(present))")
+                }
                     .font(RoomTokens.Typography.section).padding(.horizontal, 12).frame(height: 30)
                     .overlay {
-                        Capsule().stroke(RoomTokens.Surface.line2, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                        Capsule().stroke(RoomTokens.Surface.line2, style: StrokeStyle(lineWidth: contrast == .increased ? 1.5 : 1, dash: [4, 3]))
                     }
+            } else if let entry, entry.stage == .emptied, entry.observedGain > 0 {
+                Image(systemName: "checkmark.circle").foregroundStyle(accent.text)
+                    .font(RoomTokens.Typography.figure).accessibilityHidden(true)
             }
             Text(caption).font(RoomTokens.Typography.section)
             Spacer()
@@ -247,7 +267,7 @@ struct RoomCachesView: View {
         .transition(.opacity)
     }
 
-    private func format(_ bytes: Int64) -> String { RoomFormat.overviewBytes(bytes) }
+    private func format(_ bytes: Int64) -> String { RoomCachesVisibility.bytes(bytes, hidden: hidden) }
 
     private func neverSuggest(_ source: RoomSource) {
         Task {

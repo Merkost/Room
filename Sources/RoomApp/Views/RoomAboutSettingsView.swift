@@ -3,6 +3,7 @@ import SwiftUI
 
 @MainActor
 struct RoomAboutSettingsView: View {
+    @AppStorage(RoomCachesVisibility.preferenceKey) private var hidden = false
     @Bindable var model: RoomViewModel
     @Bindable var insights: RoomInsightsModel
     @Environment(\.openWindow) private var openWindow
@@ -19,7 +20,7 @@ struct RoomAboutSettingsView: View {
     }
 
     var body: some View {
-        let madeRoom = model.makeRoomStore?.summary.header(format: RoomFormat.overviewBytes,
+        let madeRoom = model.makeRoomStore?.summary.header(format: { RoomCachesVisibility.bytes($0, hidden: hidden) },
             month: { $0.formatted(.dateTime.month(.wide).year()) })
         Form {
             Section {

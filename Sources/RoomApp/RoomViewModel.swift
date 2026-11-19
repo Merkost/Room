@@ -461,19 +461,16 @@ final class RoomViewModel {
     private func addIgnoreLocations(_ locations: [URL]) async -> Set<UUID> {
         guard !isScanning, let ignoreStore else { return [] }
         do {
+            #if ROOM_APP_STORE
             let approved = try locations.map { url -> (url: URL, accessFolderID: String?) in
-                #if ROOM_APP_STORE
-                let path = url.standardizedFileURL.path
-                let folder = fileAccess.folders.filter { folder in
-                    let approvedPath = folder.url.standardizedFileURL.path
-                    return path == approvedPath || path.hasPrefix(approvedPath + "/")
-                }.max { $0.url.path.count < $1.url.path.count }
+                let folder = fileAccess.folders.filter { RoomFileAccess.contains(parent: $0.url, child: url) }
+                    .max { $0.url.path.count < $1.url.path.count }
                 guard let folder else { throw RoomIgnoreError.outsideApprovedFolder }
                 return (url, folder.id)
-                #else
-                return (url, nil)
-                #endif
             }
+            #else
+            let approved = locations.map { (url: $0, accessFolderID: nil as String?) }
+            #endif
             let added = try await ignoreStore.add(approved)
             if !added.isEmpty { applyIgnoreChanges() }
             return added

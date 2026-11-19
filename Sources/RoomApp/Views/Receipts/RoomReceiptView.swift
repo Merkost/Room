@@ -2,6 +2,7 @@ import RoomCore
 import SwiftUI
 
 struct RoomReceiptView: View {
+    @AppStorage(RoomCachesVisibility.preferenceKey) private var hidden = false
     let receipt: RoomActivity
     let entry: RoomMakeRoomEntry?
     let restore: (() -> Void)?
@@ -31,7 +32,7 @@ struct RoomReceiptView: View {
                     Text(word)
                 } else {
                     let count = receipt.details.filter(\.canRestore).count
-                    Text("\(count) \(count == 1 ? "item" : "items") in Trash")
+                    Text(hidden ? "Items in Trash" : "\(count) \(count == 1 ? "item" : "items") in Trash")
                     if let restore { Button("Restore", action: restore).buttonStyle(.glass) }
                 }
             }
@@ -60,7 +61,8 @@ struct RoomReceiptView: View {
             }
             .frame(height: 2)
             .accessibilityHidden(true)
-            Text(RoomFormat.overviewBytes(bytes)).monospacedDigit().fixedSize()
+            Text(RoomCachesVisibility.bytes(bytes, hidden: hidden)).monospacedDigit().fixedSize()
+                .accessibilityLabel(hidden ? "Size hidden" : RoomFormat.overviewBytes(bytes))
         }
         .accessibilityElement(children: .combine)
     }

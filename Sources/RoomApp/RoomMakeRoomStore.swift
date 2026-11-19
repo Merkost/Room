@@ -45,7 +45,7 @@ final class RoomMakeRoomStore {
 
     func returnedBytes(since mapDate: Date?) -> Int64 {
         entries.lazy.filter { $0.lastChangedAt > (mapDate ?? .distantPast) }
-            .reduce(0) { $0 + $1.observedGain }
+            .reduce(0) { $0 + Self.reportedGain($1) }
     }
 
     func recordMove(receipt: ActivityReceipt) async {
@@ -91,10 +91,10 @@ final class RoomMakeRoomStore {
         guard revision == receiptRevision else { return }
         let next = RoomMakeRoomLedger.advance(storedEntries, observations: observations, sample: measurement, now: measurement.at)
         guard next != storedEntries else { return }
-        let previousGains = Dictionary(uniqueKeysWithValues: storedEntries.map { ($0.id, $0.observedGain) })
+        let previousGains = Dictionary(uniqueKeysWithValues: storedEntries.map { ($0.id, Self.reportedGain($0)) })
         storedEntries = next
         await save()
-        for entry in next where entry.observedGain > (previousGains[entry.id] ?? 0) {
+        for entry in next where Self.reportedGain(entry) > (previousGains[entry.id] ?? 0) {
             didObserveGain?(entry)
         }
     }
@@ -107,8 +107,8 @@ final class RoomMakeRoomStore {
             storedEntries, observations: simulation.observations, sample: simulation.sample, now: now
         )
         simulatedEntries = virtual
-        let realGains = Dictionary(uniqueKeysWithValues: storedEntries.map { ($0.id, $0.observedGain) })
-        if let gain = virtual.first(where: { $0.observedGain > (realGains[$0.id] ?? 0) }) {
+        let realGains = Dictionary(uniqueKeysWithValues: storedEntries.map { ($0.id, Self.reportedGain($0)) })
+        if let gain = virtual.first(where: { Self.reportedGain($0) > (realGains[$0.id] ?? 0) }) {
             didObserveGain?(gain)
         }
     }
@@ -126,6 +126,13 @@ final class RoomMakeRoomStore {
         if case .loaded(let entries, _) = result { self.storedEntries = entries }
         loaded = true
         loading = nil
+    }
+
+    private static func reportedGain(_ entry: RoomMakeRoomEntry) -> Int64 {
+        switch entry.stage {
+        case .emptied, .partlyEmptied: entry.observedGain
+        default: 0
+        }
     }
 
     private func save() async {

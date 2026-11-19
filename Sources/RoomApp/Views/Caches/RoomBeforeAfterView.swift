@@ -5,6 +5,7 @@ struct RoomBeforeAfterView: View {
     let selection: Set<String>
     let format: (Int64) -> String
 
+    @AppStorage(RoomCachesVisibility.preferenceKey) private var hidden = false
     @Environment(\.roomAccent) private var accent
     @Environment(\.roomMotion) private var motion
 
@@ -40,8 +41,8 @@ struct RoomBeforeAfterView: View {
                 .padding(.vertical, 4)
                 .focusable()
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel(description)
-                .help(description)
+                .accessibilityLabel(hidden ? "\(source.name), sizes hidden" : description)
+                .help(hidden ? "Sizes hidden" : description)
             }
             HStack(spacing: RoomTokens.Space.group) {
                 Label("Now", systemImage: "capsule.fill").foregroundStyle(RoomTokens.Ink.secondary)

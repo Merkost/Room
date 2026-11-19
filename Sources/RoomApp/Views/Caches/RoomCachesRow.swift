@@ -11,6 +11,7 @@ struct RoomCachesRow: View {
     let reveal: () -> Void
     var neverSuggest: (() -> Void)?
 
+    @AppStorage(RoomCachesVisibility.preferenceKey) private var hidden = false
     @Environment(\.roomAccent) private var accent
     @Environment(\.colorSchemeContrast) private var contrast
 
@@ -51,7 +52,8 @@ struct RoomCachesRow: View {
                 if canSelect { select(); return .handled }
                 return .ignored
             }
-            .accessibilityLabel("\(source.name), \(format(source.bytes)), \(source.cleanupConsequences.first ?? source.blockedReason ?? source.subtitle)")
+            .accessibilityLabel(hidden ? "\(source.name), size hidden" :
+                "\(source.name), \(format(source.bytes)), \(source.cleanupConsequences.first ?? source.blockedReason ?? source.subtitle)")
             .accessibilityAddTraits(selected ? .isSelected : [])
             .accessibilityValue(canSelect ? (selected ? "Selected" : "Not selected") : "Kept")
             Button(action: inspect) {

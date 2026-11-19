@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct RoomCleanupReviewSheet: View {
+    @AppStorage(RoomCachesVisibility.preferenceKey) private var hidden = false
     let model: RoomViewModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.roomAccent) private var accent
@@ -88,6 +89,7 @@ struct RoomCleanupReviewSheet: View {
                 }
                 .roomPrimary(accent).keyboardShortcut(.defaultAction)
                 .disabled(!canCommit(review))
+                .accessibilityLabel(hidden && review.canCommit ? "Move selected items to Trash. Sizes hidden." : commitLabel(review.commit))
                 .accessibilityIdentifier("RoomReviewMoveButton")
             }
         }
@@ -136,5 +138,5 @@ struct RoomCleanupReviewSheet: View {
         }
     }
 
-    private func format(_ bytes: Int64) -> String { RoomFormat.overviewBytes(bytes) }
+    private func format(_ bytes: Int64) -> String { RoomCachesVisibility.bytes(bytes, hidden: hidden) }
 }

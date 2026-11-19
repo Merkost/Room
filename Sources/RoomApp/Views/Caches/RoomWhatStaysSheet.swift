@@ -3,7 +3,7 @@ import SwiftUI
 struct RoomWhatStaysSheet: View {
     let model: RoomViewModel
     @Environment(\.dismiss) private var dismiss
-    @AppStorage("RoomHideSizes") private var hidden = false
+    @AppStorage(RoomCachesVisibility.preferenceKey) private var hidden = false
     @State private var pendingRemoval: RoomIgnoreRule?
 
     private struct Reason: Identifiable {
@@ -74,7 +74,7 @@ struct RoomWhatStaysSheet: View {
 
     private func amount(_ bytes: Int64) -> String {
         let value = RoomFormat.overviewBytes(bytes)
-        let displayed = hidden ? String(value.map { $0.isNumber ? "•" : $0 }) : value
+        let displayed = RoomCachesVisibility.figure(value, hidden: hidden)
         return model.hasPartialMeasurements ? "≥ \(displayed)" : displayed
     }
 }

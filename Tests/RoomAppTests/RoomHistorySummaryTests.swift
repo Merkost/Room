@@ -4,6 +4,11 @@ import Testing
 @testable import RoomCore
 
 struct RoomHistorySummaryTests {
+    @Test func cachePrivacyMasksUnicodeSizes() {
+        #expect(RoomCachesVisibility.figure("٨٫٤ GB", hidden: true) == "•٫• GB")
+        #expect(RoomCachesVisibility.figure("12 MB", hidden: false) == "12 MB")
+    }
+
     @Test func aboutNeverCountsMovedBytesAsMade() throws {
         let time = Date(timeIntervalSince1970: 40)
         let moved = try #require(RoomMakeRoomEntry.adopted(receiptID: UUID(), movedAt: time, movedBytes: 800_000_000, itemCount: 1))

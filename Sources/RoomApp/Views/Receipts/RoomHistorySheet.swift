@@ -2,6 +2,7 @@ import RoomCore
 import SwiftUI
 
 struct RoomHistorySheet: View {
+    @AppStorage(RoomCachesVisibility.preferenceKey) private var hidden = false
     let model: RoomViewModel
     @Environment(\.dismiss) private var dismiss
     #if ROOM_APP_STORE
@@ -16,9 +17,9 @@ struct RoomHistorySheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
             Text("History").font(RoomTokens.Typography.figure).accessibilityHeading(.h1)
-            if let header = model.makeRoomStore?.summary.header(format: RoomFormat.overviewBytes,
+            if let header = model.makeRoomStore?.summary.header(format: { RoomCachesVisibility.bytes($0, hidden: hidden) },
                 month: { $0.formatted(.dateTime.month(.wide).year()) }) {
-                Text(header).font(RoomTokens.Typography.lead).fixedSize(horizontal: false, vertical: true)
+                Text(header).accessibilityLabel(hidden ? "History summary sizes hidden" : header).font(RoomTokens.Typography.lead).fixedSize(horizontal: false, vertical: true)
             } else if model.activity.isEmpty {
                 Text("Nothing moved yet. Anything you move goes to Trash first, with a receipt.")
                     .foregroundStyle(RoomTokens.Ink.secondary)
@@ -56,9 +57,9 @@ struct RoomHistorySheet: View {
         DisclosureGroup("Item details") {
             ForEach(receipt.details) { item in
                 VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
-                    Text(item.name).font(RoomTokens.Typography.section)
-                    Text(item.message)
-                    Text(item.path).font(RoomTokens.Typography.caption.monospaced()).textSelection(.enabled)
+                    Text(hidden ? "Item name hidden" : item.name).font(RoomTokens.Typography.section)
+                    if !hidden { Text(item.message) }
+                    Text(hidden ? "Location hidden" : item.path).font(RoomTokens.Typography.caption.monospaced()).textSelection(.enabled)
                 }
                 .foregroundStyle(RoomTokens.Ink.secondary)
                 .padding(.vertical, RoomTokens.Space.tight)

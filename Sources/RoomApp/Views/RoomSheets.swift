@@ -2,13 +2,14 @@ import AppKit
 import SwiftUI
 
 struct RoomSourceSheet: View {
+    @AppStorage(RoomCachesVisibility.preferenceKey) private var hidden = false
     let source: RoomSource
     @Bindable var model: RoomViewModel
     @Environment(\.dismiss) private var dismiss
 
     private var heldBytes: Int64 { max(0, source.bytes - source.eligibleBytes) }
     private func measured(_ bytes: Int64) -> String {
-        (source.isPartial ? "≥ " : "") + RoomFormat.bytes(bytes)
+        (source.isPartial ? "≥ " : "") + RoomCachesVisibility.bytes(bytes, hidden: hidden)
     }
 
     var body: some View {
@@ -17,7 +18,7 @@ struct RoomSourceSheet: View {
 
             HStack(alignment: .firstTextBaseline, spacing: 24) {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(RoomFormat.bytes(source.eligibleBytes))
+                    Text(RoomCachesVisibility.bytes(source.eligibleBytes, hidden: hidden))
                         .font(RoomType.figure(34))
                         .tracking(-1)
                     Text("Clearable").font(.system(size: 13)).foregroundStyle(.secondary)
@@ -57,12 +58,12 @@ struct RoomSourceSheet: View {
                             ForEach(source.largestEntries, id: \.path) { entry in
                                 VStack(alignment: .leading, spacing: 4) {
                                     HStack(alignment: .firstTextBaseline, spacing: 16) {
-                                        Text(entry.name)
+                                        Text(hidden ? "Item name hidden" : entry.name)
                                             .font(.system(size: 13, weight: .medium))
                                             .lineLimit(1)
                                             .truncationMode(.middle)
                                         Spacer(minLength: 0)
-                                        Text(RoomFormat.bytes(entry.bytes))
+                                        Text(RoomCachesVisibility.bytes(entry.bytes, hidden: hidden))
                                             .font(.system(size: 13)).monospacedDigit()
                                             .foregroundStyle(.secondary)
                                             .fixedSize()
@@ -71,7 +72,7 @@ struct RoomSourceSheet: View {
                                         .font(.system(size: 12)).foregroundStyle(.secondary)
                                         .lineLimit(1)
                                 }
-                                .help(entry.path + (entry.reason.map { "\n" + $0 } ?? ""))
+                                .help(hidden ? "Location hidden" : entry.path + (entry.reason.map { "\n" + $0 } ?? ""))
                                 .accessibilityElement(children: .combine)
                             }
                         }
@@ -87,7 +88,7 @@ struct RoomSourceSheet: View {
                                             .fixedSize(horizontal: false, vertical: true)
                                         Spacer(minLength: 0)
                                         VStack(alignment: .trailing, spacing: 3) {
-                                            Text(RoomFormat.bytes(held.bytes)).monospacedDigit()
+                                            Text(RoomCachesVisibility.bytes(held.bytes, hidden: hidden)).monospacedDigit()
                                             Text("\(held.count) \(held.count == 1 ? "item" : "items")").foregroundStyle(.secondary)
                                         }
                                         .font(.system(size: 12))
@@ -101,7 +102,7 @@ struct RoomSourceSheet: View {
                     }
 
                     DisclosureGroup("Locations") {
-                        Text(source.path)
+                        Text(hidden ? "Location hidden" : source.path)
                             .font(.system(size: 12))
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
@@ -111,7 +112,7 @@ struct RoomSourceSheet: View {
                     .font(.system(size: 13, weight: .medium))
 
                     DisclosureGroup("Cleanup rules") {
-                        Text(source.notes)
+                        Text(hidden ? "Review details hidden" : source.notes)
                             .font(.system(size: 13))
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)

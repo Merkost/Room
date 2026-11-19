@@ -9,7 +9,7 @@ struct RoomActivityPill: View {
     @Environment(\.roomActivityCenter) private var center
     @Environment(\.roomMotion) private var motion
     @Environment(\.roomAccent) private var accent
-    @AppStorage("RoomHideSizes") private var hidden = false
+    @AppStorage(RoomCachesVisibility.preferenceKey) private var hidden = false
     @State private var expanded = false
     @State private var hovered = false
 
@@ -136,7 +136,7 @@ struct RoomActivityPill: View {
     private func label(_ state: RoomActivityPillState) -> String {
         guard hidden else { return rawLabel(state) }
         if case .scanning = state { return "Checking · details hidden" }
-        return String(rawLabel(state).map { $0.isNumber ? "•" : $0 })
+        return RoomCachesVisibility.figure(rawLabel(state), hidden: hidden)
     }
 
     private func spoken(_ state: RoomActivityPillState) -> String {
