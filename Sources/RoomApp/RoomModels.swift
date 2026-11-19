@@ -1,6 +1,6 @@
 import Foundation
 
-nonisolated enum RoomDestination: String, Hashable, Sendable { case clean, memory, disk, developer, activity }
+nonisolated enum RoomDestination: String, Hashable, Sendable { case overview, clean, memory, disk, developer, activity }
 
 enum RoomCacheScanScope: String, CaseIterable, Identifiable, Sendable {
     case full, quick

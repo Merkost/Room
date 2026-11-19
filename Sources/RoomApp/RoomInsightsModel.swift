@@ -19,8 +19,10 @@ final class RoomInsightsModel {
     private(set) var analysisReport: StorageAnalysisReport?
     private(set) var isAnalyzingStorage = false
     private(set) var analysisStatus: String?
-    private(set) var diskAvailableBytes: Int64 = 0
-    private(set) var diskCapacityBytes: Int64 = 0
+    private(set) var volumeCapacity: RoomVolumeCapacity?
+    private(set) var diskCapacitySampledAt: Date?
+    var diskAvailableBytes: Int64 { volumeCapacity?.freeBytes ?? 0 }
+    var diskCapacityBytes: Int64 { volumeCapacity?.capacityBytes ?? 0 }
     var requestedDestination: RoomInsightDestination?
     var requestedSettings = false
     var requestedSettingsTab: RoomSettingsTab?
@@ -36,10 +38,22 @@ final class RoomInsightsModel {
     @ObservationIgnored private var diskGeneration = UUID()
     @ObservationIgnored private var analysisTask: Task<Void, Never>?
     @ObservationIgnored private var monitorTask: Task<Void, Never>?
+    @ObservationIgnored private var capacityMonitorTask: Task<Void, Never>?
+    @ObservationIgnored private var overviewActive = false
+    @ObservationIgnored private let capacityReader: @MainActor () throws -> RoomVolumeCapacity?
+    @ObservationIgnored private let waitForCapacityTick: @MainActor () async throws -> Void
+
+    private static let monitorInterval: Duration = .seconds(20)
 
     init(access: RoomFileAccess = .shared,
-         folderPicker: (@MainActor (String, String, String, URL?) async -> URL?)? = nil) {
+         folderPicker: (@MainActor (String, String, String, URL?) async -> URL?)? = nil,
+         capacityReader: @escaping @MainActor () throws -> RoomVolumeCapacity? = RoomVolumeCapacity.read,
+         waitForCapacityTick: @escaping @MainActor () async throws -> Void = {
+             try await Task.sleep(for: RoomInsightsModel.monitorInterval)
+         }) {
         self.fileAccess = access
+        self.capacityReader = capacityReader
+        self.waitForCapacityTick = waitForCapacityTick
         self.folderPicker = folderPicker ?? { title, message, prompt, initial in
             await RoomNativeFolderPicker.shared.choose(title: title, message: message, prompt: prompt, initialURL: initial)
         }
@@ -50,22 +64,57 @@ final class RoomInsightsModel {
         monitorTask = Task { [weak self] in
             while !Task.isCancelled {
                 self?.scanMemory()
-                self?.refreshDiskCapacity()
-                do { try await Task.sleep(for: .seconds(20)) } catch { break }
+                do { try await Task.sleep(for: Self.monitorInterval) } catch { break }
             }
         }
+        if capacityMonitorTask == nil { restartCapacityMonitoring(sampleImmediately: true) }
     }
 
     func stopMonitoring() {
         monitorTask?.cancel()
         monitorTask = nil
+        if !overviewActive { stopCapacityMonitoring() }
+    }
+
+    func setOverviewActive(_ active: Bool) {
+        guard overviewActive != active else { return }
+        overviewActive = active
+        if active {
+            restartCapacityMonitoring(sampleImmediately: true)
+        } else if monitorTask == nil {
+            stopCapacityMonitoring()
+        }
     }
 
     func refreshDiskCapacity() {
-        guard let values = try? FileManager.default.homeDirectoryForCurrentUser.resourceValues(
-            forKeys: [.volumeAvailableCapacityKey, .volumeTotalCapacityKey]) else { return }
-        diskAvailableBytes = Int64(values.volumeAvailableCapacity ?? 0)
-        diskCapacityBytes = Int64(values.volumeTotalCapacity ?? 0)
+        sampleDiskCapacity()
+        if capacityMonitorTask != nil { restartCapacityMonitoring(sampleImmediately: false) }
+    }
+
+    private func sampleDiskCapacity() {
+        volumeCapacity = try? capacityReader()
+        diskCapacitySampledAt = Date()
+    }
+
+    private func restartCapacityMonitoring(sampleImmediately: Bool) {
+        // Both consumers share a cadence. Resetting it for activation or a retry
+        // also cancels any scheduled read before starting the new interval.
+        stopCapacityMonitoring()
+        let wait = waitForCapacityTick
+        capacityMonitorTask = Task { [weak self] in
+            guard !Task.isCancelled else { return }
+            if sampleImmediately { self?.sampleDiskCapacity() }
+            while !Task.isCancelled {
+                do { try await wait() } catch { return }
+                guard !Task.isCancelled, let self else { return }
+                self.sampleDiskCapacity()
+            }
+        }
+    }
+
+    private func stopCapacityMonitoring() {
+        capacityMonitorTask?.cancel()
+        capacityMonitorTask = nil
     }
 
     func scanMemory() {

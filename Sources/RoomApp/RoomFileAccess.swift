@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 import Observation
 
-enum RoomInsightDestination: Hashable { case clean, memory, disk }
+nonisolated enum RoomInsightDestination: Hashable, Sendable { case overview, clean, memory, disk }
 
 struct RoomAccessFolder: Identifiable, Equatable {
     let id: String

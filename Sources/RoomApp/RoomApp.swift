@@ -7,6 +7,7 @@ struct RoomApp: App {
     @NSApplicationDelegateAdaptor(RoomApplicationDelegate.self) private var delegate
     @State private var model: RoomViewModel
     @State private var insights = RoomInsightsModel()
+    @State private var navigation = RoomWindowNavigation()
     @State private var memoryActions = MemoryActionsModel()
     @State private var rooms: RoomRoomsModel
     #if !ROOM_APP_STORE
@@ -30,15 +31,18 @@ struct RoomApp: App {
 
     @ViewBuilder private var rootView: some View {
         #if ROOM_APP_STORE
-        RoomRootView(model: model, insights: insights, memoryActions: memoryActions, rooms: rooms)
+        RoomRootView(model: model, insights: insights, memoryActions: memoryActions, rooms: rooms, navigation: navigation)
         #else
-        RoomRootView(model: model, insights: insights, memoryActions: memoryActions, rooms: rooms, agentWork: agentWork)
+        RoomRootView(model: model, insights: insights, memoryActions: memoryActions, rooms: rooms,
+                     navigation: navigation, agentWork: agentWork)
         #endif
     }
 
     var body: some Scene {
         Window("Room", id: "room") {
             rootView
+                .modifier(RoomMotionRoot())
+                .modifier(RoomAccentRoot())
                 .background(RoomWindowConfigurator())
                 .onAppear {
                     delegate.model = model
@@ -62,6 +66,7 @@ struct RoomApp: App {
             #if DEBUG
             RoomDebugMenuCommands(monitor: { delegate.statusMonitor })
             #endif
+            RoomOverviewCommands()
             CommandGroup(replacing: .newItem) { }
             CommandGroup(after: .appInfo) {
                 Button("Show Monitor") { delegate.statusMonitor?.showMonitor() }
@@ -86,7 +91,22 @@ struct RoomApp: App {
     }
 }
 
+private struct RoomOverviewCommands: Commands {
+    @FocusedValue(\.roomOverviewRefresh) private var refresh
+
+    var body: some Commands {
+        CommandGroup(after: .toolbar) {
+            if let refresh {
+                Button("Refresh Free Space") { refresh() }
+                    .keyboardShortcut("r", modifiers: .command)
+            }
+        }
+    }
+}
+
 final class RoomApplicationDelegate: NSObject, NSApplicationDelegate {
+    static let primaryWindowID = NSUserInterfaceItemIdentifier("RoomPrimaryWindow")
+
     weak var model: RoomViewModel?
     #if !ROOM_APP_STORE
     weak var agentWork: AgentWorkModel?
@@ -150,7 +170,7 @@ final class RoomApplicationDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if !flag {
-            sender.windows.first { $0.identifier?.rawValue == "RoomPrimaryWindow" }?.makeKeyAndOrderFront(nil)
+            sender.windows.first { $0.identifier == Self.primaryWindowID }?.makeKeyAndOrderFront(nil)
         }
         return true
     }
@@ -169,7 +189,7 @@ private final class RoomWindowBridge: NSView {
         window.titlebarAppearsTransparent = true
         window.isOpaque = false
         window.backgroundColor = .clear
-        window.identifier = NSUserInterfaceItemIdentifier("RoomPrimaryWindow")
+        window.identifier = RoomApplicationDelegate.primaryWindowID
         window.isReleasedWhenClosed = false
         window.setFrameAutosaveName("RoomPrimaryWindow")
     }

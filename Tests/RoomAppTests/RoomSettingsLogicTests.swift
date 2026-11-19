@@ -5,23 +5,31 @@ import Testing
 
 @Suite("Settings logic")
 struct RoomSettingsLogicTests {
-    @Test(arguments: ["clean", "memory", "disk", "developer", "activity", "unknown"])
-    func overviewAlwaysOpensOverview(_ last: String) {
-        #expect(RoomOpenOn.resolve(preference: "overview", last: last) == .clean)
+    @Test(arguments: ["overview", "clean", "memory", "disk", "developer", "activity", "unknown"])
+    func overviewPreferenceResolvesOverview(_ last: String) {
+        #expect(RoomOpenOn.resolve(preference: "overview", last: last) == .overview)
     }
 
-    @Test(arguments: [RoomDestination.clean, .memory, .disk, .developer])
+    @Test func lastOverviewRestores() {
+        #expect(RoomOpenOn.resolve(preference: "last", last: "overview") == .overview)
+    }
+
+    @Test func lastCleanStillRestores() {
+        #expect(RoomOpenOn.resolve(preference: "last", last: "clean") == .clean)
+    }
+
+    @Test(arguments: [RoomDestination.memory, .disk, .developer])
     func lastRestoresSupportedDestinations(_ destination: RoomDestination) {
         #expect(RoomOpenOn.resolve(preference: "last", last: destination.rawValue) == destination)
     }
 
     @Test(arguments: [String?.none, "activity", "invalid", ""])
-    func invalidLastPlaceFallsBackToOverview(_ last: String?) {
-        #expect(RoomOpenOn.resolve(preference: "last", last: last) == .clean)
+    func invalidAndActivityFallBackOverview(_ last: String?) {
+        #expect(RoomOpenOn.resolve(preference: "last", last: last) == .overview)
     }
 
     @Test func unknownOpenPreferenceFallsBackToOverview() {
-        #expect(RoomOpenOn.resolve(preference: "unknown", last: "disk") == .clean)
+        #expect(RoomOpenOn.resolve(preference: "unknown", last: "disk") == .overview)
     }
 
     @Test func previewUsesFixedMeasurementsAndKeepsPreferences() {

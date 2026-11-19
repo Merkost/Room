@@ -48,7 +48,7 @@ struct RoomMenuBarView: View {
             if let caches = content.caches { cachesCard(caches) }
             roomCard(content.room)
             HStack(spacing: RoomTokens.Space.row) {
-                Button(action: openRoom) {
+                Button(action: openOverview) {
                     Text(RoomPopoverPresentation.openRoomTitle).frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.glassProminent).tint(accent.fill)
@@ -67,7 +67,6 @@ struct RoomMenuBarView: View {
         .animation(motion.isFull ? RoomTokens.Motion.standard : nil, value: content.room.accessory)
         .task {
             insights.scanMemory()
-            insights.refreshDiskCapacity()
             rooms.measureIfNeeded()
         }
     }
@@ -205,6 +204,8 @@ struct RoomMenuBarView: View {
     }
 
     func openCaches() { open(.clean) }
+
+    func openOverview() { open(.overview) }
 
     func openSettings() {
         showSettings()

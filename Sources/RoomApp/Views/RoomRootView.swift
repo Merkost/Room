@@ -1,31 +1,31 @@
 import AppKit
 import SwiftUI
 
+extension FocusedValues {
+    @Entry var roomOverviewRefresh: (@MainActor () -> Void)?
+}
+
 struct RoomRootView: View {
     @Bindable var model: RoomViewModel
     @Bindable var insights: RoomInsightsModel
     @Bindable var memoryActions: MemoryActionsModel
     @Bindable var rooms: RoomRoomsModel
+    @Bindable var navigation: RoomWindowNavigation
     #if !ROOM_APP_STORE
     @Bindable var agentWork: AgentWorkModel
     #endif
-    @AppStorage("RoomOnboardingVersion") private var onboardingVersion = 0
     @AppStorage("RoomAppearance") private var appearance = "dark"
-    @AppStorage("RoomMotionEnabled") private var motionEnabled = true
-    @AppStorage("RoomLastDestination") private var lastDestination = RoomDestination.clean.rawValue
     @Environment(\.openSettings) private var openSettings
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.roomMotion) private var motion
     @State private var developer = RoomDeveloperModel()
-    @State private var destination = RoomOpenOn.resolve(
-        preference: UserDefaults.standard.string(forKey: "RoomOpenOn") ?? RoomOpenOn.last.rawValue,
-        last: UserDefaults.standard.string(forKey: "RoomLastDestination"))
     @State private var sheet: RoomSheet?
     @State private var expanded = false
     @State private var category: RoomCategory?
     @State private var sourceFilter: RoomSourceFilter = .all
     @State private var query = ""
 
-    private var animate: Animation? { motionEnabled && !reduceMotion ? .smooth(duration: 0.24) : nil }
+    private var destination: RoomDestination { navigation.destination }
+    private var animate: Animation? { motion.animation(RoomTokens.Motion.settle, fallback: nil) }
     private var selectedCount: Int { model.sources.filter { model.selection.contains($0.id) && $0.isAvailable }.count }
     private var matchingSources: [RoomSource] {
         model.sources.filter { source in
@@ -48,6 +48,7 @@ struct RoomRootView: View {
     }
     private func refreshCurrentView() {
         switch destination {
+        case .overview: insights.refreshDiskCapacity()
         case .clean: if model.isScanning { model.cancelScan() } else { model.scan() }
         case .memory: insights.scanMemory()
         case .disk:
@@ -60,42 +61,50 @@ struct RoomRootView: View {
 
     var body: some View {
         ZStack {
-            RoomAmbientBackground()
+            if destination == .overview {
+                RoomTokens.Surface.canvas.ignoresSafeArea()
+            } else {
+                RoomAmbientBackground()
+            }
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     switch destination {
+                    case .overview:
+                        RoomOverviewView(insights: insights, navigate: navigation.select, refresh: refreshCurrentView)
                     case .clean:
-                        overview
-                            .transition(.opacity.combined(with: .offset(y: reduceMotion ? 0 : 8)))
+                        cachesContent
+                            .animation(animate, value: expanded)
+                            .animation(animate, value: category)
+                            .animation(animate, value: model.selectedBytes)
+                            .animation(animate, value: model.totalBytes)
+                            .animation(animate, value: model.isScanning)
                     case .memory:
                         #if ROOM_APP_STORE
                         RoomMemoryView(insights: insights, memoryActions: memoryActions)
-                            .transition(.opacity.combined(with: .offset(y: reduceMotion ? 0 : 8)))
                         #else
                         RoomMemoryView(insights: insights, memoryActions: memoryActions, agentWork: agentWork)
-                            .transition(.opacity.combined(with: .offset(y: reduceMotion ? 0 : 8)))
                         #endif
                     case .disk:
                         RoomDiskMapView(insights: insights)
-                            .transition(.opacity.combined(with: .offset(y: reduceMotion ? 0 : 8)))
                     case .developer:
                         RoomDeveloperView(model: developer)
-                            .transition(.opacity.combined(with: .offset(y: reduceMotion ? 0 : 6)))
                     case .activity:
                         RoomActivityView(model: model)
-                            .transition(.opacity.combined(with: .offset(y: reduceMotion ? 0 : 8)))
+                            .task { await model.refreshHistory() }
                     }
                 }
-                .padding(.horizontal, 28)
-                .padding(.top, 24)
+                .padding(.horizontal, destination == .overview ? RoomTokens.Density.calm.gutter : 28)
+                .padding(.top, RoomTokens.Density.calm.topInset)
                 .padding(.bottom, 28)
-                .frame(maxWidth: 1120)
+                .frame(maxWidth: 1120, minHeight: destination == .overview ? RoomTokens.Density.calm.firstScreenMinHeight : nil,
+                       alignment: .topLeading)
                 .frame(maxWidth: .infinity)
             }
             .scrollIndicators(.hidden)
         }
         .frame(minWidth: 800, minHeight: 650)
         .preferredColorScheme(colorScheme)
+        .focusedSceneValue(\.roomOverviewRefresh, destination == .overview ? refreshCurrentView : nil)
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 HStack(spacing: 6) {
@@ -110,7 +119,7 @@ struct RoomRootView: View {
             }
             .sharedBackgroundVisibility(.hidden)
             ToolbarItem(placement: .principal) {
-                RoomNavigationBar(selection: $destination)
+                RoomNavigationBar(selection: Binding(get: { destination }, set: navigation.select))
             }
             .sharedBackgroundVisibility(.hidden)
             ToolbarItemGroup(placement: .primaryAction) {
@@ -119,19 +128,15 @@ struct RoomRootView: View {
                     .accessibilityLabel("Settings")
             }
         }
-        .animation(animate, value: destination)
-        .animation(animate, value: expanded)
-        .animation(animate, value: category)
-        .animation(animate, value: model.selectedBytes)
-        .animation(animate, value: model.totalBytes)
-        .animation(animate, value: model.isScanning)
-        .onChange(of: destination) { _, destination in lastDestination = destination.rawValue }
         .sheet(item: $sheet) { selected in
             switch selected {
             case .review: RoomReviewSheet(model: model)
             case .source(let source): RoomSourceSheet(source: source, model: model)
             case .welcome:
-                RoomOnboardingView { onboardingVersion = 1; sheet = nil }
+                RoomOnboardingView {
+                    navigation.dismissWelcome()
+                    sheet = nil
+                }
             case .protectedSources: RoomProtectedSheet(model: model)
             case .scanIssues: RoomScanIssuesSheet(issues: model.scanIssues)
             }
@@ -139,22 +144,13 @@ struct RoomRootView: View {
         .alert("Room couldn’t complete that", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) {
             Button("OK") { model.errorMessage = nil }
         } message: { Text(model.errorMessage ?? "") }
-        .task {
-            if onboardingVersion < 1 { sheet = .welcome }
-            await model.refreshHistory()
-        }
+        .onAppear { if navigation.needsWelcome { sheet = .welcome } }
         .onChange(of: developer.accessRevision) { _, _ in developer.accessChanged() }
         #if ROOM_APP_STORE
         .onChange(of: model.storeAccessRevision) { _, _ in model.storeAccessChanged() }
         #endif
-        .onChange(of: insights.requestedDestination, initial: true) { _, requested in
-            guard let requested else { return }
-            switch requested {
-            case .clean: destination = .clean
-            case .memory: destination = .memory
-            case .disk: destination = .disk
-            }
-            insights.requestedDestination = nil
+        .onChange(of: insights.requestedDestination, initial: true) { _, _ in
+            navigation.consumeRequest(from: insights)
         }
         .onChange(of: insights.requestedSettings, initial: true) { _, requested in
             guard requested else { return }
@@ -168,7 +164,7 @@ struct RoomRootView: View {
         }
     }
 
-    private var overview: some View {
+    private var cachesContent: some View {
         VStack(alignment: .leading, spacing: 24) {
             VStack(alignment: .leading, spacing: 8) {
                 Text(model.isScanning ? "Measuring storage" : "Storage overview")

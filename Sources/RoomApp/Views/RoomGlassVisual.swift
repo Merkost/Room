@@ -122,6 +122,13 @@ struct RoomAmbientBackground: View {
 }
 
 enum RoomFormat {
+    static func overviewBytes(_ bytes: Int64) -> String {
+        if bytes == 0 {
+            return String(localized: "\(0.formatted(.number.grouping(.never))) GB")
+        }
+        return RoomMenuBarFormat.liveDisk(bytes)
+    }
+
     static func bytes(_ bytes: Int64) -> String {
         if bytes == 0 { return "0 KB" }
         return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)

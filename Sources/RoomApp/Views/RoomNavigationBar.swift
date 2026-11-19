@@ -4,25 +4,18 @@ import SwiftUI
 /// receives glass; there is no second enclosing material behind the controls.
 struct RoomNavigationBar: View {
     @Binding var selection: RoomDestination
-    @AppStorage("RoomMotionEnabled") private var motionEnabled = true
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Namespace private var selectionGlass
     @FocusState private var focusedDestination: RoomDestination?
     @State private var hoveredDestination: RoomDestination?
 
-    private var selectionAnimation: Animation? {
-        motionEnabled && !reduceMotion ? .smooth(duration: 0.22) : nil
-    }
-    private var items: [NavigationItem] {
-        [
-            NavigationItem(destination: .clean, title: "Clean", symbol: "sparkles", shortcut: "1"),
-            NavigationItem(destination: .memory, title: "Memory", symbol: "memorychip", shortcut: "2"),
-            NavigationItem(destination: .disk, title: "Disk Map", symbol: "square.grid.2x2", shortcut: "3"),
-            NavigationItem(destination: .developer, title: "Developer", symbol: "shippingbox", shortcut: "5"),
-            NavigationItem(destination: .activity, title: "Activity", symbol: "clock.arrow.circlepath", shortcut: "4")
-        ]
-    }
+    static let items: [NavigationItem] = [
+        NavigationItem(destination: .overview, title: "Overview", symbol: "house", shortcut: "1"),
+        NavigationItem(destination: .disk, title: "Disk Map", symbol: "square.grid.2x2", shortcut: "2"),
+        NavigationItem(destination: .clean, title: "Caches", symbol: "sparkles", shortcut: "3"),
+        NavigationItem(destination: .developer, title: "Developer", symbol: "shippingbox", shortcut: "4"),
+        NavigationItem(destination: .memory, title: "Memory", symbol: "memorychip", shortcut: "5"),
+        NavigationItem(destination: .activity, title: "Activity", symbol: "clock.arrow.circlepath", shortcut: nil)
+    ]
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
@@ -31,7 +24,6 @@ struct RoomNavigationBar: View {
             navigationRow(presentation: .iconsOnly)
         }
         .fixedSize(horizontal: false, vertical: true)
-        .animation(selectionAnimation, value: selection)
         .onMoveCommand(perform: moveSelection)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Room views")
@@ -40,7 +32,7 @@ struct RoomNavigationBar: View {
     private func navigationRow(presentation: NavigationPresentation) -> some View {
         GlassEffectContainer(spacing: 2) {
             HStack(spacing: 2) {
-                ForEach(items) { item in destinationButton(item, presentation: presentation) }
+                ForEach(Self.items) { item in destinationButton(item, presentation: presentation) }
             }
             .padding(.vertical, 4)
             .padding(.horizontal, 4)
@@ -49,14 +41,14 @@ struct RoomNavigationBar: View {
 
     private func destinationButton(_ item: NavigationItem, presentation: NavigationPresentation) -> some View {
         let selected = selection == item.destination
-        let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
-        return Button { select(item.destination) } label: {
+        let shape = RoundedRectangle(cornerRadius: RoomTokens.Radius.row, style: .continuous)
+        return Button { select(item.destination, moveFocus: false) } label: {
             HStack(spacing: 6) {
                 if presentation != .labelsOnly {
-                    Image(systemName: item.symbol).font(.system(size: 13, weight: .medium)).frame(width: 16)
+                    Image(systemName: item.symbol).font(RoomTokens.Typography.bodyStrong).frame(width: 16)
                 }
                 if presentation != .iconsOnly {
-                    Text(item.title).font(.system(size: 12, weight: .medium)).lineLimit(1)
+                    Text(item.title).font(RoomTokens.Typography.navigationLabel).lineLimit(1)
                 }
             }
             .foregroundStyle(selected ? .primary : .secondary)
@@ -65,34 +57,38 @@ struct RoomNavigationBar: View {
                 if selected && reduceTransparency {
                     shape.fill(Color(nsColor: .controlBackgroundColor))
                 } else if !selected && hoveredDestination == item.destination {
-                    shape.fill(Color.primary.opacity(0.045))
+                    shape.fill(RoomTokens.Surface.hover)
                 }
             }
             .glassEffect(selected && !reduceTransparency ? .regular.interactive() : .identity, in: shape)
-            .glassEffectID(selected ? "RoomSelectedDestination" : nil, in: selectionGlass)
-            .glassEffectTransition(motionEnabled && !reduceMotion ? .matchedGeometry : .identity)
+            .glassEffectTransition(.identity)
             .contentShape(shape)
         }
         .buttonStyle(.plain)
         .focused($focusedDestination, equals: item.destination)
-        .keyboardShortcut(KeyEquivalent(item.shortcut), modifiers: .command)
+        .keyboardShortcut(item.shortcut.map { KeyboardShortcut(KeyEquivalent($0), modifiers: .command) })
         .onHover { hovered in
             if hovered { hoveredDestination = item.destination }
             else if hoveredDestination == item.destination { hoveredDestination = nil }
         }
-        .help("\(item.title) (⌘\(String(item.shortcut)))")
+        .help(item.help)
         .accessibilityLabel(item.title)
         .accessibilityIdentifier("RoomNavigation-\(item.id)")
         .accessibilityValue(selected ? "Selected" : "")
         .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 
-    private func select(_ destination: RoomDestination) {
-        guard destination != selection else { return }
-        withAnimation(selectionAnimation) { selection = destination }
+    private func select(_ destination: RoomDestination, moveFocus: Bool) {
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            if moveFocus { focusedDestination = destination }
+            if selection != destination { selection = destination }
+        }
     }
 
     private func moveSelection(_ direction: MoveCommandDirection) {
+        let items = Self.items
         guard let current = items.firstIndex(where: { $0.destination == (focusedDestination ?? selection) }) else { return }
         let next: Int
         switch direction {
@@ -100,9 +96,7 @@ struct RoomNavigationBar: View {
         case .right: next = min(items.count - 1, current + 1)
         default: return
         }
-        let destination = items[next].destination
-        focusedDestination = destination
-        select(destination)
+        select(items[next].destination, moveFocus: true)
     }
 }
 
@@ -114,18 +108,11 @@ private enum NavigationPresentation: Equatable {
     }
 }
 
-private struct NavigationItem: Identifiable {
+nonisolated struct NavigationItem: Identifiable, Sendable {
     let destination: RoomDestination
     let title: String
     let symbol: String
-    let shortcut: Character
-    var id: String {
-        switch destination {
-        case .clean: "clean"
-        case .memory: "memory"
-        case .disk: "disk"
-        case .developer: "developer"
-        case .activity: "activity"
-        }
-    }
+    let shortcut: Character?
+    var id: String { destination.rawValue }
+    var help: String { shortcut.map { "\(title) (⌘\($0))" } ?? title }
 }

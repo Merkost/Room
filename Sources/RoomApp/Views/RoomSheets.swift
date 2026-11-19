@@ -340,7 +340,7 @@ struct RoomActivityView: View {
             Text("Disk space is released when you empty Trash in Finder.")
                 .font(.system(size: 13)).foregroundStyle(.secondary)
             if model.isScanning {
-                Label("Cache scan in progress. Stop it in Clean to restore now.", systemImage: "magnifyingglass")
+                Label("Cache scan in progress. Stop it in Caches to restore now.", systemImage: "magnifyingglass")
                     .font(.system(size: 13)).foregroundStyle(.secondary)
             }
             if let message = model.statusMessage, !message.isEmpty {
