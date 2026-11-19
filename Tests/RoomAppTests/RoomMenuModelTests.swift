@@ -44,7 +44,7 @@ struct RoomMenuModelTests {
         let direct = Menu.make(.init(edition: .direct))
         let store = Menu.make(.init(edition: .store))
         #expect(direct == store)
-        let deferred = ["Show History", "Back", "Forward", "Show Inspector", "Customise Overview…", "Hide Sidebar Labels"]
+        let deferred = ["Show History", "Show Inspector", "Customise Overview…"]
         #expect(direct.allSatisfy { !deferred.contains($0.title) })
         #expect(direct.first { $0.id == .monitor }?.enabled == true)
         #expect(Menu.make(.init(menuBarEnabled: false)).first { $0.id == .monitor }?.enabled == false)

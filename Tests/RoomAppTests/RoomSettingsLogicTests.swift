@@ -90,8 +90,8 @@ struct RoomSettingsLogicTests {
         let calendar = Self.calendar(locale: "fr_FR")
         let date = try #require(calendar.date(from: DateComponents(year: 2026, month: 3, day: 1)))
         let summary = try #require(RoomMadeRoom.summary(
-            activities: [Self.activity(date: date, bytes: 0)], calendar: calendar))
-        #expect(summary.bytes == 0)
+            activities: [Self.activity(date: date, bytes: 10)], calendar: calendar))
+        #expect(summary.bytes == 10)
         #expect(summary.count == 1)
         #expect(summary.sinceMonth == "mars 2026")
         #expect(summary.caption == "moved to Trash since mars 2026, across 1 cleanup")
