@@ -22,6 +22,7 @@ final class RoomInsightsModel {
     private(set) var analysisReport: StorageAnalysisReport?
     private(set) var isAnalyzingStorage = false
     private(set) var analysisStatus: String?
+    let volumeHistory: RoomVolumeHistory
     private(set) var volumeCapacity: RoomVolumeCapacity?
     private(set) var diskCapacitySampledAt: Date?
     var diskAvailableBytes: Int64 { volumeCapacity?.freeBytes ?? 0 }
@@ -43,6 +44,7 @@ final class RoomInsightsModel {
     @ObservationIgnored private var monitorTask: Task<Void, Never>?
     @ObservationIgnored private var capacityMonitorTask: Task<Void, Never>?
     @ObservationIgnored private var overviewActive = false
+    @ObservationIgnored private var didSampleAtLaunch = false
     @ObservationIgnored private let capacityReader: @MainActor () throws -> RoomVolumeCapacity?
     @ObservationIgnored private let waitForCapacityTick: @MainActor () async throws -> Void
 
@@ -51,12 +53,14 @@ final class RoomInsightsModel {
     init(access: RoomFileAccess = .shared,
          treeStore: RoomTreeStore = .shared,
          folderPicker: (@MainActor (String, String, String, URL?) async -> URL?)? = nil,
+         volumeHistory: RoomVolumeHistory = .init(),
          capacityReader: @escaping @MainActor () throws -> RoomVolumeCapacity? = RoomVolumeCapacity.read,
          waitForCapacityTick: @escaping @MainActor () async throws -> Void = {
              try await Task.sleep(for: RoomInsightsModel.monitorInterval)
          }) {
         self.fileAccess = access
         self.treeStore = treeStore
+        self.volumeHistory = volumeHistory
         self.capacityReader = capacityReader
         self.waitForCapacityTick = waitForCapacityTick
         self.folderPicker = folderPicker ?? { title, message, prompt, initial in
@@ -96,9 +100,20 @@ final class RoomInsightsModel {
         if capacityMonitorTask != nil { restartCapacityMonitoring(sampleImmediately: false) }
     }
 
-    private func sampleDiskCapacity() {
+    func recordCapacityOnLaunch() {
+        guard !didSampleAtLaunch else { return }
+        didSampleAtLaunch = true
+        sampleDiskCapacity(trigger: .launch)
+    }
+
+    func recordCapacityOnActivation() { sampleDiskCapacity(trigger: .activation) }
+
+    func recordCapacityAfterScan() { sampleDiskCapacity(trigger: .scanCompleted) }
+
+    private func sampleDiskCapacity(trigger: RoomVolumeTrigger = .monitorTick) {
         volumeCapacity = try? capacityReader()
         diskCapacitySampledAt = Date()
+        if let capacity = volumeCapacity { volumeHistory.record(capacity, volumeID: capacity.volumeID, trigger: trigger) }
     }
 
     private func restartCapacityMonitoring(sampleImmediately: Bool) {
@@ -272,6 +287,7 @@ final class RoomInsightsModel {
             self.analysisReport = StorageAnalyzer.analyze(report: result, configuration: .deep)
             #endif
             self.isScanningDisk = false
+            if !Task.isCancelled { self.recordCapacityAfterScan() }
             self.diskTask = nil
             if result.cancelled { self.statusMessage = "Scan stopped. The map shows only the files measured so far." }
         }

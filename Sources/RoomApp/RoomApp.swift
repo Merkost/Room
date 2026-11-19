@@ -6,7 +6,7 @@ import SwiftUI
 struct RoomApp: App {
     @NSApplicationDelegateAdaptor(RoomApplicationDelegate.self) private var delegate
     @State private var model: RoomViewModel
-    @State private var insights = RoomInsightsModel()
+    @State private var insights = RoomInsightsModel(volumeHistory: .shared)
     @State private var navigation = RoomWindowNavigation()
     @State private var memoryActions = MemoryActionsModel()
     @State private var rooms: RoomRoomsModel
@@ -18,7 +18,7 @@ struct RoomApp: App {
     @Environment(\.openSettings) private var openSettings
 
     init() {
-        let cacheModel = RoomViewModel()
+        let cacheModel = RoomViewModel(cachesCheckStore: RoomCachesCheckStore(writer: .shared))
         _model = State(initialValue: cacheModel)
         #if ROOM_APP_STORE
         _rooms = State(initialValue: RoomRoomsModel(isWorking: { cacheModel.isWorking }))
@@ -59,6 +59,8 @@ struct RoomApp: App {
                 .background(RoomWindowConfigurator())
                 .onAppear {
                     delegate.model = model
+                    delegate.insights = insights
+                    insights.recordCapacityOnLaunch()
                     #if !ROOM_APP_STORE
                     delegate.agentWork = agentWork
                     #endif
@@ -66,6 +68,9 @@ struct RoomApp: App {
                         openWindow(id: "room")
                         NSApp.activate()
                     }, openSettings: { openSettings() })
+                }
+                .onChange(of: model.lastScanned) { _, date in
+                    if date != nil { insights.recordCapacityAfterScan() }
                 }
                 .onChange(of: menuBarEnabled, initial: true) { _, enabled in
                     delegate.statusMonitor?.setEnabled(enabled)
@@ -104,6 +109,8 @@ final class RoomApplicationDelegate: NSObject, NSApplicationDelegate {
     static let primaryWindowID = NSUserInterfaceItemIdentifier("RoomPrimaryWindow")
 
     weak var model: RoomViewModel?
+    weak var insights: RoomInsightsModel?
+    private var waitingForStateWrites = false
     #if !ROOM_APP_STORE
     weak var agentWork: AgentWorkModel?
     #endif
