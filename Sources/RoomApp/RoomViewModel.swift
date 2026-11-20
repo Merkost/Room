@@ -52,8 +52,9 @@ final class RoomViewModel {
     @ObservationIgnored private var recoveryEngine: CacheEngine
     @ObservationIgnored private let usesInjectedEngine: Bool
     @ObservationIgnored private var report: ScanReport?
-    @ObservationIgnored private var scanTask: Task<Void, Never>?
+    @ObservationIgnored private(set) var scanTask: Task<Void, Never>?
     @ObservationIgnored private var scanGeneration = UUID()
+    @ObservationIgnored private let beforeScanPublication: (@MainActor (ScanReport) async -> Void)?
     @ObservationIgnored private var sourceGroups: [String: [CacheGroup]] = [:]
     @ObservationIgnored private var movedEntryIDs: Set<UUID> = []
     @ObservationIgnored private var ignoredEntryIDs: Set<UUID> = []
@@ -62,12 +63,12 @@ final class RoomViewModel {
     #endif
 
     #if ROOM_APP_STORE
-    @ObservationIgnored private let fileAccess = RoomFileAccess.shared
+    @ObservationIgnored private let fileAccess: RoomFileAccess
     @ObservationIgnored private let storeReview = RoomStoreFolderReview()
     @ObservationIgnored private var storeReviewKey: StoreReviewKey?
     @ObservationIgnored private var storeReviewGeneration = UUID()
     @ObservationIgnored private var cleanupReviewParents: [String: [URL]] = [:]
-    @ObservationIgnored private var storeScanFolders: Set<String> = []
+    @ObservationIgnored private var storeScanGrants: Set<String> = []
     private(set) var isPreparingStoreReview = false
     private(set) var lastStoreMoveCompleted = false
     private(set) var lastStoreRestoreCompleted = false
@@ -75,6 +76,11 @@ final class RoomViewModel {
     private enum StoreReviewKey: Equatable { case cleanup(UUID, Set<UUID>), restore(UUID) }
     var approvedStoreFolderCount: Int { fileAccess.folders.count }
     var storeAccessRevision: [String] { fileAccess.folders.map { $0.id + ":" + $0.url.path }.sorted() }
+    var npmBatch: NPMDiscoveryCoverage? { lastScanned != nil ? report?.npmDiscovery : nil }
+    var canContinueNPM: Bool {
+        npmBatch?.nextCursor != nil && !isScanning && canScan && !usesInjectedEngine
+            && storeScanGrants == Set(storeAccessRevision)
+    }
     var storeReviewLocations: [URL] { storeReview.locations }
     var storeGrantedPaths: Set<String> { storeReview.grantedPaths }
     var storeTrashPaths: Set<String> { storeReview.trashPaths }
@@ -98,7 +104,9 @@ final class RoomViewModel {
     var isDeepScan: Bool { scanScope == .full }
     var clearableBytes: Int64 { sources.reduce(0) { $0 + $1.eligibleBytes } }
     var heldBytes: Int64 { max(0, totalBytes - clearableBytes) }
-    var hasPartialMeasurements: Bool { isPartialScan || !scanIssues.isEmpty || sources.contains(where: \.isPartial) }
+    var hasPartialMeasurements: Bool {
+        isPartialScan || report?.npmDiscovery?.isBatch == true || !scanIssues.isEmpty || sources.contains(where: \.isPartial)
+    }
     var hasReport: Bool { lastScanned != nil && report != nil }
     var movedReceipt: RoomActivity? { activity.first { $0.id == movedReceiptID } }
     var cachesStatus: String {
@@ -173,14 +181,18 @@ final class RoomViewModel {
 
     init(engine: CacheEngine? = nil, cachesCheckStore: RoomCachesCheckStore = RoomCachesCheckStore(),
          makeRoomStore: RoomMakeRoomStore? = nil, activityCenter: RoomActivityCenter? = nil,
-         ignoreStore: RoomIgnoreStore? = nil, mapStore: RoomTreeStore? = nil) {
+         ignoreStore: RoomIgnoreStore? = nil, mapStore: RoomTreeStore? = nil,
+         access: RoomFileAccess? = nil, beforeScanPublication: (@MainActor (ScanReport) async -> Void)? = nil) {
         self.cachesCheckStore = cachesCheckStore
         self.makeRoomStore = makeRoomStore
         self.activityCenter = activityCenter
         self.ignoreStore = ignoreStore
         self.mapStore = mapStore
+        self.beforeScanPublication = beforeScanPublication
         #if ROOM_APP_STORE
-        let initialEngine = engine ?? Self.makeStoreEngine(approvedFolders: RoomFileAccess.shared.folders.map(\.url))
+        let access = access ?? .shared
+        self.fileAccess = access
+        let initialEngine = engine ?? Self.makeStoreEngine(approvedFolders: access.folders.map(\.url))
         #else
         let initialEngine = engine ?? CacheEngine(configurationProvider: { .full })
         #endif
@@ -225,17 +237,28 @@ final class RoomViewModel {
     }
 
     func scan() {
+        scan(npmContinuation: nil)
+    }
+
+    #if ROOM_APP_STORE
+    func continueNPM() {
+        guard canContinueNPM, let nextCursor = npmBatch?.nextCursor else { return }
+        scan(npmContinuation: nextCursor)
+    }
+    #endif
+
+    private func scan(npmContinuation: String?) {
         guard !isWorking, !isScanning else { return }
         #if ROOM_APP_STORE
         guard !isPreparingStoreReview else { return }
         if !usesInjectedEngine {
             guard RoomStoreEnvironment.userHome != nil else { errorMessage = RoomStoreAccessError.homeUnavailable.localizedDescription; return }
             guard !fileAccess.folders.isEmpty else { chooseStoreFolder(scanAfterApproval: true); return }
-            engine = Self.makeStoreEngine(approvedFolders: fileAccess.folders.map(\.url))
+            engine = Self.makeStoreEngine(approvedFolders: fileAccess.folders.map(\.url), npmContinuation: npmContinuation)
         }
         discardStoreReview()
         let approvedFolders = fileAccess.folders.map(\.url)
-        storeScanFolders = Set(approvedFolders.map(\.path))
+        storeScanGrants = Set(storeAccessRevision)
         #else
         if !usesInjectedEngine {
             let full = scanScope == .full
@@ -261,6 +284,7 @@ final class RoomViewModel {
         currentScanPath = "Preparing cache and temporary locations…"
         scanTask = Task { [weak self, engine] in
             await self?.ignoreStore?.load()
+            guard self?.scanGeneration == generation else { return }
             #if ROOM_APP_STORE
             let scopes = approvedFolders.map { ($0, $0.startAccessingSecurityScopedResource()) }
             defer { Self.endStoreReadAccess(scopes) }
@@ -268,10 +292,11 @@ final class RoomViewModel {
             let result = await engine.scan { [weak self] progress in
                 await self?.receiveProgress(progress, generation: generation)
             }
+            await self?.beforeScanPublication?(result)
             guard let self, self.scanGeneration == generation else { return }
             self.isScanning = false
             self.scanTask = nil
-            if result.cancelled {
+            if result.cancelled || Task.isCancelled {
                 if !result.groups.isEmpty { self.apply(result, selectInitially: false, allowsCleanup: false) }
                 self.activityCenter?.post(.stopped(measured: self.scannedLocationCount, of: self.scanLocationCount), from: .caches)
                 self.selection = []
@@ -283,7 +308,7 @@ final class RoomViewModel {
             }
             self.isPartialScan = false
             self.scanProgress = 1
-            self.apply(result, selectInitially: true)
+            self.apply(result, selectInitially: npmContinuation == nil)
             if let at = self.lastScanned {
                 self.cachesCheckStore.save(RoomCachesCheck(at: at, bytes: self.clearableBytes,
                                                            partial: self.hasPartialMeasurements))
@@ -418,7 +443,7 @@ final class RoomViewModel {
         let scopes = beginStoreReadAccess()
         if !usesInjectedEngine {
             let parents = storeReview.locations.filter { !storeReview.trashPaths.contains($0.path) }
-            recoveryEngine = Self.makeStoreEngine(approvedFolders: fileAccess.folders.map(\.url) + parents)
+            recoveryEngine = Self.makeStoreEngine(approvedFolders: fileAccess.folders.map(\.url), restoreParents: parents)
         }
         #endif
         isWorking = true
@@ -673,11 +698,25 @@ final class RoomViewModel {
 
     func storeAccessChanged() {
         guard !isWorking else { return }
-        let current = Set(fileAccess.folders.map { $0.url.path })
-        guard !storeScanFolders.isSubset(of: current) else { return }
-        cancelScan()
+        let current = Set(storeAccessRevision)
+        guard !storeScanGrants.isSubset(of: current) else { return }
+        storeScanGrants = []
+        scanGeneration = UUID()
+        scanTask?.cancel()
+        scanTask = nil
+        isScanning = false
         selection = []
         report = nil
+        sources = []
+        sourceGroups = [:]
+        protectedSources = []
+        measuredSourceCount = 0
+        readableSourceCount = 0
+        scannedLocationCount = 0
+        scanLocationCount = 0
+        scanProgress = nil
+        currentScanPath = ""
+        scanIssues = []
         isPartialScan = true
         lastScanned = nil
         discardStoreReview()
@@ -779,12 +818,19 @@ final class RoomViewModel {
     private static func endStoreReadAccess(_ scopes: [(URL, Bool)]) {
         for (url, active) in scopes where active { url.stopAccessingSecurityScopedResource() }
     }
-    private static func makeStoreEngine(approvedFolders: [URL]) -> CacheEngine {
+    private static func makeStoreEngine(approvedFolders: [URL], npmContinuation: String? = nil,
+                                        restoreParents: [URL]? = nil) -> CacheEngine {
         let activity = RoomStoreEnvironment.activityDirectory
         guard let home = RoomStoreEnvironment.userHome else {
             return CacheEngine(configuration: CacheConfiguration(roots: [], homeDirectory: FileManager.default.homeDirectoryForCurrentUser), activityDirectory: activity)
         }
-        return CacheEngine(configurationProvider: { CacheConfiguration.store(approvedFolders: approvedFolders, userHome: home) },
+        return CacheEngine(configurationProvider: {
+            if let restoreParents {
+                return CacheConfiguration.storeRecovery(approvedFolders: approvedFolders,
+                    approvedOriginalParents: restoreParents, userHome: home)
+            }
+            return CacheConfiguration.store(approvedFolders: approvedFolders, userHome: home, npmContinuation: npmContinuation)
+        },
             activityDirectory: activity, trashHomeDirectory: home)
     }
     #endif

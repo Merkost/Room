@@ -58,6 +58,7 @@ nonisolated enum RoomMenuModel {
         case caches
         case developer
         case memory
+        case pinnedRooms
         case showHistory
         case enclosing
         case minimize
@@ -135,6 +136,7 @@ nonisolated enum RoomMenuModel {
             case .caches: String(localized: "menu.caches", defaultValue: "Caches", bundle: RoomCopy.bundle)
             case .developer: String(localized: "menu.developer", defaultValue: "Developer", bundle: RoomCopy.bundle)
             case .memory: String(localized: "menu.memory", defaultValue: "Memory", bundle: RoomCopy.bundle)
+            case .pinnedRooms: String(localized: "Rooms")
             case .showHistory: String(localized: "menu.showHistory", defaultValue: "Show History", bundle: RoomCopy.bundle)
             case .enclosing: String(localized: "menu.enclosing", defaultValue: "Enclosing Folder", bundle: RoomCopy.bundle)
             case .minimize: "Minimize"
@@ -250,6 +252,7 @@ nonisolated enum RoomMenuModel {
         var canEnclose = false
         var overviewSizesHidden = false
         var canInspectDisk = false
+        var diskInspectorVisible = false
         var comparisonTitle: String?
         var menuBarEnabled = true
         var edition: Edition = .direct
@@ -262,6 +265,8 @@ nonisolated enum RoomMenuModel {
         var sidebarIconsOnly = false
         var canGoBack = false
         var canGoForward = false
+        var hasPinnedRooms = false
+        var canOpenPinnedRooms = true
     }
 
     struct Item: Equatable, Sendable {
@@ -325,7 +330,8 @@ nonisolated enum RoomMenuModel {
         if main {
             add(.view, .hideOverviewSizes, .init("h", [.command, .shift]), checked: input.overviewSizesHidden)
             if input.destination == .disk, input.canInspectDisk {
-                add(.view, .showDiskInspector, .init("i", [.option, .command]), enabled: canStart)
+                add(.view, .showDiskInspector, .init("i", [.option, .command]), enabled: canStart,
+                    title: input.diskInspectorVisible ? String(localized: "Hide Inspector") : nil)
                 if let title = input.comparisonTitle {
                     add(.view, .compareDiskMap, enabled: canStart, title: title)
                 }
@@ -342,6 +348,9 @@ nonisolated enum RoomMenuModel {
         add(.go, .forward, .init("]"), enabled: main && input.canGoForward)
         for destination in Destination.allCases {
             add(.go, destination.item, destination.shortcut, enabled: !modal)
+        }
+        if input.hasPinnedRooms {
+            add(.go, .pinnedRooms, enabled: canStart && input.canOpenPinnedRooms)
         }
         add(.go, .showHistory, .init("y"), enabled: main)
         add(.go, .enclosing, .init("↑"), enabled: main && input.destination == .disk && canStart && input.canEnclose && !input.isScanning)

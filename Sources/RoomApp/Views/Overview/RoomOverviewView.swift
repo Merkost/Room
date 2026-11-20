@@ -39,6 +39,7 @@ struct RoomOverviewView: View {
     @State private var model = RoomOverviewModel()
     @State private var isActive = false
     @State private var arrived = false
+    @State private var earlierHomeMap: RoomStoredTree?
 
     private struct Inputs: Equatable {
         let capacity: RoomVolumeCapacity?
@@ -84,12 +85,21 @@ struct RoomOverviewView: View {
                     .modifier(arrivalGroup(1))
             }
             if let plan = map {
-                RoomOverviewStorageMap(plan: plan, belowGoal: snapshot.state == .belowGoal,
+                let returnedBytes = plan.homeKinds.map {
+                    cacheModel?.makeRoomStore?.returnedBytes(since: $0.mappedAt) ?? 0
+                } ?? 0
+                RoomOverviewStorageMap(plan: plan, belowGoal: snapshot.state == .belowGoal, returnedBytes: returnedBytes,
                     hidden: hidden, density: density, solidKinds: style == .rooms, openDiskMap: openDiskMap,
                     isMapping: insights.isScanningDisk, isChoosingFolder: insights.isChoosingDiskFolder,
                     mapHome: insights.scanHome, mapAnotherFolder: insights.chooseDiskFolderAndOpenMap)
                     .modifier(arrivalGroup(2))
                     .roomPanelArrival(enabled: !animatesArrival || arrived)
+            }
+            let volumeHistory = insights.volumeHistory.log
+            if snapshot.state != .firstRun, snapshot.state != .capacityUnreadable, volumeHistory.latest != nil {
+                RoomOverviewHistoryLink(log: volumeHistory, goal: inputs.goalBytes,
+                                        latestReceipt: cacheModel?.makeRoomStore?.latest,
+                                        earlierMap: earlierHomeMap, currentMap: insights.homeTree)
             }
             if RoomOverviewPreferences(roomsChapterShown: showRooms)
                 .showsRoomsChapter(roomCount: rooms.visibleRooms.count, allowsEmptyChapter: snapshot.state != .firstRun) {
@@ -105,6 +115,10 @@ struct RoomOverviewView: View {
         .foregroundStyle(RoomTokens.Ink.graphite)
         .roomReveal(!animatesArrival || motion.isFull || arrived, animation: RoomTokens.Motion.fade)
         .task { arrived = true }
+        .task(id: insights.homeTree?.scannedAt) {
+            let earlier = await insights.previousHomeTreeForHistory()
+            if !Task.isCancelled { earlierHomeMap = earlier }
+        }
         .onChange(of: inputs, initial: true) { previous, updated in
             updateSnapshot(updated)
             if previous.sampledAt != nil, (previous.capacity == nil) != (updated.capacity == nil),

@@ -136,6 +136,7 @@ struct RoomOverviewStoragePanel: View {
 struct RoomOverviewStorageMap: View {
     let plan: RoomOverviewPlanInput
     let belowGoal: Bool
+    var returnedBytes: Int64 = 0
     let hidden: Bool
     let density: RoomTokens.Density
     let solidKinds: Bool
@@ -234,7 +235,7 @@ struct RoomOverviewStorageMap: View {
     }
 
     private func diagram(height: CGFloat) -> some View {
-        RoomDotPlanView(plan: plan, belowGoal: belowGoal, hidden: hidden,
+        RoomDotPlanView(plan: plan, belowGoal: belowGoal, returnedBytes: returnedBytes, hidden: hidden,
                         displayHeight: height, density: density, solidKinds: solidKinds,
                         usesExternalLegend: true, legendHighlight: hoveredLegend, selection: $selection,
                         onHoverChange: { hoveredMapRoom = $0 }, openDiskMap: openDiskMap)

@@ -172,7 +172,7 @@ nonisolated struct RoomMapLayer: Sendable {
     }
 }
 
-// MARK: - Speech (DM-19, 15 §1): "suby-kmp, folder, 21.6 gigabytes, 29 percent of Projects"
+// MARK: - Speech (DM-19, 15 §1): "studio-kmp, folder, 21.6 gigabytes, 29 percent of Projects"
 
 nonisolated enum RoomMapSpeech {
     static func label(_ item: RoomMapItem, parentName: String, parentBytes: Int64, spoken: (Int64) -> String,

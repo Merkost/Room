@@ -3,7 +3,7 @@ import RoomCore
 import SwiftUI
 
 enum RoomDeveloperSection: String, CaseIterable {
-    case rooms = "Rooms", matrix = "Matrix", devices = "Devices", storage = "Storage"
+    case rooms = "Rooms", matrix = "Matrix", devices = "Devices", storage = "Storage", aiTools = "AI Tools"
     #if !ROOM_APP_STORE
     case worktrees = "Worktrees"
     #endif
@@ -14,6 +14,7 @@ enum RoomDeveloperSection: String, CaseIterable {
         case .matrix: "tablecells"
         case .devices: "iphone.gen3"
         case .storage: "internaldrive"
+        case .aiTools: "sparkles"
         #if !ROOM_APP_STORE
         case .worktrees: "point.3.connected.trianglepath.dotted"
         #endif
@@ -50,7 +51,12 @@ struct RoomDeveloperView: View {
     }
 
     private var sectionReport: DeveloperResourcesReport? {
-        section == .storage ? model.storageReport : model.report
+        switch section {
+        case .devices: model.devicesReport
+        case .storage: model.storageReport
+        case .aiTools: model.aiToolsReport
+        default: model.report
+        }
     }
 
     private var showsResourceActions: Bool {
@@ -89,17 +95,22 @@ struct RoomDeveloperView: View {
     }
 
     private var workspaceHeading: some View {
-        HStack(spacing: RoomTokens.Space.inner) {
-            Image(systemName: "hammer")
+        let title: LocalizedStringKey = switch section {
+        case .devices: "Virtual devices"
+        case .aiTools: "AI tool storage"
+        default: "Project tools"
+        }
+        return HStack(spacing: RoomTokens.Space.inner) {
+            Image(systemName: [.devices, .aiTools].contains(section) ? section.symbol : "hammer")
                 .foregroundStyle(accent.text)
                 .frame(width: 40, height: 40)
                 .background(accent.wash, in: .rect(cornerRadius: RoomTokens.Radius.card))
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
-                Text("Project tools")
+                Text(title)
                     .font(RoomTokens.Typography.title)
                     .accessibilityHeading(.h2)
-                if section != .storage, let root = model.projectRootLabel {
+                if ![.devices, .storage, .aiTools].contains(section), let root = model.projectRootLabel {
                     HStack(spacing: 4) {
                         if let report = model.report {
                             RoomMaskable(report.projects.count.formatted())
@@ -118,7 +129,19 @@ struct RoomDeveloperView: View {
 
     private var scanControls: some View {
         HStack(spacing: RoomTokens.Space.row) {
-            if section != .storage {
+            if section == .aiTools || section == .devices {
+                Menu {
+                    ForEach(section == .aiTools ? RoomDeveloperFolderRole.aiRoles : RoomDeveloperFolderRole.deviceRoles) { role in
+                        Button { model.addFolder(role: role) } label: {
+                            Label(role.title, systemImage: role.symbol)
+                        }
+                    }
+                } label: {
+                    Label(section == .aiTools ? "Choose Tool Folder…" : "Choose Device Folder…", systemImage: "folder.badge.plus")
+                }
+                .disabled(model.isScanning || model.isChoosingFolder)
+                .accessibilityIdentifier(section == .aiTools ? "RoomDeveloperChooseAITool" : "RoomDeveloperChooseDeviceFolder")
+            } else if section != .storage {
                 Button { model.addFolder(role: .project) } label: {
                     Label("Projects Folder…", systemImage: "folder.badge.plus")
                 }
@@ -141,9 +164,9 @@ struct RoomDeveloperView: View {
 
     @ViewBuilder private var sectionContent: some View {
         switch section {
-        case .rooms, .matrix, .devices, .storage:
+        case .rooms, .matrix, .devices, .storage, .aiTools:
             VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
-                folderControls
+                if section != .aiTools || !model.sectionLocations.isEmpty { folderControls }
                 review
             }
         #if !ROOM_APP_STORE
@@ -157,31 +180,35 @@ struct RoomDeveloperView: View {
         VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
             DisclosureGroup(isExpanded: $showingFolders) {
                 VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
-                    ForEach(model.locations, content: folderRow)
-                    ForEach(model.folderSuggestions) { suggestion in
-                        let action = Self.suggestionAction(for: suggestion.role)
-                        HStack {
-                            Label(suggestion.role.title, systemImage: suggestion.role.symbol)
-                            Spacer()
-                            Button(action) { model.useSuggestion(suggestion) }
-                                .disabled(model.isScanning || model.isChoosingFolder)
-                                .accessibilityLabel("\(action) \(suggestion.role.title)")
+                    ForEach(model.sectionLocations, content: folderRow)
+                    if section != .aiTools {
+                        ForEach(model.folderSuggestions) { suggestion in
+                            let action = Self.suggestionAction(for: suggestion.role)
+                            HStack {
+                                Label(suggestion.role.title, systemImage: suggestion.role.symbol)
+                                Spacer()
+                                Button(action) { model.useSuggestion(suggestion) }
+                                    .disabled(model.isScanning || model.isChoosingFolder)
+                                    .accessibilityLabel("\(action) \(suggestion.role.title)")
+                            }
                         }
-                    }
-                    Menu("Choose another folder…") {
-                        ForEach(RoomDeveloperFolderRole.allCases.filter { $0 != .project }) { role in
-                            Button(role.title) { model.addFolder(role: role) }
+                        Menu("Choose another folder…") {
+                            let roles = section == .devices ? RoomDeveloperFolderRole.deviceRoles
+                                : RoomDeveloperFolderRole.allCases.filter { $0 != .project && $0.aiTool == nil }
+                            ForEach(roles) { role in
+                                Button(role.title) { model.addFolder(role: role) }
+                            }
                         }
+                        .disabled(model.isScanning || model.isChoosingFolder)
                     }
-                    .disabled(model.isScanning || model.isChoosingFolder)
                 }
                 .padding(.top, RoomTokens.Space.inner)
             } label: {
                 HStack(spacing: RoomTokens.Space.row) {
                     Label("Scan folders", systemImage: "folder")
                         .font(RoomTokens.Typography.section)
-                    if !model.locations.isEmpty {
-                        RoomMaskable(model.locations.count.formatted())
+                    if !model.sectionLocations.isEmpty {
+                        RoomMaskable(model.sectionLocations.count.formatted())
                             .font(RoomTokens.Typography.caption)
                             .foregroundStyle(RoomTokens.Ink.secondary)
                     }
@@ -228,6 +255,10 @@ struct RoomDeveloperView: View {
         }
         if section == .storage {
             toolStorage
+        } else if section == .aiTools {
+            RoomDeveloperAIStorageView(report: model.aiToolsReport, hasFolders: !model.sectionLocations.isEmpty)
+        } else if section == .devices {
+            deviceInventory
         } else if model.report == nil {
             if !model.isScanning { emptyReview }
         } else {
@@ -240,11 +271,7 @@ struct RoomDeveloperView: View {
                 if let summary = model.summary {
                     RoomDeveloperMatrixView(summary: summary)
                 }
-            case .devices:
-                if let report = model.report {
-                    RoomDeveloperDevicesTable(devices: report.androidDevices)
-                }
-            case .storage:
+            case .devices, .storage, .aiTools:
                 EmptyView()
             #if !ROOM_APP_STORE
             case .worktrees:
@@ -267,6 +294,26 @@ struct RoomDeveloperView: View {
             }
             .font(RoomTokens.Typography.caption)
             .foregroundStyle(RoomTokens.Ink.secondary)
+        }
+    }
+
+    @ViewBuilder private var deviceInventory: some View {
+        if let report = model.devicesReport {
+            if model.sectionLocations.contains(where: { $0.role == .android }) {
+                RoomDeveloperDevicesTable(devices: report.androidDevices)
+            }
+            if model.sectionLocations.contains(where: { $0.role == .simulators }) {
+                RoomDeveloperSimulatorDevices(devices: report.simulatorDevices)
+            }
+        } else if !model.isScanning {
+            Text(model.sectionLocations.isEmpty
+                ? "Choose an Android virtual device folder or a Simulator Devices folder."
+                : "Scan your chosen folders to see their virtual devices.")
+                .font(RoomTokens.Typography.body)
+                .foregroundStyle(RoomTokens.Ink.secondary)
+                .padding(RoomTokens.Space.group)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoomTokens.Surface.group, in: .rect(cornerRadius: RoomTokens.Radius.group))
         }
     }
 
@@ -463,5 +510,62 @@ private struct RoomDeveloperDevicesTable: View {
         .foregroundStyle(RoomTokens.Ink.secondary)
         .padding(RoomTokens.Space.inner)
         .background(RoomTokens.Surface.hover, in: .rect(cornerRadius: RoomTokens.Radius.row))
+    }
+}
+
+private struct RoomDeveloperSimulatorDevices: View {
+    let devices: [SimulatorDeviceResource]
+    @Environment(\.roomAccent) private var accent
+    @Environment(\.roomHide) private var hide
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
+            Label("Apple simulators", systemImage: "iphone.gen3")
+                .font(RoomTokens.Typography.title)
+                .accessibilityHeading(.h2)
+            Text(devices.isEmpty ? "No Apple simulators found in the chosen folders."
+                : "Sizes cover each device’s apps and data. Xcode manages shared simulator runtimes separately.")
+                .font(RoomTokens.Typography.caption)
+                .foregroundStyle(RoomTokens.Ink.secondary)
+            LazyVStack(alignment: .leading, spacing: RoomTokens.Space.row) {
+                ForEach(devices) { device in
+                    HStack(spacing: RoomTokens.Space.inner) {
+                        VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
+                            RoomMaskable(device.displayName, kind: .name)
+                                .font(RoomTokens.Typography.body.weight(.semibold))
+                            Text(Self.runtimeLabel(device.runtimeIdentifier))
+                                .font(RoomTokens.Typography.caption)
+                                .foregroundStyle(RoomTokens.Ink.secondary)
+                        }
+                        Spacer(minLength: 0)
+                        RoomMaskable((device.isPartial ? "≥ " : "") + RoomFormat.bytes(device.allocatedBytes))
+                            .monospacedDigit()
+                        if !hide.masksNow {
+                            Button {
+                                NSWorkspace.shared.activateFileViewerSelecting([device.url])
+                            } label: {
+                                Label("Show in Finder", systemImage: "arrow.up.forward.app").labelStyle(.iconOnly)
+                            }
+                            .roomLink(accent)
+                            .help("Show device data in Finder")
+                        }
+                    }
+                    .padding(RoomTokens.Space.row)
+                    .background(RoomTokens.Surface.hover, in: .rect(cornerRadius: RoomTokens.Radius.row))
+                }
+            }
+        }
+        .padding(RoomTokens.Space.group)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoomTokens.Surface.group, in: .rect(cornerRadius: RoomTokens.Radius.group))
+    }
+
+    private static func runtimeLabel(_ identifier: String?) -> String {
+        guard let identifier else { return "Runtime unknown" }
+        let name = identifier.dropFirst("com.apple.CoreSimulator.SimRuntime.".count)
+        let parts = name.split(separator: "-", maxSplits: 1)
+        guard let platform = parts.first, parts.count == 2 else { return String(name) }
+        let displayPlatform = platform == "xrOS" ? "visionOS" : String(platform)
+        return displayPlatform + " " + parts[1].replacingOccurrences(of: "-", with: ".")
     }
 }

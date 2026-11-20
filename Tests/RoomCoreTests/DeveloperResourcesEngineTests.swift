@@ -6,6 +6,120 @@ import Testing
 
 @Suite("Read-only developer resource review")
 struct DeveloperResourcesEngineTests {
+    @Test("AI inventory classifies known paths for seven tools without touching settings or profile documents")
+    func aiInventoryUsesNamedLocations() async throws {
+        let fixture = try DeveloperFixture()
+        defer { fixture.remove() }
+        let roots: [(DeveloperAITool, String, String, DeveloperAIStorageCategory)] = [
+            (.codex, "codex", "worktrees/project/build.bin", .worktrees),
+            (.claudeCode, "claude", "projects/project/session.jsonl", .history),
+            (.chatGPT, "chat", "Default/Code Cache/image.bin", .cache),
+            (.cursor, "cursor", "CachedExtensionVSIXs/extension.bin", .cache),
+            (.gemini, "gemini", "tmp/project/chats/session.json", .history),
+            (.copilot, "copilot", "logs/session.log", .diagnostics),
+            (.ollama, "ollama", "models/blobs/model.bin", .runtime),
+        ]
+        let contents = String(repeating: "x", count: 16_384)
+        for (_, home, child, _) in roots {
+            _ = try fixture.write(home + "/" + child, contents)
+            _ = try fixture.write(home + "/auth.json", contents)
+            _ = try fixture.write(home + "/Preferences", contents)
+            _ = try fixture.write(home + "/User/workspaceStorage/sessions.db", contents)
+        }
+        let knownFile = try fixture.write("codex/history.jsonl", contents)
+        let request = DeveloperResourcesRequest(
+            approvedFolders: roots.map { fixture.url($0.1) },
+            aiToolRoots: roots.map { DeveloperAIToolRoot(tool: $0.0, url: fixture.url($0.1)) },
+            scope: .aiTools)
+        let report = await DeveloperResourcesEngine().scan(request: request)
+
+        #expect(report.aiStorageResources.count == 8)
+        #expect(report.aiStorageResources.allSatisfy { $0.allocatedBytes > 0 && !$0.isPartial })
+        #expect(report.aiStorageResources.contains { $0.url.path == knownFile.path && $0.category == .history })
+        for (tool, _, _, category) in roots {
+            #expect(report.aiStorageResources.contains { $0.tool == tool && $0.category == category })
+        }
+        #expect(report.issues.isEmpty)
+        #expect(!report.isPartial)
+        #expect(report.toolchains.isEmpty && report.storageResources.isEmpty)
+    }
+
+    @Test("Desktop profiles measure recognized rendering caches without expanding Claude's CLI cache")
+    func desktopRenderingCachesStayScoped() async throws {
+        let fixture = try DeveloperFixture()
+        defer { fixture.remove() }
+        _ = try fixture.write("codex/Cache/page.bin", "desktop")
+        _ = try fixture.write("claude-app/Default/Code Cache/page.bin", "desktop")
+        _ = try fixture.write("claude-cli/cache/private.db", "unrecognized CLI cache")
+        _ = try fixture.write("claude-cli/cache/changelog.md", "recognized CLI cache")
+        _ = try fixture.write("chat/WebKit/NetworkCache/page.bin", "desktop")
+        _ = try fixture.write("chat/WebKit/LocalStorage/profile.db", "profile")
+        let roots: [DeveloperAIToolRoot] = [.init(tool: .codex, url: fixture.url("codex")),
+            .init(tool: .claudeCode, url: fixture.url("claude-app")),
+            .init(tool: .claudeCode, url: fixture.url("claude-cli")), .init(tool: .chatGPT, url: fixture.url("chat"))]
+        let report = await DeveloperResourcesEngine().scan(request: .init(
+            approvedFolders: roots.map(\.url), aiToolRoots: roots, scope: .aiTools))
+        #expect(Set(report.aiStorageResources.map(\.url.path)) == Set([
+            fixture.url("codex/Cache").path, fixture.url("claude-app/Default/Code Cache").path,
+            fixture.url("claude-cli/cache/changelog.md").path, fixture.url("chat/WebKit/NetworkCache").path,
+        ]))
+        #expect(report.issues.isEmpty)
+    }
+
+    @Test("AI inventory requires an exact grant and skips linked roots, duplicate roots and duplicate file storage")
+    func aiInventoryEnforcesBoundaryAndDeduplication() async throws {
+        let fixture = try DeveloperFixture()
+        defer { fixture.remove() }
+        let cursor = try fixture.directory("approved/cursor")
+        let codex = try fixture.directory("approved/codex")
+        let chat = try fixture.directory("approved/chat")
+        let outside = try fixture.directory("outside")
+        let shared = try fixture.write("approved/cursor/Cache/render.bin", String(repeating: "x", count: 16_384))
+        _ = try fixture.write("outside/Cache/secret.bin", "outside")
+        _ = try fixture.write("approved/codex/cache/build.bin", "parent grant only")
+        let linked = try fixture.directory("approved/chat/Code Cache")
+        try FileManager.default.linkItem(at: shared, to: linked.appendingPathComponent("render.bin"))
+        try FileManager.default.createSymbolicLink(at: chat.appendingPathComponent("Cache"),
+                                                   withDestinationURL: outside.appendingPathComponent("Cache"))
+        let request = DeveloperResourcesRequest(
+            approvedFolders: [fixture.url("approved"), cursor, chat],
+            aiToolRoots: [.init(tool: .cursor, url: cursor), .init(tool: .cursor, url: cursor),
+                          .init(tool: .chatGPT, url: chat), .init(tool: .codex, url: codex)],
+            scope: .aiTools)
+        let report = await DeveloperResourcesEngine().scan(request: request)
+
+        #expect(report.aiStorageResources.count == 2)
+        #expect(report.aiStorageResources.filter { $0.allocatedBytes > 0 }.count == 1)
+        #expect(report.issues.contains { $0.url.path == codex.path && $0.message.contains("explicitly") })
+        #expect(report.issues.contains { $0.url.path == chat.appendingPathComponent("Cache").path })
+        #expect(report.isPartial)
+    }
+
+    @Test("Tool storage retains a partial lower bound if a measured folder disappears")
+    func unavailableResourceAtFinalValidation() async throws {
+        let fixture = try DeveloperFixture()
+        defer { fixture.remove() }
+        let sdk = try fixture.directory("sdk")
+        let images = try fixture.directory("sdk/system-images")
+        let contents = String(repeating: "x", count: 16_384)
+        _ = try fixture.write("sdk/system-images/system.img", contents)
+        let moved = fixture.url("moved-images")
+
+        let engine = DeveloperResourcesEngine(beforeResourceValidation: { url in
+            guard url.path == images.path else { return }
+            do { try FileManager.default.moveItem(at: images, to: moved) }
+            catch { Issue.record("Could not rename the owned fixture: \(error)") }
+        })
+        let report = await engine.scan(request: .init(approvedFolders: [sdk], sdkRoots: [sdk], scope: .toolStorage))
+
+        let resource = try #require(report.storageResources.first)
+        #expect(resource.kind == .androidSystemImages)
+        #expect(resource.isPartial && resource.allocatedBytes > 0)
+        #expect(report.isPartial && !report.cancelled)
+        #expect(report.issues.contains { $0.url.path == images.path && $0.message.contains("became unavailable") })
+        #expect(try String(contentsOf: moved.appendingPathComponent("system.img"), encoding: .utf8) == contents)
+    }
+
     @Test("Developer storage measures documented subfolders and keeps them out of toolchain attribution")
     func toolStorageMeasuresExactRoots() async throws {
         let f = try DeveloperFixture()

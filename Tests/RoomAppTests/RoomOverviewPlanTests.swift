@@ -14,6 +14,13 @@ struct RoomOverviewPlanTests {
         #expect(drawing.notMapped != nil)
     }
 
+    @Test func observedReturnsLightOnlyWholeAvailableDots() {
+        #expect(RoomOverviewPlanGeometry.returnedDotCount(bytes: 0, gbPerDot: 2, limit: 10) == 0)
+        #expect(RoomOverviewPlanGeometry.returnedDotCount(bytes: 1_900_000_000, gbPerDot: 2, limit: 10) == 0)
+        #expect(RoomOverviewPlanGeometry.returnedDotCount(bytes: 5_000_000_000, gbPerDot: 2, limit: 10) == 2)
+        #expect(RoomOverviewPlanGeometry.returnedDotCount(bytes: Int64.max, gbPerDot: 2, limit: 10) == 10)
+    }
+
     @Test func contextGridExcludedFromDataCount() throws {
         let drawing = try #require(RoomOverviewPlanGeometry.make(plan: normal, size: viewport))
         let details = RoomOverviewPlanPresentation(plan: normal, hidden: false, format: RoomFormat.overviewBytes)

@@ -17,9 +17,11 @@ final class AgentWorkModel {
     var errorMessage: String?
     private(set) var reviewLocations: [URL] = []
     private(set) var grantedLocations: Set<String> = []
+    private var verificationNeedsRescan: Set<String> = []
+    private var stoppedScan = false
 
     @ObservationIgnored private let engine: AgentWorkEngine
-    @ObservationIgnored private let fileAccess = RoomFileAccess.shared
+    @ObservationIgnored private let fileAccess: RoomFileAccess
     @ObservationIgnored private var scanTask: Task<Void, Never>?
     @ObservationIgnored private var verifyTask: Task<Void, Never>?
     @ObservationIgnored private var generation = UUID()
@@ -39,13 +41,37 @@ final class AgentWorkModel {
         !reviewLocations.isEmpty && reviewLocations.allSatisfy { grantedLocations.contains($0.path) }
     }
 
-    init(engine: AgentWorkEngine? = nil) { self.engine = engine ?? AgentWorkEngine() }
+    init(engine: AgentWorkEngine? = nil, access: RoomFileAccess = .shared) {
+        self.engine = engine ?? AgentWorkEngine()
+        self.fileAccess = access
+    }
+
+    func verificationUnavailableReason(for item: AgentWorkItem) -> String? {
+        guard let report else { return "Scan worktrees before checking a remote." }
+        if stoppedScan || report.cancelled { return "Scan stopped. Rescan worktrees before checking a remote." }
+        guard let current = report.items.first(where: { $0.id == item.id }) else {
+            return "This worktree is absent from the latest results. Rescan worktrees."
+        }
+        guard let head = current.head, !head.isEmpty else {
+            return "The commit could not be inspected. Rescan worktrees."
+        }
+        guard item.head == head, !verificationNeedsRescan.contains(item.id) else {
+            return "Results changed. Rescan worktrees before checking the remote."
+        }
+        return nil
+    }
+
+    func canVerify(_ item: AgentWorkItem) -> Bool {
+        !isWorking && !isScanning && verifyingID == nil && verificationUnavailableReason(for: item) == nil
+    }
 
     func scan() {
         guard !isScanning, !isWorking, verifyingID == nil else { return }
         discardReview()
         let token = UUID()
         generation = token
+        verificationNeedsRescan = []
+        stoppedScan = false
         isScanning = true
         progress = nil
         statusMessage = nil
@@ -63,7 +89,8 @@ final class AgentWorkModel {
             self.report = result
             self.isScanning = false
             self.scanTask = nil
-            self.statusMessage = result.cancelled ? "Scan stopped. Partial results stay available for inspection." : nil
+            self.stoppedScan = result.cancelled || Task.isCancelled
+            self.statusMessage = self.stoppedScan ? "Scan stopped. Rescan worktrees before verification." : nil
             await self.refreshHistory()
         }
     }
@@ -80,6 +107,11 @@ final class AgentWorkModel {
 
     func verify(_ item: AgentWorkItem) {
         guard !isWorking, !isScanning, verifyingID == nil else { return }
+        if let reason = verificationUnavailableReason(for: item) {
+            statusMessage = reason
+            return
+        }
+        statusMessage = nil
         verifyingID = item.id
         let token = generation
         let scopes = beginReadAccess()
@@ -93,6 +125,10 @@ final class AgentWorkModel {
             }
             self.verifyingID = nil
             self.verifyTask = nil
+            if result.state == .notChecked, !Task.isCancelled {
+                self.verificationNeedsRescan.insert(item.id)
+                self.statusMessage = self.verificationUnavailableReason(for: item)
+            }
         }
     }
 
@@ -121,6 +157,10 @@ final class AgentWorkModel {
         guard !isWorking, !isScanning else { return }
         discardReview()
         errorMessage = nil
+        if let reason = verificationUnavailableReason(for: item) {
+            errorMessage = reason
+            return
+        }
         let token = reviewGeneration
         let scopes = beginReadAccess()
         defer { Self.endReadAccess(scopes) }

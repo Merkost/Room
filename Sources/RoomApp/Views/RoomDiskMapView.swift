@@ -6,6 +6,9 @@ import SwiftUI
 struct RoomDiskMapView: View {
     @Bindable var insights: RoomInsightsModel
     var rooms: RoomRoomsModel? = nil
+    var savedViews: RoomSavedViewsStore? = nil
+    var savedViewDisplay: RoomSavedViewDisplay? = nil
+    var openSavedView: (UUID) -> Void = { _ in }
     @Environment(\.openSettings) private var openSettings
     @Environment(\.roomAccent) private var accent
     @Environment(\.roomHide) private var privacy
@@ -23,6 +26,18 @@ struct RoomDiskMapView: View {
     @State private var mapGeneration = 0
     @State private var mapStep: RoomMapStep?
     @State private var pointer = RoomMapPointer()
+    @State private var draftView: SavedViewDraft?
+
+    private struct SavedViewDraft: Identifiable {
+        let id = UUID()
+        let root: RoomTreeLocation
+        let path: String
+        let mode: RoomSavedViewMode
+        let kind: StorageKind?
+        let name: String
+    }
+
+    private var showsMap: Bool { savedViewDisplay?.showsMap ?? true }
 
     private enum Display: String, CaseIterable { case map = "Map", largest = "Largest 20", compare = "Compare" }
     private var model: RoomDiskMapModel { insights.diskMap }
@@ -36,8 +51,15 @@ struct RoomDiskMapView: View {
                    insights.isScanningDisk || (blueprint.phase == .stopped && insights.diskReport?.cancelled == true &&
                        layout == .map && model.levelPath.isEmpty) {
                     blueprintDetail(blueprint, isWide: isWide)
+                } else if let savedViewDisplay, !savedViewDisplay.showsMap {
+                    savedViewPlaceholder(savedViewDisplay)
                 } else if let level = model.level {
                     if model.hasLostAccess { accessNotice }
+                    if savedViewDisplay?.result == .rootOnly {
+                        Label("The saved folder is no longer in this map. Showing its root.", systemImage: "folder")
+                            .font(RoomTokens.Typography.caption)
+                            .foregroundStyle(RoomTokens.Ink.secondary)
+                    }
                     details(level, isWide: isWide)
                         .roomPanelArrival(enabled: model.blueprint?.phase == .done)
                 } else {
@@ -48,6 +70,9 @@ struct RoomDiskMapView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .onChange(of: insights.diskInspectorRequest) { _, _ in
                 toggleInspector(isWide: isWide)
+            }
+            .onChange(of: isWide ? !hidesWideInspector : showsInspector, initial: true) { _, visible in
+                insights.setDiskInspectorVisible(visible)
             }
             .onChange(of: isWide) { _, wide in if wide { showsInspector = false } }
             .onChange(of: insights.diskComparisonRequest) { _, _ in
@@ -67,7 +92,14 @@ struct RoomDiskMapView: View {
             if current == nil { releasePreviewScope() }
         }
         .onDisappear { releasePreviewScope() }
-        .task { await insights.restoreDiskMap() }
+        .task { if savedViewDisplay == nil { await insights.restoreDiskMap() } }
+        .task(id: savedViewDisplay?.requestID) {
+            guard let display = savedViewDisplay, display.showsMap else { return }
+            roomWithoutMotion {
+                layout = display.view.mode == .map ? .map : .largest
+                filter = display.view.kind?.rawValue
+            }
+        }
         .task { await insights.observeTreeChanges() }
         .onChange(of: model.levelPath) { _, path in
             filter = nil
@@ -89,6 +121,13 @@ struct RoomDiskMapView: View {
             if !available, layout == .compare { layout = .map }
         }
         .onChange(of: motion.isFull) { _, _ in roomWithoutMotion { mapStep = nil } }
+        .sheet(item: $draftView) { draft in
+            RoomSavedViewNameEditor(title: "Save View", action: "Save", name: draft.name) { name in
+                guard insights.savedViewLocation() == draft.root else { return false }
+                return savedViews?.add(name: name, root: draft.root, nodePath: draft.path, kind: draft.kind,
+                                       mode: draft.mode) != nil
+            }
+        }
         .sheet(isPresented: $showsIssues) {
             RoomScanIssuesSheet(issues: insights.diskReport?.issues.map { hidden ? "Path hidden" : "\($0.url.path): \($0.message)" } ?? [])
         }
@@ -122,7 +161,7 @@ struct RoomDiskMapView: View {
     }
 
     @ViewBuilder private var location: some View {
-        if let level = model.level {
+        if showsMap, let level = model.level {
             HStack(spacing: RoomTokens.Space.row) {
                 RoomBreadcrumbs(trail: model.trail, hidden: hidden) {
                     step(to: $0, animated: NSApp.currentEvent?.type == .leftMouseUp)
@@ -160,7 +199,7 @@ struct RoomDiskMapView: View {
 
     private func viewActions(isWide: Bool) -> some View {
         HStack(spacing: RoomTokens.Space.row) {
-            if model.current != nil, !insights.isScanningDisk {
+            if showsMap, model.current != nil, !insights.isScanningDisk {
                 Picker("Disk Map view", selection: $layout) {
                     Text(Display.map.rawValue).tag(Display.map)
                     Text(Display.largest.rawValue).tag(Display.largest)
@@ -185,6 +224,7 @@ struct RoomDiskMapView: View {
                 Button("Stop", action: insights.cancelDiskScan).roomSecondary()
             }
             folders
+            if let savedViews { viewsMenu(savedViews) }
         }
         .fixedSize(horizontal: true, vertical: false)
     }
@@ -200,7 +240,7 @@ struct RoomDiskMapView: View {
         Menu("Folders") {
             Button("Choose Folder to Map…", action: insights.chooseDiskFolder)
                 .disabled(!insights.canChooseDiskLocation)
-            if model.current != nil {
+            if showsMap, model.current != nil {
                 Button(model.current?.cancelled == true ? "Map This Folder Again" : "Rescan This Folder", action: insights.rescanDisk)
                     .disabled(!insights.canRescanDisk)
             }
@@ -234,6 +274,64 @@ struct RoomDiskMapView: View {
         .accessibilityIdentifier("RoomDiskChangeFolderButton")
     }
 
+    private func viewsMenu(_ store: RoomSavedViewsStore) -> some View {
+        Menu("Views") {
+            Button("Save View…") { prepareSavedView() }
+                .disabled(!store.canAdd || !showsMap || layout == .compare || insights.savedViewLocation() == nil)
+            if !store.visible.isEmpty {
+                Divider()
+                ForEach(store.visible) { view in
+                    Button(hidden ? "Saved View" : view.name) { openSavedView(view.id) }
+                        .disabled(!insights.canChooseDiskLocation)
+                }
+            }
+        }
+        .accessibilityIdentifier("RoomDiskSavedViewsMenu")
+    }
+
+    private func prepareSavedView() {
+        guard layout != .compare, let root = insights.savedViewLocation(), let level = model.level else { return }
+        let kind = filter.flatMap(StorageKind.init(rawValue:))
+        let mode: RoomSavedViewMode = layout == .largest ? .largest : .map
+        let suggested: String
+        if hidden {
+            suggested = "Disk Map View"
+        } else if mode == .largest {
+            suggested = "Largest 20 in \(level.name)"
+        } else if let kind {
+            suggested = "\(kind.title) in \(level.name)"
+        } else {
+            suggested = level.name
+        }
+        draftView = SavedViewDraft(root: root, path: model.levelPath, mode: mode, kind: kind,
+                                   name: RoomSavedView.cleanName(String(suggested.prefix(80))) ?? "Disk Map View")
+    }
+
+    private func savedViewPlaceholder(_ display: RoomSavedViewDisplay) -> some View {
+        VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
+            RoomMaskable(display.view.name, kind: .name)
+                .font(RoomTokens.Typography.title).accessibilityHeading(.h1)
+            if display.result == .needsAccess {
+                Label("Folder access is needed to open this view.", systemImage: "folder.badge.questionmark")
+                    .foregroundStyle(RoomTokens.Ink.secondary)
+                Button("Manage Folder Access…") {
+                    insights.requestedSettingsTab = .folders
+                    openSettings()
+                }
+                .roomSecondary()
+            } else if display.result == .unavailable {
+                Label("Room couldn’t open this view.", systemImage: "exclamationmark.circle")
+                    .foregroundStyle(RoomTokens.Ink.secondary)
+                Button("Try Again") { openSavedView(display.view.id) }
+                    .roomSecondary()
+                    .disabled(!insights.canChooseDiskLocation)
+            } else {
+                ProgressView("Opening saved view…").controlSize(.small)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+    }
+
     private var empty: some View {
         VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
             Text(model.pendingFolder != nil ? "No saved map for this folder." :
@@ -263,7 +361,7 @@ struct RoomDiskMapView: View {
 
     private func details(_ level: RoomTreeNode, isWide: Bool) -> some View {
         VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
-            if layout == .map { RoomMapKindControl(node: level, hidden: hidden, filter: $filter) }
+            if layout != .compare { RoomMapKindControl(node: level, hidden: hidden, filter: $filter) }
             HStack(alignment: .top, spacing: RoomTokens.Space.inner) {
                 VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
                     if layout == .map {
@@ -281,8 +379,9 @@ struct RoomDiskMapView: View {
                         }
                         .frame(minHeight: RoomTokens.Map.minimumHeight)
                     } else {
-                        RoomLargestTable(level: level, hidden: hidden) { activate($0, false, false) }
-                        readout(level, hint: false)
+                        let visible = filtered(level)
+                        RoomLargestTable(level: visible, hidden: hidden) { activate($0, false, false) }
+                        readout(visible, hint: false)
                     }
                 }
                 .roomPanelChange(layout)

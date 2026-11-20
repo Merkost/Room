@@ -4,17 +4,25 @@ import Foundation
 /// Read-only review. No emulator/Gradle execution, deletion, or implicit home
 /// discovery occurs. Paths and timestamps are evidence, not an unused verdict.
 public actor DeveloperResourcesEngine {
-    public init() { }
+    private let beforeResourceValidation: (@Sendable (URL) -> Void)?
+
+    public init() { beforeResourceValidation = nil }
+
+    init(beforeResourceValidation: @escaping @Sendable (URL) -> Void) {
+        self.beforeResourceValidation = beforeResourceValidation
+    }
 
     public func scan(request: DeveloperResourcesRequest,
                      progress: (@Sendable (DeveloperResourcesProgress) -> Void)? = nil) async -> DeveloperResourcesReport {
         let id = UUID(), date = Date()
         let budget = DRBudget(request.limits)
         var avds: [AndroidVirtualDeviceResource] = [], gradle: [GradleDeveloperResource] = []
+        var simulators: [SimulatorDeviceResource] = []
         var wrappers: [GradleProjectWrapper] = []
         var projects: [String: DeveloperProject] = [:]
         var toolchains: [DeveloperToolchainResource] = []
         var storage: [DeveloperStorageResource] = []
+        var aiStorage: [DeveloperAIStorageResource] = []
         var approvals: [URL] = []
         for supplied in request.approvedFolders.prefix(64) {
             let url = supplied.roomLexicallyNormalized
@@ -55,7 +63,8 @@ public actor DeveloperResourcesEngine {
                 await Task.yield()
             }
             var seenAVDs: Set<String> = []
-            for supplied in (review ? request.avdRoots : []).prefix(32) {
+            let scansDevices = review || request.scope == .devices
+            for supplied in (scansDevices ? request.avdRoots : []).prefix(32) {
                 try budget.check()
                 guard let root = permitted(supplied) else { continue }
                 update("Android devices", root)
@@ -75,6 +84,41 @@ public actor DeveloperResourcesEngine {
                     catch { budget.note(url, "This AVD could not be inspected safely. Linked or inaccessible directories are skipped.") }
                 }
                 await Task.yield()
+            }
+            if request.scope == .devices {
+                var seenRoots: Set<String> = []
+                for supplied in request.simulatorDeviceRoots.prefix(32) {
+                    try budget.check()
+                    let root = supplied.roomLexicallyNormalized
+                    guard seenRoots.insert(root.path).inserted else { continue }
+                    guard supplied.isFileURL, approvals.contains(where: { $0.path == root.path }) else {
+                        budget.note(root, "Choose this Simulator Devices folder explicitly before measuring it.")
+                        continue
+                    }
+                    update("Apple simulators", root)
+                    let children: [URL]
+                    let volume: dev_t
+                    do {
+                        volume = try DRFiles.directory(root).st_dev
+                        children = try DRFiles.children(root, budget: budget)
+                        guard try DRFiles.isSimulatorDeviceSet(root, budget: budget, children: children) else {
+                            budget.note(root, "Choose the Simulator Devices folder containing the simulator device set.")
+                            continue
+                        }
+                    } catch is CancellationError { throw CancellationError() }
+                    catch is DRStop { throw DRStop.limit }
+                    catch { budget.note(root, "The Simulator Devices folder could not be inspected safely."); continue }
+                    for url in children {
+                        guard let id = UUID(uuidString: url.lastPathComponent) else { continue }
+                        try budget.resource()
+                        update("Apple simulators", url)
+                        do { simulators.append(try simulatorDevice(url, id: id, volume: volume, budget: budget)) }
+                        catch is CancellationError { throw CancellationError() }
+                        catch is DRStop { throw DRStop.limit }
+                        catch { budget.note(url, "Simulator device metadata could not be read safely.") }
+                    }
+                    await Task.yield()
+                }
             }
             var seenGradle: Set<String> = []
             for supplied in (review ? request.gradleHomes : []).prefix(32) {
@@ -102,7 +146,7 @@ public actor DeveloperResourcesEngine {
                             if kind == .distribution, distribution == nil { continue }
                             let version = kind == .distribution ? distribution?.version : DRVersions.version(url.lastPathComponent)
                             let type = kind == .distribution ? distribution?.type : nil
-                            let measured = try DRFiles.measure(url, budget: budget)
+                            let measured = try DRFiles.measure(url, budget: budget, beforeFinalValidation: beforeResourceValidation)
                             let matches = version.map { value in wrappers.filter {
                                 $0.version == value && (kind != .distribution || $0.distributionType == type)
                             } } ?? []
@@ -159,12 +203,41 @@ public actor DeveloperResourcesEngine {
                     await Task.yield()
                 }
             }
+            if request.scope == .aiTools {
+                let files = DRMeasuredFiles()
+                for supplied in request.aiToolRoots.prefix(32) {
+                    try budget.check()
+                    let root = supplied.url.roomLexicallyNormalized
+                    guard supplied.url.isFileURL, approvals.contains(where: { $0.path == root.path }) else {
+                        budget.note(root, "Choose this tool's folder explicitly before measuring it.")
+                        continue
+                    }
+                    let cacheNames = try aiCacheNames(for: supplied.tool, in: root, budget: budget)
+                    for location in DRAIStorageLocation.catalogue(for: supplied.tool) {
+                        try budget.node()
+                        let first = String(location.path.prefix { $0 != "/" })
+                        if (first == "cache" || first == "Cache"), !cacheNames.contains(first) { continue }
+                        let url = root.appendingPathComponent(location.path)
+                        guard !aiStorage.contains(where: { DRFiles.contains(url, in: $0.url) || DRFiles.contains($0.url, in: url) })
+                        else { continue }
+                        update("AI tool storage", url)
+                        if let resource = try readAIStorage(in: url, tool: supplied.tool, location: location, budget: budget, files: files) {
+                            aiStorage.append(resource)
+                        }
+                    }
+                    await Task.yield()
+                }
+            }
         } catch is CancellationError { }
         catch { budget.limited = true }
-        let roleRoots = request.scope == .toolStorage
-            ? [request.gradleHomes, request.sdkRoots, request.simulatorDeviceRoots]
-            : [request.projectRoots, request.avdRoots, request.gradleHomes, request.sdkRoots, request.derivedDataRoots, request.konanRoots]
-        if roleRoots.contains(where: { $0.count > 32 }) {
+        let roleRoots: [[URL]] = switch request.scope {
+        case .devices: [request.avdRoots, request.simulatorDeviceRoots]
+        case .toolStorage: [request.gradleHomes, request.sdkRoots, request.simulatorDeviceRoots]
+        case .review: [request.projectRoots, request.avdRoots, request.gradleHomes, request.sdkRoots, request.derivedDataRoots, request.konanRoots]
+        case .aiTools: []
+        }
+        let exceededRoots = request.scope == .aiTools ? request.aiToolRoots.count > 32 : roleRoots.contains(where: { $0.count > 32 })
+        if exceededRoots {
             budget.note(approvals.first ?? URL(fileURLWithPath: "/"), "Each resource role is limited to its first 32 selected roots.")
         }
         if budget.limited { budget.note(approvals.first ?? URL(fileURLWithPath: "/"), "The bounded scan reached a time, depth, node or resource limit. Results and size measurements may be incomplete.") }
@@ -183,10 +256,70 @@ public actor DeveloperResourcesEngine {
                 if $0.allocatedBytes == $1.allocatedBytes { return $0.id < $1.id }
                 return $0.allocatedBytes > $1.allocatedBytes
             },
+            aiStorageResources: aiStorage.sorted {
+                if $0.allocatedBytes == $1.allocatedBytes { return $0.id < $1.id }
+                return $0.allocatedBytes > $1.allocatedBytes
+            },
+            simulatorDevices: simulators.sorted {
+                if $0.allocatedBytes == $1.allocatedBytes { return $0.id < $1.id }
+                return $0.allocatedBytes > $1.allocatedBytes
+            },
             issues: budget.issues, cancelled: Task.isCancelled,
             isPartial: Task.isCancelled || budget.limited || !budget.issues.isEmpty || avds.contains(where: \.isPartial)
                 || gradle.contains(where: \.isPartial) || wrappers.contains(where: \.isPartial)
-                || toolchains.contains(where: \.partial) || storage.contains(where: \.isPartial))
+                || toolchains.contains(where: \.partial) || storage.contains(where: \.isPartial)
+                || aiStorage.contains(where: \.isPartial) || simulators.contains(where: \.isPartial))
+    }
+
+    private func aiCacheNames(for tool: DeveloperAITool, in root: URL, budget: DRBudget) throws -> Set<String> {
+        // On case-insensitive volumes, a desktop Cache can alias a CLI's lowercase cache.
+        // Check the spelling before treating a CLI cache as a desktop rendering cache.
+        guard tool == .codex || tool == .claudeCode else { return ["cache", "Cache"] }
+        do {
+            return Set(try DRFiles.children(root, budget: budget).map(\.lastPathComponent))
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch is DRStop {
+            throw DRStop.limit
+        } catch {
+            budget.note(root, "The cache folder names could not be confirmed safely.")
+            return []
+        }
+    }
+
+    private func readAIStorage(in url: URL, tool: DeveloperAITool, location: DRAIStorageLocation,
+                               budget: DRBudget, files: DRMeasuredFiles) throws -> DeveloperAIStorageResource? {
+        do {
+            let metadata = try DRFiles.metadata(url)
+            let allocatedBytes: Int64
+            let partial: Bool
+            if location.isFile {
+                guard DRFiles.isRegular(metadata) else { throw DRReadError.invalidRoot }
+                try budget.resource()
+                allocatedBytes = files.allocatedBytes(adding: metadata)
+                beforeResourceValidation?(url)
+                partial = (try? DRFiles.metadata(url)).map { DRFiles.same(metadata, $0) } != true
+                if partial { budget.note(url, "This file changed or became unavailable while it was measured.") }
+            } else {
+                guard DRFiles.isDirectory(metadata) else { throw DRReadError.invalidRoot }
+                try budget.resource()
+                let measured = try DRFiles.measure(url, budget: budget, beforeFinalValidation: beforeResourceValidation,
+                                                   files: files, recordsEvidence: false)
+                allocatedBytes = measured.allocated
+                partial = measured.partial
+            }
+            return DeveloperAIStorageResource(tool: tool, title: location.title, url: url,
+                allocatedBytes: allocatedBytes, isPartial: partial, category: location.category)
+        } catch DRReadError.missing {
+            return nil
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch is DRStop {
+            throw DRStop.limit
+        } catch {
+            budget.note(url, "This AI tool location could not be measured safely.")
+            return nil
+        }
     }
 
     private func readStorage(in root: URL, kind: DeveloperStorageKind, budget: DRBudget) throws -> DeveloperStorageResource? {
@@ -197,7 +330,8 @@ public actor DeveloperResourcesEngine {
                 return nil
             }
             try budget.resource()
-            let bytes = try DRFiles.measure(root, budget: budget)
+            let bytes = try DRFiles.measure(root, budget: budget, beforeFinalValidation: beforeResourceValidation,
+                                            staysOnVolume: kind == .simulatorDevices)
             return DeveloperStorageResource(kind: kind, url: root, allocatedBytes: bytes.allocated, isPartial: bytes.partial)
         } catch DRReadError.missing where kind != .simulatorDevices {
             return nil
@@ -227,7 +361,7 @@ public actor DeveloperResourcesEngine {
                 do {
                     guard DRFiles.isDirectory(try DRFiles.metadata(child)) else { continue }
                     try budget.resource()
-                    let measured = try DRFiles.measure(child, budget: budget)
+                    let measured = try DRFiles.measure(child, budget: budget, beforeFinalValidation: beforeResourceValidation)
                     var artifact = DeveloperToolchainResource(path: child.path, kind: kind, version: version,
                                                               bytes: measured.allocated, partial: measured.partial)
                     if kind == .derivedData {
@@ -266,7 +400,7 @@ public actor DeveloperResourcesEngine {
         } catch is CancellationError { throw CancellationError() }
         catch is DRStop { throw DRStop.limit }
         catch { configPartial = true; budget.note(configURL, "AVD configuration is missing, malformed, changed or exceeds the bounded read size. Some device details are unknown.") }
-        let measured = try DRFiles.measure(url, budget: budget)
+        let measured = try DRFiles.measure(url, budget: budget, beforeFinalValidation: beforeResourceValidation)
         let name = String(url.lastPathComponent.dropLast(4))
         let api = DRProperties.androidAPI(config["target"]) ?? DRProperties.androidAPI(config["image.sysdir.1"])
         let hardware = [config["hw.device.manufacturer"], config["hw.device.name"]].compactMap { $0 }.joined(separator: " ")
@@ -278,6 +412,35 @@ public actor DeveloperResourcesEngine {
             lastUseNote: "Last launch is not recorded reliably in the inspected standard files. Log, launch-record, snapshot and file dates below are evidence only; they do not establish last use or that this device is unnecessary.",
             evidence: measured.evidence,
             activity: try activity(for: url, avdName: name, measured: measured, snapshot: request.activity, budget: budget))
+    }
+
+    private func simulatorDevice(_ url: URL, id: UUID, volume: dev_t, budget: DRBudget) throws -> SimulatorDeviceResource {
+        let original = try DRFiles.directory(url)
+        guard original.st_dev == volume else { throw DRReadError.invalidRoot }
+        let metadataURL = url.appendingPathComponent("device.plist")
+        let data = try DRFiles.data(metadataURL, budget: budget, limit: budget.limits.maximumFileBytes)
+        guard let fields = try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
+              let name = (fields["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !name.isEmpty, name.rangeOfCharacter(from: .controlCharacters) == nil else { throw DRReadError.malformed }
+        if let rawID = fields["UDID"] ?? fields["udid"], (rawID as? String).flatMap(UUID.init(uuidString:)) != id {
+            throw DRReadError.malformed
+        }
+        // These are descriptive identifiers from the device's local plist. They do not resolve to paths.
+        func identifier(_ value: Any?, prefix: String) -> String? {
+            guard let value = value as? String, value.hasPrefix(prefix), value.count <= 200,
+                  value.count > prefix.count,
+                  value.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || ".-_".contains($0)) })
+            else { return nil }
+            return value
+        }
+        let runtime = identifier(fields["runtime"] ?? fields["runtimeIdentifier"], prefix: "com.apple.CoreSimulator.SimRuntime.")
+        let type = identifier(fields["deviceType"] ?? fields["deviceTypeIdentifier"], prefix: "com.apple.CoreSimulator.SimDeviceType.")
+        guard runtime != nil || type != nil else { throw DRReadError.malformed }
+        let measured = try DRFiles.measure(url, budget: budget, beforeFinalValidation: beforeResourceValidation,
+                                           recordsEvidence: false, staysOnVolume: true)
+        guard DRFiles.same(original, try DRFiles.directory(url)) else { throw DRReadError.changed }
+        return SimulatorDeviceResource(url: url, displayName: String(name.prefix(160)), runtimeIdentifier: runtime,
+            deviceTypeIdentifier: type, allocatedBytes: measured.allocated, isPartial: measured.partial)
     }
 
     private func activity(for url: URL, avdName: String?, measured: DRMeasurement,
@@ -335,18 +498,106 @@ private final class DRBudget {
 }
 private enum DRStop: Error { case limit }
 private enum DRReadError: Error { case invalidRoot, missing, unreadable, malformed, oversize, changed }
+
+private struct DRAIStorageLocation {
+    let path: String
+    let title: String
+    let category: DeveloperAIStorageCategory
+    let isFile: Bool
+
+    init(_ path: String, _ title: String, _ category: DeveloperAIStorageCategory, isFile: Bool = false) {
+        self.path = path
+        self.title = title
+        self.category = category
+        self.isFile = isFile
+    }
+
+    static func catalogue(for tool: DeveloperAITool) -> [Self] {
+        let renderingCaches: [Self] = [
+            .init("Cache", "App cache", .cache), .init("Code Cache", "Code cache", .cache),
+            .init("GPUCache", "Graphics cache", .cache), .init("ShaderCache", "Shader cache", .cache),
+            .init("Default/Cache", "Default profile cache", .cache),
+            .init("Default/Code Cache", "Default profile code cache", .cache),
+            .init("Default/GPUCache", "Default profile graphics cache", .cache),
+        ]
+        switch tool {
+        case .codex:
+            return renderingCaches + [
+                .init("cache", "Tool cache", .cache),
+                .init("models_cache.json", "Model catalogue cache", .cache, isFile: true),
+                .init("log", "Diagnostic logs", .diagnostics),
+                .init("history.jsonl", "Prompt history", .history, isFile: true),
+                .init("sessions", "Sessions", .history),
+                .init("archived_sessions", "Archived sessions", .history),
+                .init("packages", "Runtime packages", .runtime),
+                .init(".tmp", "Tool staging and active work", .runtime),
+                .init("worktrees", "Worktree files and builds", .worktrees),
+            ]
+        case .claudeCode:
+            return renderingCaches + [
+                .init("cache/model-catalog", "Model catalogue cache", .cache),
+                .init("cache/changelog.md", "Cached changelog", .cache, isFile: true),
+                .init("debug", "Diagnostic logs", .diagnostics),
+                .init("projects", "Project sessions", .history),
+                .init("file-history", "File history", .history),
+                .init("downloads", "Tool downloads", .runtime),
+                .init("worktrees", "Worktree files and builds", .worktrees),
+            ]
+        case .chatGPT:
+            return renderingCaches + [
+                .init("NetworkCache", "Network cache", .cache),
+                .init("WebKit/NetworkCache", "WebKit network cache", .cache),
+            ]
+        case .cursor:
+            return renderingCaches + [
+                .init("CachedData", "Cached app data", .cache),
+                .init("CachedExtensionVSIXs", "Extension download cache", .cache),
+            ]
+        case .gemini:
+            return [
+                .init("history", "Project checkpoints", .history),
+                .init("tmp", "Workspace data and sessions", .history),
+            ]
+        case .copilot:
+            return [
+                .init("logs", "Session logs", .diagnostics),
+                .init("session-state", "Sessions and workspace data", .history),
+                .init("command-history-state", "Command history", .history),
+                .init("session-store.db", "Session index", .history, isFile: true),
+            ]
+        case .ollama:
+            return [.init("logs", "App and server logs", .diagnostics), .init("models", "Installed models", .runtime)]
+        }
+    }
+}
+
+private final class DRMeasuredFiles {
+    private struct Location: Hashable {
+        let device: dev_t
+        let inode: ino_t
+    }
+    private var measured: Set<Location> = []
+
+    func add(_ metadata: stat) -> Bool {
+        measured.insert(Location(device: metadata.st_dev, inode: metadata.st_ino)).inserted
+    }
+
+    func allocatedBytes(adding metadata: stat) -> Int64 {
+        add(metadata) ? max(0, Int64(metadata.st_blocks)) * 512 : 0
+    }
+}
 private struct DRMeasurement { var allocated: Int64 = 0; var logical: Int64 = 0; var partial = false; var evidence: [DeveloperResourceEvidence] = [] }
 
 private enum DRFiles {
     static func contains(_ child: URL, in parent: URL) -> Bool { child.path == parent.path || child.path.hasPrefix(parent.path + "/") }
     static func isDirectory(_ info: stat) -> Bool { info.st_mode & UInt16(S_IFMT) == UInt16(S_IFDIR) }
     static func isRegular(_ info: stat) -> Bool { info.st_mode & UInt16(S_IFMT) == UInt16(S_IFREG) }
-    static func isSimulatorDeviceSet(_ root: URL, budget: DRBudget) throws -> Bool {
+    static func isSimulatorDeviceSet(_ root: URL, budget: DRBudget, children: [URL]? = nil) throws -> Bool {
         func hasMarker(_ directory: URL, named name: String) -> Bool {
             (try? metadata(directory.appendingPathComponent(name))).map(isRegular) ?? false
         }
         if hasMarker(root, named: "device_set.plist") { return true }
-        return try children(root, budget: budget).contains {
+        return try (children ?? Self.children(root, budget: budget)).contains {
             UUID(uuidString: $0.lastPathComponent) != nil && hasMarker($0, named: "device.plist")
         }
     }
@@ -377,7 +628,10 @@ private enum DRFiles {
     static func metadata(_ url: URL) throws -> stat {
         let fd = try openDirectory(url.deletingLastPathComponent()); defer { close(fd) }
         var info = stat()
-        guard fstatat(fd, url.lastPathComponent, &info, AT_SYMLINK_NOFOLLOW) == 0, info.st_uid == getuid() else { throw DRReadError.unreadable }
+        guard fstatat(fd, url.lastPathComponent, &info, AT_SYMLINK_NOFOLLOW) == 0 else {
+            throw errno == ENOENT ? DRReadError.missing : DRReadError.unreadable
+        }
+        guard info.st_uid == getuid() else { throw DRReadError.unreadable }
         return info
     }
     static func children(_ url: URL, budget: DRBudget) throws -> [URL] {
@@ -447,8 +701,10 @@ private enum DRFiles {
         guard fstat(fd, &after) == 0, same(before, after) else { throw DRReadError.changed }
         return bytes
     }
-    static func measure(_ url: URL, budget: DRBudget) throws -> DRMeasurement {
-        var result = DRMeasurement(), seen: Set<String> = []
+    static func measure(_ url: URL, budget: DRBudget, beforeFinalValidation: ((URL) -> Void)?,
+                        files: DRMeasuredFiles = DRMeasuredFiles(), recordsEvidence: Bool = true,
+                        staysOnVolume: Bool = false) throws -> DRMeasurement {
+        var result = DRMeasurement()
         var latest: Date?
         let root = try directory(url)
         func walk(_ current: URL, depth: Int) throws {
@@ -458,14 +714,25 @@ private enum DRFiles {
             for child in entries {
                 do {
                     let info = try metadata(child)
-                    let date = Date(timeIntervalSince1970: TimeInterval(info.st_mtimespec.tv_sec))
-                    if latest == nil || date > latest! { latest = date }
-                    let relative = String(child.path.dropFirst(url.path.count + 1))
-                    if let evidence = evidence(child, relative: relative, info: info), result.evidence.count < 32 { result.evidence.append(evidence) }
+                    if staysOnVolume, info.st_dev != root.st_dev {
+                        result.partial = true
+                        budget.note(child, "An item on another volume was skipped.")
+                        continue
+                    }
+                    if recordsEvidence {
+                        let date = Date(timeIntervalSince1970: TimeInterval(info.st_mtimespec.tv_sec))
+                        if latest == nil || date > latest! { latest = date }
+                        let relative = String(child.path.dropFirst(url.path.count + 1))
+                        if result.evidence.count < 32, let evidence = evidence(child, relative: relative, info: info) {
+                            result.evidence.append(evidence)
+                        }
+                    }
                     if isDirectory(info) { try walk(child, depth: depth + 1) }
                     else if isRegular(info) {
-                        let key = "\(info.st_dev):\(info.st_ino)"
-                        if seen.insert(key).inserted { result.allocated += max(0, Int64(info.st_blocks)) * 512; result.logical += max(0, Int64(info.st_size)) }
+                        if files.add(info) {
+                            result.allocated += max(0, Int64(info.st_blocks)) * 512
+                            result.logical += max(0, Int64(info.st_size))
+                        }
                     } else { result.partial = true; budget.note(child, "A link or special item was skipped; its target was not inspected.") }
                 } catch is CancellationError { throw CancellationError() }
                 catch is DRStop { throw DRStop.limit }
@@ -476,7 +743,11 @@ private enum DRFiles {
         catch is CancellationError { throw CancellationError() }
         catch is DRStop { result.partial = true }
         catch { result.partial = true; budget.note(url, "Resource measurement was incomplete.") }
-        if let after = try? directory(url), !same(root, after) { result.partial = true; budget.note(url, "The resource changed while it was measured.") }
+        beforeFinalValidation?(url)
+        if (try? directory(url)).map({ same(root, $0) }) != true {
+            result.partial = true
+            budget.note(url, "The resource changed or became unavailable while it was measured.")
+        }
         if let latest {
             result.evidence.append(DeveloperResourceEvidence(kind: .filesystemChanged, label: "Latest measured file change", url: url, date: latest,
                 uncertainty: "File modification is not a last-launch or last-build timestamp."))

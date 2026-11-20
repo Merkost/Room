@@ -34,10 +34,10 @@ struct RoomFolderAccessSettingsView: View {
         let folders = self.folders
         Form {
             Section {
-                if folders.isEmpty {
+                if folders.isEmpty && insights.unavailableAccessFolders.isEmpty {
                     Text("Choose folders Room can revisit.")
                         .font(RoomTokens.Typography.body).foregroundStyle(.secondary)
-                } else {
+                } else if !folders.isEmpty {
                     ScrollView {
                         LazyVStack(spacing: 0) {
                             ForEach(folders) { folder in
@@ -53,6 +53,23 @@ struct RoomFolderAccessSettingsView: View {
                     .frame(height: min(RoomTokens.Settings.folderListMaximumHeight,
                         CGFloat(folders.count) * RoomTokens.Settings.folderRowHeight))
                     .animation(motion.animation(RoomTokens.Motion.standard), value: folders.map(\.id))
+                }
+            }
+
+            if !insights.unavailableAccessFolders.isEmpty {
+                Section("Folders that need access") {
+                    ForEach(insights.unavailableAccessFolders) { folder in
+                        HStack(spacing: RoomTokens.Space.inner) {
+                            Label(folder.name, systemImage: "folder.badge.questionmark")
+                                .lineLimit(1)
+                            Spacer(minLength: 0)
+                            if folder.url != nil {
+                                Button("Renew Access…") { insights.renewAccess(to: folder) }
+                                    .disabled(isWorking() || !insights.canChooseDiskLocation)
+                            }
+                            removeFolder(id: folder.id, name: folder.name)
+                        }
+                    }
                 }
             }
 
@@ -123,19 +140,23 @@ struct RoomFolderAccessSettingsView: View {
             }
             // A saved folder can always be forgotten, readable or not (a stale or locked one most of all).
             if let savedID = folder.savedID {
-                let question = String(localized: "confirm.removeAccess", defaultValue: "Remove access to %@?", bundle: RoomCopy.bundle)
-                let done = String(localized: "confirm.removeAccess.done", defaultValue: "Room no longer reads %@.", bundle: RoomCopy.bundle)
-                RoomInlineConfirmButton(id: removalPrefix + savedID, title: "Remove",
-                    confirmTitle: String.localizedStringWithFormat(question, folder.name),
-                    doneLine: String.localizedStringWithFormat(done, folder.name), isAllowed: !isWorking(),
-                    stage: {
-                        if rooms.pinnedRoom?.accessFolderID == savedID { rooms.cancelMeasurement() }
-                        insights.stageAccessRemoval(id: savedID)
-                    }, commit: { insights.forgetAccessFolder(id: savedID) },
-                    undo: { insights.undoAccessRemoval(id: savedID) })
+                removeFolder(id: savedID, name: folder.name)
             }
         }
         .frame(minHeight: RoomTokens.Settings.folderRowHeight)
+    }
+
+    private func removeFolder(id: String, name: String) -> some View {
+        let question = String(localized: "confirm.removeAccess", defaultValue: "Remove access to %@?", bundle: RoomCopy.bundle)
+        let done = String(localized: "confirm.removeAccess.done", defaultValue: "Room no longer reads %@.", bundle: RoomCopy.bundle)
+        return RoomInlineConfirmButton(id: removalPrefix + id, title: "Remove",
+            confirmTitle: String.localizedStringWithFormat(question, name),
+            doneLine: String.localizedStringWithFormat(done, name), isAllowed: !isWorking(),
+            stage: {
+                if rooms.rooms.contains(where: { $0.accessFolderID == id }) { rooms.cancelMeasurement() }
+                insights.stageAccessRemoval(id: id)
+            }, commit: { insights.forgetAccessFolder(id: id) },
+            undo: { insights.undoAccessRemoval(id: id) })
     }
 
     private func note(_ text: String) -> some View {

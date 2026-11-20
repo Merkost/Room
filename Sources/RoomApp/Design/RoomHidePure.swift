@@ -38,7 +38,7 @@ nonisolated enum RoomHideMask {
 nonisolated enum RoomHideSpeech {
     static let hidden = "hidden"
     static func value(_ spoken: String, hide: RoomHideState) -> String { hide.masksNow ? hidden : spoken }
-    /// For a labelled value: "Free, hidden" / "suby-kmp, Room, hidden" (a masked name is not spoken either).
+    /// For a labelled value: "Free, hidden" / "studio-kmp, Room, hidden" (a masked name is not spoken either).
     static func labelled(_ label: String, value: String, labelIsName: Bool, hide: RoomHideState) -> String {
         guard hide.masksNow else { return "\(label), \(value)" }
         return labelIsName ? "Room, \(hidden)" : "\(label), \(hidden)"

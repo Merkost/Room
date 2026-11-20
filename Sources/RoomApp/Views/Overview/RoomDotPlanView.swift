@@ -16,6 +16,12 @@ struct RoomOverviewPlanGeometry {
         layout.rooms.first(where: { $0.id == id })?.rect.offsetBy(dx: wall.minX, dy: wall.minY)
     }
 
+    static func returnedDotCount(bytes: Int64, gbPerDot: Double, limit: Int) -> Int {
+        guard bytes > 0, gbPerDot > 0, gbPerDot.isFinite, limit > 0 else { return 0 }
+        let wholeDots = (Double(bytes) / 1e9 / gbPerDot).rounded(.down)
+        return wholeDots >= Double(limit) ? limit : Int(wholeDots)
+    }
+
     static func make(plan: RoomOverviewPlanInput, size: CGSize, includesContextGrid: Bool = true) -> Self? {
         typealias Tokens = RoomTokens.OverviewPlan
         let wall = CGRect(x: Tokens.pad, y: Tokens.pad, width: size.width - 2 * Tokens.pad,
@@ -67,6 +73,7 @@ struct RoomOverviewPlanGeometry {
 struct RoomDotPlanView: View {
     let plan: RoomOverviewPlanInput
     let belowGoal: Bool
+    var returnedBytes: Int64 = 0
     var hidden = false
     var displayHeight: CGFloat?
     var staticPreview = false
@@ -255,6 +262,7 @@ struct RoomDotPlanView: View {
         } else {
             drawDots(geometry, paint: &paint)
         }
+        drawReturnedRings(geometry, paint: &paint)
         if belowGoal, let free = geometry.free?.insetBy(dx: Tokens.roomGap, dy: Tokens.roomGap), !free.isEmpty {
             paint.stroke(Path(roundedRect: free, cornerRadius: RoomTokens.Radius.planRoom),
                          RoomTokens.Status.elevated, lineWidth: Tokens.elevatedWall)
@@ -306,6 +314,23 @@ struct RoomDotPlanView: View {
 
     private func drawFreeRings(_ geometry: RoomOverviewPlanGeometry, paint: inout RoomCanvasFrame) {
         paint.stroke(geometry.rings, freeInk, lineWidth: RoomTokens.Dots.freeRingStroke)
+    }
+
+    private func drawReturnedRings(_ geometry: RoomOverviewPlanGeometry, paint: inout RoomCanvasFrame) {
+        var remaining = RoomOverviewPlanGeometry.returnedDotCount(bytes: returnedBytes,
+            gbPerDot: plan.gbPerDot, limit: geometry.layout.dots.count)
+        guard remaining > 0 else { return }
+        var lit = Path()
+        for (index, dot) in geometry.layout.dots.enumerated() where dot.room == .free {
+            let center = geometry.dotCenters[index]
+            let rest = geometry.layout.radius
+            let radius = index < field.energy.count ? field.radius(index, rest: rest) : rest
+            lit.addEllipse(in: CGRect(x: center.x - radius, y: center.y - radius,
+                width: 2 * radius, height: 2 * radius))
+            remaining -= 1
+            if remaining == 0 { break }
+        }
+        paint.stroke(lit, accent.text, lineWidth: RoomTokens.Dots.freeRingStroke)
     }
 
     private func drawDots(_ geometry: RoomOverviewPlanGeometry, paint: inout RoomCanvasFrame) {

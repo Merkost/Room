@@ -83,6 +83,25 @@ struct RoomCachesView: View {
                 scanStatus
                     .roomPanelArrival()
             }
+            #if ROOM_APP_STORE
+            if let batch = model.npmBatch, batch.isBatch {
+                HStack(spacing: RoomTokens.Space.inner) {
+                    Label(batch.hasMore ? "npm totals reflect this batch" : "Last npm batch",
+                          systemImage: "shippingbox")
+                        .font(RoomTokens.Typography.body)
+                    Spacer(minLength: 0)
+                    if batch.hasMore {
+                        Button(action: model.continueNPM) {
+                            Label("Next npm Batch", systemImage: "arrow.right")
+                        }
+                        .roomSecondary()
+                        .disabled(!model.canContinueNPM)
+                        .accessibilityIdentifier("RoomCachesNextNPMBatch")
+                    }
+                }
+                .help("npm sizes and selections apply to the current batch.")
+            }
+            #endif
             if let receipt = model.movedReceipt {
                 let entry = model.makeRoomStore?.entry(for: receipt.id)
                 moved(receipt, entry: entry)

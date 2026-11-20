@@ -14,6 +14,7 @@ struct RoomScreenActions {
     var showHistory: (() -> Void)?
     var customise: () -> Void = {}
     var showDiskInspector: (() -> Void)?
+    var diskInspectorVisible = false
     var comparisonTitle: String?
     var compareDiskMap: (() -> Void)?
 }
@@ -51,6 +52,8 @@ struct RoomCommands: Commands {
     let openTrash: () -> Void
     let showWelcome: () -> Void
     let navigate: (RoomDestination) -> Void
+    let canOpenPinnedRooms: () -> Bool
+    let navigateToRoom: (UUID) -> Void
 
     private let links = RoomAppLinks()
     private let hide = RoomHideControl.shared
@@ -64,11 +67,13 @@ struct RoomCommands: Commands {
         return RoomMenuModel.make(.init(destination: screen?.destination, canRescan: screen?.canRescan ?? false,
             isScanning: screen?.isScanning ?? false, canEnclose: screen?.canEnclose ?? false,
             overviewSizesHidden: hide.state.isOn,
-            canInspectDisk: screen?.showDiskInspector != nil, comparisonTitle: screen?.comparisonTitle,
+            canInspectDisk: screen?.showDiskInspector != nil, diskInspectorVisible: screen?.diskInspectorVisible ?? false,
+            comparisonTitle: screen?.comparisonTitle,
             menuBarEnabled: menuBarEnabled, edition: edition, window: windowContext.window, isWorking: isWorking(),
             canPin: rooms.canChooseFolder, supportAvailable: links.support != nil, privacyAvailable: links.privacy != nil,
             sidebarIconsOnly: navigation.prefersSidebarIcons, canGoBack: navigation.canGoBack,
-            canGoForward: navigation.canGoForward))
+            canGoForward: navigation.canGoForward, hasPinnedRooms: !rooms.visibleRooms.isEmpty,
+            canOpenPinnedRooms: canOpenPinnedRooms()))
     }
 
     var body: some Commands {
@@ -100,7 +105,20 @@ struct RoomCommands: Commands {
     private func rows(_ section: RoomMenuModel.Section, in items: [RoomMenuModel.Item]) -> some View {
         ForEach(items.filter { $0.section == section && $0.visible && !$0.native }, id: \.id) { item in
             Group {
-                if let checked = item.checked {
+                if item.id == .pinnedRooms {
+                    Menu(item.title) {
+                        ForEach(rooms.visibleRooms) { room in
+                            Button {
+                                guard RoomCommandWindowContext.current != .modal, !isWorking(),
+                                      canOpenPinnedRooms(), rooms.url(for: room.id) != nil else { return }
+                                withoutNavigationAnimation { navigateToRoom(room.id) }
+                            } label: {
+                                Text(verbatim: hide.state.masksNow ? String(localized: "Name hidden") : room.name)
+                            }
+                            .disabled(rooms.url(for: room.id) == nil)
+                        }
+                    }
+                } else if let checked = item.checked {
                     Toggle(item.title, isOn: Binding(get: { checked }, set: { _ in perform(item) }))
                 } else {
                     Button {

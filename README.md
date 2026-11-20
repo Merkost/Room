@@ -9,10 +9,10 @@ Room is a native Mac app for mapping storage, reviewing cache moves, and watchin
 
 ## What Room does
 
-- **Overview** shows free space, storage changes over time, and folders you’ve pinned.
-- **Disk Map** turns folders you choose into a visual map. Find large files, explore accessible hidden items, and compare saved scans when history is available.
+- **Overview** shows free space, a timeline for your Mac’s storage, and folders you’ve pinned.
+- **Disk Map** turns folders you choose into a visual map. Find large files, explore accessible hidden items, compare scans, and save useful views.
 - **Caches** shows what’s taking up space and lets you review eligible moves. Room keeps a receipt for each move so you can restore unchanged items when their original locations are available.
-- **Developer** shows Android virtual devices, Gradle storage, and version references from projects you select. The Storage tab measures SDK images, downloaded Gradle JDKs, daemon data, and Apple Simulator devices in folders you approve.
+- **Developer** shows virtual devices, SDK and build storage, and tool versions referenced by projects. AI Tools shows local caches, session storage, models, and worktrees by tool.
 - **Memory** shows pressure, RAM use, compression, and swap. The menu bar can show memory or free space.
 
 ## Editions
@@ -35,6 +35,21 @@ Room moves eligible files to Trash. They still use disk space there until you em
 | `~/Library/Developer/CoreSimulator/Devices` | Simulator devices and their app data. Manage Simulator OS runtimes separately in Xcode. [Xcode components](https://developer.apple.com/documentation/xcode/downloading-and-installing-additional-xcode-components) |
 
 Room measures disk space used by these folders. These sizes are for inspection in Developer.
+
+### AI tool storage
+
+Open **Developer → AI Tools → Choose Tool Folder**. Pick the tool’s actual data folder if you use a custom location.
+
+| Tool | Where to look | Room reports |
+| --- | --- | --- |
+| Codex | `~/.codex` or `CODEX_HOME` | Cache, logs, sessions, runtime packages, and worktree files and builds. [Codex source](https://github.com/openai/codex/blob/main/codex-rs/cli/src/main.rs) |
+| Claude | `~/.claude`, `CLAUDE_CONFIG_DIR`, or the desktop app’s profile folder | Recognised caches, diagnostics, session and file history, downloads, and worktree files and builds. [Claude Code settings](https://code.claude.com/docs/en/settings) |
+| ChatGPT and Cursor | The app’s local cache or profile folder | Recognised app, code, and graphics caches. Available folders vary by app version. |
+| Gemini CLI | `~/.gemini` | Session and checkpoint storage. The `tmp/` folder can include resumable work. [Gemini CLI sessions](https://geminicli.com/docs/cli/session-management/) |
+| GitHub Copilot CLI | `~/.copilot` or `COPILOT_HOME` | Logs, session and command history, and the session index. [Copilot CLI folders](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-config-dir-reference) |
+| Ollama | `~/.ollama`, or a separately chosen tool folder | Local models and logs in the approved folder. [Ollama FAQ](https://docs.ollama.com/faq) |
+
+AI Tools reads file sizes and leaves every item in place. It skips links and ignores credentials and settings.
 
 ## Build and test
 

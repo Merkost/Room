@@ -69,6 +69,16 @@ public struct VolumeInfo: Codable, Equatable, Sendable {
     public var usedBytes: Int64 { max(0, totalBytes - availableBytes) }
 }
 
+public struct NPMDiscoveryCoverage: Codable, Equatable, Sendable {
+    public let inspectedBuckets: Int
+    public let hasMore: Bool
+    /// An opaque continuation for the same physical read grants only.
+    public let nextCursor: String?
+    public let scopeID: String
+    public let isContinuation: Bool
+    public var isBatch: Bool { hasMore || isContinuation }
+}
+
 public struct ScanReport: Codable, Equatable, Sendable {
     public let id: UUID
     public let scannedAt: Date
@@ -77,10 +87,26 @@ public struct ScanReport: Codable, Equatable, Sendable {
     public let issues: [ScanIssue]
     public let volume: VolumeInfo
     public let cancelled: Bool
-    public var isPartial: Bool { cancelled || !issues.isEmpty || groups.contains(where: \.isPartial) || protectedData.contains(where: \.isPartial) }
+    public let npmDiscovery: NPMDiscoveryCoverage?
+    public var isPartial: Bool {
+        cancelled || npmDiscovery?.isBatch == true || !issues.isEmpty
+            || groups.contains(where: \.isPartial) || protectedData.contains(where: \.isPartial)
+    }
     public var totalBytes: Int64 { groups.reduce(0) { $0 + $1.totalBytes } }
     public var eligibleBytes: Int64 { groups.reduce(0) { $0 + $1.eligibleBytes } }
     public var eligibleEntries: [CacheEntry] { groups.flatMap(\.eligibleEntries) }
+
+    init(id: UUID, scannedAt: Date, groups: [CacheGroup], protectedData: [ProtectedData],
+         issues: [ScanIssue], volume: VolumeInfo, cancelled: Bool, npmDiscovery: NPMDiscoveryCoverage? = nil) {
+        self.id = id
+        self.scannedAt = scannedAt
+        self.groups = groups
+        self.protectedData = protectedData
+        self.issues = issues
+        self.volume = volume
+        self.cancelled = cancelled
+        self.npmDiscovery = npmDiscovery
+    }
 }
 
 /// Incremental reports are informational; cleanup IDs are minted only at completion.
@@ -290,17 +316,19 @@ public struct CacheConfiguration: Sendable {
     /// nil preserves the direct edition's implicit catalogue. Store catalogues
     /// use an explicit (possibly empty) list, including for volume metadata.
     public let readAccessRoots: [URL]?
+    public let npmDiscovery: NPMDiscoveryCoverage?
 
     public init(roots: [CacheRoot], protectedLocations: [ProtectedLocation] = [],
                 homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
                 inspectionIssues: [ScanIssue] = [], readAccessRoots: [URL]? = nil,
-                protectedMeasurementExclusions: [URL] = []) {
+                protectedMeasurementExclusions: [URL] = [], npmDiscovery: NPMDiscoveryCoverage? = nil) {
         self.roots = roots
         self.protectedLocations = protectedLocations
         self.protectedMeasurementExclusions = protectedMeasurementExclusions.map(\.roomLexicallyNormalized)
         self.homeDirectory = homeDirectory.roomLexicallyNormalized
         self.inspectionIssues = inspectionIssues
         self.readAccessRoots = readAccessRoots?.map(\.roomLexicallyNormalized)
+        self.npmDiscovery = npmDiscovery
     }
 }
 

@@ -26,7 +26,7 @@ nonisolated enum RoomCompare {
         return byName.values.sorted { $0.change != $1.change ? $0.change > $1.change : $0.name < $1.name }
     }
 
-    /// 16 §8.3 diskmap.compare.readout: "suby-kmp: 18.4 GB on Mon 9 Nov → 21.6 GB now (+3.2 GB)".
+    /// 16 §8.3 diskmap.compare.readout: "studio-kmp: 18.4 GB on Mon 9 Nov → 21.6 GB now (+3.2 GB)".
     /// A side the map did not keep says "not listed", never 0 GB.
     static func readout(_ row: Row, thenLabel: String, format: (Int64) -> String) -> String {
         let a = row.then.map(format) ?? "not listed"

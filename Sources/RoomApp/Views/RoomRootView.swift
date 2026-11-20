@@ -19,11 +19,28 @@ struct RoomRootView: View {
     @Environment(\.roomHide) private var hide
     @Environment(\.openSettings) private var openSettings
     @Environment(\.roomMotion) private var motion
-    @State private var developer = RoomDeveloperModel(unreferencedStore: .init(writer: .shared))
+    @State private var developer = RoomDeveloperModel(unreferencedStore: .init(writer: .shared), activityCenter: .shared)
     @State private var sheet: RoomSheet?
     @State private var showingCustomise = false
     @State private var editingRoom: UUID?
     @State private var leftOverviewAt: ContinuousClock.Instant?
+    @State private var savedViews = RoomSavedViewsStore()
+    @State private var openedSavedView: RoomSavedViewDisplay?
+    @State private var savedViewRetry = UUID()
+
+    private struct SavedViewRequest: Equatable {
+        let route: RoomRoute
+        let retry: UUID
+    }
+
+    private var savedViewDisplay: RoomSavedViewDisplay? {
+        guard case .savedView(let id) = navigation.route,
+              let view = savedViews.entries.first(where: { $0.id == id }) else { return nil }
+        if let openedSavedView, openedSavedView.view.id == id {
+            return RoomSavedViewDisplay(requestID: openedSavedView.requestID, view: view, result: openedSavedView.result)
+        }
+        return RoomSavedViewDisplay(requestID: savedViewRetry, view: view, result: nil)
+    }
 
     private var destination: RoomDestination { navigation.destination }
     private var colorScheme: ColorScheme? {
@@ -57,11 +74,14 @@ struct RoomRootView: View {
     }
 
     private var diskActions: RoomScreenActions {
-        var actions = RoomScreenActions(destination: .disk, canRescan: insights.canRescanDisk,
+        let mayUseMap = savedViewDisplay?.showsMap ?? true
+        var actions = RoomScreenActions(destination: .disk, canRescan: mayUseMap && insights.canRescanDisk,
             isScanning: insights.isScanningDisk, rescan: insights.rescanDisk, stop: insights.cancelDiskScan,
-            canEnclose: insights.canGoUpInApprovedMap, enclose: insights.encloseApprovedDiskFolder)
+            canEnclose: mayUseMap && insights.canGoUpInApprovedMap, enclose: insights.encloseApprovedDiskFolder)
+        guard mayUseMap else { return actions }
         if insights.diskMap.current != nil {
             actions.showDiskInspector = { insights.toggleDiskInspector() }
+            actions.diskInspectorVisible = insights.diskInspectorVisible
         }
         if let title = diskComparisonTitle {
             actions.comparisonTitle = title
@@ -71,7 +91,8 @@ struct RoomRootView: View {
     }
 
     var body: some View {
-        RoomShellView(navigation: navigation, rooms: rooms, insights: insights, selectRoom: openPinnedRoom) {
+        RoomShellView(navigation: navigation, rooms: rooms, insights: insights, selectRoom: openPinnedRoom,
+                      savedViews: savedViews, selectSavedView: openSavedView) {
             RoomScreenScaffold(title: screenActions.title, subtitle: screenSubtitle, scrolls: destination != .disk,
                                requestedDensity: destination == .overview ? overviewDensity : nil) {
                 screenContent
@@ -146,11 +167,24 @@ struct RoomRootView: View {
         .onChange(of: insights.diskMap.current) { _, map in
             if let map, let root = insights.diskMap.rootURL { rooms.applyMap(map, root: root) }
         }
-        .onChange(of: navigation.route) { _, route in
+        .onChange(of: navigation.route, initial: true) { _, route in
             if destination != .overview { showingCustomise = false }
             RoomHideControl.shared.cancelPeek()
             guard case .room(let id) = route, let url = rooms.url(for: id) else { return }
             insights.openDiskMap(rootURL: url, requestNavigation: false)
+        }
+        .task { await savedViews.load() }
+        .task(id: SavedViewRequest(route: navigation.route, retry: savedViewRetry)) {
+            openedSavedView = nil
+            guard case .savedView(let id) = navigation.route else { return }
+            await savedViews.load()
+            guard !Task.isCancelled, let view = savedViews.visible.first(where: { $0.id == id }) else { return }
+            let outcome = await insights.openSavedDiskView(view)
+            guard !Task.isCancelled, navigation.route == .savedView(id) else { return }
+            openedSavedView = RoomSavedViewDisplay(requestID: UUID(), view: view, result: outcome)
+        }
+        .onChange(of: savedViews.entries.map(\.id)) { old, new in
+            for removed in Set(old).subtracting(new) { navigation.removeRoute(.savedView(removed)) }
         }
         .onChange(of: rooms.rooms.map(\.id)) { old, new in
             for removed in Set(old).subtracting(new) { navigation.removeRoute(.room(removed)) }
@@ -244,13 +278,23 @@ struct RoomRootView: View {
         case .memory:
             RoomMemoryView(insights: insights, memoryActions: memoryActions)
         case .disk:
-            RoomDiskMapView(insights: insights, rooms: rooms)
+            RoomDiskMapView(insights: insights, rooms: rooms, savedViews: savedViews,
+                savedViewDisplay: savedViewDisplay, openSavedView: openSavedView)
         case .developer:
             #if ROOM_APP_STORE
             RoomDeveloperView(model: developer)
             #else
             RoomDeveloperView(model: developer, agentWork: agentWork, memoryReport: insights.memoryReport)
             #endif
+        }
+    }
+
+    private func openSavedView(_ id: UUID) {
+        guard insights.canChooseDiskLocation, savedViews.visible.contains(where: { $0.id == id }) else { return }
+        if navigation.route == .savedView(id) {
+            savedViewRetry = UUID()
+        } else {
+            navigation.select(.savedView(id), origin: .controlActivation)
         }
     }
 

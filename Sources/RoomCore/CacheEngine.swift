@@ -116,7 +116,8 @@ public actor CacheEngine {
                     }, issues: group.issues, isPartial: group.isPartial, isInspectionOnly: group.isInspectionOnly)
             } : groups
             return ScanReport(id: scanID, scannedAt: Date(), groups: visibleGroups, protectedData: protectedData,
-                issues: issues, volume: volume, cancelled: incomplete)
+                issues: issues, volume: volume, cancelled: incomplete,
+                npmDiscovery: incomplete ? nil : configuration.npmDiscovery)
         }
 
 

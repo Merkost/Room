@@ -30,7 +30,8 @@ struct RoomAgentWorkView: View {
                 Button {
                     if isReading { model.stop() } else { model.scan() }
                 } label: {
-                    Label(isReading ? "Stop" : "Scan Worktrees", systemImage: isReading ? "stop.fill" : "magnifyingglass")
+                    Label(isReading ? "Stop" : model.report == nil ? "Scan Worktrees" : "Rescan Worktrees",
+                          systemImage: isReading ? "stop.fill" : model.report == nil ? "magnifyingglass" : "arrow.clockwise")
                 }
                 .roomSecondary()
                 .tint(Color(red: 0.60, green: 0.79, blue: 0.91))
@@ -71,8 +72,12 @@ struct RoomAgentWorkView: View {
                     ForEach(model.items) { item in
                         AgentWorkRow(item: item, verifying: model.verifyingID == item.id,
                                      disabled: model.isWorking || model.isScanning || model.verifyingID != nil,
+                                     verificationUnavailableReason: model.verificationUnavailableReason(for: item),
                                      inspect: { sheet = .details(item) },
-                                     verify: { model.verify(item) },
+                                     verify: {
+                                         if model.verificationUnavailableReason(for: item) != nil { model.scan() }
+                                         else { model.verify(item) }
+                                     },
                                      review: { sheet = .cleanup(item) })
                     }
                 }
@@ -177,6 +182,7 @@ private struct AgentWorkRow: View {
     let item: AgentWorkItem
     let verifying: Bool
     let disabled: Bool
+    let verificationUnavailableReason: String?
     let inspect: () -> Void
     let verify: () -> Void
     let review: () -> Void
@@ -215,14 +221,20 @@ private struct AgentWorkRow: View {
 
             HStack(spacing: 10) {
                 if verifying { ProgressView().controlSize(.mini) }
-                Text(verifying ? "Verifying remote…" : verificationTitle(item.pushVerification))
+                Text(verifying ? "Verifying remote…" : verificationUnavailableReason == nil
+                     ? verificationTitle(item.pushVerification) : "Rescan needed")
                     .font(.system(size: 12)).foregroundStyle(.secondary)
                 if !item.heldReasons.isEmpty {
                     Text("· \(item.heldReasons.count) \(item.heldReasons.count == 1 ? "hold" : "holds")")
                         .font(.system(size: 12)).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 12)
-                if item.canReviewForCleanup {
+                if let verificationUnavailableReason {
+                    Button("Rescan", action: verify)
+                        .buttonStyle(.glass)
+                        .disabled(disabled)
+                        .help(verificationUnavailableReason)
+                } else if item.canReviewForCleanup {
                     Button("Review tree", action: review)
                         .buttonStyle(.glass)
                         .disabled(disabled)
@@ -298,7 +310,7 @@ private struct AgentWorkDetailSheet: View {
                     .buttonStyle(.glass).keyboardShortcut(.cancelAction)
                     .disabled(model.isWorking)
                 Spacer()
-                if item.canReviewForCleanup {
+                if item.canReviewForCleanup, model.verificationUnavailableReason(for: item) == nil {
                     Button("Review this tree") { review(item) }
                         .buttonStyle(.glassProminent)
                         .disabled(model.isWorking || model.isScanning || model.verifyingID != nil)
@@ -311,21 +323,29 @@ private struct AgentWorkDetailSheet: View {
     }
 
     private var remoteProof: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(verificationTitle(item.pushVerification))
+        let reason = model.verificationUnavailableReason(for: item)
+        return VStack(alignment: .leading, spacing: 8) {
+            Text(reason == nil ? verificationTitle(item.pushVerification) : "Rescan needed")
                 .font(.system(size: 14, weight: .medium))
-            Text(item.pushVerification.detail)
-                .font(.system(size: 13)).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            if let checked = item.pushVerification.checkedAt {
-                Text("Checked \(checked, style: .relative) ago")
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
-            }
-            Button(model.verifyingID == item.id ? "Stop verification" : "Verify remote") {
-                if model.verifyingID == item.id { model.stop() } else { model.verify(item) }
-            }
+            if let reason {
+                Text(reason).font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
+                Button("Rescan Worktrees") { dismiss(); model.scan() }
+                    .buttonStyle(.glass)
+                    .disabled(model.isWorking || model.isScanning || model.verifyingID != nil)
+            } else {
+                Text(item.pushVerification.detail)
+                    .font(.system(size: 13)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let checked = item.pushVerification.checkedAt {
+                    Text("Checked \(checked, style: .relative) ago")
+                        .font(.system(size: 12)).foregroundStyle(.secondary)
+                }
+                Button(model.verifyingID == item.id ? "Stop verification" : "Verify remote") {
+                    if model.verifyingID == item.id { model.stop() } else { model.verify(item) }
+                }
                 .buttonStyle(.glass)
-                .disabled(model.isWorking || model.isScanning || (model.verifyingID != nil && model.verifyingID != item.id))
+                .disabled(model.verifyingID != item.id && !model.canVerify(item))
+            }
             Text(isLocalProof(item.pushVerification)
                  ? "This proof checks a local remote and does not establish an off-device backup. A verified commit does not show that work is finished."
                  : "Verification explicitly contacts the configured remote. A verified commit does not show that work is finished.")

@@ -5,6 +5,8 @@ struct RoomShellView<Detail: View>: View {
     let rooms: RoomRoomsModel
     let insights: RoomInsightsModel
     let selectRoom: (UUID) -> Void
+    var savedViews: RoomSavedViewsStore? = nil
+    var selectSavedView: (UUID) -> Void = { _ in }
     @ViewBuilder var detail: () -> Detail
 
     @Environment(\.roomMotion) private var motion
@@ -19,7 +21,8 @@ struct RoomShellView<Detail: View>: View {
             NavigationSplitView(columnVisibility: .constant(.all)) {
                 RoomSidebar(navigation: navigation, rooms: rooms,
                             mode: sidebarMode, showsLabels: showsSidebarLabels,
-                            foot: foot, canOpenRooms: insights.canChooseDiskLocation, openRoom: selectRoom)
+                            foot: foot, canOpenRooms: insights.canChooseDiskLocation, openRoom: selectRoom,
+                            savedViews: savedViews, openSavedView: selectSavedView)
                     .navigationSplitViewColumnWidth(RoomSidebarLayout.width(sidebarMode))
             } detail: {
                 detail()

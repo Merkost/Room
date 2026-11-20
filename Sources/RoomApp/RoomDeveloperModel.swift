@@ -5,8 +5,10 @@ import RoomCore
 /// Roles reference shared read-only bookmarks; no second set of permissions is stored.
 enum RoomDeveloperFolderRole: String, CaseIterable, Codable, Identifiable {
     case android, gradle, project, sdk, xcode, konan, simulators
+    case codex, claudeCode, chatGPT, cursor, gemini, copilot, ollama
     var id: String { rawValue }
     var supportsToolStorage: Bool { self == .gradle || self == .sdk || self == .simulators }
+    static let deviceRoles: [Self] = [.android, .simulators]
     var title: String {
         switch self {
         case .android: "Android devices"
@@ -16,6 +18,13 @@ enum RoomDeveloperFolderRole: String, CaseIterable, Codable, Identifiable {
         case .xcode: "Xcode DerivedData"
         case .konan: "Kotlin/Native home"
         case .simulators: "Simulator Devices"
+        case .codex: "Codex"
+        case .claudeCode: "Claude"
+        case .chatGPT: "ChatGPT"
+        case .cursor: "Cursor"
+        case .gemini: "Gemini CLI"
+        case .copilot: "GitHub Copilot CLI"
+        case .ollama: "Ollama"
         }
     }
     var symbol: String {
@@ -27,8 +36,19 @@ enum RoomDeveloperFolderRole: String, CaseIterable, Codable, Identifiable {
         case .xcode: "hammer.fill"
         case .konan: "terminal"
         case .simulators: "iphone.gen3"
+        case .codex: "terminal"
+        case .claudeCode, .gemini: "sparkle"
+        case .chatGPT: "bubble.left.and.bubble.right"
+        case .cursor: "cursorarrow.rays"
+        case .copilot: "chevron.left.forwardslash.chevron.right"
+        case .ollama: "shippingbox"
         }
     }
+
+    var aiTool: DeveloperAITool? { DeveloperAITool(rawValue: rawValue) }
+
+    static var aiRoles: [Self] { allCases.filter { $0.aiTool != nil } }
+
     func suggestedURL(in home: URL?) -> URL? {
         guard let home else { return nil }
         let path: String
@@ -40,6 +60,13 @@ enum RoomDeveloperFolderRole: String, CaseIterable, Codable, Identifiable {
         case .xcode: path = "Library/Developer/Xcode/DerivedData"
         case .konan: path = ".konan"
         case .simulators: path = "Library/Developer/CoreSimulator/Devices"
+        case .codex: path = ".codex"
+        case .claudeCode: path = ".claude"
+        case .chatGPT: path = "Library/Caches/com.openai.chat"
+        case .cursor: path = "Library/Application Support/Cursor"
+        case .gemini: path = ".gemini"
+        case .copilot: path = ".copilot"
+        case .ollama: path = ".ollama"
         }
         return home.appendingPathComponent(path, isDirectory: true)
     }
@@ -70,13 +97,16 @@ final class RoomDeveloperModel {
     private var generation = UUID()
     var section = RoomDeveloperSection.rooms
     private(set) var report: DeveloperResourcesReport?
+    private(set) var devicesReport: DeveloperResourcesReport?
     private(set) var storageReport: DeveloperResourcesReport?
+    private(set) var aiToolsReport: DeveloperResourcesReport?
     private(set) var summary: RoomDevSummary?
     private(set) var unreferenced: RoomDevUnreferenced
     @ObservationIgnored private let unreferencedStore: RoomDeveloperUnreferencedStore
     @ObservationIgnored private var unreferencedLoad: Task<Void, Never>?
     @ObservationIgnored private var unreferencedReadOnly = false
     @ObservationIgnored private let home: URL?
+    @ObservationIgnored private let activityCenter: RoomActivityCenter?
     private(set) var isScanning = false
     private(set) var isChoosingFolder = false
     private(set) var progress = ""
@@ -85,10 +115,12 @@ final class RoomDeveloperModel {
     init(access: RoomFileAccess = .shared, defaults: UserDefaults = .standard,
          unreferencedStore: RoomDeveloperUnreferencedStore = .init(),
          home: URL? = RoomDeveloperModel.standardHome,
+         activityCenter: RoomActivityCenter? = nil,
          scanner: (@Sendable (DeveloperResourcesRequest, (@Sendable (DeveloperResourcesProgress) -> Void)?) async -> DeveloperResourcesReport)? = nil) {
         self.access = access
         self.defaults = defaults
         self.home = home
+        self.activityCenter = activityCenter
         self.unreferencedStore = unreferencedStore
         self.unreferenced = unreferencedStore.writer == nil ? unreferencedStore.load() : .init()
         let engine = DeveloperResourcesEngine()
@@ -124,12 +156,15 @@ final class RoomDeveloperModel {
 
     var folderSuggestions: [RoomDeveloperFolderSuggestion] {
         let configured = Set(locations.map(\.role))
-        return RoomDeveloperFolderRole.allCases.filter { $0 != .project && !configured.contains($0) }.compactMap { role in
+        let roles = section == .devices ? RoomDeveloperFolderRole.deviceRoles : RoomDeveloperFolderRole.allCases
+        return roles.filter {
+            $0 != .project && !configured.contains($0) && ($0.aiTool != nil) == (section == .aiTools)
+        }.compactMap { role in
             let url = role.suggestedURL(in: home)
             #if ROOM_APP_STORE
             return RoomDeveloperFolderSuggestion(role: role, url: url)
             #else
-            if role == .simulators { return RoomDeveloperFolderSuggestion(role: role, url: url) }
+            if role == .simulators || role.aiTool != nil { return RoomDeveloperFolderSuggestion(role: role, url: url) }
             var directory: ObjCBool = false
             guard let url, FileManager.default.fileExists(atPath: url.path, isDirectory: &directory),
                   directory.boolValue else { return nil }
@@ -142,7 +177,7 @@ final class RoomDeveloperModel {
         #if ROOM_APP_STORE
         addFolder(role: suggestion.role)
         #else
-        if suggestion.role == .simulators {
+        if suggestion.role == .simulators || suggestion.role.aiTool != nil {
             addFolder(role: suggestion.role)
             return
         }
@@ -159,7 +194,16 @@ final class RoomDeveloperModel {
         }.filter { !stagedRemovals.contains($0.id) }
     }
     private var scanLocations: [RoomDeveloperLocation] {
-        locations.filter { section == .storage ? $0.role.supportsToolStorage : $0.role != .simulators }
+        switch section {
+        case .devices: locations.filter { RoomDeveloperFolderRole.deviceRoles.contains($0.role) }
+        case .storage: locations.filter { $0.role.supportsToolStorage }
+        case .aiTools: locations.filter { $0.role.aiTool != nil }
+        default: locations.filter { $0.role != .simulators && $0.role.aiTool == nil }
+        }
+    }
+    var sectionLocations: [RoomDeveloperLocation] {
+        if section == .devices { return scanLocations }
+        return locations.filter { ($0.role.aiTool != nil) == (section == .aiTools) }
     }
     var canScan: Bool { !isChoosingFolder && !scanLocations.isEmpty }
     var accessRevision: [String] { access.folders.map(\.id).sorted() }
@@ -171,8 +215,10 @@ final class RoomDeveloperModel {
     func addFolder(role: RoomDeveloperFolderRole) {
         guard !isChoosingFolder, !isScanning else { return }
         isChoosingFolder = true
-        let message = role == .simulators
-            ? "Choose the Simulator Devices folder to measure installed apps and device data. Room reads file sizes here."
+        let message = role.aiTool != nil
+            ? "Choose the tool’s data folder. Room measures known locations by file size alone."
+            : role == .simulators
+            ? "Choose the Simulator Devices folder to read device names and measure installed apps and device data."
             : "Room reads sizes and version files here. It never changes anything in this folder."
         Task { [weak self] in
             guard let self else { return }
@@ -197,14 +243,16 @@ final class RoomDeveloperModel {
         guard !isScanning, access.folders.contains(where: { $0.id == folderID }) else { return }
         let record = RoleRecord(role: role, folderID: folderID)
         if !records.contains(record) { records.append(record); persist() }
-        report = nil; storageReport = nil; summary = nil
+        report = nil; devicesReport = nil; storageReport = nil; aiToolsReport = nil; summary = nil
     }
 
     func stageRemoval(_ location: RoomDeveloperLocation) {
         guard !isScanning else { return }
         stagedRemovals.insert(location.id)
         report = nil
+        devicesReport = nil
         storageReport = nil
+        aiToolsReport = nil
         summary = nil
     }
 
@@ -222,12 +270,18 @@ final class RoomDeveloperModel {
     func accessChanged() {
         generation = UUID()
         task?.cancel(); task = nil; isScanning = false
-        report = nil; storageReport = nil; summary = nil; progress = ""
+        activityCenter?.clear(.developer)
+        report = nil; devicesReport = nil; storageReport = nil; aiToolsReport = nil; summary = nil; progress = ""
     }
 
     func scan() {
         guard canScan, !isScanning else { return }
-        let storageOnly = section == .storage
+        let scope: DeveloperResourcesScope = switch section {
+        case .devices: .devices
+        case .storage: .toolStorage
+        case .aiTools: .aiTools
+        default: .review
+        }
         let current = scanLocations
         let approved = Dictionary(grouping: current.map(\.folder.url), by: \.path).compactMap { $0.value.first }
         let request = DeveloperResourcesRequest(approvedFolders: approved,
@@ -238,9 +292,12 @@ final class RoomDeveloperModel {
             derivedDataRoots: current.filter { $0.role == .xcode }.map(\.folder.url),
             konanRoots: current.filter { $0.role == .konan }.map(\.folder.url),
             simulatorDeviceRoots: current.filter { $0.role == .simulators }.map(\.folder.url),
-            scope: storageOnly ? .toolStorage : .review)
+            aiToolRoots: current.compactMap { location in
+                location.role.aiTool.map { DeveloperAIToolRoot(tool: $0, url: location.folder.url) }
+            }, scope: scope)
         let token = UUID(); generation = token
         isScanning = true; errorMessage = nil; progress = "Preparing review…"
+        activityCenter?.reportScanLabel(.developer, label: section.rawValue, files: 0, bytes: 0)
         let scanner = scanResources
         task = Task { [weak self] in
             let scopes = approved.filter { $0.startAccessingSecurityScopedResource() }
@@ -249,14 +306,20 @@ final class RoomDeveloperModel {
                 Task { @MainActor [weak self] in
                     guard let self, self.generation == token else { return }
                     self.progress = "\(update.phase) · \(update.inspectedCount.formatted()) items"
+                    self.activityCenter?.reportScanLabel(.developer, label: update.phase, files: update.inspectedCount, bytes: 0)
                 }
             }
-            if !storageOnly { await self?.unreferencedLoad?.value }
+            if scope == .review { await self?.unreferencedLoad?.value }
             guard let self, self.generation == token else { return }
-            if storageOnly { self.storageReport = result }
-            else { self.applyReview(result) }
+            switch scope {
+            case .devices: self.devicesReport = result
+            case .toolStorage: self.storageReport = result
+            case .aiTools: self.aiToolsReport = result
+            case .review: self.applyReview(result)
+            }
             self.isScanning = false
             self.task = nil
+            self.activityCenter?.clear(.developer)
             self.progress = result.cancelled ? "Stopped · partial review" : (result.isPartial ? "Partial review" : "Review complete")
         }
     }

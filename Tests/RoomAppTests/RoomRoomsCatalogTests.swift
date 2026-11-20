@@ -36,8 +36,8 @@ struct RoomRoomsCatalogTests {
 
         // MARK: Rooms: catalogue
         let work = RoomPinnedRoom(id: uuid(1), accessFolderID: "f1", name: "Work", order: 0)
-        guard case let .added(two, added) = RoomRoomsCatalog.add([work], id: uuid(2), accessFolderID: "f2", name: "  suby-kmp \n", glyph: .hammer) else { Issue.record("Expected to add a room"); return }
-        check("DMR-C07_PinAddsNotReplaces", two.map(\.name) == ["Work", "suby-kmp"] && added.order == 1)
+        guard case let .added(two, added) = RoomRoomsCatalog.add([work], id: uuid(2), accessFolderID: "f2", name: "  studio-kmp \n", glyph: .hammer) else { Issue.record("Expected to add a room"); return }
+        check("DMR-C07_PinAddsNotReplaces", two.map(\.name) == ["Work", "studio-kmp"] && added.order == 1)
         check("DMR-C08_PopoverRoomStaysFirst", RoomRoomsCatalog.popoverRoom(two)?.id == uuid(1))
         check("DMR-C09_SameFolderIsAlreadyPinned", RoomRoomsCatalog.add(two, id: uuid(3), accessFolderID: "f2", name: "dup") == .alreadyPinned(uuid(2)))
         let full = (0..<64).map { RoomPinnedRoom(id: uuid(100 + $0), accessFolderID: "a\($0)", name: "R\($0)", order: $0) }
@@ -98,8 +98,8 @@ struct RoomRoomsCatalogTests {
         let way = try #require(RoomBudgetFrame.make(sizeBytes: 100 * gb, budgetBytes: 20 * gb))
         check("DMR-C36_OverrunStopsAtSlotEdge", abs((way.overrun?.maxX ?? 0) - 70) < 1e-9)
         check("DMR-C37_ExactBudgetNotOver", RoomBudgetFrame.make(sizeBytes: 20 * gb, budgetBytes: 20 * gb)?.isOver == false)
-        check("DMR-C38_BudgetSpokenOver", RoomBudgetFrame.spoken(name: "suby-kmp", sizeBytes: 21_600_000_000, partial: false, budgetBytes: 20 * gb, format: format)
-              == "suby-kmp: 21.6 GB of a 20 GB budget, 1.6 GB over")
+        check("DMR-C38_BudgetSpokenOver", RoomBudgetFrame.spoken(name: "studio-kmp", sizeBytes: 21_600_000_000, partial: false, budgetBytes: 20 * gb, format: format)
+              == "studio-kmp: 21.6 GB of a 20 GB budget, 1.6 GB over")
         check("DMR-C39_PartialNeverPromisesLeft", !RoomBudgetFrame.spoken(name: "a", sizeBytes: 5 * gb, partial: true, budgetBytes: 20 * gb, format: format).contains("left"))
         check("DMR-C40_ZeroBudgetNoFrame", RoomBudgetFrame.make(sizeBytes: 1, budgetBytes: 0) == nil)
 
@@ -108,14 +108,14 @@ struct RoomRoomsCatalogTests {
         let shown = RoomRoomsChapter.shown(five, editing: nil)
         check("DMR-C41_ThreeRowsAndMore", shown.rows.count == 3 && shown.more == 2)
         check("DMR-C42_EditedRoomTakesLastRow", RoomRoomsChapter.shown(five, editing: uuid(204)).rows.map(\.name) == ["R0", "R1", "R4"])
-        var budgeted = RoomPinnedRoom(id: uuid(2), accessFolderID: "f2", name: "suby-kmp", order: 0); budgeted.budgetBytes = 20 * gb
+        var budgeted = RoomPinnedRoom(id: uuid(2), accessFolderID: "f2", name: "studio-kmp", order: 0); budgeted.budgetBytes = 20 * gb
         let budgetLog = log([(date(2026, 11, 13), 18_400_000_000, false), (date(2026, 11, 19, 9), 21_600_000_000, false)])
         let row = RoomRoomsChapter.row(budgeted, log: budgetLog, unavailable: false, now: now, calendar: cal, hidden: false, format: format)
         check("DMR-C43_BudgetReplacesSparkline", row.budget != nil && row.sparkline.isEmpty && row.size == "21.6 GB")
-        check("DMR-C44_RowSpokenLabel", row.spoken == "suby-kmp: 21.6 GB of a 20 GB budget, 1.6 GB over, up 3.2 GB this week. Open in Disk Map.")
+        check("DMR-C44_RowSpokenLabel", row.spoken == "studio-kmp: 21.6 GB of a 20 GB budget, 1.6 GB over, up 3.2 GB this week. Open in Disk Map.")
         let hiddenRow = RoomRoomsChapter.row(budgeted, log: budgetLog, unavailable: false, now: now, calendar: cal, hidden: true, format: format)
-        check("DMR-C45_HideMasksNameSizeTrend", hiddenRow.name == "••••-•••" && hiddenRow.size == "••.• GB" && hiddenRow.trendEmphasis == "+•.• GB")
-        check("DMR-C46_HideSpeaksNoNumberOrName", !hiddenRow.spoken.contains("suby") && hiddenRow.spoken.rangeOfCharacter(from: .decimalDigits) == nil)
+        check("DMR-C45_HideMasksNameSizeTrend", hiddenRow.name == "••••••-•••" && hiddenRow.size == "••.• GB" && hiddenRow.trendEmphasis == "+•.• GB")
+        check("DMR-C46_HideSpeaksNoNumberOrName", !hiddenRow.spoken.contains(budgeted.name) && hiddenRow.spoken.rangeOfCharacter(from: .decimalDigits) == nil)
         check("DMR-C47_HideKeepsGeometry", hiddenRow.budget == row.budget)
         let unread = RoomRoomsChapter.row(work, log: weekly, unavailable: true, now: now, calendar: cal, hidden: false, format: format)
         check("DMR-C48_UnavailableSaysNeedsAccessDash", unread.size == "—" && unread.trendRest == "Needs access" && unread.isUnavailable)

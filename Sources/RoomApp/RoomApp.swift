@@ -153,6 +153,9 @@ struct RoomApp: App {
             }, navigate: { destination in
                 navigation.select(.screen(destination), origin: .keyboard)
                 openMainWindow()
+            }, canOpenPinnedRooms: { insights.canChooseDiskLocation }, navigateToRoom: { id in
+                navigation.select(.room(id), origin: .keyboard)
+                openMainWindow()
             })
             #if DEBUG
             RoomDebugMenuCommands(windowContext: delegate.commandWindow, enabled: menuBarEnabled,

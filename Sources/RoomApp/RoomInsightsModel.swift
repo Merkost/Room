@@ -19,9 +19,11 @@ final class RoomInsightsModel {
     private(set) var diskProgress: DiskScanProgress?
     private(set) var diskURL: URL?
     private(set) var diskInspectorRequest = 0
+    private(set) var diskInspectorVisible = false
     private(set) var diskComparisonRequest = 0
 
     func toggleDiskInspector() { diskInspectorRequest += 1 }
+    func setDiskInspectorVisible(_ visible: Bool) { diskInspectorVisible = visible }
     func compareDiskMap() { diskComparisonRequest += 1 }
     private(set) var homeTree: RoomStoredTree?
     private(set) var applicationsTree: RoomStoredTree?
@@ -30,6 +32,7 @@ final class RoomInsightsModel {
     private(set) var homeMappingKinds: [String: Int64] = [:]
     private(set) var statusMessage: String?
     var accessFolders: [RoomAccessFolder] { fileAccess.folders }
+    var unavailableAccessFolders: [RoomUnavailableAccessFolder] { fileAccess.unavailableFolders }
     var accessNote: String? { fileAccess.note }
     private(set) var analysisReport: StorageAnalysisReport?
     private(set) var isAnalyzingStorage = false
@@ -310,6 +313,32 @@ final class RoomInsightsModel {
 
     func chooseAccessFolder() {
         presentFolderPicker(initialURL: suggestedHome, mapAfterApproval: false)
+    }
+
+    func renewAccess(to folder: RoomUnavailableAccessFolder) {
+        guard canChooseDiskLocation, let expected = folder.url else { return }
+        isChoosingDiskFolder = true
+        Task { [weak self] in
+            guard let self else { return }
+            defer { self.isChoosingDiskFolder = false }
+            guard let approved = await self.folderPicker("Renew folder access",
+                "Choose the original folder to reconnect its Room and saved maps.", "Renew Access", expected) else { return }
+            do {
+                try self.fileAccess.renew(id: folder.id, approvedURL: approved)
+                await self.updateTreeApprovals()
+                await self.refreshHomeMap()
+                if self.diskMap.hasLostAccess, let map = self.diskMap.current,
+                   let root = await self.treeStore.root(for: map.rootID), root.location.approvalID == folder.id {
+                    let previous = await self.treeStore.previous(rootID: map.rootID)
+                    if self.diskMap.current?.rootID == map.rootID, self.diskMap.hasLostAccess {
+                        self.showStored(map, previous: previous, root: root)
+                    }
+                }
+                self.fileAccess.setNote("Folder access renewed.")
+            } catch {
+                self.fileAccess.setNote("Choose the original folder to renew access, or add a different folder separately.")
+            }
+        }
     }
 
     var hasRememberedHomeAccess: Bool {
@@ -669,6 +698,63 @@ final class RoomInsightsModel {
         }
     }
 
+    func savedViewLocation() -> RoomTreeLocation? {
+        guard canChooseDiskLocation, let current = diskMap.current, !current.cancelled,
+              let root = diskMap.rootURL, let scope = mappingScope(for: root) else { return nil }
+        return diskLocation(url: root, scope: scope)
+    }
+
+    func openSavedDiskView(_ view: RoomSavedView) async -> RoomSavedViewOpenResult {
+        guard canChooseDiskLocation else { return .unavailable }
+        guard view.isValid, let folder = accessFolders.first(where: { $0.id == view.root.approvalID }),
+              let rootURL = view.root.resolve(under: folder.url),
+              let scope = mappingScope(for: rootURL) else { return .needsAccess }
+        let generation = UUID()
+        diskOpenGeneration = generation
+        let rootID = diskRootID(url: rootURL, scope: scope)
+
+        func navigateToSavedNode() -> RoomSavedViewOpenResult {
+            if diskMap.go(to: view.nodePath) { return .opened }
+            diskMap.go(to: "")
+            return .rootOnly
+        }
+
+        if diskMap.rootURL?.standardizedFileURL == rootURL.standardizedFileURL,
+           diskMap.current?.rootID == rootID, diskMap.current?.cancelled == false {
+            return navigateToSavedNode()
+        }
+
+        let map = await treeStore.current(rootID: rootID)
+        let root = await treeStore.root(for: rootID)
+        let previous = await treeStore.previous(rootID: rootID)
+        guard !Task.isCancelled, diskOpenGeneration == generation, canChooseDiskLocation else { return .unavailable }
+        guard accessFolders.contains(where: { $0.id == folder.id && $0.url == folder.url }),
+              mappingScope(for: rootURL) == scope else { return .needsAccess }
+        if let map, let root, root.location == diskLocation(url: rootURL, scope: scope), !map.cancelled {
+            showStored(map, previous: previous, root: root)
+            let result = navigateToSavedNode()
+            await treeStore.open(rootID)
+            return result
+        }
+
+        if isHomeFolder(rootURL) {
+            isChoosingDiskFolder = true
+            let approved = await confirmHomeMap()
+            isChoosingDiskFolder = false
+            guard approved, !Task.isCancelled, diskOpenGeneration == generation else { return .unavailable }
+        }
+        guard accessFolders.contains(where: { $0.id == folder.id && $0.url == folder.url }),
+              mappingScope(for: rootURL) == scope else { return .needsAccess }
+
+        scanAuthorizedDisk(url: rootURL, scope: scope)
+        let scan = diskTask
+        let scanGeneration = diskGeneration
+        await scan?.value
+        guard !Task.isCancelled, diskGeneration == scanGeneration, diskMap.current?.rootID == rootID,
+              diskMap.current?.cancelled == false, !isScanningDisk else { return .unavailable }
+        return navigateToSavedNode()
+    }
+
     var homeKinds: RoomHomeKinds? {
         guard let homeTree, let volumeCapacity else { return nil }
         var roots = [(path: suggestedHome.standardizedFileURL.path, map: homeTree)]
@@ -694,6 +780,15 @@ final class RoomInsightsModel {
             applicationsTree = await treeStore.current(rootID: diskRootID(url: applicationsFolder, scope: scope))
         }
         #endif
+    }
+
+    func previousHomeTreeForHistory() async -> RoomStoredTree? {
+        guard !savedHistorySuspended, let homeTree, !homeTree.isPartial,
+              let volume = homeTree.volumeUUID, volume == volumeCapacity?.volumeID,
+              let previous = await treeStore.previous(rootID: homeTree.rootID),
+              self.homeTree == homeTree, previous.rootID == homeTree.rootID, !previous.isPartial,
+              previous.scannedAt < homeTree.scannedAt, previous.volumeUUID == volume else { return nil }
+        return previous
     }
 
     func restoreDiskMap() async {

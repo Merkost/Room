@@ -49,4 +49,17 @@ struct RoomMenuModelTests {
         #expect(direct.first { $0.id == .monitor }?.enabled == true)
         #expect(Menu.make(.init(menuBarEnabled: false)).first { $0.id == .monitor }?.enabled == false)
     }
+
+    @Test func pinnedRoomsRequireARouteAndInspectorReflectsItsState() {
+        let empty = Menu.make(.init(destination: .overview, window: .main))
+        #expect(!empty.contains { $0.id == .pinnedRooms })
+        let modal = Menu.make(.init(window: .modal, hasPinnedRooms: true))
+        #expect(modal.first { $0.id == .pinnedRooms }?.enabled == false)
+        let settings = Menu.make(.init(window: .settings, hasPinnedRooms: true))
+        #expect(settings.first { $0.id == .pinnedRooms }?.enabled == true)
+        let busy = Menu.make(.init(window: .main, hasPinnedRooms: true, canOpenPinnedRooms: false))
+        #expect(busy.first { $0.id == .pinnedRooms }?.enabled == false)
+        let disk = Menu.make(.init(destination: .disk, canInspectDisk: true, diskInspectorVisible: true, window: .main))
+        #expect(disk.first { $0.id == .showDiskInspector }?.title == "Hide Inspector")
+    }
 }

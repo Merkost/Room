@@ -9,12 +9,16 @@ struct RoomSidebar: View {
     let foot: RoomSidebarFoot
     let canOpenRooms: Bool
     let openRoom: (UUID) -> Void
+    var savedViews: RoomSavedViewsStore? = nil
+    var openSavedView: (UUID) -> Void = { _ in }
 
     @Environment(\.roomHide) private var hide
     @Environment(\.roomMotion) private var motion
     @Environment(\.roomAccent) private var accent
     @FocusState private var focusedScreen: RoomDestination?
     @Namespace private var selection
+    @State private var editingSavedView: RoomSavedView?
+    private let deleteViewPrefix = "sidebar:delete-view:"
     private let unpinPrefix = "sidebar:unpin:"
     private let confirmation = RoomInlineConfirmCenter.shared
 
@@ -35,6 +39,7 @@ struct RoomSidebar: View {
                     groupHeading(Text("nav.rooms", bundle: RoomCopy.bundle))
                     roomRow
                     RoomInlineUndoRows(prefix: unpinPrefix, hidesPrivateName: true)
+                    savedViewRows
                 }
             }
             .scrollIndicators(.hidden)
@@ -48,8 +53,13 @@ struct RoomSidebar: View {
         .disabled(RoomCommandWindowContext.current == .modal)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Room views")
-        .onDisappear { confirmation.finishAll(prefix: unpinPrefix) }
-        .onChange(of: navigation.route) { _, _ in confirmation.finishAll(prefix: unpinPrefix) }
+        .onDisappear { finishPendingChanges() }
+        .onChange(of: navigation.route) { _, _ in finishPendingChanges() }
+        .sheet(item: $editingSavedView) { view in
+            RoomSavedViewNameEditor(title: "Rename View", action: "Rename", name: hide.masksNow ? "" : view.name) {
+                savedViews?.rename(view.id, to: $0) == true
+            }
+        }
     }
 
     private func screenRow(_ item: NavigationItem) -> some View {
@@ -160,6 +170,60 @@ struct RoomSidebar: View {
         .accessibilityLabel(Text("nav.rooms.pin", bundle: RoomCopy.bundle))
     }
 
+    @ViewBuilder private var savedViewRows: some View {
+        if let savedViews, !savedViews.visible.isEmpty {
+            groupHeading(Text("Saved views"))
+            ForEach(savedViews.visible) { view in savedViewRow(view, in: savedViews) }
+        }
+        RoomInlineUndoRows(prefix: deleteViewPrefix, hidesPrivateName: true)
+    }
+
+    private func savedViewRow(_ view: RoomSavedView, in store: RoomSavedViewsStore) -> some View {
+        let selected = navigation.route == .savedView(view.id)
+        let actionID = deleteViewPrefix + view.id.uuidString
+        let maskedName = RoomHideMask.display(view.name, kind: .name, hide: hide)
+        let question = "Delete \(maskedName)?"
+        let done = "Deleted \(maskedName)."
+        return Button { openSavedView(view.id) } label: {
+            row(icon: { Image(systemName: "bookmark") },
+                iconColor: selected ? accent.text : RoomTokens.Ink.secondary) {
+                RoomMaskable(view.name, kind: .name)
+                    .font(RoomTokens.Typography.body).lineLimit(1).truncationMode(.middle)
+                Spacer(minLength: 0)
+            }
+            .background { if selected { selectionPill } }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(RoomHoverButtonStyle(showsFeedback: !selected))
+        .disabled(!canOpenRooms)
+        .help(hide.masksNow ? "Saved view, name hidden" : view.name)
+        .accessibilityLabel(hide.masksNow ? "Saved view, name hidden" : view.name)
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
+        .accessibilityIdentifier("RoomSavedView-\(view.id.uuidString)")
+        .contextMenu {
+            Button("Rename…") { editingSavedView = view }.disabled(!store.canEdit)
+            Button("Delete…") {
+                confirmation.press(actionID, doneLine: done, stage: { store.stageRemoval(view.id) },
+                    commit: { store.commitRemoval(view.id) }, undo: { store.undoRemoval(view.id) })
+            }
+            .disabled(!store.canEdit)
+        }
+        .overlay(alignment: .bottomLeading) {
+            if case .armed = confirmation.phase(actionID) {
+                RoomInlineConfirmButton(id: actionID, title: "Delete…", confirmTitle: question, doneLine: done,
+                    isAllowed: store.canEdit, stage: { store.stageRemoval(view.id) },
+                    commit: { store.commitRemoval(view.id) }, undo: { store.undoRemoval(view.id) })
+                    .padding(.horizontal, RoomTokens.Space.row)
+                    .background(.regularMaterial, in: pill)
+            }
+        }
+    }
+
+    private func finishPendingChanges() {
+        confirmation.finishAll(prefix: unpinPrefix)
+        confirmation.finishAll(prefix: deleteViewPrefix)
+    }
+
     private func pinned(_ room: RoomPinnedRoom, size: String, spokenSize: String?, needsAccess: Bool = false) -> some View {
         let selected = navigation.route == .room(room.id)
         let unpinID = unpinPrefix + room.id.uuidString
@@ -168,6 +232,12 @@ struct RoomSidebar: View {
         let confirmTitle = String.localizedStringWithFormat(question, RoomHideMask.display(room.name, kind: .name, hide: hide))
         let doneLine = String.localizedStringWithFormat(done, RoomHideMask.display(room.name, kind: .name, hide: hide))
         let spokenFormat = String(localized: "nav.room.a11y", defaultValue: "%1$@, Room, %2$@", bundle: RoomCopy.bundle)
+        let kind = RoomTokens.Kind(rawValue: room.resolvedColour.rawValue) ?? .developer
+        let siblings = rooms.visibleRooms
+        let position = siblings.firstIndex(where: { $0.id == room.id })
+        let earlierOrder = position.flatMap { $0 > 0 ? siblings[$0 - 1].order : nil }
+        let laterOrder = position.flatMap { $0 + 1 < siblings.count ? siblings[$0 + 1].order : nil }
+
         return Button {
             let origin = RoomSelectionOrigin.controlActivation
             withAnimation(origin == .pointer ? motion.animation(RoomTokens.Motion.standard, fallback: nil) : nil) {
@@ -175,8 +245,11 @@ struct RoomSidebar: View {
             }
         } label: {
             row(icon: {
-                Image(systemName: "folder")
-                    .background(RoomTokens.Surface.track, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.tile))
+                Image(systemName: room.resolvedGlyph.rawValue)
+                    .font(RoomTokens.Typography.micro)
+                    .foregroundStyle(RoomTokens.Kind.tileInk)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(kind.fill, in: .rect(cornerRadius: RoomTokens.Radius.tile))
             }, iconColor: selected ? accent.text : RoomTokens.Ink.secondary) {
                 RoomMaskable(room.name, kind: .name).font(RoomTokens.Typography.body).lineLimit(1).truncationMode(.middle)
                 Spacer(minLength: RoomTokens.Sidebar.pitchGap)
@@ -191,9 +264,24 @@ struct RoomSidebar: View {
         .help(RoomHideSpeech.labelled(room.name, value: spokenSize ?? size, labelIsName: true, hide: hide))
         .accessibilityLabel(hide.masksNow ? "Room, hidden" : String.localizedStringWithFormat(spokenFormat, room.name, spokenSize ?? size))
         .accessibilityAddTraits(selected ? [.isSelected] : [])
+        .draggable(room.id.uuidString)
+        .dropDestination(for: String.self) { values, _ in
+            guard rooms.canUnpin, let first = values.first, let id = UUID(uuidString: first),
+                  id != room.id, rooms.visibleRooms.contains(where: { $0.id == id }) else { return false }
+            rooms.move(id: id, to: room.order)
+            return true
+        }
         .contextMenu {
             if let url = rooms.url(for: room.id) {
                 Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+            }
+            if let earlierOrder {
+                Button("Move Up") { rooms.move(id: room.id, to: earlierOrder) }
+                    .disabled(!rooms.canUnpin)
+            }
+            if let laterOrder {
+                Button("Move Down") { rooms.move(id: room.id, to: laterOrder) }
+                    .disabled(!rooms.canUnpin)
             }
             Button("Unpin…") {
                 confirmation.press(unpinID, doneLine: doneLine,
