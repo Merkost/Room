@@ -1,44 +1,57 @@
-# App Store listing
+# Mac App Store listing draft
 
-**Name:** Room: Disk Space & Memory
+## Name
 
-**Subtitle:** Storage maps & cache review
+Room: Disk Space & Memory
 
-**Promotional text:** See where your storage goes. Find large and hidden files, monitor memory pressure, and review developer resources in one native Mac app.
+## Subtitle
 
-**Keywords (97/100 bytes):**
+See what fills your Mac
 
-`analyzer,folder,hidden,file,large,ram,swap,monitor,emulator,build,npm,treemap,scan,gradle,android`
+## Promotional text
+
+Find large files in a map of the folders you choose. Review cache moves and check memory pressure from your menu bar.
+
+## Keywords
+
+`treemap,folder,file,large,hidden,ram,swap,cache,emulator,compression,monitor,visualizer,scan,history`
 
 ## Description
 
-See what’s filling your Mac. Room turns storage into a visual map, keeps memory pressure in view, and makes developer resources easier to understand.
+Room turns the folders you choose into a map you can explore. Find large files, see what’s inside a folder, and pin the places you check often.
 
-Find the big files
-Scan folders you choose and explore a map sized by allocated disk space. Spot large files, reveal hidden entries, filter by category, and open items in Finder. Drill into accessible subfolders without losing your place.
+Explore your storage
+Find large and hidden items where macOS allows access. Reopen a saved map, filter by category, or compare scans when history is available.
+
+Review before you move
+See what’s taking up space in supported caches. Room can move eligible npm downloads older than 30 days that pass local verification. Review the selection and approve the exact folders before anything moves to Trash. A receipt lets you restore unchanged items when their original locations are available. Files still take up space in Trash until you empty it.
 
 Keep memory in view
-Read RAM use, memory pressure, compression, and swap. Choose RAM or available storage for the menu bar, with pressure colors and optional swap details. Room offers monitoring and guidance without closing your apps.
+See memory pressure, RAM use, compression, and swap. Put memory or free space in your menu bar for a quick check.
 
-Connect storage to projects
-Review Android virtual-device sizes and available date information. Group Gradle storage by version and see references from selected project wrappers. These reviews are read-only; a date or missing reference is not proof that a resource is unused.
+Understand your developer storage
+Review Android virtual devices and see which Gradle versions your selected projects reference. On supported Macs, optional on-device analysis can suggest what to look at next.
 
-Review supported cleanup
-Inspect cache and developer-storage locations within the access you approve. Cleanup is limited to supported npm download objects that are more than 30 days old and pass local SHA512 verification. Other caches, installed packages, indexes, and temporary data stay available for inspection.
+Room runs on your Mac without an account, ads, or in-app purchases. Requires an Apple silicon Mac running macOS 26 or later. Made by Merkost.
 
-Approve the exact selection and folders before anything moves to Trash. Removing an npm download may cause another download, installation retries, or an offline-install failure. Files in Trash still use disk space until you empty it.
+## Product page links
 
-Keep a way back
-Room records eligible changes locally and can restore unchanged items when their original locations are available. It never empties Trash.
+| Field | Value |
+| --- | --- |
+| Marketing URL | https://room.merkost.dev/ |
+| Support URL | https://room.merkost.dev/support/ |
+| Privacy policy URL | https://room.merkost.dev/privacy/ |
 
-Suggestions that stay local
-When Apple Intelligence is supported and ready, optional on-device analysis can suggest categories and review items from a bounded set of file names, relative paths, types, sizes, and dates. File contents are not passed to the model. Local rules remain available when the model is not ready. Suggestions inform your review; they never authorize cleanup.
+Primary category **Utilities**. Secondary category **Developer Tools**.
 
-Made for Mac
-Native Liquid Glass controls, keyboard shortcuts, Light and Dark appearance, and support for Reduce Motion and Reduce Transparency. Room remembers the folders you approve, while macOS remains in charge of protected locations.
+## Field lengths
 
-Requires an Apple silicon Mac running macOS 26 or later. No account required. No ads or in-app purchases.
+| Field | Used | Limit |
+| --- | ---: | ---: |
+| Name | 25 | 30 characters |
+| Subtitle | 23 | 30 characters |
+| Promotional text | 117 | 170 characters |
+| Keywords | 100 | 100 UTF-8 bytes |
+| Description | 1,177 | 4,000 characters |
 
-## Positioning
-
-Room leads with visual storage exploration and memory monitoring. Developer terms describe read-only resource review; cleanup claims stay within the Store edition’s supported scope. Utilities is the primary category and Developer Tools is secondary. The app is free, without ads or in-app purchases.
+[App information limits](https://developer.apple.com/help/app-store-connect/reference/app-information/app-and-compliance-information) · [Product page fields](https://developer.apple.com/help/app-store-connect/reference/app-information/platform-version-information) · [App Review Guidelines](https://developer.apple.com/app-store/review/guidelines/#accurate-metadata)
