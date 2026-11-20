@@ -89,7 +89,42 @@ struct RoomMenuBarSettingsTests {
             let result = input(defaults, report: report())
             #expect(result.value == .memory && result.icon == .symbol && result.tintOnlyWhenNeeded)
             #expect(result.goalBytes == 50_000_000_000)
+            #expect(result.layout == .inline)
             #expect(!RoomMenuBarSettings.showSwap(in: defaults))
+        }
+    }
+
+    @Test func layoutDefaultsToInlineWithoutWritingAKey() throws {
+        try withDefaults { defaults in
+            #expect(RoomMenuBarSettings.layoutKey == "RoomMenuBarLayout")
+            #expect(RoomMenuBarSettings.layout(in: defaults) == .inline)
+            #expect(input(defaults).layout == .inline)
+            #expect(defaults.object(forKey: "RoomMenuBarLayout") == nil)
+            defaults.set("invalid", forKey: "RoomMenuBarLayout")
+            #expect(RoomMenuBarSettings.layout(in: defaults) == .inline)
+            #expect(input(defaults).layout == .inline)
+        }
+    }
+
+    @Test(arguments: RoomMenuBarLayoutMode.allCases)
+    func layoutRoundTripsThroughItsSetting(_ layout: RoomMenuBarLayoutMode) throws {
+        try withDefaults { defaults in
+            RoomMenuBarSettings.setLayout(layout, in: defaults)
+            #expect(defaults.string(forKey: "RoomMenuBarLayout") == layout.rawValue)
+            #expect(RoomMenuBarSettings.layout(in: defaults) == layout)
+            #expect(input(defaults).layout == layout)
+        }
+    }
+
+    @Test func changingTheValueKeepsTheStoredLayout() throws {
+        try withDefaults { defaults in
+            RoomMenuBarSettings.setLayout(.stacked, in: defaults)
+            RoomMenuBarSettings.setValue(.memory, in: defaults)
+            let memory = input(defaults)
+            #expect(memory.layout == .stacked)
+            #expect(RoomMenuBarPresentation.make(memory, format: .fixtureGigabytes).stackedLines == nil)
+            RoomMenuBarSettings.setValue(.both, in: defaults)
+            #expect(RoomMenuBarPresentation.make(input(defaults), format: .fixtureGigabytes).stackedLines != nil)
         }
     }
 

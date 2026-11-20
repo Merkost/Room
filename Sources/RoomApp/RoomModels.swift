@@ -1,6 +1,6 @@
 import Foundation
 
-enum RoomDestination: Hashable { case clean, memory, disk, developer, activity }
+nonisolated enum RoomDestination: String, Hashable, Sendable { case clean, memory, disk, developer, activity }
 
 enum RoomCacheScanScope: String, CaseIterable, Identifiable, Sendable {
     case full, quick
@@ -65,7 +65,7 @@ struct RoomProtectedSource: Identifiable, Sendable {
     let bytes: Int64
 }
 
-struct RoomActivity: Identifiable, Sendable {
+nonisolated struct RoomActivity: Identifiable, Sendable {
     let id: UUID
     let date: Date
     let bytes: Int64
@@ -77,7 +77,7 @@ struct RoomActivity: Identifiable, Sendable {
     let details: [RoomActivityItem]
 }
 
-struct RoomActivityItem: Identifiable, Sendable {
+nonisolated struct RoomActivityItem: Identifiable, Sendable {
     let id: UUID
     let name: String
     let path: String

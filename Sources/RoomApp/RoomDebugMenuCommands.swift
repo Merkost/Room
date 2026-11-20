@@ -36,6 +36,7 @@ extension RoomDebugMenuBarScenario {
         case .critical: "Critical"
         case .diskBelowGoal: "Disk below goal"
         case .bothElevatedBelowGoal: "Both (elevated and below goal)"
+        case .bothStacked: "Both stacked (elevated and below goal)"
         case .iconOnlyElevated: "Icon only (elevated)"
         }
     }

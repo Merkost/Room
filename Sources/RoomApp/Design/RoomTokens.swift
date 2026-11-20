@@ -44,6 +44,9 @@ enum RoomTokens {
         static let numeric = Font.system(size: 13, weight: .regular).monospacedDigit()
         static let caption = Font.system(size: 12, weight: .regular)
         static let captionNumeric = Font.system(size: 12, weight: .regular).monospacedDigit()
+        static let aboutHeading = Font.system(size: 22, weight: .semibold)
+        static let aboutTagline = Font.system(size: 15, weight: .medium)
+        static let madeRoom = Font.system(size: 28, weight: .regular).monospacedDigit()
         /// Functional text floor (DESIGN.md): ticks, key caps, plan labels. Never smaller.
         static let micro = Font.system(size: 11, weight: .regular)
         /// SF Mono only for paths and versions.
@@ -96,6 +99,13 @@ enum RoomTokens {
     }
 
     // MARK: Identity
+    enum Settings {
+        static let width: CGFloat = 620
+        static let appIconSize: CGFloat = 104
+        static let folderRowHeight: CGFloat = 52
+        static let folderListMaximumHeight: CGFloat = 260
+    }
+
     enum Ink {
         static let graphite = Color.room(light: 0x222527, dark: 0xF3F5F6, name: "room.ink")
         static let secondary = Color.room(light: 0x5B6266, dark: 0xA3A9AC, name: "room.ink2")

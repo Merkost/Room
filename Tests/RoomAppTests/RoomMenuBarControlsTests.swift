@@ -4,6 +4,11 @@ import Testing
 
 @Suite("Menu bar controls")
 struct RoomMenuBarControlsTests {
+    @Test func controlsFollowTheSettingsOrder() {
+        #expect(RoomMenuBarSettings.controlOrder == [.show, .value, .layout, .icon, .colour, .swap, .pinnedRoom])
+        #expect(RoomMenuBarSettings.iconOrder == [.mark, .symbol, .none])
+    }
+
     @Test(arguments: [
         (Int64.min, Int64(20_000_000_000)),
         (Int64(19_000_000_000), Int64(20_000_000_000)),

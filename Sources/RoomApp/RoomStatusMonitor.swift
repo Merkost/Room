@@ -10,6 +10,7 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
     private let cacheModel: RoomViewModel
     private let rooms: RoomRoomsModel
     private var openRoom: () -> Void
+    private var openSettings: () -> Void
     private let popover = NSPopover()
     private var statusItem: NSStatusItem?
     private var observationGeneration = UUID()
@@ -43,15 +44,18 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
         updateButton()
     }
 
-    /// Debug builds only: `ROOM_DEBUG_OPEN=popover` or `settings` opens that surface shortly after launch, so it can be
-    /// looked at (and screenshotted) without clicking the menu bar. Never in a release build.
+    /// Debug builds only: open `popover` or `settings[:menubar|:folders|:about]` shortly after launch.
     private func applyDebugLaunchRequest() {
         guard let request = ProcessInfo.processInfo.environment["ROOM_DEBUG_OPEN"] else { return }
         Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(3))
             switch request {
             case "popover": self?.showMonitor()
-            case "settings": self?.insights.requestedSettings = true
+            case "settings", "settings:menubar", "settings:folders", "settings:about":
+                let rawTab = request.split(separator: ":").dropFirst().first.map(String.init) ?? "general"
+                guard let tab = RoomSettingsTab(rawValue: rawTab), let self else { return }
+                self.insights.requestedSettingsTab = tab
+                self.insights.requestedSettings = true
             default: break
             }
         }
@@ -59,26 +63,35 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
 #endif
 
     init(insights: RoomInsightsModel, cacheModel: RoomViewModel,
-         rooms: RoomRoomsModel, openRoom: @escaping () -> Void) {
+         rooms: RoomRoomsModel, openRoom: @escaping () -> Void, openSettings: @escaping () -> Void) {
         self.insights = insights
         self.cacheModel = cacheModel
         self.rooms = rooms
         self.openRoom = openRoom
+        self.openSettings = openSettings
         super.init()
         popover.behavior = .transient
         popover.delegate = self
         let hosting = NSHostingController(rootView:
-            RoomMenuBarView(insights: insights, cacheModel: cacheModel, rooms: rooms) { [weak self] in
+            RoomMenuBarView(insights: insights, cacheModel: cacheModel, rooms: rooms, openRoom: { [weak self] in
                 self?.openMainWindow()
-            }
+            }, showSettings: { [weak self] in
+                self?.popover.performClose(nil)
+                self?.openSettings()
+                NSApp.activate()
+            })
             .modifier(RoomMotionRoot())
             .modifier(RoomAccentRoot())
         )
         hosting.sizingOptions = [.preferredContentSize]
         popover.contentViewController = hosting
+        #if DEBUG
+        applyDebugLaunchRequest()
+        #endif
     }
 
     func updateOpenRoom(_ action: @escaping () -> Void) { openRoom = action }
+    func updateOpenSettings(_ action: @escaping () -> Void) { openSettings = action }
 
     func setEnabled(_ enabled: Bool) {
         if !enabled { rooms.cancelMeasurement() }
@@ -106,9 +119,6 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
             }
             insights.beginMonitoring()
             observeMemory(generation: observationGeneration)
-            #if DEBUG
-            applyDebugLaunchRequest()
-            #endif
         } else {
             titleTask?.cancel()
             titleTask = nil
@@ -198,9 +208,7 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
         let input = liveInput
 #endif
         // The pure presentation invokes these formatters synchronously here on MainActor.
-        let format = RoomMenuBarFormat(
-            memory: { bytes in MainActor.assumeIsolated { RoomFormat.memoryBytes(bytes) } },
-            disk: { bytes in MainActor.assumeIsolated { RoomFormat.bytes(bytes) } })
+        let format = RoomMenuBarFormat.live
         let output = RoomMenuBarPresentation.make(input, format: format)
         let motionAllowed = allowsMotion
         guard output != lastOutput || input.value != lastValueMode || motionAllowed != lastMotionAllowed else { return }
@@ -215,11 +223,25 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
         lastValueMode = input.value
         lastMotionAllowed = motionAllowed
 
-        updateTitle(output.title, mode: input.value, previousMode: previousMode,
-                    button: button, animated: motionAllowed)
-        button.imagePosition = output.icon == .none ? .noImage : output.title.isEmpty ? .imageOnly : .imageLeading
+        if output.stackedLines != nil {
+            // The shared image owns both figures. Two lines swap at once rather than ticking.
+            button.title = ""
+            button.imagePosition = .imageOnly
+        } else {
+            updateTitle(output.title, mode: input.value, previousMode: previousMode,
+                        button: button, animated: motionAllowed)
+            button.imagePosition = output.icon == .none ? .noImage : output.title.isEmpty ? .imageOnly : .imageLeading
+        }
         if motionAllowed, previousOutput?.icon == .mark, output.icon == .mark,
            displayedPocketFill != output.pocketFill {
+            if output.stackedLines != nil {
+                // Show the new figures before the first fill frame, keeping the old tint until the end.
+                button.contentTintColor = nil
+                button.image = stackedImage(output, fill: displayedPocketFill, tint: displayedTint)
+            } else if previousOutput?.stackedLines != nil {
+                // Remove the composite as soon as the inline title returns.
+                button.image = pocketImage(fill: displayedPocketFill, tint: displayedTint)
+            }
             animatePocket(to: output, button: button)
         } else {
             applyImage(output, button: button)
@@ -258,6 +280,11 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
     private func applyImage(_ output: RoomMenuBarOutput, button: NSStatusBarButton) {
         button.contentTintColor = nil   // ignored on template images by macOS; colour lives in the image instead
         displayedTint = output.tint
+        if output.stackedLines != nil {
+            button.image = RoomMenuBarStackedItem.image(for: output)
+            displayedPocketFill = output.pocketFill
+            return
+        }
         switch output.icon {
         case .mark:
             button.image = pocketImage(fill: output.pocketFill, tint: output.tint)
@@ -280,6 +307,12 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
         }
     }
 
+    private func stackedImage(_ output: RoomMenuBarOutput, fill: Double, tint: RoomMenuBarTint) -> NSImage {
+        var frame = output
+        frame.tint = tint
+        return RoomMenuBarStackedItem.image(for: frame, pocketFill: fill)
+    }
+
     private func animatePocket(to output: RoomMenuBarOutput, button: NSStatusBarButton) {
         let frames = RoomMenuBarMotion.fillFrames(from: displayedPocketFill, to: output.pocketFill)
         fillTask = Task { @MainActor [weak self, weak button] in
@@ -288,7 +321,11 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
                 catch { return }
                 guard !Task.isCancelled, let self, let button else { return }
                 if fill != self.displayedPocketFill {
-                    button.image = self.pocketImage(fill: fill, tint: self.displayedTint)
+                    if output.stackedLines != nil {
+                        button.image = self.stackedImage(output, fill: fill, tint: self.displayedTint)
+                    } else {
+                        button.image = self.pocketImage(fill: fill, tint: self.displayedTint)
+                    }
                     self.displayedPocketFill = fill
                 }
             }

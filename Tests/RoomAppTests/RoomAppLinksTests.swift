@@ -12,6 +12,7 @@ struct RoomAppLinksTests {
     }
     @Test func configuredPublicHTTPSLinksArePreserved() {
         let links = RoomAppLinks(info: ["RoomSupportURL": "https://room.merkost.dev/support", "RoomPrivacyURL": "https://room.merkost.dev/privacy"])
+        #expect(links.developer.absoluteString == "https://merkost.com")
         #expect(links.support?.absoluteString == "https://room.merkost.dev/support")
         #expect(links.privacy?.absoluteString == "https://room.merkost.dev/privacy")
     }

@@ -7,6 +7,7 @@ struct RoomMenuBarView: View {
     @Bindable var cacheModel: RoomViewModel
     @Bindable var rooms: RoomRoomsModel
     let openRoom: () -> Void
+    let showSettings: () -> Void
     @AppStorage(RoomMenuBarSettings.showSwapKey) private var showSwap = RoomMenuBarSettings.showSwapDefault
     @AppStorage(RoomMenuBarSettings.goalBytesKey) private var storedGoal = Int(RoomMenuBarSettings.defaultGoalBytes)
     @Environment(\.roomMotion) private var motion
@@ -21,9 +22,7 @@ struct RoomMenuBarView: View {
             diskCapacityBytes: insights.diskCapacityBytes,
             swapBytes: insights.memoryReport.flatMap(RoomMonitorPresentation.measuredSwap), showSwap: showSwap,
             caches: cacheModel.cachesCheckStore.check, room: rooms.state,
-            format: RoomMenuBarFormat(
-                memory: { bytes in MainActor.assumeIsolated { RoomFormat.memoryBytes(bytes) } },
-                disk: { bytes in MainActor.assumeIsolated { RoomFormat.bytes(bytes) } }),
+            format: RoomMenuBarFormat.live,
             formatSize: RoomFormat.bytes)
     }
 
@@ -208,8 +207,7 @@ struct RoomMenuBarView: View {
     func openCaches() { open(.clean) }
 
     func openSettings() {
-        insights.requestedSettings = true
-        openRoom()
+        showSettings()
     }
 
     func openPinnedRoom() {

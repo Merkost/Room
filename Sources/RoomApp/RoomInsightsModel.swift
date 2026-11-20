@@ -23,6 +23,8 @@ final class RoomInsightsModel {
     private(set) var diskCapacityBytes: Int64 = 0
     var requestedDestination: RoomInsightDestination?
     var requestedSettings = false
+    var requestedSettingsTab: RoomSettingsTab?
+    var requestedWelcome = false
 
     @ObservationIgnored private let memoryEngine = MemoryEngine()
     @ObservationIgnored private let diskEngine = DiskMapEngine()

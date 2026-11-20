@@ -1,6 +1,7 @@
 import Foundation
 
 struct RoomAppLinks {
+    let developer = URL(string: "https://merkost.com")!
     let support: URL?
     let privacy: URL?
 

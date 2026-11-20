@@ -12,9 +12,13 @@ struct RoomRootView: View {
     @AppStorage("RoomOnboardingVersion") private var onboardingVersion = 0
     @AppStorage("RoomAppearance") private var appearance = "dark"
     @AppStorage("RoomMotionEnabled") private var motionEnabled = true
+    @AppStorage("RoomLastDestination") private var lastDestination = RoomDestination.clean.rawValue
+    @Environment(\.openSettings) private var openSettings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var developer = RoomDeveloperModel()
-    @State private var destination = RoomDestination.clean
+    @State private var destination = RoomOpenOn.resolve(
+        preference: UserDefaults.standard.string(forKey: "RoomOpenOn") ?? RoomOpenOn.last.rawValue,
+        last: UserDefaults.standard.string(forKey: "RoomLastDestination"))
     @State private var sheet: RoomSheet?
     @State private var expanded = false
     @State private var category: RoomCategory?
@@ -110,10 +114,9 @@ struct RoomRootView: View {
             }
             .sharedBackgroundVisibility(.hidden)
             ToolbarItemGroup(placement: .primaryAction) {
-                Button { sheet = .settings } label: { Image(systemName: "slider.horizontal.3") }
+                Button { openSettings() } label: { Image(systemName: "slider.horizontal.3") }
                     .help("Settings")
                     .accessibilityLabel("Settings")
-                    .keyboardShortcut(",", modifiers: .command)
             }
         }
         .animation(animate, value: destination)
@@ -122,11 +125,11 @@ struct RoomRootView: View {
         .animation(animate, value: model.selectedBytes)
         .animation(animate, value: model.totalBytes)
         .animation(animate, value: model.isScanning)
+        .onChange(of: destination) { _, destination in lastDestination = destination.rawValue }
         .sheet(item: $sheet) { selected in
             switch selected {
             case .review: RoomReviewSheet(model: model)
             case .source(let source): RoomSourceSheet(source: source, model: model)
-            case .settings: RoomSettingsSheet(model: model, insights: insights, rooms: rooms, showWelcome: { sheet = .welcome })
             case .welcome:
                 RoomOnboardingView { onboardingVersion = 1; sheet = nil }
             case .protectedSources: RoomProtectedSheet(model: model)
@@ -155,8 +158,13 @@ struct RoomRootView: View {
         }
         .onChange(of: insights.requestedSettings, initial: true) { _, requested in
             guard requested else { return }
-            sheet = .settings
+            openSettings()
             insights.requestedSettings = false
+        }
+        .onChange(of: insights.requestedWelcome, initial: true) { _, requested in
+            guard requested else { return }
+            sheet = .welcome
+            insights.requestedWelcome = false
         }
     }
 
@@ -295,7 +303,10 @@ struct RoomRootView: View {
             Label(model.approvedStoreFolderCount == 0 ? "No folders approved" : "\(model.approvedStoreFolderCount) approved \(model.approvedStoreFolderCount == 1 ? "folder" : "folders")", systemImage: "folder.badge.checkmark")
                 .font(.system(size: 12)).foregroundStyle(.secondary)
                 .fixedSize()
-            Button("Manage access") { sheet = .settings }
+            Button("Manage access") {
+                insights.requestedSettingsTab = .folders
+                openSettings()
+            }
                 .buttonStyle(.glass).controlSize(.large)
                 .disabled(model.isWorking || model.isScanning)
                 .accessibilityIdentifier("RoomStoreManageFolderAccess")
@@ -595,12 +606,11 @@ private struct RoomSourceRow: View {
 private enum RoomSourceFilter: Hashable { case all, clearable, held }
 
 private enum RoomSheet: Identifiable {
-    case review, source(RoomSource), settings, welcome, protectedSources, scanIssues
+    case review, source(RoomSource), welcome, protectedSources, scanIssues
     var id: String {
         switch self {
         case .review: "review"
         case .source(let source): "source-\(source.id)"
-        case .settings: "settings"
         case .welcome: "welcome"
         case .protectedSources: "protected"
         case .scanIssues: "issues"

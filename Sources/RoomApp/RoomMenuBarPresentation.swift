@@ -5,6 +5,7 @@
 import Foundation
 
 nonisolated enum RoomMenuBarValueMode: String, CaseIterable, Sendable { case memory, disk, both, none }
+nonisolated enum RoomMenuBarLayoutMode: String, CaseIterable, Sendable { case inline, stacked }
 nonisolated enum RoomMenuBarIconMode: String, CaseIterable, Sendable { case mark, symbol, none }
 nonisolated enum RoomMenuBarPressure: Sendable { case unknown, normal, elevated, critical }
 
@@ -19,6 +20,7 @@ nonisolated enum RoomMenuBarTint: Equatable, Sendable { case none, normal, eleva
 
 nonisolated struct RoomMenuBarInput: Equatable, Sendable {
     var value: RoomMenuBarValueMode = .memory
+    var layout: RoomMenuBarLayoutMode = .inline
     var icon: RoomMenuBarIconMode = .mark
     var tintOnlyWhenNeeded = true          // "Colour only when it matters" (MB-3)
     var memoryUsedBytes: Int64?            // nil: unavailable
@@ -26,6 +28,11 @@ nonisolated struct RoomMenuBarInput: Equatable, Sendable {
     var pressure: RoomMenuBarPressure = .unknown
     var diskFreeBytes: Int64?              // nil: unavailable
     var goalBytes: Int64 = 0               // 0: no goal (the app never stores 0; this is defensive)
+}
+
+nonisolated struct RoomMenuBarStackedLine: Equatable, Sendable {
+    var symbolName: String
+    var text: String
 }
 
 nonisolated struct RoomMenuBarOutput: Equatable, Sendable {
@@ -37,6 +44,7 @@ nonisolated struct RoomMenuBarOutput: Equatable, Sendable {
     var accessibilityValue: String
     var toolTip: String                    // "Room · " + accessibilityValue (MB-8)
     var announcementKey: String            // changes only when the tone changes (MB-7)
+    var stackedLines: [RoomMenuBarStackedLine]? = nil
 }
 
 /// The app passes RoomFormat; the checks pass `fixtureGigabytes`.
@@ -53,6 +61,58 @@ nonisolated struct RoomMenuBarFormat: Sendable {
         var s = String(format: "%.\(decimals)f", Double(bytes) / 1e9)
         if decimals > 0, s.hasSuffix(".0") { s.removeLast(2) }
         return s + " GB"
+    }
+}
+
+extension RoomMenuBarFormat {
+    /// What the status item and the popover show. Memory in binary gigabytes like Activity Monitor with one decimal
+    /// ("38.5 GB", "48 GB"; the system formatter gave "38.53 GB"). Free disk in decimal gigabytes like Finder: whole from
+    /// 10 GB up ("312 GB"), one decimal below ("4.2 GB"), terabytes with one decimal ("1.2 TB").
+    static let live = RoomMenuBarFormat(
+        memory: { liveMemory($0) },
+        disk: { liveDisk($0) })
+
+    nonisolated static func liveMemory(_ bytes: Int64, locale: Locale = .current) -> String {
+        if bytes <= 0 { return "0 KB" }
+        let mib = (Double(bytes) / 1_048_576).rounded()
+        // Pick the unit after rounding: 1,023.6 MiB is "1 GB", not "1,024 MB".
+        if mib < 1_024 { return whole(max(mib, 1), locale: locale) + " MB" }
+        return trimmed(Double(bytes) / 1_073_741_824, decimals: 1, locale: locale) + " GB"
+    }
+
+    nonisolated static func liveDisk(_ bytes: Int64, locale: Locale = .current) -> String {
+        if bytes <= 0 { return "0 KB" }
+        let value = Double(bytes)
+        if value >= 1e12 || (value / 1e9).rounded() >= 1_000 { return trimmed(value / 1e12, decimals: 1, locale: locale) + " TB" }
+        if value >= 1e10 { return whole((value / 1e9).rounded(), locale: locale) + " GB" }
+        if value >= 1e9 {
+            let tenths = (value / 1e8).rounded() / 10
+            // 9.96 GB rounds to 10.0: show it as a whole figure, like the 10 GB and up rule.
+            return tenths >= 10 ? whole(tenths, locale: locale) + " GB" : trimmed(tenths, decimals: 1, locale: locale) + " GB"
+        }
+        let mb = (value / 1e6).rounded()
+        return mb >= 1_000 ? "1 GB" : whole(max(mb, 1), locale: locale) + " MB"
+    }
+
+    /// A whole number without grouping separators, in the locale's own digits.
+    private nonisolated static func whole(_ value: Double, locale: Locale) -> String {
+        let formatter = NumberFormatter()
+        formatter.locale = locale
+        formatter.numberStyle = .none
+        formatter.usesGroupingSeparator = false
+        formatter.maximumFractionDigits = 0
+        return formatter.string(from: NSNumber(value: value)) ?? String(Int(value))
+    }
+
+    private nonisolated static func trimmed(_ value: Double, decimals: Int, locale: Locale) -> String {
+        let formatter = NumberFormatter()
+        formatter.locale = locale
+        formatter.numberStyle = .decimal
+        formatter.usesGroupingSeparator = false
+        formatter.minimumFractionDigits = 0
+        formatter.maximumFractionDigits = decimals
+        formatter.roundingMode = .halfEven
+        return formatter.string(from: NSNumber(value: value)) ?? String(format: "%.\(decimals)f", value)
     }
 }
 
@@ -132,7 +192,11 @@ nonisolated enum RoomMenuBarPresentation {
             title: title, icon: icon,
             symbolName: i.value == .disk ? "internaldrive" : "memorychip",
             pocketFill: fill, tint: tint,
-            accessibilityValue: spoken, toolTip: "Room · \(spoken)", announcementKey: key)
+            accessibilityValue: spoken, toolTip: "Room · \(spoken)", announcementKey: key,
+            stackedLines: i.layout == .stacked && i.value == .both ? [
+                RoomMenuBarStackedLine(symbolName: "memorychip", text: memoryTitle),
+                RoomMenuBarStackedLine(symbolName: "internaldrive", text: diskNumber)
+            ] : nil)
     }
 }
 
@@ -181,7 +245,7 @@ nonisolated enum RoomMenuBarMotion {
 /// Debug-only: forces the menu bar into each state of the spec so the owner can see all of them in a minute.
 /// Wired to a "Debug › Menu bar state" menu in MBF-6. Never ships: the file is excluded from release builds by this guard (gate G10).
 nonisolated enum RoomDebugMenuBarScenario: String, CaseIterable, Sendable {
-    case live, normal, elevated, critical, diskBelowGoal, bothElevatedBelowGoal, iconOnlyElevated
+    case live, normal, elevated, critical, diskBelowGoal, bothElevatedBelowGoal, bothStacked, iconOnlyElevated
 
     func apply(to live: RoomMenuBarInput) -> RoomMenuBarInput {
         var i = live
@@ -195,7 +259,12 @@ nonisolated enum RoomDebugMenuBarScenario: String, CaseIterable, Sendable {
         case .elevated: i.value = .memory; memory(24.8, .elevated)
         case .critical: i.value = .memory; memory(30.1, .critical)
         case .diskBelowGoal: i.value = .disk; i.diskFreeBytes = 41 * gb; i.goalBytes = 50 * gb
-        case .bothElevatedBelowGoal: i.value = .both; memory(24.8, .elevated); i.diskFreeBytes = 41 * gb; i.goalBytes = 50 * gb
+        case .bothElevatedBelowGoal, .bothStacked:
+            i.value = .both
+            i.layout = self == .bothStacked ? .stacked : .inline
+            memory(24.8, .elevated)
+            i.diskFreeBytes = 41 * gb
+            i.goalBytes = 50 * gb
         case .iconOnlyElevated: i.value = .none; memory(24.8, .elevated)
         }
         return i
