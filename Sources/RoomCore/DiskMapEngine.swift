@@ -52,6 +52,9 @@ public struct DiskMapReport: Identifiable, Equatable, Sendable {
     public let issues: [ScanIssue]
     public let cancelled: Bool
     public let isPartial: Bool
+    /// Items that could not be read or changed while being read. Skipped symbolic links, special items and
+    /// shared hardlink notes are in `issues` but are not counted here: they are excluded by design.
+    public let unreadableItemCount: Int
     public let categories: [StorageCategorySummary]
     public let hiddenAllocatedBytes: Int64
     public let hiddenLogicalBytes: Int64
@@ -59,11 +62,12 @@ public struct DiskMapReport: Identifiable, Equatable, Sendable {
 
     public init(id: UUID, url: URL, scannedAt: Date, children: [DiskMapItem], largestFiles: [DiskMapItem],
                 allocatedBytes: Int64, logicalBytes: Int64, fileCount: Int, issues: [ScanIssue],
-                cancelled: Bool, isPartial: Bool, categories: [StorageCategorySummary] = [],
+                cancelled: Bool, isPartial: Bool, unreadableItemCount: Int = 0, categories: [StorageCategorySummary] = [],
                 hiddenAllocatedBytes: Int64 = 0, hiddenLogicalBytes: Int64 = 0, hiddenFileCount: Int = 0) {
         self.id = id; self.url = url; self.scannedAt = scannedAt; self.children = children
         self.largestFiles = largestFiles; self.allocatedBytes = allocatedBytes; self.logicalBytes = logicalBytes
         self.fileCount = fileCount; self.issues = issues; self.cancelled = cancelled; self.isPartial = isPartial
+        self.unreadableItemCount = unreadableItemCount
         self.categories = categories; self.hiddenAllocatedBytes = hiddenAllocatedBytes
         self.hiddenLogicalBytes = hiddenLogicalBytes; self.hiddenFileCount = hiddenFileCount
     }
@@ -173,6 +177,7 @@ private struct DiskMapWalker {
             allocatedBytes: measured.allocatedBytes, logicalBytes: measured.logicalBytes,
             fileCount: measured.fileCount, issues: issues, cancelled: cancelled,
             isPartial: cancelled || errorCount > 0 || symbolicLinks > 0 || specialItems > 0 || repeatedDirectories > 0,
+            unreadableItemCount: errorCount,
             categories: StorageCategory.allCases.map { category in
                 let counts = measured.categories[category] ?? DiskCategoryTotals()
                 return StorageCategorySummary(category: category, allocatedBytes: counts.allocatedBytes,

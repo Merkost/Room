@@ -7,8 +7,8 @@ import SwiftUI
 @MainActor
 final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
     private let insights: RoomInsightsModel
-    private let memoryActions: MemoryActionsModel
     private let cacheModel: RoomViewModel
+    private let rooms: RoomRoomsModel
     private var openRoom: () -> Void
     private let popover = NSPopover()
     private var statusItem: NSStatusItem?
@@ -42,21 +42,37 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
         debugMenuBarState.scenario = scenario
         updateButton()
     }
+
+    /// Debug builds only: `ROOM_DEBUG_OPEN=popover` or `settings` opens that surface shortly after launch, so it can be
+    /// looked at (and screenshotted) without clicking the menu bar. Never in a release build.
+    private func applyDebugLaunchRequest() {
+        guard let request = ProcessInfo.processInfo.environment["ROOM_DEBUG_OPEN"] else { return }
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(3))
+            switch request {
+            case "popover": self?.showMonitor()
+            case "settings": self?.insights.requestedSettings = true
+            default: break
+            }
+        }
+    }
 #endif
 
-    init(insights: RoomInsightsModel, memoryActions: MemoryActionsModel,
-         cacheModel: RoomViewModel, openRoom: @escaping () -> Void) {
+    init(insights: RoomInsightsModel, cacheModel: RoomViewModel,
+         rooms: RoomRoomsModel, openRoom: @escaping () -> Void) {
         self.insights = insights
-        self.memoryActions = memoryActions
         self.cacheModel = cacheModel
+        self.rooms = rooms
         self.openRoom = openRoom
         super.init()
         popover.behavior = .transient
         popover.delegate = self
         let hosting = NSHostingController(rootView:
-            RoomMenuBarView(insights: insights, memoryActions: memoryActions, cacheModel: cacheModel) { [weak self] in
+            RoomMenuBarView(insights: insights, cacheModel: cacheModel, rooms: rooms) { [weak self] in
                 self?.openMainWindow()
             }
+            .modifier(RoomMotionRoot())
+            .modifier(RoomAccentRoot())
         )
         hosting.sizingOptions = [.preferredContentSize]
         popover.contentViewController = hosting
@@ -65,6 +81,7 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
     func updateOpenRoom(_ action: @escaping () -> Void) { openRoom = action }
 
     func setEnabled(_ enabled: Bool) {
+        if !enabled { rooms.cancelMeasurement() }
         guard isEnabled != enabled else { return }
         isEnabled = enabled
         observationGeneration = UUID()
@@ -89,6 +106,9 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
             }
             insights.beginMonitoring()
             observeMemory(generation: observationGeneration)
+            #if DEBUG
+            applyDebugLaunchRequest()
+            #endif
         } else {
             titleTask?.cancel()
             titleTask = nil
@@ -136,6 +156,9 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
         default: popover.appearance = nil
         }
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        insights.scanMemory()
+        insights.refreshDiskCapacity()
+        rooms.measureIfNeeded()
         if let window = popover.contentViewController?.view.window {
             window.title = "Room Monitor"
             window.identifier = NSUserInterfaceItemIdentifier("RoomMemoryMonitorPopover")

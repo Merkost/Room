@@ -5,6 +5,7 @@ struct RoomRootView: View {
     @Bindable var model: RoomViewModel
     @Bindable var insights: RoomInsightsModel
     @Bindable var memoryActions: MemoryActionsModel
+    @Bindable var rooms: RoomRoomsModel
     #if !ROOM_APP_STORE
     @Bindable var agentWork: AgentWorkModel
     #endif
@@ -125,7 +126,7 @@ struct RoomRootView: View {
             switch selected {
             case .review: RoomReviewSheet(model: model)
             case .source(let source): RoomSourceSheet(source: source, model: model)
-            case .settings: RoomSettingsSheet(model: model, insights: insights, showWelcome: { sheet = .welcome })
+            case .settings: RoomSettingsSheet(model: model, insights: insights, rooms: rooms, showWelcome: { sheet = .welcome })
             case .welcome:
                 RoomOnboardingView { onboardingVersion = 1; sheet = nil }
             case .protectedSources: RoomProtectedSheet(model: model)
@@ -151,6 +152,11 @@ struct RoomRootView: View {
             case .disk: destination = .disk
             }
             insights.requestedDestination = nil
+        }
+        .onChange(of: insights.requestedSettings, initial: true) { _, requested in
+            guard requested else { return }
+            sheet = .settings
+            insights.requestedSettings = false
         }
     }
 

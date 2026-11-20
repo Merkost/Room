@@ -230,13 +230,11 @@ struct RoomSourceSheet: View {
 struct RoomSettingsSheet: View {
     @Bindable var model: RoomViewModel
     @Bindable var insights: RoomInsightsModel
+    @Bindable var rooms: RoomRoomsModel
     let showWelcome: () -> Void
     @AppStorage("RoomAppearance") private var appearance = "dark"
     @AppStorage("RoomMotionEnabled") private var motionEnabled = true
     @AppStorage("RoomMenuBarEnabled") private var menuBarEnabled = true
-    @AppStorage("RoomMenuBarMetric") private var monitorMetric = RoomMonitorMetric.memory.rawValue
-    @AppStorage("RoomMonitorShowPressure") private var showPressure = true
-    @AppStorage(RoomMenuBarSettings.showSwapKey) private var showSwap = RoomMenuBarSettings.showSwapDefault
     @Environment(\.dismiss) private var dismiss
     private let about = RoomAboutInformation()
 
@@ -261,19 +259,7 @@ struct RoomSettingsSheet: View {
                             .font(.system(size: 12)).foregroundStyle(.secondary)
                     }
                     settingsSection("Menu bar", symbol: "menubar.rectangle") {
-                        Toggle("Show monitor", isOn: $menuBarEnabled).font(.system(size: 13)).toggleStyle(.switch)
-                        HStack {
-                            Text("Menu bar value").font(.system(size: 13))
-                            Spacer()
-                            Picker("Menu bar value", selection: $monitorMetric) {
-                                ForEach(RoomMonitorMetric.allCases) { Text($0.title).tag($0.rawValue) }
-                            }.pickerStyle(.segmented).labelsHidden().frame(width: 200)
-                                .accessibilityIdentifier("RoomSettingsMonitorMetric")
-                        }.disabled(!menuBarEnabled)
-                        Toggle("Memory pressure colors", isOn: $showPressure).font(.system(size: 13)).toggleStyle(.switch)
-                            .disabled(!menuBarEnabled)
-                        Toggle("Swap details", isOn: $showSwap).font(.system(size: 13)).toggleStyle(.switch)
-                            .disabled(!menuBarEnabled)
+                        RoomMenuBarSettingsControls(insights: insights, rooms: rooms, enabled: $menuBarEnabled)
                     }
                     RoomFolderAccessSection(insights: insights)
                     settingsSection("About", symbol: "info.circle") {

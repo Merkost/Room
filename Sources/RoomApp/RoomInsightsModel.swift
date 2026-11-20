@@ -7,6 +7,7 @@ import RoomCore
 @MainActor
 final class RoomInsightsModel {
     private(set) var memoryReport: MemoryReport?
+    private(set) var memorySamples = RoomMemorySampleRing()
     private(set) var isScanningMemory = false
     private(set) var diskReport: DiskMapReport?
     private(set) var isScanningDisk = false
@@ -21,6 +22,7 @@ final class RoomInsightsModel {
     private(set) var diskAvailableBytes: Int64 = 0
     private(set) var diskCapacityBytes: Int64 = 0
     var requestedDestination: RoomInsightDestination?
+    var requestedSettings = false
 
     @ObservationIgnored private let memoryEngine = MemoryEngine()
     @ObservationIgnored private let diskEngine = DiskMapEngine()
@@ -71,6 +73,10 @@ final class RoomInsightsModel {
             let result = await memoryEngine.scan()
             guard let self else { return }
             self.memoryReport = result
+            if !Task.isCancelled, result.totalBytes > 0,
+               result.usedBytes > 0 || result.availableBytes > 0 {
+                self.memorySamples.append(result.usedBytes)
+            }
             self.isScanningMemory = false
             self.memoryTask = nil
         }

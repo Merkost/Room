@@ -1,7 +1,7 @@
 import Foundation
 import RoomCore
 
-/// Reads the menu bar preferences without migrating or writing stored values.
+/// Reads legacy preferences until a control writes its replacement key.
 nonisolated enum RoomMenuBarSettings {
     static let valueKey = "RoomMenuBarValue"
     static let legacyMetricKey = "RoomMenuBarMetric"
@@ -14,10 +14,47 @@ nonisolated enum RoomMenuBarSettings {
     static let defaultGoalBytes: Int64 = 50_000_000_000
     static let minimumGoalBytes: Int64 = 20_000_000_000
     static let maximumGoalBytes: Int64 = 200_000_000_000
+    static let goalStepBytes: Int64 = 10_000_000_000
+
+    static func clampGoalBytes(_ bytes: Int64) -> Int64 {
+        min(maximumGoalBytes, max(minimumGoalBytes, bytes))
+    }
 
     static func goalBytes(in defaults: UserDefaults) -> Int64 {
         let stored = (defaults.object(forKey: goalBytesKey) as? NSNumber)?.int64Value ?? defaultGoalBytes
-        return min(maximumGoalBytes, max(minimumGoalBytes, stored))
+        return clampGoalBytes(stored)
+    }
+
+    static func steppedGoalBytes(from bytes: Int64, by steps: Int) -> Int64 {
+        // More than the entire range of steps always reaches an endpoint.
+        // Bound before multiplication so even Int.min/max cannot overflow.
+        let rangeSteps = Int((maximumGoalBytes - minimumGoalBytes) / goalStepBytes)
+        let boundedSteps = min(rangeSteps, max(-rangeSteps, steps))
+        return clampGoalBytes(clampGoalBytes(bytes) + Int64(boundedSteps) * goalStepBytes)
+    }
+
+    static func setGoalBytes(_ bytes: Int64, in defaults: UserDefaults) {
+        defaults.set(clampGoalBytes(bytes), forKey: goalBytesKey)
+    }
+
+    static func canSelectValue(_ candidate: RoomMenuBarValueMode, icon: RoomMenuBarIconMode) -> Bool {
+        candidate != .none || icon != .none
+    }
+
+    static func canSelectIcon(_ candidate: RoomMenuBarIconMode, value: RoomMenuBarValueMode) -> Bool {
+        candidate != .none || value != .none
+    }
+
+    static func setValue(_ value: RoomMenuBarValueMode, in defaults: UserDefaults) {
+        let current = makeInput(defaults: defaults, memoryReport: nil, diskCapacityBytes: 0, diskAvailableBytes: 0)
+        guard canSelectValue(value, icon: current.icon) else { return }
+        defaults.set(value.rawValue, forKey: valueKey)
+    }
+
+    static func setIcon(_ icon: RoomMenuBarIconMode, in defaults: UserDefaults) {
+        let current = makeInput(defaults: defaults, memoryReport: nil, diskCapacityBytes: 0, diskAvailableBytes: 0)
+        guard canSelectIcon(icon, value: current.value) else { return }
+        defaults.set(icon.rawValue, forKey: iconKey)
     }
 
     static func showSwap(in defaults: UserDefaults) -> Bool {
