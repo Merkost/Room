@@ -60,11 +60,12 @@ struct RoomMapViewport: View {
     let preview: (String) -> Bool
     let reveal: (String) -> Void
     @Environment(\.roomMotion) private var motion
+    @State private var layers = RoomMapViewportLayers()
 
     var body: some View {
         GeometryReader { geometry in
-            let currentLayer = RoomMapLayer.make(level: level, size: geometry.size)
-            let outgoing = step.map { RoomMapLayer.make(level: $0.previous, size: geometry.size) }
+            let currentLayer = layers.layer(for: level, size: geometry.size)
+            let outgoing = step.map { layers.layer(for: $0.previous, size: geometry.size) }
             let transforms = motion.isFull ? outgoing.flatMap { layer in
                 step?.transforms(previousLayer: layer, currentLayer: currentLayer, size: geometry.size)
             } : nil
@@ -79,7 +80,7 @@ struct RoomMapViewport: View {
                     RoomMapCanvas(level: current ? level : step?.previous ?? level,
                                   selection: current ? selection : step?.selection,
                                   hidden: hidden, placedLayer: current ? currentLayer : outgoing,
-                                  interactive: current, suppressLabels: !current && transforms != nil,
+                                  interactive: current, suppressLabels: transforms != nil,
                                   onHoverItem: onHoverItem,
                                   activate: activate, preview: preview, reveal: reveal)
                         .modifier(RoomMapLayerEffect(transform: current ? .identity : transforms?.outgoing ?? .identity))
@@ -92,5 +93,30 @@ struct RoomMapViewport: View {
             }
             .clipped()
         }
+    }
+}
+
+/// Keep the current and neighboring layouts available to hover, drill-in and back.
+/// Each entry retains only a bounded tree and is invalidated by measurement or resize.
+@MainActor
+private final class RoomMapViewportLayers {
+    private struct Entry {
+        let node: RoomTreeNode
+        let size: CGSize
+        let layer: RoomMapLayer
+    }
+
+    private var entries: [Entry] = []
+
+    func layer(for node: RoomTreeNode, size: CGSize) -> RoomMapLayer {
+        if let index = entries.firstIndex(where: { $0.size == size && $0.node == node }) {
+            let entry = entries.remove(at: index)
+            entries.insert(entry, at: 0)
+            return entry.layer
+        }
+        let layer = RoomMapLayer.make(level: node, size: size)
+        entries.insert(Entry(node: node, size: size, layer: layer), at: 0)
+        if entries.count > 3 { entries.removeLast() }
+        return layer
     }
 }

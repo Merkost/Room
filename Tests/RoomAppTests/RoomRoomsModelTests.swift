@@ -265,8 +265,14 @@ struct RoomRoomsModelTests {
                 #expect(prompt == "Pin" && initial != nil)
                 return nil
             })
+        let preferences = RoomOverviewPreferences()
+        #expect(model.canChooseFolder)
         model.chooseFolder()
-        await roomsWaitUntil { calls == 1 }
+        #expect(!model.canChooseFolder)
+        #expect(preferences.showsRoomsChapter(roomCount: model.visibleRooms.count, allowsEmptyChapter: true))
+        await roomsWaitUntil { calls == 1 && model.canChooseFolder }
+        #expect(model.canChooseFolder)
+        #expect(preferences.showsRoomsChapter(roomCount: model.visibleRooms.count, allowsEmptyChapter: true))
         #expect(model.state == .empty && fixture.access.folders.isEmpty)
         #expect(await gate.count == 0)
     }

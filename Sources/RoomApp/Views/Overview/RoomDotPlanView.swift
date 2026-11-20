@@ -75,7 +75,8 @@ struct RoomDotPlanView: View {
     var showsUnmappedFigure = true
     var usesExternalLegend = false
     var legendHighlight: RoomPlanRoom?
-    var onHighlightChange: (RoomPlanRoom?) -> Void = { _ in }
+    @Binding var selection: RoomPlanRoom?
+    var onHoverChange: (RoomPlanRoom?) -> Void = { _ in }
     let openDiskMap: () -> Void
 
     @Environment(\.roomAccent) private var accent
@@ -83,7 +84,6 @@ struct RoomDotPlanView: View {
     @Environment(\.roomMotion) private var motion
     @FocusState private var focused: Bool
     @State private var drawing: RoomOverviewPlanGeometry?
-    @State private var selection: RoomPlanRoom?
     @State private var hover: RoomPlanRoom?
     @State private var pointer: CGPoint?
     @State private var field = RoomWakeField(dotCount: 0, enabled: false)
@@ -92,7 +92,7 @@ struct RoomDotPlanView: View {
 
     private typealias Tokens = RoomTokens.OverviewPlan
     private var usesSolidKinds: Bool { solidKinds && !plan.kindValues.isEmpty }
-    private var highlightedRoom: RoomPlanRoom? { hover ?? selection ?? legendHighlight }
+    private var highlightedRoom: RoomPlanRoom? { hover ?? legendHighlight ?? selection }
 
     private struct Inputs: Equatable {
         let plan: RoomOverviewPlanInput
@@ -127,10 +127,11 @@ struct RoomDotPlanView: View {
                     }
                 }
                 .contentShape(Rectangle())
-                .onTapGesture {
-                    guard usesExternalLegend, !staticPreview, let hover else { return }
+                .onTapGesture(coordinateSpace: .local) { point in
+                    guard usesExternalLegend, !staticPreview,
+                          let room = presentation.rows.first(where: { drawing?.frame(for: $0.id)?.contains(point) == true }) else { return }
                     focused = true
-                    selection = hover
+                    selection = selection == room.id ? nil : room.id
                 }
                 .simultaneousGesture(DragGesture(minimumDistance: 0)
                     .onChanged { value in
@@ -140,19 +141,7 @@ struct RoomDotPlanView: View {
                         field.press(at: value.startLocation)
                     }
                     .onEnded { _ in didPress = false })
-                HStack {
-                    Text(presentation.caption)
-                        .lineLimit(1)
-                        .layoutPriority(1)
-                    Spacer(minLength: RoomTokens.Space.row)
-                    if !usesExternalLegend, let readout = presentation.rows.first(where: { $0.id == highlightedRoom }) {
-                        Text(readout.readout).lineLimit(1)
-                    }
-                }
-                .font(RoomTokens.Typography.caption)
-                .foregroundStyle(RoomTokens.Ink.secondary)
-                .frame(height: Tokens.captionHeight)
-                .padding(.horizontal, Tokens.pad)
+                caption(presentation)
             }
             .onChange(of: inputs, initial: true) { _, inputs in
                 drawing = RoomOverviewPlanGeometry.make(plan: inputs.plan, size: inputs.size,
@@ -166,10 +155,7 @@ struct RoomDotPlanView: View {
         .focusable(!staticPreview)
         .focused($focused)
         .focusEffectDisabled()
-        .onChange(of: hover ?? selection) { _, room in onHighlightChange(room) }
-        .onChange(of: focused) { _, focused in
-            if !focused { selection = nil }
-        }
+        .onChange(of: hover) { _, room in onHoverChange(room) }
         .onKeyPress(.leftArrow) {
             selection = presentation.nextFocus(from: selection, step: -1)
             return .handled
@@ -202,6 +188,36 @@ struct RoomDotPlanView: View {
             }
         }
         .accessibilityIdentifier("RoomOverviewStoragePlan")
+    }
+
+    private func caption(_ presentation: RoomOverviewPlanPresentation) -> some View {
+        let row = presentation.rows.first(where: { $0.id == highlightedRoom })
+        return HStack(spacing: RoomTokens.Space.row) {
+            if let row, usesExternalLegend {
+                Image(systemName: row.id == selection ? "checkmark.circle.fill" : "scope")
+                    .foregroundStyle(accent.text)
+                    .accessibilityHidden(true)
+                Text(row.name)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(RoomTokens.Ink.graphite)
+                    .lineLimit(1)
+                    .layoutPriority(1)
+                Spacer(minLength: 0)
+                Text(verbatim: row.visualSize).monospacedDigit().fixedSize()
+                if !row.dots.isEmpty {
+                    Text(row.dots).lineLimit(1)
+                }
+            } else {
+                Text(presentation.caption).lineLimit(1)
+                Spacer(minLength: 0)
+            }
+        }
+        .font(RoomTokens.Typography.caption)
+        .foregroundStyle(RoomTokens.Ink.secondary)
+        .roomPanelChange(usesExternalLegend ? row?.id : nil)
+        .frame(height: Tokens.captionHeight)
+        .padding(.horizontal, Tokens.pad)
+        .allowsHitTesting(false)
     }
 
     private func paint(_ presentation: RoomOverviewPlanPresentation) -> RoomCanvasFrame {

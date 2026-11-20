@@ -26,8 +26,12 @@ extension View {
             .animation(animation, value: visible)
     }
 
-    func roomPanelArrival(enabled: Bool = true) -> some View {
-        modifier(RoomPanelArrival(enabled: enabled))
+    func roomPanelArrival(enabled: Bool = true, from offset: CGFloat = 0) -> some View {
+        modifier(RoomPanelArrival(enabled: enabled, offset: offset))
+    }
+
+    func roomPanelChange(_ identity: some Hashable) -> some View {
+        modifier(RoomPanelChange(identity: identity))
     }
 
     func roomNumericTransition<Value: Equatable>(_ value: Value, enabled: Bool = true) -> some View {
@@ -38,14 +42,31 @@ extension View {
 /// Only the incoming panel fades. Its layout and the controls around it update immediately.
 private struct RoomPanelArrival: ViewModifier {
     let enabled: Bool
+    let offset: CGFloat
     @Environment(\.roomMotion) private var motion
     @State private var arrived = false
 
     func body(content: Content) -> some View {
         let animates = enabled && motion.isFull
         content
-            .roomReveal(!animates || arrived, animation: animates ? RoomTokens.Motion.quick : nil)
+            .roomReveal(!animates || arrived, from: offset, animation: animates ? RoomTokens.Motion.standard : nil)
             .task { arrived = true }
+    }
+}
+
+/// Swap the content while leaving the surrounding controls and layout in place.
+private struct RoomPanelChange<Identity: Hashable>: ViewModifier {
+    let identity: Identity
+    @Environment(\.roomMotion) private var motion
+
+    func body(content: Content) -> some View {
+        ZStack(alignment: .topLeading) {
+            content.id(identity)
+                .transition(motion.isFull
+                    ? .asymmetric(insertion: .opacity.combined(with: .offset(y: RoomTokens.Space.tight)), removal: .identity)
+                    : .identity)
+        }
+        .animation(motion.animation(RoomTokens.Motion.standard, fallback: nil), value: identity)
     }
 }
 

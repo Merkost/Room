@@ -85,11 +85,14 @@ struct RoomOverviewView: View {
             }
             if let plan = map {
                 RoomOverviewStorageMap(plan: plan, belowGoal: snapshot.state == .belowGoal,
-                    hidden: hidden, density: density, solidKinds: style == .rooms, openDiskMap: openDiskMap)
+                    hidden: hidden, density: density, solidKinds: style == .rooms, openDiskMap: openDiskMap,
+                    isMapping: insights.isScanningDisk, isChoosingFolder: insights.isChoosingDiskFolder,
+                    mapHome: insights.scanHome, mapAnotherFolder: insights.chooseDiskFolderAndOpenMap)
                     .modifier(arrivalGroup(2))
                     .roomPanelArrival(enabled: !animatesArrival || arrived)
             }
-            if showRooms && (!rooms.visibleRooms.isEmpty || (snapshot.state != .firstRun && rooms.canChooseFolder)) {
+            if RoomOverviewPreferences(roomsChapterShown: showRooms)
+                .showsRoomsChapter(roomCount: rooms.visibleRooms.count, allowsEmptyChapter: snapshot.state != .firstRun) {
                 RoomChapterRooms(rooms: rooms, calendar: .current, editing: editingRoom, openRoom: openPinned,
                                  showAll: showAllRooms)
                     .modifier(arrivalGroup(3))
@@ -284,12 +287,16 @@ struct RoomOverviewView: View {
     }
 
     private func cacheButton(_ snapshot: RoomOverviewSnapshot) -> some View {
-        Button(action: openCaches) {
+        Button {
+            if snapshot.action == .checkCaches { openCaches() }
+            else { navigate(.clean) }
+        } label: {
             Text(snapshot.actionTitle)
                 .font(RoomTokens.Typography.section)
         }
         .roomScreenPrimary(accent)
         .accessibilityLabel(snapshot.accessibilityAction)
+        .accessibilityIdentifier("RoomOverviewCachesAction")
     }
 
     private var usingSpaceLink: some View {
@@ -311,7 +318,10 @@ struct RoomOverviewView: View {
         }
     }
 
-    func openCaches() { navigate(.clean) }
+    func openCaches() {
+        navigate(.clean)
+        cacheModel?.scan()
+    }
 
     func openDiskMap() { navigate(.disk) }
 

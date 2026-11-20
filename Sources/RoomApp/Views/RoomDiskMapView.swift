@@ -33,7 +33,8 @@ struct RoomDiskMapView: View {
             VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
                 controls(isWide: isWide)
                 if let blueprint = model.blueprint,
-                   insights.isScanningDisk || (blueprint.phase == .stopped && layout == .map && model.levelPath.isEmpty) {
+                   insights.isScanningDisk || (blueprint.phase == .stopped && insights.diskReport?.cancelled == true &&
+                       layout == .map && model.levelPath.isEmpty) {
                     blueprintDetail(blueprint, isWide: isWide)
                 } else if let level = model.level {
                     if model.hasLostAccess { accessNotice }
@@ -148,7 +149,10 @@ struct RoomDiskMapView: View {
                     .lineLimit(2)
             }
             Spacer(minLength: 0)
-            Button("Choose it again…", action: insights.chooseDiskFolder).roomSecondary().fixedSize()
+            Button("Choose Folder Again…", action: insights.chooseDiskFolder)
+                .roomSecondary()
+                .fixedSize()
+                .disabled(!insights.canChooseDiskLocation)
         }
         .padding(RoomTokens.Space.inner)
         .background(RoomTokens.Surface.group, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.row))
@@ -173,7 +177,7 @@ struct RoomDiskMapView: View {
                     .buttonStyle(.borderless)
                     .accessibilityLabel(inspectorVisible ? "Hide inspector" : "Show inspector")
                     .help(inspectorVisible ? "Hide inspector" : "Show inspector")
-                Button("Rescan", action: insights.rescanDisk)
+                Button(rescanTitle, action: insights.rescanDisk)
                     .buttonStyle(.borderless)
                     .disabled(!insights.canRescanDisk)
                     .accessibilityIdentifier("RoomDiskScanButton")
@@ -190,18 +194,39 @@ struct RoomDiskMapView: View {
         else { showsInspector.toggle() }
     }
 
+    private var rescanTitle: String { model.current?.cancelled == true ? "Map Again" : "Rescan" }
+
     private var folders: some View {
         Menu("Folders") {
-            ForEach(insights.accessFolders) { folder in
-                Button(hidden ? "Folder" : folder.name) { insights.openDiskMap(rootURL: folder.url) }
+            Button("Choose Folder to Map…", action: insights.chooseDiskFolder)
+                .disabled(!insights.canChooseDiskLocation)
+            if model.current != nil {
+                Button(model.current?.cancelled == true ? "Map This Folder Again" : "Rescan This Folder", action: insights.rescanDisk)
+                    .disabled(!insights.canRescanDisk)
             }
-            Button("Add Folder…", action: insights.chooseDiskFolder)
+            if !insights.accessFolders.isEmpty {
+                Divider()
+                Menu("Open Folder") {
+                    ForEach(insights.accessFolders) { folder in
+                        Button(hidden ? "Folder" : folder.name) { insights.openDiskMap(rootURL: folder.url) }
+                    }
+                }
+                .disabled(!insights.canChooseDiskLocation)
+                Menu("Map Approved Folder") {
+                    ForEach(insights.accessFolders) { folder in
+                        Button(hidden ? "Folder" : folder.name) { insights.scanDisk(url: folder.url) }
+                    }
+                }
+                .disabled(!insights.canChooseDiskLocation)
+            }
             #if !ROOM_APP_STORE
-            Button("Home", action: insights.scanHome)
-            Button("Map Applications…", action: insights.mapApplications)
+            Divider()
+            Button("Map Home Folder", action: insights.scanHome).disabled(!insights.canChooseDiskLocation)
+            Button("Map Applications", action: insights.mapApplications).disabled(!insights.canChooseDiskLocation)
             Button("Full Disk Access…", action: insights.openPrivacySettings)
             #endif
-            Button("Manage in Settings…") {
+            Divider()
+            Button("Manage Folder Access…") {
                 insights.requestedSettingsTab = .folders
                 openSettings()
             }
@@ -211,7 +236,8 @@ struct RoomDiskMapView: View {
 
     private var empty: some View {
         VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
-            Text(insights.accessFolders.isEmpty ? "Start with a folder." : "Choose where to map.")
+            Text(model.pendingFolder != nil ? "No saved map for this folder." :
+                 insights.accessFolders.isEmpty ? "Start with a folder." : "Choose where to map.")
                 .font(RoomTokens.Typography.title)
             Text("Map a folder, including its hidden files. Your files stay in place.")
                 .font(RoomTokens.Typography.lead)
@@ -219,12 +245,16 @@ struct RoomDiskMapView: View {
             if let pending = model.pendingFolder {
                 Button(hidden ? "Map folder" : "Map \(pending.lastPathComponent)") { insights.scanDisk(url: pending) }
                     .roomScreenPrimary(accent)
+                    .disabled(!insights.canChooseDiskLocation)
             } else if insights.accessFolders.isEmpty {
-                Button("Choose Folder…", action: insights.chooseDiskFolder).roomScreenPrimary(accent)
+                Button("Choose Folder…", action: insights.chooseDiskFolder)
+                    .roomScreenPrimary(accent)
+                    .disabled(!insights.canChooseDiskLocation)
             } else {
                 ForEach(insights.accessFolders) { folder in
                     Button(hidden ? "Map folder" : "Map \(folder.name)") { insights.scanDisk(url: folder.url) }
                         .roomSecondary()
+                        .disabled(!insights.canChooseDiskLocation)
                 }
             }
         }
@@ -255,6 +285,7 @@ struct RoomDiskMapView: View {
                         readout(level, hint: false)
                     }
                 }
+                .roomPanelChange(layout)
                 if isWide && !hidesWideInspector { wideInspector }
             }
         }
@@ -320,7 +351,8 @@ struct RoomDiskMapView: View {
         let shown = model.selectedPath.flatMap { model.current?.tree.descendant(at: $0) } ?? model.level
         return RoomMapInspector(node: shown, url: shown.flatMap { model.url(for: $0.relativePath) },
             parent: model.level, pin: rooms.map { $0.pin(url:) }, showSizes: !hidden,
-            isScanning: insights.isScanningDisk, analysis: insights.analysisReport, isAnalyzing: insights.isAnalyzingStorage,
+            isScanning: insights.isScanningDisk, analysis: insights.analysisReport, analysisStatus: insights.analysisStatus,
+            isAnalyzing: insights.isAnalyzingStorage, canAnalyze: insights.canAnalyzeStorage,
             stepIn: {
                 if let shown { step(to: shown.relativePath, animated: NSApp.currentEvent?.type == .leftMouseUp) }
             },
@@ -349,10 +381,12 @@ struct RoomDiskMapView: View {
         }
         let previous = filtered(prior)
         let selection = model.selectedPath
-        guard model.go(to: path) else { return false }
-        filter = nil
         let generation = mapGeneration + 1
+        var opened = false
         withAnimation(motion.animation(RoomTokens.Motion.page)) {
+            opened = model.go(to: path)
+            guard opened else { return }
+            filter = nil
             mapGeneration = generation
             mapStep = RoomMapStep(generation: generation, previous: previous, selection: selection,
                                   destination: path, into: prior.relativePath.isEmpty || path.hasPrefix(prior.relativePath + "/"))
@@ -360,7 +394,7 @@ struct RoomDiskMapView: View {
             guard mapStep?.generation == generation else { return }
             roomWithoutMotion { mapStep = nil }
         }
-        return true
+        return opened
     }
 
     private func quickLook(_ path: String) -> Bool {

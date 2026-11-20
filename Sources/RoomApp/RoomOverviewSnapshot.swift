@@ -158,7 +158,7 @@ nonisolated struct RoomOverviewSnapshot: Equatable, Sendable {
             spokenAction = rawTitle
         case .checkCaches:
             rawTitle = String(localized: "overview.action.check", defaultValue: "Check caches")
-            spokenAction = String(localized: "overview.action.check.a11y", defaultValue: "Check caches. Opens Caches.")
+            spokenAction = rawTitle
         case .usingSpaceOnly:
             rawTitle = RoomOverviewCopy.usingSpace
             spokenAction = RoomOverviewCopy.usingSpaceAccessibility

@@ -42,11 +42,14 @@ struct RoomMapInspector: View {
     let showSizes: Bool
     let isScanning: Bool
     let analysis: StorageAnalysisReport?
+    let analysisStatus: String?
     let isAnalyzing: Bool
+    let canAnalyze: Bool
     let stepIn: () -> Void
     let map: () -> Void
     let rescan: () -> Void
     let inspect: () -> Void
+    @State private var showsReview = false
 
     var body: some View {
         ScrollView {
@@ -115,23 +118,13 @@ struct RoomMapInspector: View {
                             }
                         }
                     }
-                    if !showSizes { EmptyView() }
-                    else if let finding = analysis?.findings.first(where: { $0.item.url == url }) {
+                    if showSizes, node.relativePath.isEmpty {
+                        storageReview
+                    } else if showSizes, let finding = analysis?.findings.first(where: { $0.item.url.path == url?.path }) {
                         DisclosureGroup("Smart review") {
                             Text(finding.reason).fixedSize(horizontal: false, vertical: true)
                         }
                         .font(RoomTokens.Typography.caption)
-                    } else if analysis?.findings.isEmpty == false && node.relativePath.isEmpty {
-                        DisclosureGroup("Smart review") {
-                            ForEach(analysis?.findings.prefix(8) ?? []) { finding in
-                                Text(finding.reason)
-                            }
-                        }
-                        .font(RoomTokens.Typography.caption)
-                    }
-                    if node.relativePath.isEmpty {
-                        Button(isAnalyzing ? "Analysing…" : "Analyse storage", action: inspect)
-                            .buttonStyle(.borderless).disabled(isScanning || isAnalyzing)
                     }
                 } else {
                     Text("Nothing selected").font(RoomTokens.Typography.title)
@@ -142,6 +135,39 @@ struct RoomMapInspector: View {
         }
         .background(RoomTokens.Surface.group, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.group))
         .accessibilityIdentifier("RoomDiskMapInspector")
+        .onChange(of: analysisStatus) { _, status in
+            if status != nil { showsReview = true }
+        }
+    }
+
+    private var storageReview: some View {
+        VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
+            action(isAnalyzing ? "Analysing…" : "Analyse storage", symbol: "magnifyingglass", perform: inspect)
+                .disabled(!canAnalyze)
+                .accessibilityIdentifier("RoomAnalyzeStorage")
+            if let analysisStatus {
+                Text(analysisStatus).fixedSize(horizontal: false, vertical: true)
+                    .foregroundStyle(RoomTokens.Ink.secondary)
+                    .accessibilityIdentifier("RoomAnalyzeStorageStatus")
+            }
+            if let analysis, !analysis.findings.isEmpty {
+                DisclosureGroup(isExpanded: $showsReview) {
+                    VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
+                        Text(analysis.summary).foregroundStyle(RoomTokens.Ink.secondary)
+                        ForEach(analysis.findings.prefix(8)) { finding in
+                            VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
+                                Text(finding.item.name).fontWeight(.semibold)
+                                Text(finding.reason).foregroundStyle(RoomTokens.Ink.secondary)
+                            }
+                        }
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                } label: {
+                    Text("Smart review")
+                }
+            }
+        }
+        .font(RoomTokens.Typography.caption)
     }
 
     private func fact(_ label: String, _ value: String) -> some View {

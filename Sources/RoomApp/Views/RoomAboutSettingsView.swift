@@ -40,25 +40,29 @@ struct RoomAboutSettingsView: View {
                         }
                         Text("Room to breathe. Storage, clearly.")
                             .font(RoomTokens.Typography.aboutTagline)
-                        VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
-                            Text("Made by Konstantin Merenkov, Android & KMP developer.")
-                                .fixedSize(horizontal: false, vertical: true)
-                            HStack(spacing: RoomTokens.Space.tight) {
-                                Link("merkost.com", destination: links.developer)
-                                if let support = links.support {
-                                    Text("·").foregroundStyle(.secondary)
-                                    Link("Support", destination: support)
-                                        .accessibilityIdentifier("RoomSupportLink")
-                                }
-                                if let privacy = links.privacy {
-                                    Text("·").foregroundStyle(.secondary)
-                                    Link("Privacy", destination: privacy)
-                                        .accessibilityIdentifier("RoomPrivacyLink")
-                                }
+                        Link(destination: links.website) {
+                            HStack(spacing: RoomTokens.Space.row) {
+                                Text("Merkost").font(RoomTokens.Typography.bodyStrong)
+                                Text("room.merkost.dev").foregroundStyle(RoomTokens.Ink.secondary)
+                                Image(systemName: "arrow.up.right")
+                                    .font(RoomTokens.Typography.caption)
+                                    .accessibilityHidden(true)
                             }
-                            .fixedSize(horizontal: true, vertical: false)
                         }
-                        .font(RoomTokens.Typography.body)
+                        .accessibilityIdentifier("RoomAboutWebsite")
+                        HStack(spacing: RoomTokens.Space.inner) {
+                            Link("GitHub", destination: links.sourceCode)
+                                .accessibilityIdentifier("RoomAboutGitHub")
+                            if let support = links.support {
+                                Link("Support", destination: support)
+                                    .accessibilityIdentifier("RoomSupportLink")
+                            }
+                            if let privacy = links.privacy {
+                                Link("Privacy", destination: privacy)
+                                    .accessibilityIdentifier("RoomPrivacyLink")
+                            }
+                        }
+                        .font(RoomTokens.Typography.caption)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -81,7 +85,7 @@ struct RoomAboutSettingsView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("RoomReplayOnboarding")
-                    Text("Reviewed cache moves stay recoverable in Trash until you empty it.")
+                    Text("History shows what moved to Trash and which items Room can restore.")
                         .font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     Button("Open Trash") { model.openTrash() }.buttonStyle(.glass)

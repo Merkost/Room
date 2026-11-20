@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct RoomOnboardingView: View {
@@ -9,164 +10,240 @@ struct RoomOnboardingView: View {
     @Environment(\.roomMotion) private var motion
     @Environment(\.roomAccent) private var accent
     @Environment(\.roomHide) private var hide
-    @State private var page = 1
-    @State private var entered = false
+    @State private var page = Page.welcome
     @State private var goesForward = true
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: RoomTokens.Space.breath1) {
-            Group {
-                if page == 1 { introduction.transition(pageTransition) }
-                else { routes.transition(pageTransition) }
+    private enum Page: Int, CaseIterable {
+        case welcome, choices
+
+        var step: LocalizedStringKey {
+            switch self {
+            case .welcome: "onboarding.p1.step"
+            case .choices: "onboarding.p2.step"
             }
-            .frame(maxHeight: .infinity, alignment: .center)
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: RoomTokens.Space.group) {
+            ScrollView {
+                switch page {
+                case .welcome:
+                    introduction.transition(pageTransition)
+                case .choices:
+                    routes.transition(pageTransition)
+                }
+            }
+            .scrollBounceBehavior(.basedOnSize)
             footer
         }
         .padding(RoomTokens.Space.breath1)
         .frame(width: RoomTokens.Onboarding.width, height: RoomTokens.Onboarding.height)
         .background(RoomTokens.Surface.group)
         .foregroundStyle(RoomTokens.Ink.graphite)
-        .onAppear { withAnimation(motion.animation(RoomTokens.Motion.settle)) { entered = true } }
     }
 
     private var introduction: some View {
+        VStack(alignment: .leading, spacing: RoomTokens.Space.breath1) {
+            heading("onboarding.p1.title", subtitle: "onboarding.p1.body")
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: RoomTokens.Space.group) {
+                    storagePreview
+                    safeguards
+                        .frame(width: RoomTokens.Onboarding.supportingWidth, alignment: .leading)
+                }
+                VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
+                    storagePreview
+                    safeguards
+                }
+            }
+            .roomPanelArrival(from: RoomTokens.Space.row)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var storagePreview: some View {
         let plan = RoomOnboardingFlow.plan(capacityBytes: capacity?.capacityBytes, freeBytes: capacity?.freeBytes)
-        return HStack(alignment: .center, spacing: RoomTokens.Space.breath1) {
+        return Group {
             if let plan {
                 RoomDotPlanView(plan: plan, belowGoal: false, hidden: hide.masksNow,
-                                displayHeight: RoomTokens.Onboarding.planHeight, staticPreview: true, openDiskMap: {})
-                    .frame(width: RoomTokens.Onboarding.planWidth)
+                    displayHeight: RoomTokens.Onboarding.planHeight, staticPreview: true, selection: .constant(nil), openDiskMap: {})
                     .allowsHitTesting(false)
                     .accessibilityRepresentation {
                         Text(RoomOnboardingFlow.planAccessibility(capacityBytes: plan.capacityBytes, freeBytes: plan.freeBytes,
                             hidden: hide.masksNow, format: RoomFormat.overviewBytes))
                             .accessibilityAddTraits(.isImage)
                     }
-                    .opacity(entered ? 1 : 0)
+            } else {
+                RoomMark().fill(accent.text, style: FillStyle(eoFill: true))
+                    .frame(width: 104, height: 104)
+                    .frame(maxWidth: .infinity, minHeight: RoomTokens.Onboarding.planHeight)
+                    .accessibilityHidden(true)
             }
-            VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
-                Text("onboarding.p1.title", bundle: RoomCopy.bundle)
-                    .font(RoomTokens.Typography.aboutHeading)
-                    .accessibilityAddTraits(.isHeader)
-                Text("onboarding.p1.body", bundle: RoomCopy.bundle)
-                    .foregroundStyle(RoomTokens.Ink.secondary)
-                safeguard("onboarding.p1.scan", symbol: "map")
-                safeguard("onboarding.p1.trash", symbol: "arrow.uturn.backward")
-                safeguard("onboarding.p1.privacy", symbol: "checkmark")
-            }
-            .font(RoomTokens.Typography.body)
-            .fixedSize(horizontal: false, vertical: true)
-            .opacity(entered ? 1 : 0)
-            .offset(y: entered || !motion.isFull ? 0 : RoomTokens.Space.group)
-            .animation(motion.animation(RoomTokens.Motion.onboardingText), value: entered)
         }
-        .frame(maxWidth: .infinity)
+        .frame(width: RoomTokens.Onboarding.planWidth)
+        .padding(RoomTokens.Space.row)
+        .background(RoomTokens.Surface.canvas, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.group))
+        .overlay {
+            RoundedRectangle(cornerRadius: RoomTokens.Radius.group).strokeBorder(RoomTokens.Surface.line)
+        }
     }
 
-    private func safeguard(_ key: LocalizedStringKey, symbol: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: RoomTokens.Space.tight) {
-            Image(systemName: symbol).foregroundStyle(accent.text).accessibilityHidden(true)
-            Text(key, bundle: RoomCopy.bundle)
+    private var safeguards: some View {
+        VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
+            safeguard("onboarding.p1.scan.title", detail: "onboarding.p1.scan", symbol: "map")
+            safeguard("onboarding.p1.trash.title", detail: "onboarding.p1.trash", symbol: "arrow.uturn.backward")
+            safeguard("onboarding.p1.privacy.title", detail: "onboarding.p1.privacy", symbol: "lock.shield")
         }
+    }
+
+    private func safeguard(_ title: LocalizedStringKey, detail: LocalizedStringKey, symbol: String) -> some View {
+        HStack(alignment: .top, spacing: RoomTokens.Space.row) {
+            glyph(symbol)
+            VStack(alignment: .leading, spacing: RoomTokens.Space.tight / 2) {
+                Text(title, bundle: RoomCopy.bundle).font(RoomTokens.Typography.section)
+                Text(detail, bundle: RoomCopy.bundle)
+                    .font(RoomTokens.Typography.caption)
+                    .foregroundStyle(RoomTokens.Ink.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .accessibilityElement(children: .combine)
     }
 
     private var routes: some View {
-        VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
-            Text("onboarding.p2.title", bundle: RoomCopy.bundle)
-                .font(RoomTokens.Typography.aboutHeading).accessibilityAddTraits(.isHeader)
-            Text("onboarding.p2.lead", bundle: RoomCopy.bundle)
-                .font(RoomTokens.Typography.body).foregroundStyle(RoomTokens.Ink.secondary)
-            VStack(spacing: 0) {
-                choice(.mapFolder, title: "onboarding.p2.map", symbol: "map") {
-                    #if ROOM_APP_STORE
-                    VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
-                        Text("onboarding.p2.map.store", bundle: RoomCopy.bundle)
-                        Text("onboarding.p2.map.store.reads", bundle: RoomCopy.bundle)
-                    }
-                    #else
-                    Text("onboarding.p2.map.direct", bundle: RoomCopy.bundle)
-                    #endif
+        VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
+            heading("onboarding.p2.title", subtitle: "onboarding.p2.lead")
+            routeChoices
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var routeChoices: some View {
+        VStack(spacing: RoomTokens.Space.row) {
+            #if ROOM_APP_STORE
+            choice(.mapFolder, title: "onboarding.p2.map", detail: "onboarding.p2.map.store", symbol: "map")
+            choice(.checkCaches, title: "onboarding.p2.caches", detail: "onboarding.p2.caches.store", symbol: "sparkles")
+            #else
+            choice(.mapFolder, title: "onboarding.p2.map", detail: "onboarding.p2.map.direct", symbol: "map")
+            VStack(alignment: .trailing, spacing: RoomTokens.Space.tight) {
+                choice(.checkCaches, title: "onboarding.p2.caches", detail: "onboarding.p2.caches.direct", symbol: "sparkles")
+                Button(action: openPrivacySettings) {
+                    Text("onboarding.p2.caches.permission", bundle: RoomCopy.bundle)
+                        .font(RoomTokens.Typography.caption)
                 }
-                Divider()
-                choice(.checkCaches, title: "onboarding.p2.caches", symbol: "sparkles") {
-                    #if ROOM_APP_STORE
-                    Text("onboarding.p2.caches.store", bundle: RoomCopy.bundle)
-                    #else
-                    VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
-                        Text("onboarding.p2.caches.direct", bundle: RoomCopy.bundle)
-                        Button(action: openPrivacySettings) {
-                            Text("onboarding.p2.caches.permission", bundle: RoomCopy.bundle)
-                        }
-                        .roomLink(accent)
-                    }
-                    #endif
-                }
-                Divider()
-                choice(.menuBar, title: "onboarding.p2.memory", symbol: "memorychip") { EmptyView() }
+                .roomLink(accent)
             }
+            #endif
+            choice(.menuBar, title: "onboarding.p2.memory", detail: "onboarding.p2.memory.detail", symbol: "memorychip")
         }
     }
 
-    private func choice<Supporting: View>(_ choice: RoomOnboardingChoice, title: LocalizedStringKey,
-                                          symbol: String, @ViewBuilder supporting: () -> Supporting) -> some View {
-        HStack(alignment: .center, spacing: RoomTokens.Space.group) {
-            Group {
-                if RoomOnboardingFlow.isProminent(choice) {
-                    choiceButton(choice, title: title, symbol: symbol).roomPrimary(accent)
-                } else {
-                    choiceButton(choice, title: title, symbol: symbol).roomSecondary()
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            supporting()
-                .font(RoomTokens.Typography.caption)
+    private func heading(_ title: LocalizedStringKey, subtitle: LocalizedStringKey) -> some View {
+        VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
+            Text(title, bundle: RoomCopy.bundle)
+                .font(RoomTokens.Typography.hero)
+                .tracking(RoomTokens.Typography.heroTracking)
+                .accessibilityHeading(.h1)
+            Text(subtitle, bundle: RoomCopy.bundle)
+                .font(RoomTokens.Typography.lead)
                 .foregroundStyle(RoomTokens.Ink.secondary)
-                .padding(RoomTokens.Space.row)
-                .frame(width: RoomTokens.Onboarding.supportingWidth, alignment: .leading)
-                .background(RoomTokens.Surface.canvas, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.row))
         }
-        .padding(.vertical, RoomTokens.Onboarding.choicePadding)
-        .accessibilityElement(children: .contain)
+        .fixedSize(horizontal: false, vertical: true)
     }
 
-    private func choiceButton(_ choice: RoomOnboardingChoice, title: LocalizedStringKey, symbol: String) -> some View {
-        Button {
-            onFinish(choice)
-        } label: {
-            Label {
-                Text(title, bundle: RoomCopy.bundle)
-            } icon: {
-                Image(systemName: symbol)
+    private func choice(_ choice: RoomOnboardingChoice, title: LocalizedStringKey,
+                        detail: LocalizedStringKey, symbol: String) -> some View {
+        let prominent = RoomOnboardingFlow.isProminent(choice)
+        let enabled = RoomOnboardingFlow.choicesEnabled(isWorking: isWorking)
+        let shape = RoundedRectangle(cornerRadius: RoomTokens.Radius.group)
+        return Button { onFinish(choice) } label: {
+            HStack(spacing: RoomTokens.Space.inner) {
+                glyph(symbol)
+                VStack(alignment: .leading, spacing: RoomTokens.Space.tight / 2) {
+                    Text(title, bundle: RoomCopy.bundle).font(RoomTokens.Typography.title)
+                    Text(detail, bundle: RoomCopy.bundle)
+                        .font(RoomTokens.Typography.caption)
+                        .foregroundStyle(RoomTokens.Ink.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: RoomTokens.Space.group)
+                Image(systemName: "arrow.right")
+                    .font(RoomTokens.Typography.section)
+                    .foregroundStyle(prominent ? accent.text : RoomTokens.Ink.secondary)
+                    .accessibilityHidden(true)
             }
+            .padding(.vertical, RoomTokens.Space.inner)
+            .padding(.horizontal, RoomTokens.Onboarding.choicePadding)
+            .contentShape(shape)
         }
-        .disabled(!RoomOnboardingFlow.choicesEnabled(isWorking: isWorking))
+        .buttonStyle(RoomHoverButtonStyle(cornerRadius: RoomTokens.Radius.group))
+        .background(prominent ? accent.wash : RoomTokens.Surface.canvas, in: shape)
+        .overlay {
+            shape.strokeBorder(prominent ? accent.text.opacity(0.25) : RoomTokens.Surface.line)
+                .allowsHitTesting(false)
+        }
+        .opacity(enabled ? 1 : 0.55)
+        .disabled(!enabled)
+        .accessibilityIdentifier(choice.accessibilityIdentifier)
+    }
+
+    private func glyph(_ symbol: String) -> some View {
+        Image(systemName: symbol)
+            .font(RoomTokens.Typography.title)
+            .foregroundStyle(accent.text)
+            .frame(width: 34, height: 34)
+            .background(accent.wash, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.row))
+            .accessibilityHidden(true)
     }
 
     private var footer: some View {
         HStack(spacing: RoomTokens.Space.group) {
-            Button { onFinish(nil) } label: { Text("onboarding.p2.skip", bundle: RoomCopy.bundle) }
+            if page == .choices {
+                Button { move(to: .welcome) } label: {
+                    Label {
+                        Text("onboarding.p2.back", bundle: RoomCopy.bundle)
+                    } icon: {
+                        Image(systemName: "chevron.left")
+                    }
+                    .frame(minHeight: RoomTokens.Sidebar.minimumTarget)
+                }
                 .buttonStyle(.plain)
-                .keyboardShortcut(.cancelAction)
-                .accessibilityIdentifier("RoomOnboardingSkip")
-            if page == 2 {
-                Button { move(to: 1) } label: { Text("onboarding.p2.back", bundle: RoomCopy.bundle) }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("RoomOnboardingBack")
+                .accessibilityIdentifier("RoomOnboardingBack")
             }
-            Spacer()
-            if page == 1 {
-                Text("onboarding.p1.step", bundle: RoomCopy.bundle)
-                    .font(RoomTokens.Typography.caption).foregroundStyle(RoomTokens.Ink.secondary)
-                Button { move(to: 2) } label: { Text("onboarding.p1.continue", bundle: RoomCopy.bundle) }
-                    .roomPrimary(accent)
-                    .keyboardShortcut(.defaultAction)
-                    .accessibilityIdentifier("RoomOnboardingContinue")
-            } else {
-                Text("onboarding.p2.step", bundle: RoomCopy.bundle)
-                    .font(RoomTokens.Typography.caption).foregroundStyle(RoomTokens.Ink.secondary)
+            Spacer(minLength: 0)
+            Button { onFinish(nil) } label: {
+                Text("onboarding.p2.skip", bundle: RoomCopy.bundle)
+                    .frame(minHeight: RoomTokens.Sidebar.minimumTarget)
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut(.cancelAction)
+            .accessibilityIdentifier("RoomOnboardingSkip")
+            if page == .welcome {
+                Button { move(to: .choices) } label: {
+                    Text("onboarding.p1.continue", bundle: RoomCopy.bundle)
+                }
+                .roomScreenPrimary(accent)
+                .keyboardShortcut(.defaultAction)
+                .accessibilityIdentifier("RoomOnboardingContinue")
             }
         }
+        .frame(minHeight: 36)
+        .overlay { progress.allowsHitTesting(false) }
         .font(RoomTokens.Typography.body)
+    }
+
+    private var progress: some View {
+        HStack(spacing: RoomTokens.Space.tight) {
+            ForEach(Page.allCases, id: \.rawValue) { step in
+                Capsule()
+                    .fill(step == page ? accent.fill : RoomTokens.Surface.line2)
+                    .frame(width: step == page ? 18 : 6, height: 6)
+            }
+        }
+        .accessibilityRepresentation {
+            Text(page.step, bundle: RoomCopy.bundle)
+        }
     }
 
     private var pageTransition: AnyTransition {
@@ -176,8 +253,25 @@ struct RoomOnboardingView: View {
                            removal: .offset(x: -offset).combined(with: .opacity))
     }
 
-    private func move(to nextPage: Int) {
-        goesForward = nextPage > page
-        withAnimation(motion.animation(RoomTokens.Motion.page)) { page = nextPage }
+    private func move(to nextPage: Page) {
+        let update = {
+            goesForward = nextPage.rawValue > page.rawValue
+            page = nextPage
+        }
+        if NSApp.currentEvent?.type == .keyDown || NSApp.currentEvent?.type == .keyUp {
+            roomWithoutMotion(update)
+        } else {
+            withAnimation(motion.animation(RoomTokens.Motion.page), update)
+        }
+    }
+}
+
+private extension RoomOnboardingChoice {
+    var accessibilityIdentifier: String {
+        switch self {
+        case .mapFolder: "RoomOnboardingMapFolder"
+        case .checkCaches: "RoomOnboardingCheckCaches"
+        case .menuBar: "RoomOnboardingMenuBar"
+        }
     }
 }

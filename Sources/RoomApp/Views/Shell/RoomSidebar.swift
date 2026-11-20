@@ -7,6 +7,7 @@ struct RoomSidebar: View {
     let mode: RoomSidebarMode
     let showsLabels: Bool
     let foot: RoomSidebarFoot
+    let canOpenRooms: Bool
     let openRoom: (UUID) -> Void
 
     @Environment(\.roomHide) private var hide
@@ -27,8 +28,11 @@ struct RoomSidebar: View {
         VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
             ScrollView {
                 VStack(alignment: .leading, spacing: RoomTokens.Sidebar.pitchGap) {
-                    ForEach(Self.items) { screenRow($0) }
-                    roomsHeading
+                    ForEach(Self.items) { item in
+                        if item.destination == .disk { groupHeading(Text("Tools")) }
+                        screenRow(item)
+                    }
+                    groupHeading(Text("nav.rooms", bundle: RoomCopy.bundle))
                     roomRow
                     RoomInlineUndoRows(prefix: unpinPrefix, hidesPrivateName: true)
                 }
@@ -52,30 +56,33 @@ struct RoomSidebar: View {
         let route = RoomRoute.screen(item.destination)
         let selected = navigation.route == route
         return Button {
-            withAnimation(motion.animation(RoomTokens.Motion.standard, fallback: nil)) {
-                navigation.select(route, origin: .pointer)
+            let origin = RoomSelectionOrigin.controlActivation
+            withAnimation(origin == .pointer ? motion.animation(RoomTokens.Motion.standard, fallback: nil) : nil) {
+                navigation.select(route, origin: origin)
             }
         } label: {
             row(icon: {
-                if item.destination == .overview {
-                    RoomMark().fill(style: FillStyle(eoFill: true)).frame(width: 16, height: 16)
-                } else {
-                    Image(systemName: item.symbol)
+                Group {
+                    if item.destination == .overview {
+                        RoomMark().fill(style: FillStyle(eoFill: true))
+                    } else {
+                        Image(systemName: item.symbol)
+                    }
                 }
+                .scaleEffect(selected ? 1 : RoomTokens.Motion.pressScale)
             }, iconColor: selected ? accent.text : RoomTokens.Ink.secondary) {
-                Text(item.title).font(RoomTokens.Typography.body).lineLimit(1)
+                Text(item.title)
+                    .font(selected || item.destination == .overview ? RoomTokens.Typography.bodyStrong : RoomTokens.Typography.body)
+                    .lineLimit(1)
                 Spacer(minLength: 0)
                 if let shortcut = item.shortcut {
                     Text(verbatim: "⌘\(shortcut)").font(RoomTokens.Typography.micro)
-                        .foregroundStyle(RoomTokens.Ink.secondary)
+                        .monospacedDigit()
+                        .foregroundStyle(selected ? accent.text : RoomTokens.Ink.secondary)
+                        .accessibilityHidden(true)
                 }
             }
-            .background(alignment: .leading) {
-                if selected {
-                    pill.fill(RoomTokens.Surface.line)
-                        .matchedGeometryEffect(id: "sidebar-selection", in: selection)
-                }
-            }
+            .background { if selected { selectionPill } }
             .contentShape(Rectangle())
         }
         .buttonStyle(RoomHoverButtonStyle(showsFeedback: !selected))
@@ -96,7 +103,13 @@ struct RoomSidebar: View {
         .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 
-    private var pill: some Shape { RoundedRectangle(cornerRadius: RoomTokens.Radius.row) }
+    private var pill: RoundedRectangle { RoundedRectangle(cornerRadius: RoomTokens.Radius.row) }
+
+    private var selectionPill: some View {
+        pill.fill(accent.wash)
+            .overlay(pill.strokeBorder(RoomTokens.Surface.line))
+            .matchedGeometryEffect(id: "sidebar-selection", in: selection)
+    }
 
     private func moveFocus(_ direction: MoveCommandDirection) {
         guard let focusedScreen, let current = Self.items.firstIndex(where: { $0.destination == focusedScreen }) else { return }
@@ -109,9 +122,9 @@ struct RoomSidebar: View {
         self.focusedScreen = Self.items[next].destination
     }
 
-    @ViewBuilder private var roomsHeading: some View {
+    @ViewBuilder private func groupHeading(_ label: Text) -> some View {
         if mode == .labelled && showsLabels {
-            Text("nav.rooms", bundle: RoomCopy.bundle)
+            label
                 .font(RoomTokens.Typography.sidebarGroup)
                 .foregroundStyle(RoomTokens.Ink.secondary)
                 .padding(.horizontal, RoomTokens.Space.row)
@@ -142,7 +155,7 @@ struct RoomSidebar: View {
                 Text("nav.rooms.pin", bundle: RoomCopy.bundle).font(RoomTokens.Typography.body).lineLimit(1)
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(RoomHoverButtonStyle())
         .disabled(!rooms.canChooseFolder)
         .accessibilityLabel(Text("nav.rooms.pin", bundle: RoomCopy.bundle))
     }
@@ -155,7 +168,12 @@ struct RoomSidebar: View {
         let confirmTitle = String.localizedStringWithFormat(question, RoomHideMask.display(room.name, kind: .name, hide: hide))
         let doneLine = String.localizedStringWithFormat(done, RoomHideMask.display(room.name, kind: .name, hide: hide))
         let spokenFormat = String(localized: "nav.room.a11y", defaultValue: "%1$@, Room, %2$@", bundle: RoomCopy.bundle)
-        return Button { openRoom(room.id) } label: {
+        return Button {
+            let origin = RoomSelectionOrigin.controlActivation
+            withAnimation(origin == .pointer ? motion.animation(RoomTokens.Motion.standard, fallback: nil) : nil) {
+                openRoom(room.id)
+            }
+        } label: {
             row(icon: {
                 Image(systemName: "folder")
                     .background(RoomTokens.Surface.track, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.tile))
@@ -165,12 +183,11 @@ struct RoomSidebar: View {
                 RoomMaskable(size, spoken: spokenSize ?? size).font(RoomTokens.Typography.micro).monospacedDigit().lineLimit(1)
                     .foregroundStyle(needsAccess ? accent.text : RoomTokens.Ink.secondary)
             }
-            .background {
-                if selected { pill.fill(RoomTokens.Surface.line).matchedGeometryEffect(id: "sidebar-selection", in: selection) }
-            }
+            .background { if selected { selectionPill } }
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(RoomHoverButtonStyle(showsFeedback: !selected))
+        .disabled(!canOpenRooms)
         .help(RoomHideSpeech.labelled(room.name, value: spokenSize ?? size, labelIsName: true, hide: hide))
         .accessibilityLabel(hide.masksNow ? "Room, hidden" : String.localizedStringWithFormat(spokenFormat, room.name, spokenSize ?? size))
         .accessibilityAddTraits(selected ? [.isSelected] : [])
@@ -238,7 +255,8 @@ struct RoomSidebar: View {
             }
             .frame(height: RoomTokens.Sidebar.barHeight)
         }
-        .padding(.horizontal, RoomTokens.Space.row)
+        .padding(RoomTokens.Space.row)
+        .background(RoomTokens.Surface.group, in: pill)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(hide.masksNow ? "Free space hidden" : foot.accessibilityLabel)
     }

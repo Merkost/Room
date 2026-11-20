@@ -19,7 +19,7 @@ struct RoomShellView<Detail: View>: View {
             NavigationSplitView(columnVisibility: .constant(.all)) {
                 RoomSidebar(navigation: navigation, rooms: rooms,
                             mode: sidebarMode, showsLabels: showsSidebarLabels,
-                            foot: foot, openRoom: selectRoom)
+                            foot: foot, canOpenRooms: insights.canChooseDiskLocation, openRoom: selectRoom)
                     .navigationSplitViewColumnWidth(RoomSidebarLayout.width(sidebarMode))
             } detail: {
                 detail()

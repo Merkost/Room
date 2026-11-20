@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Observation
 import SwiftUI
@@ -9,6 +10,15 @@ nonisolated enum RoomOpenOn: String, CaseIterable, Sendable {
         guard preference == Self.last.rawValue,
               let last, let destination = RoomDestination(rawValue: last) else { return .overview }
         return destination
+    }
+}
+
+extension RoomSelectionOrigin {
+    @MainActor static var controlActivation: Self {
+        switch NSApp?.currentEvent?.type {
+        case .keyDown, .keyUp: .keyboard
+        default: .pointer
+        }
     }
 }
 

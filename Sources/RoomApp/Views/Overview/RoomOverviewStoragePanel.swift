@@ -140,13 +140,19 @@ struct RoomOverviewStorageMap: View {
     let density: RoomTokens.Density
     let solidKinds: Bool
     let openDiskMap: () -> Void
+    let isMapping: Bool
+    let isChoosingFolder: Bool
+    let mapHome: () -> Void
+    let mapAnotherFolder: () -> Void
 
     @Environment(\.roomAccent) private var accent
     @Environment(\.roomMotion) private var motion
     @State private var hoveredLegend: RoomPlanRoom?
-    @State private var highlightedMapRoom: RoomPlanRoom?
+    @State private var hoveredMapRoom: RoomPlanRoom?
+    @State private var selection: RoomPlanRoom?
 
     private typealias Tokens = RoomTokens.OverviewPlan
+    private var highlightedRoom: RoomPlanRoom? { hoveredMapRoom ?? hoveredLegend ?? selection }
 
     var body: some View {
         let rows = RoomOverviewPlanPresentation(plan: plan, hidden: hidden,
@@ -156,11 +162,11 @@ struct RoomOverviewStorageMap: View {
                 HStack(spacing: RoomTokens.Space.group) {
                     heading
                     Spacer(minLength: 0)
-                    mapButton.fixedSize()
+                    mapActions.fixedSize()
                 }
                 VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
                     heading
-                    mapButton
+                    mapActions
                 }
             }
             ViewThatFits(in: .horizontal) {
@@ -179,6 +185,9 @@ struct RoomOverviewStorageMap: View {
         .padding(RoomTokens.Space.group)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoomTokens.Surface.group, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.popover))
+        .onChange(of: rows.map(\.id)) { _, valid in
+            if let selection, !valid.contains(selection) { self.selection = nil }
+        }
     }
 
     private var heading: some View {
@@ -189,6 +198,30 @@ struct RoomOverviewStorageMap: View {
                     .foregroundStyle(RoomTokens.Ink.secondary)
             }
         }
+    }
+
+    private var mapActions: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: RoomTokens.Space.row) {
+                mappingMenu
+                mapButton
+            }
+            VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
+                mapButton
+                mappingMenu
+            }
+        }
+    }
+
+    private var mappingMenu: some View {
+        Menu {
+            Button("Map Home Again", systemImage: "arrow.clockwise", action: mapHome)
+            Button("Map Another Folder…", systemImage: "folder.badge.plus", action: mapAnotherFolder)
+        } label: {
+            Label("Map again", systemImage: "arrow.clockwise")
+        }
+        .disabled(isMapping || isChoosingFolder)
+        .accessibilityIdentifier("RoomOverviewMapAgain")
     }
 
     private var mapButton: some View {
@@ -203,8 +236,8 @@ struct RoomOverviewStorageMap: View {
     private func diagram(height: CGFloat) -> some View {
         RoomDotPlanView(plan: plan, belowGoal: belowGoal, hidden: hidden,
                         displayHeight: height, density: density, solidKinds: solidKinds,
-                        usesExternalLegend: true, legendHighlight: hoveredLegend,
-                        onHighlightChange: { highlightedMapRoom = $0 }, openDiskMap: openDiskMap)
+                        usesExternalLegend: true, legendHighlight: hoveredLegend, selection: $selection,
+                        onHoverChange: { hoveredMapRoom = $0 }, openDiskMap: openDiskMap)
     }
 
     private func legend(_ rows: [RoomOverviewPlanPresentation.Row], columns: [GridItem]) -> some View {
@@ -214,31 +247,41 @@ struct RoomOverviewStorageMap: View {
         } + rows.filter { $0.id == .notMapped }
         return LazyVGrid(columns: columns, alignment: .leading, spacing: 0) {
             ForEach(ordered) { row in
-                let highlighted = (highlightedMapRoom ?? hoveredLegend) == row.id
-                HStack(spacing: RoomTokens.Space.row) {
-                    swatch(row.id).frame(width: Tokens.swatchSize, height: Tokens.swatchSize)
-                    Text(row.name).lineLimit(1)
-                    Spacer(minLength: RoomTokens.Space.row)
-                    Text(verbatim: row.visualSize)
-                        .monospacedDigit().foregroundStyle(RoomTokens.Ink.secondary).fixedSize()
-                }
-                .font(RoomTokens.Typography.caption)
-                .padding(.horizontal, RoomTokens.Space.row)
-                .frame(minHeight: Tokens.legendRowHeight)
-                .background {
-                    RoundedRectangle(cornerRadius: RoomTokens.Radius.field)
-                        .fill(RoomTokens.Surface.hover)
-                        .opacity(highlighted ? 1 : 0)
-                        .animation(motion.animation(RoomTokens.Motion.quick, fallback: nil), value: highlighted)
-                }
-                .contentShape(Rectangle())
-                .onHover { inside in
-                    if inside { hoveredLegend = row.id }
-                    else if hoveredLegend == row.id { hoveredLegend = nil }
-                }
+                legendRow(row)
             }
         }
-        .accessibilityHidden(true)
+    }
+
+    private func legendRow(_ row: RoomOverviewPlanPresentation.Row) -> some View {
+        let highlighted = highlightedRoom == row.id
+        let selected = selection == row.id
+        let shape = RoundedRectangle(cornerRadius: RoomTokens.Radius.field)
+        return Button {
+            selection = selected ? nil : row.id
+        } label: {
+            HStack(spacing: RoomTokens.Space.row) {
+                swatch(row.id).frame(width: Tokens.swatchSize, height: Tokens.swatchSize)
+                Text(row.name).lineLimit(1)
+                Spacer(minLength: RoomTokens.Space.tight)
+                Text(verbatim: row.visualSize)
+                    .monospacedDigit().foregroundStyle(RoomTokens.Ink.secondary).fixedSize()
+            }
+            .font(RoomTokens.Typography.caption)
+            .padding(.horizontal, RoomTokens.Space.row)
+            .frame(minHeight: Tokens.legendRowHeight)
+            .background { shape.fill(RoomTokens.Surface.hover).opacity(highlighted ? 1 : 0) }
+            .overlay { shape.strokeBorder(accent.text.opacity(selected ? 0.65 : 0)) }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .animation(motion.animation(RoomTokens.Motion.quick, fallback: nil), value: highlighted)
+        .animation(motion.animation(RoomTokens.Motion.quick, fallback: nil), value: selected)
+        .onHover { inside in
+            if inside { hoveredLegend = row.id }
+            else if hoveredLegend == row.id { hoveredLegend = nil }
+        }
+        .accessibilityLabel(row.spoken)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     @ViewBuilder private func swatch(_ id: RoomPlanRoom) -> some View {

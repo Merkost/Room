@@ -734,7 +734,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Your disk is a house. Room draws its plan, shows which rooms are full, and how much room is free."
+            "value": "See what’s taking up space, check caches and keep a little room free."
           }
         }
       }
@@ -761,13 +761,35 @@
         }
       }
     },
+    "onboarding.p1.privacy.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "On this Mac"
+          }
+        }
+      }
+    },
     "onboarding.p1.scan": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Scanning only looks. Nothing moves until you say so."
+            "value": "Room asks for your review before moving any files."
+          }
+        }
+      }
+    },
+    "onboarding.p1.scan.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Look first"
           }
         }
       }
@@ -800,7 +822,18 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Whatever you move goes to Trash, with a receipt and Restore."
+            "value": "Every move to Trash gets a receipt, so you can see what moved and restore items."
+          }
+        }
+      }
+    },
+    "onboarding.p1.trash.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A way back"
           }
         }
       }
@@ -833,7 +866,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Full Disk Access is optional."
+            "value": "See which caches could move to Trash. Full Disk Access is optional."
           }
         }
       }
@@ -866,7 +899,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Pick one now. The others are on Overview whenever you want them."
+            "value": "Pick one to try. You can come back to the others anytime."
           }
         }
       }
@@ -888,7 +921,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Choose the folder you want to map. Room reads sizes, skips protected folders it cannot read, and shows the limits of the scan."
+            "value": "Pick a folder to see where its space goes. macOS may protect some locations."
           }
         }
       }
@@ -899,18 +932,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Next: the macOS folder picker, opened at your home folder."
-          }
-        }
-      }
-    },
-    "onboarding.p2.map.store.reads": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Room reads sizes only, never contents."
+            "value": "The folder picker opens at Home. Room reads file sizes only."
           }
         }
       }
@@ -922,6 +944,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Watch memory in the menu bar"
+          }
+        }
+      }
+    },
+    "onboarding.p2.memory.detail": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep an eye on memory pressure without opening a window."
           }
         }
       }
@@ -954,7 +987,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Where do you want to start?"
+            "value": "What should Room do first?"
           }
         }
       }

@@ -64,7 +64,7 @@ private struct RoomMapCanvasSurface: View {
     private var artwork: some View {
         var frame = RoomCanvasFrame()
         for tile in layer.items { draw(tile, in: &frame) }
-        return Canvas(renderer: frame.renderer)
+        return Canvas(rendersAsynchronously: true, renderer: frame.renderer)
     }
 
     private func blueprintArtwork(_ scan: RoomBlueprintMotion) -> some View {

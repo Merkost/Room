@@ -135,7 +135,6 @@ struct RoomMapKindControl: View {
     let node: RoomTreeNode
     let hidden: Bool
     @Binding var filter: String?
-    @AppStorage("RoomDiskKindStyle") private var style = "bar"
     @Environment(\.roomMotion) private var motion
     @State private var hoveredKind: String?
 
@@ -143,30 +142,11 @@ struct RoomMapKindControl: View {
         let totals = RoomKindStrip.totals(node)
         if !totals.isEmpty {
             VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
-                HStack(alignment: .center, spacing: RoomTokens.Space.inner) {
-                    if style == "dots" {
-                        dotStrip(totals)
-                    } else {
-                        bar(totals)
-                    }
-                    Picker("Kind strip", selection: $style) {
-                        Text("Bar").tag("bar")
-                        Text("Dots").tag("dots")
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .fixedSize()
-                }
+                bar(totals)
                 ViewThatFits(in: .horizontal) {
                     legend(totals).fixedSize()
                     ScrollView(.horizontal) { legend(totals) }
                         .scrollIndicators(.hidden)
-                }
-                if style == "dots", !hidden {
-                    let field = RoomKindStrip.dots(totals)
-                    Text("1 dot = about \(RoomFormat.bytes(Int64(field.unitGB * 1_000_000_000)))")
-                        .font(RoomTokens.Typography.caption)
-                        .foregroundStyle(RoomTokens.Ink.secondary)
                 }
             }
             .onChange(of: node.relativePath) { _, _ in hoveredKind = nil }
@@ -231,31 +211,6 @@ struct RoomMapKindControl: View {
             }
         }
         .font(RoomTokens.Typography.caption)
-    }
-
-    private func dotStrip(_ parts: [(kind: String, bytes: Int64)]) -> some View {
-        let field = RoomKindStrip.dots(parts)
-        let kinds = parts.flatMap { part in
-            Array(repeating: part.kind, count: min(field.counts[part.kind] ?? 0, RoomTokens.Budget.maxDots))
-        }.prefix(RoomTokens.Budget.maxDots)
-        return GeometryReader { geometry in
-            let step = field.columns > 0 ? min(RoomKindStrip.DotField.pitch, geometry.size.width / CGFloat(field.columns)) : 0
-            let radius = min(RoomKindStrip.DotField.radius, step / 2)
-            ForEach(parts, id: \.kind) { part in
-                Path { path in
-                    for (index, kind) in kinds.enumerated() where kind == part.kind {
-                        let x = CGFloat(index / RoomKindStrip.DotField.rows) * step
-                        let y = CGFloat(index % RoomKindStrip.DotField.rows) * RoomKindStrip.DotField.pitch
-                        path.addEllipse(in: CGRect(x: x, y: y, width: radius * 2, height: radius * 2))
-                    }
-                }
-                .fill(color(part.kind))
-                .opacity(opacity(part.kind))
-                .animation(motion.animation(RoomTokens.Motion.fade, fallback: nil), value: hoveredKind)
-            }
-        }
-        .frame(height: field.size.height)
-        .accessibilityHidden(true)
     }
 
     private func color(_ kind: String) -> Color {

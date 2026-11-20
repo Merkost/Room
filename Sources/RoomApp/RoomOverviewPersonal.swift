@@ -60,9 +60,10 @@ nonisolated struct RoomOverviewPreferences: Equatable, Sendable {
     /// budgets, approvals or history: those are records, not preferences.
     static let resetKeys: [String] = [greetingKey, roomsChapterKey, "RoomAccent"]
 
-    /// The chapter is drawn only with something true to show: at least one Room, or the empty line with Add a Room…
-    /// The receipt line (05 §8) is not part of this chapter until the Job C ledger exists.
-    func showsRoomsChapter(roomCount: Int, canPin: Bool) -> Bool { roomsChapterShown && (roomCount > 0 || canPin) }
+    /// An established Overview keeps its empty chapter visible while the Add action is busy.
+    func showsRoomsChapter(roomCount: Int, allowsEmptyChapter: Bool) -> Bool {
+        roomsChapterShown && (roomCount > 0 || allowsEmptyChapter)
+    }
 }
 
 nonisolated enum RoomOverviewStyle: String, CaseIterable, Sendable {

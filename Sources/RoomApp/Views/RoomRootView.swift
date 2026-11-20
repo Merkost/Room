@@ -86,7 +86,6 @@ struct RoomRootView: View {
             }
             .sharedBackgroundVisibility(.hidden)
             ToolbarItemGroup(placement: .primaryAction) {
-                RoomGlobalHideButton(control: .shared, globalCoverage: true)
                 RoomHistoryButton(model: model, show: { sheet = .history }, restore: restoreFromCaches)
                 if destination == .overview {
                     Button { showingCustomise.toggle() } label: {
@@ -220,17 +219,19 @@ struct RoomRootView: View {
     }
 
     private func openPinnedRoom(_ id: UUID) {
+        guard insights.canChooseDiskLocation else { return }
         guard rooms.url(for: id) != nil else {
             rooms.chooseFolder(replacingApprovalFor: id)
             return
         }
-        navigation.select(.room(id), origin: .pointer)
+        navigation.select(.room(id), origin: .controlActivation)
     }
 
     @ViewBuilder private var screenContent: some View {
         switch destination {
         case .overview:
-            RoomOverviewView(insights: insights, rooms: rooms, navigate: navigation.select, refresh: insights.refreshDiskCapacity,
+            RoomOverviewView(insights: insights, rooms: rooms,
+                             navigate: { navigation.select(.screen($0), origin: .controlActivation) }, refresh: insights.refreshDiskCapacity,
                              cacheModel: model, editingRoom: showingCustomise ? editingRoom : nil,
                              showAllRooms: { showingCustomise = true }, restoreRecent: restoreFromCaches,
                              animatesArrival: overviewArrival)
@@ -239,6 +240,7 @@ struct RoomRootView: View {
             RoomCachesView(model: model, review: { sheet = .review },
                 inspect: { sheet = .source($0) }, showKept: { sheet = .protectedSources },
                 showScanNotes: { sheet = .scanIssues }, restore: restoreFromCaches)
+                .roomPanelArrival(enabled: navigation.selectionOrigin == .pointer, from: RoomTokens.Space.tight)
         case .memory:
             RoomMemoryView(insights: insights, memoryActions: memoryActions)
         case .disk:

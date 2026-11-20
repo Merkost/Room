@@ -26,8 +26,10 @@ struct RoomCustomiseTests {
         let prefs = RoomOverviewPreferences.read(["RoomGreetingEnabled": "yes"])
         check("DMR-C58_BadPreferenceReadsDefault", prefs.greetingEnabled && prefs.roomsChapterShown)
         check("DMR-C59_ResetNeverForgetsRecords", !RoomOverviewPreferences.resetKeys.contains { $0.contains("Room") && $0.contains("Bytes") } && !RoomOverviewPreferences.resetKeys.contains("RoomGoalBytes"))
-        check("DMR-C60_NoRoomsNoPickerNoChapter", !RoomOverviewPreferences().showsRoomsChapter(roomCount: 0, canPin: false)
-              && RoomOverviewPreferences().showsRoomsChapter(roomCount: 0, canPin: true))
+        check("DMR-C60_EmptyChapterUsesOverviewContext", !RoomOverviewPreferences().showsRoomsChapter(roomCount: 0, allowsEmptyChapter: false)
+              && RoomOverviewPreferences().showsRoomsChapter(roomCount: 0, allowsEmptyChapter: true)
+              && RoomOverviewPreferences().showsRoomsChapter(roomCount: 1, allowsEmptyChapter: false)
+              && !RoomOverviewPreferences(roomsChapterShown: false).showsRoomsChapter(roomCount: 1, allowsEmptyChapter: true))
 
     }
 

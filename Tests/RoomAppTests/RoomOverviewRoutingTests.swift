@@ -108,20 +108,34 @@ struct RoomOverviewRoutingTests {
         try await fixture.expectIdle()
     }
 
-    @Test func overviewActionsNavigateWithoutStartingWork() async throws {
+    @Test func overviewDiskLinkNavigatesWithoutStartingWork() async throws {
         let fixture = try RoutingFixture()
         defer { fixture.remove() }
         let view = RoomOverviewView(insights: fixture.insights, rooms: fixture.rooms, navigate: fixture.navigation.select,
                                     refresh: fixture.insights.refreshDiskCapacity)
 
-        view.openCaches()
-        #expect(fixture.navigation.destination == .clean)
-        try await fixture.expectIdle()
-
-        fixture.navigation.select(.overview)
         view.openDiskMap()
         #expect(fixture.navigation.destination == .disk)
         try await fixture.expectIdle()
+    }
+
+    @Test func overviewCheckCachesNavigatesAndStartsOneReadOnlyCheck() async throws {
+        let fixture = try RoutingFixture()
+        defer { fixture.remove() }
+        let view = RoomOverviewView(insights: fixture.insights, rooms: fixture.rooms, navigate: fixture.navigation.select,
+                                    refresh: fixture.insights.refreshDiskCapacity, cacheModel: fixture.cache)
+
+        view.openCaches()
+        view.openCaches()
+
+        #expect(fixture.navigation.destination == .clean)
+        #expect(fixture.cache.isScanning)
+        #expect(!fixture.cache.isWorking && !fixture.cache.canReviewCleanup)
+        let deadline = ContinuousClock.now + .seconds(2)
+        while fixture.cache.isScanning, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(fixture.cache.lastScanned != nil)
     }
 }
 
@@ -130,7 +144,7 @@ private final class RoutingFixture {
     let defaults: UserDefaults
     let navigation: RoomWindowNavigation
     let insights: RoomInsightsModel
-    private let cache: RoomViewModel
+    let cache: RoomViewModel
     let rooms: RoomRoomsModel
     private let suite: String
     private let root: URL

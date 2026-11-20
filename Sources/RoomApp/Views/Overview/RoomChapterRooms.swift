@@ -6,106 +6,218 @@ struct RoomChapterRooms: View {
     let editing: UUID?
     let openRoom: (URL) -> Void
     let showAll: () -> Void
-    @Environment(\.roomHide) private var hide
     @Environment(\.roomAccent) private var accent
     @Environment(\.scenePhase) private var scenePhase
     @State private var visible = false
 
     var body: some View {
         let shown = RoomRoomsChapter.shown(rooms.visibleRooms, editing: editing)
-        let unavailable = rooms.unavailable
-        let now = Date()
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
-                Text("Your Rooms").font(RoomTokens.Typography.title).accessibilityAddTraits(.isHeader)
-                Text("folders you pinned · 12 weeks").font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
-            }
-            if shown.rows.isEmpty {
-                Text("Pin a folder to watch it here.").font(RoomTokens.Typography.body).foregroundStyle(.secondary)
-            } else {
-                VStack(spacing: 8) {
-                    ForEach(shown.rows) { room in
-                        roomRow(room, now: now, unavailable: unavailable.contains(room.id))
-                    }
-                }.padding(.top, 10)
-            }
-            HStack(spacing: 12) {
-                Button("Add a Room…", action: rooms.chooseFolder)
-                    .roomLink(accent).disabled(!rooms.canChooseFolder)
-                if shown.more > 0 {
-                    Button("\(shown.more) more Rooms", action: showAll)
-                        .buttonStyle(.plain).font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
-                }
-            }
+        VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
+            heading(showsHistory: !shown.rows.isEmpty)
+            roomList(shown.rows)
+                .roomPanelChange(shown.rows.isEmpty)
+            footer(more: shown.more)
             if let notice = rooms.notice {
-                Text(notice).font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
+                Text(notice)
+                    .font(RoomTokens.Typography.caption)
+                    .foregroundStyle(RoomTokens.Ink.secondary)
             }
         }
-        .frame(maxWidth: 560, alignment: .leading)
-        .onScrollVisibilityChange(threshold: 0.1) { visible = $0; updateMeasuring() }
+        .padding(RoomTokens.Space.breath1)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoomTokens.Surface.group, in: .rect(cornerRadius: RoomTokens.Radius.popover))
+        .accessibilityIdentifier("RoomOverviewRooms")
+        .onScrollVisibilityChange(threshold: 0.1) { isVisible in
+            visible = isVisible
+            updateMeasuring()
+        }
         .onChange(of: scenePhase) { _, _ in updateMeasuring() }
         .onDisappear { rooms.setOverviewChapterActive(false) }
+    }
+
+    private func heading(showsHistory: Bool) -> some View {
+        VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
+            Label("Your Rooms", systemImage: "folder")
+                .font(RoomTokens.Typography.title)
+                .accessibilityHeading(.h2)
+            if showsHistory {
+                Text("12-week history")
+                    .font(RoomTokens.Typography.caption)
+                    .foregroundStyle(RoomTokens.Ink.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func roomList(_ pinned: [RoomPinnedRoom]) -> some View {
+        if pinned.isEmpty {
+            Text("Pin a folder to watch it here.")
+                .font(RoomTokens.Typography.body)
+                .foregroundStyle(RoomTokens.Ink.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            let unavailable = rooms.unavailable
+            let now = Date()
+            VStack(spacing: RoomTokens.Space.tight) {
+                ForEach(pinned) { room in
+                    let needsAccess = unavailable.contains(room.id)
+                    let row = RoomRoomsChapter.row(room, log: rooms.log(for: room.id), unavailable: needsAccess,
+                                                  now: now, calendar: calendar, hidden: false, format: RoomFormat.bytes)
+                    RoomChapterRow(room: room, row: row) {
+                        if !needsAccess, let url = rooms.url(for: room.id) { openRoom(url) }
+                        else { rooms.chooseFolder(replacingApprovalFor: room.id) }
+                    }
+                    .disabled(needsAccess && !rooms.canChooseFolder)
+                }
+            }
+        }
+    }
+
+    private func footer(more: Int) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: RoomTokens.Space.inner) {
+                addButton.fixedSize()
+                Spacer(minLength: 0)
+                if more > 0 { moreButton(more).fixedSize() }
+            }
+            VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
+                addButton
+                if more > 0 { moreButton(more) }
+            }
+        }
+    }
+
+    private var addButton: some View {
+        Button(action: rooms.chooseFolder) {
+            Label("Add a Room…", systemImage: "plus")
+        }
+        .roomLink(accent)
+        .disabled(!rooms.canChooseFolder)
+        .accessibilityIdentifier("RoomOverviewAddRoom")
+    }
+
+    private func moreButton(_ count: Int) -> some View {
+        Button("\(count) more Rooms", action: showAll)
+            .buttonStyle(RoomPressStyle())
+            .font(RoomTokens.Typography.caption)
+            .foregroundStyle(RoomTokens.Ink.secondary)
+            .frame(minHeight: 24)
     }
 
     private func updateMeasuring() {
         rooms.setOverviewChapterActive(visible && scenePhase == .active)
     }
+}
 
-    private func roomRow(_ room: RoomPinnedRoom, now: Date, unavailable: Bool) -> some View {
-        let row = RoomRoomsChapter.row(room, log: rooms.log(for: room.id), unavailable: unavailable,
-                                       now: now, calendar: calendar, hidden: false, format: RoomFormat.bytes)
-        let kind = RoomTokens.Kind(rawValue: room.resolvedColour.rawValue) ?? .developer
-        let help = unavailable ? "Choose this folder again to renew access." : "Opens Disk Map and measures this folder."
-        return Button {
-            if !unavailable, let url = rooms.url(for: room.id) { openRoom(url) }
-            else { rooms.chooseFolder(replacingApprovalFor: room.id) }
-        } label: {
-            HStack(spacing: 16) {
-                Image(systemName: room.resolvedGlyph.rawValue)
-                    .font(RoomTokens.Typography.roomGlyph).foregroundStyle(RoomTokens.Kind.tileInk)
-                    .frame(width: 20, height: 20).background(kind.fill, in: .rect(cornerRadius: RoomTokens.Radius.field))
-                    .frame(width: 22)
-                RoomMaskable(row.name, kind: .name).font(RoomTokens.Typography.bodyStrong).lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Group {
-                    if let budget = row.budget {
-                        RoomBudgetFrameView(layout: budget, color: kind.mark)
-                    } else {
-                        sparkline(row.sparkline, color: kind.mark)
+private struct RoomChapterRow: View {
+    let room: RoomPinnedRoom
+    let row: RoomRoomRow
+    let open: () -> Void
+    @Environment(\.roomHide) private var hide
+
+    private var kind: RoomTokens.Kind {
+        RoomTokens.Kind(rawValue: room.resolvedColour.rawValue) ?? .developer
+    }
+    private var help: String {
+        row.isUnavailable ? "Choose this folder again to renew access." : "Open in Disk Map."
+    }
+    private var spoken: String {
+        if hide.masksNow {
+            return "Room, name hidden, size hidden. \(row.isUnavailable ? "Choose folder." : "Open in Disk Map.")"
+        }
+        return row.isUnavailable ? "\(row.name), needs access. Choose folder." : row.spoken
+    }
+
+    var body: some View {
+        Button(action: open) {
+            HStack(alignment: .top, spacing: RoomTokens.Space.inner) {
+                glyph
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: RoomTokens.Space.group) {
+                        details.frame(minWidth: 128, maxWidth: .infinity, alignment: .leading)
+                        indicator
+                        size
                     }
-                }.frame(width: 72, height: 20)
-                RoomMaskable(row.size).font(RoomTokens.Typography.lead).lineLimit(1)
-                    .frame(width: 76, alignment: .trailing)
-                HStack(alignment: .firstTextBaseline, spacing: 0) {
-                    if let emphasis = row.trendEmphasis { RoomMaskable(emphasis).fontWeight(.semibold) }
-                    Text(row.trendRest)
+                    VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
+                        HStack(alignment: .top, spacing: RoomTokens.Space.row) {
+                            details.frame(maxWidth: .infinity, alignment: .leading)
+                            size
+                        }
+                        if row.budget != nil || !row.sparkline.isEmpty { indicator }
+                    }
                 }
-                .font(RoomTokens.Typography.caption).foregroundStyle(.secondary).lineLimit(2)
-                .frame(width: 124, alignment: .leading)
             }
-            .frame(height: 36).padding(.horizontal, 8).contentShape(.rect(cornerRadius: RoomTokens.Radius.row))
+            .padding(RoomTokens.Space.row)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(.rect(cornerRadius: RoomTokens.Radius.row))
         }
         .buttonStyle(RoomHoverButtonStyle())
         .help(hide.masksNow ? help : row.name + " · " + help)
-        .accessibilityLabel(hide.masksNow
-            ? "Room, name hidden, size hidden. \(unavailable ? "Choose folder." : "Open in Disk Map.")"
-            : unavailable ? "\(row.name), needs access. Choose folder." : row.spoken)
+        .accessibilityLabel(spoken)
     }
 
-    private func sparkline(_ segments: [[CGPoint]], color: Color) -> some View {
+    private var glyph: some View {
+        Image(systemName: room.resolvedGlyph.rawValue)
+            .font(RoomTokens.Typography.caption)
+            .foregroundStyle(RoomTokens.Kind.tileInk)
+            .frame(width: 28, height: 28)
+            .background(kind.fill, in: .rect(cornerRadius: RoomTokens.Radius.row))
+            .accessibilityHidden(true)
+    }
+
+    private var details: some View {
+        VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
+            RoomMaskable(row.name, kind: .name)
+                .font(RoomTokens.Typography.section)
+                .lineLimit(1)
+            HStack(alignment: .firstTextBaseline, spacing: 0) {
+                if let emphasis = row.trendEmphasis {
+                    RoomMaskable(emphasis).fontWeight(.semibold).fixedSize()
+                }
+                Text(row.trendRest)
+            }
+            .font(RoomTokens.Typography.caption)
+            .foregroundStyle(RoomTokens.Ink.secondary)
+            .lineLimit(2)
+        }
+    }
+
+    private var size: some View {
+        RoomMaskable(row.size)
+            .font(RoomTokens.Typography.lead)
+            .lineLimit(1)
+            .fixedSize()
+            .frame(minWidth: 76, alignment: .trailing)
+            .roomNumericTransition(row.size)
+    }
+
+    private var indicator: some View {
+        Group {
+            if let budget = row.budget {
+                RoomBudgetFrameView(layout: budget, color: kind.mark)
+            } else {
+                sparkline
+            }
+        }
+        .frame(width: 72, height: 20)
+        .accessibilityHidden(true)
+    }
+
+    private var sparkline: some View {
         Canvas { context, _ in
             var path = Path()
-            for segment in segments {
+            for segment in row.sparkline {
                 guard let first = segment.first else { continue }
                 path.move(to: first)
                 path.addLines(segment)
             }
-            context.stroke(path, with: .color(color), style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
-            if let end = segments.last?.last {
+            context.stroke(path, with: .color(kind.mark), style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+            if let end = row.sparkline.last?.last {
                 context.fill(Path(ellipseIn: CGRect(x: end.x - 2.3, y: end.y - 2.3, width: 4.6, height: 4.6)),
-                             with: .color(RoomTokens.Surface.canvas))
-                context.fill(Path(ellipseIn: CGRect(x: end.x - 1.5, y: end.y - 1.5, width: 3, height: 3)), with: .color(color))
+                             with: .color(RoomTokens.Surface.group))
+                context.fill(Path(ellipseIn: CGRect(x: end.x - 1.5, y: end.y - 1.5, width: 3, height: 3)),
+                             with: .color(kind.mark))
             }
-        }.accessibilityHidden(true)
+        }
     }
 }

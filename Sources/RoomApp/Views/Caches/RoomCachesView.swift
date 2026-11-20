@@ -59,17 +59,17 @@ struct RoomCachesView: View {
         let presentation = hero
         VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
             if model.isAfterRestore {
-                headline(presentation) {
-                    Text("Check again to see which caches are available.").font(RoomTokens.Typography.lead)
+                headline(presentation, symbol: "arrow.clockwise") {
+                    Text("Check again after restoring").font(RoomTokens.Typography.lead)
                 }
             } else if model.hasReport || model.isPartialScan {
                 headline(presentation) { figures(presentation) }
             } else if model.cachesCheckStore.check == nil {
                 headline(presentation) {
                     VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
-                        Text("Make a little room.").font(RoomTokens.Typography.figure.weight(.semibold))
+                        Text("Find rebuildable caches").font(RoomTokens.Typography.figure.weight(.semibold))
                             .accessibilityHeading(.h1)
-                        Text("Room checks the cache folders below and shows what rebuilds on its own. Scanning only looks. Nothing moves until you say so.")
+                        Text("Check your caches, then review what can move to Trash.")
                             .font(RoomTokens.Typography.body)
                             .foregroundStyle(RoomTokens.Ink.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -78,6 +78,10 @@ struct RoomCachesView: View {
                 }
             } else if !model.isScanning {
                 primary(presentation)
+            }
+            if model.isScanning {
+                scanStatus
+                    .roomPanelArrival()
             }
             if let receipt = model.movedReceipt {
                 let entry = model.makeRoomStore?.entry(for: receipt.id)
@@ -93,11 +97,15 @@ struct RoomCachesView: View {
                     VStack(alignment: .leading, spacing: RoomTokens.Space.group) { comparison; sources }
                 }
                 .opacity(model.isAfterRestore ? 0.6 : 1)
+                .roomPanelChange(model.isScanning)
             } else if !model.isScanning && !model.hasReport {
                 startingPlaces
             }
             if !model.scanIssues.isEmpty {
-                Button("See scan notes", action: showScanNotes).roomLink(accent)
+                Button(action: showScanNotes) {
+                    Label("Scan notes", systemImage: "list.bullet.clipboard")
+                }
+                .roomLink(accent)
             }
             if let undo {
                 HStack {
@@ -117,10 +125,56 @@ struct RoomCachesView: View {
         }
     }
 
-    private func headline<Summary: View>(_ hero: RoomCachesHero, @ViewBuilder summary: () -> Summary) -> some View {
-        let content = summary()
+    private var scanStatus: some View {
+        VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
+            HStack(spacing: RoomTokens.Space.inner) {
+                cacheIcon("magnifyingglass")
+                VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
+                    Text("Checking caches…")
+                        .font(RoomTokens.Typography.title)
+                        .accessibilityHeading(.h1)
+                    if model.scanLocationCount > 0 {
+                        let completed = model.scannedLocationCount
+                        let total = model.scanLocationCount
+                        RoomMaskable(String(localized: "\(completed) of \(total) locations checked"))
+                            .font(RoomTokens.Typography.caption)
+                            .foregroundStyle(RoomTokens.Ink.secondary)
+                    }
+                }
+                Spacer(minLength: 0)
+                Button(action: model.cancelScan) {
+                    Label("Stop", systemImage: "stop.fill")
+                }
+                .roomSecondary()
+            }
+            if let progress = model.scanProgress, model.scanLocationCount > 0, !hidden {
+                ProgressView(value: progress)
+                    .tint(accent.fill)
+                    .accessibilityLabel("Cache check progress")
+            }
+        }
+        .padding(RoomTokens.Space.group)
+        .background(RoomTokens.Surface.group, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.group))
+        .accessibilityIdentifier("RoomCachesScanStatus")
+    }
+
+    private func cacheIcon(_ symbol: String) -> some View {
+        Image(systemName: symbol)
+            .font(RoomTokens.Typography.lead)
+            .foregroundStyle(accent.text)
+            .frame(width: RoomTokens.Space.breath2, height: RoomTokens.Space.breath2)
+            .background(accent.wash, in: .rect(cornerRadius: RoomTokens.Radius.card))
+            .accessibilityHidden(true)
+    }
+
+    private func headline<Summary: View>(_ hero: RoomCachesHero, symbol: String = "tray.full",
+                                         @ViewBuilder summary: () -> Summary) -> some View {
+        let content = HStack(spacing: RoomTokens.Space.inner) {
+            cacheIcon(symbol)
+            summary()
+        }
         return ViewThatFits(in: .horizontal) {
-            HStack(alignment: .bottom, spacing: RoomTokens.Space.group) {
+            HStack(alignment: .center, spacing: RoomTokens.Space.group) {
                 content
                 Spacer(minLength: 0)
                 if !model.isScanning { primary(hero).fixedSize() }
@@ -131,6 +185,8 @@ struct RoomCachesView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(RoomTokens.Space.group)
+        .background(RoomTokens.Surface.group, in: .rect(cornerRadius: RoomTokens.Radius.group))
     }
 
     private func figures(_ hero: RoomCachesHero) -> some View {
@@ -151,7 +207,10 @@ struct RoomCachesView: View {
                 statistic("Kept safe", bytes: kept, lowerBound: hero.lowerBound)
             }
             if !model.isScanning && hero.keptBytes != nil {
-                Button("What stays ›", action: showKept).roomLink(accent)
+                Button(action: showKept) {
+                    Label("What stays", systemImage: "shield")
+                }
+                .roomLink(accent)
             }
         }
     }
@@ -182,19 +241,24 @@ struct RoomCachesView: View {
             case .check, .checkAgain:
                 checkButton
             case .chooseFolderAndCheck:
-                Button(String(localized: "caches.action.choose", defaultValue: "Choose Folder & Check", table: "Caches", bundle: RoomCopy.bundle)) {
+                Button {
                     #if ROOM_APP_STORE
                     model.chooseStoreFolder(scanAfterApproval: true)
                     #else
                     model.scan()
                     #endif
+                } label: {
+                    Label(String(localized: "caches.action.choose", defaultValue: "Choose Folder & Check",
+                        table: "Caches", bundle: RoomCopy.bundle), systemImage: "folder.badge.plus")
                 }
                 .roomScreenPrimary(accent).disabled(!model.canScan)
             case .review(let bytes):
                 if model.movedReceipt == nil || bytes > 0 {
-                    Button(bytes > 0 ? "Review \(format(bytes))" : "Review", action: review)
-                        .roomScreenPrimary(accent).disabled(!model.canReviewCleanup)
-                        .help(hero.disabledReason ?? "Review the selected caches.")
+                    Button(action: review) {
+                        Label(bytes > 0 ? "Review \(format(bytes))" : "Review", systemImage: "checklist")
+                    }
+                    .roomScreenPrimary(accent).disabled(!model.canReviewCleanup)
+                    .help(hero.disabledReason ?? "Review the selected caches.")
                 }
             case .none: EmptyView()
             }
@@ -202,8 +266,9 @@ struct RoomCachesView: View {
     }
 
     private var checkButton: some View {
-        Button(String(localized: "caches.action.check", defaultValue: "Check caches", table: "Caches", bundle: RoomCopy.bundle)) {
-            model.scan()
+        Button(action: model.scan) {
+            Label(String(localized: "caches.action.check", defaultValue: "Check caches", table: "Caches",
+                bundle: RoomCopy.bundle), systemImage: "magnifyingglass")
         }
         .roomScreenPrimary(accent)
         .disabled(!model.canScan)
@@ -213,21 +278,17 @@ struct RoomCachesView: View {
         let groups = model.checkLocations
         return VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
             HStack(spacing: RoomTokens.Space.row) {
-                Text("Where Room looks").font(RoomTokens.Typography.section).accessibilityHeading(.h2)
-                Text(isStore ? "Store" : "Direct")
-                    .font(RoomTokens.Typography.micro)
-                    .foregroundStyle(RoomTokens.Ink.secondary)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(RoomTokens.Surface.track, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.field))
+                Label("Where Room looks", systemImage: "folder")
+                    .font(RoomTokens.Typography.section)
+                    .accessibilityHeading(.h2)
                 Spacer()
                 if !isStore {
-                    Text("Full Disk Access is optional").font(RoomTokens.Typography.caption)
+                    Text("Full Disk Access optional").font(RoomTokens.Typography.caption)
                         .foregroundStyle(RoomTokens.Ink.secondary)
                 }
             }
             if groups.isEmpty {
-                Text("Room checks only the folders you allow.")
+                Text("Only folders you approve.")
                     .font(RoomTokens.Typography.body)
                     .foregroundStyle(RoomTokens.Ink.secondary)
                     .padding(.vertical, RoomTokens.Space.row)
@@ -240,7 +301,7 @@ struct RoomCachesView: View {
                 }
             }
             if !isStore, model.isDeepScan {
-                Text("The check can also find other cache locations.")
+                Text("A full check may find more locations.")
                     .font(RoomTokens.Typography.caption)
                     .foregroundStyle(RoomTokens.Ink.secondary)
                     .padding(.top, RoomTokens.Space.tight)
@@ -336,7 +397,11 @@ struct RoomCachesView: View {
                 transaction.animation = nil
                 transaction.disablesAnimations = true
             }
-            if rows.isEmpty { Text("No sources in this view.").font(RoomTokens.Typography.caption) }
+            if rows.isEmpty {
+                Label("No matching caches", systemImage: "tray")
+                    .font(RoomTokens.Typography.caption)
+                    .foregroundStyle(RoomTokens.Ink.secondary)
+            }
         }
         .onKeyPress(.upArrow) { moveFocus(-1) }
         .onKeyPress(.downArrow) { moveFocus(1) }
@@ -423,8 +488,12 @@ struct RoomCachesView: View {
             }
             Text(caption).font(RoomTokens.Typography.section)
             Spacer()
-            if canRestore { Button("Restore") { restore(receipt) }.roomSecondary().disabled(model.isWorking || model.isScanning) }
-            Button("Open Trash", action: model.openTrash).roomSecondary()
+            if canRestore {
+                Button { restore(receipt) } label: { Label("Restore", systemImage: "arrow.uturn.backward") }
+                    .roomSecondary()
+                    .disabled(model.isWorking || model.isScanning)
+            }
+            Button(action: model.openTrash) { Label("Open Trash", systemImage: "trash") }.roomSecondary()
         }
         .padding(RoomTokens.Space.group)
         .overlay {

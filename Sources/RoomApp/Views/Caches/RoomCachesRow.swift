@@ -31,12 +31,20 @@ struct RoomCachesRow: View {
                             .frame(width: 14)
                             .accessibilityHidden(true)
                     }
+                    Image(systemName: source.symbol)
+                        .font(RoomTokens.Typography.caption)
+                        .foregroundStyle(accent.text)
+                        .frame(width: RoomTokens.Space.breath1, height: RoomTokens.Space.breath1)
+                        .background(accent.wash, in: .rect(cornerRadius: RoomTokens.Radius.field))
+                        .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(source.name).font(RoomTokens.Typography.section)
-                        Text(source.blockedReason ?? source.cleanupConsequences.first ?? source.subtitle)
-                            .font(RoomTokens.Typography.caption)
-                            .foregroundStyle(RoomTokens.Ink.secondary)
-                            .lineLimit(1)
+                        if let reason = source.blockedReason {
+                            Text(reason)
+                                .font(RoomTokens.Typography.caption)
+                                .foregroundStyle(RoomTokens.Ink.secondary)
+                                .lineLimit(1)
+                        }
                     }
                     Spacer(minLength: RoomTokens.Space.row)
                     Text("\(source.isPartial ? "≥ " : "")\(format(displayedBytes))")
