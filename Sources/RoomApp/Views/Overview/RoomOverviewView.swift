@@ -67,6 +67,7 @@ struct RoomOverviewView: View {
 
     var body: some View {
         let snapshot = presentedSnapshot
+        let map = storageMapPlan(snapshot)
         VStack(alignment: .leading, spacing: density == .calm ? RoomTokens.Space.breath1 : RoomTokens.Space.group) {
             if let greeting = model.greeting {
                 Text(greeting)
@@ -78,11 +79,13 @@ struct RoomOverviewView: View {
                     balance: .init(plan: plan, goal: goalEnabled ? Int64(storedGoal) : nil))
                     .modifier(arrivalGroup(0))
             }
-            nextAction(snapshot)
-                .modifier(arrivalGroup(1))
-            if let plan = snapshot.plan, plan.fitsDotBudget,
-               plan.mapping != nil || !plan.kindValues.isEmpty || snapshot.state == .mappingStopped {
-                storageMap(plan, snapshot: snapshot)
+            if snapshot.action != .usingSpaceOnly || map == nil {
+                nextAction(snapshot)
+                    .modifier(arrivalGroup(1))
+            }
+            if let plan = map {
+                RoomOverviewStorageMap(plan: plan, belowGoal: snapshot.state == .belowGoal,
+                    hidden: hidden, density: density, solidKinds: style == .rooms, openDiskMap: openDiskMap)
                     .modifier(arrivalGroup(2))
                     .roomPanelArrival(enabled: !animatesArrival || arrived)
             }
@@ -164,6 +167,12 @@ struct RoomOverviewView: View {
         }
     }
 
+    private func storageMapPlan(_ snapshot: RoomOverviewSnapshot) -> RoomOverviewPlanInput? {
+        guard let plan = snapshot.plan, plan.fitsDotBudget,
+              plan.mapping != nil || !plan.kindValues.isEmpty || snapshot.state == .mappingStopped else { return nil }
+        return plan
+    }
+
     @ViewBuilder private func recentLine(standalone: Bool) -> some View {
         if showRecent, let cacheModel, let store = cacheModel.makeRoomStore,
            let entry = store.latest {
@@ -181,14 +190,6 @@ struct RoomOverviewView: View {
         model.update(capacity: inputs.capacity, goalBytes: inputs.goalBytes,
                      caches: inputs.caches, invalidatedAt: inputs.invalidatedAt, homeKinds: inputs.homeKinds,
                      mapActionAvailable: inputs.mapActionAvailable, mapping: inputs.mapping, stoppedMapping: inputs.stoppedMapping)
-    }
-
-    private func storageMap(_ plan: RoomOverviewPlanInput, snapshot: RoomOverviewSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
-            Text("Storage map").font(RoomTokens.Typography.title).accessibilityHeading(.h2)
-            RoomDotPlanView(plan: plan, belowGoal: snapshot.state == .belowGoal, hidden: hidden,
-                            density: density, solidKinds: style == .rooms, openDiskMap: openDiskMap)
-        }
     }
 
     private func nextAction(_ snapshot: RoomOverviewSnapshot) -> some View {
@@ -269,7 +270,7 @@ struct RoomOverviewView: View {
                     cacheButton(snapshot)
                     if snapshot.mapLinkAvailable {
                         link(RoomOverviewCopy.mapMac, accessibilityLabel: RoomOverviewCopy.mapMac, action: insights.scanHome)
-                    } else {
+                    } else if storageMapPlan(snapshot) == nil {
                         link("Open Disk Map", accessibilityLabel: RoomOverviewCopy.usingSpaceAccessibility, action: openDiskMap)
                     }
                 }

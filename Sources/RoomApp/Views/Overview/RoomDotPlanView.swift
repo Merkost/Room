@@ -16,7 +16,7 @@ struct RoomOverviewPlanGeometry {
         layout.rooms.first(where: { $0.id == id })?.rect.offsetBy(dx: wall.minX, dy: wall.minY)
     }
 
-    static func make(plan: RoomOverviewPlanInput, size: CGSize) -> Self? {
+    static func make(plan: RoomOverviewPlanInput, size: CGSize, includesContextGrid: Bool = true) -> Self? {
         typealias Tokens = RoomTokens.OverviewPlan
         let wall = CGRect(x: Tokens.pad, y: Tokens.pad, width: size.width - 2 * Tokens.pad,
                           height: size.height - 2 * Tokens.pad - Tokens.captionHeight)
@@ -52,7 +52,7 @@ struct RoomOverviewPlanGeometry {
         }
         let unmapped = layout.rooms.first(where: { $0.id == .notMapped })?.rect.offsetBy(dx: wall.minX, dy: wall.minY)
         let grid = Path { path in
-            guard let unmapped else { return }
+            guard includesContextGrid, let unmapped else { return }
             let step = max(Tokens.gridPoint, layout.pitch * Tokens.gridPitchFactor)
             for y in stride(from: unmapped.minY + step / 2, to: unmapped.maxY, by: step) {
                 for x in stride(from: unmapped.minX + step / 2, to: unmapped.maxX, by: step) {
@@ -73,6 +73,9 @@ struct RoomDotPlanView: View {
     var density = RoomTokens.Density.calm
     var solidKinds = false
     var showsUnmappedFigure = true
+    var usesExternalLegend = false
+    var legendHighlight: RoomPlanRoom?
+    var onHighlightChange: (RoomPlanRoom?) -> Void = { _ in }
     let openDiskMap: () -> Void
 
     @Environment(\.roomAccent) private var accent
@@ -89,6 +92,7 @@ struct RoomDotPlanView: View {
 
     private typealias Tokens = RoomTokens.OverviewPlan
     private var usesSolidKinds: Bool { solidKinds && !plan.kindValues.isEmpty }
+    private var highlightedRoom: RoomPlanRoom? { hover ?? selection ?? legendHighlight }
 
     private struct Inputs: Equatable {
         let plan: RoomOverviewPlanInput
@@ -122,6 +126,12 @@ struct RoomDotPlanView: View {
                         hover = nil
                     }
                 }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    guard usesExternalLegend, !staticPreview, let hover else { return }
+                    focused = true
+                    selection = hover
+                }
                 .simultaneousGesture(DragGesture(minimumDistance: 0)
                     .onChanged { value in
                         guard !usesSolidKinds, !didPress, let drawing, drawing.wall.contains(value.startLocation) else { return }
@@ -135,7 +145,7 @@ struct RoomDotPlanView: View {
                         .lineLimit(1)
                         .layoutPriority(1)
                     Spacer(minLength: RoomTokens.Space.row)
-                    if let readout = presentation.rows.first(where: { $0.id == (hover ?? selection) }) {
+                    if !usesExternalLegend, let readout = presentation.rows.first(where: { $0.id == highlightedRoom }) {
                         Text(readout.readout).lineLimit(1)
                     }
                 }
@@ -145,7 +155,8 @@ struct RoomDotPlanView: View {
                 .padding(.horizontal, Tokens.pad)
             }
             .onChange(of: inputs, initial: true) { _, inputs in
-                drawing = RoomOverviewPlanGeometry.make(plan: inputs.plan, size: inputs.size)
+                drawing = RoomOverviewPlanGeometry.make(plan: inputs.plan, size: inputs.size,
+                                                       includesContextGrid: !usesExternalLegend)
                 resetWake()
             }
             .onChange(of: motion) { _, _ in resetWake() }
@@ -155,6 +166,7 @@ struct RoomDotPlanView: View {
         .focusable(!staticPreview)
         .focused($focused)
         .focusEffectDisabled()
+        .onChange(of: hover ?? selection) { _, room in onHighlightChange(room) }
         .onChange(of: focused) { _, focused in
             if !focused { selection = nil }
         }
@@ -196,12 +208,30 @@ struct RoomDotPlanView: View {
         var paint = RoomCanvasFrame()
         guard let geometry = drawing else { return paint }
         let outline = contrast == .increased ? RoomTokens.Surface.line2 : RoomTokens.Ink.secondary
-        paint.stroke(Path(roundedRect: geometry.wall, cornerRadius: Tokens.outerRadius), outline, lineWidth: Tokens.wall)
+        let wall = Path(roundedRect: geometry.wall, cornerRadius: Tokens.outerRadius)
+        if usesExternalLegend {
+            paint.fill(wall, RoomTokens.Surface.canvas)
+        }
+        paint.stroke(wall, usesExternalLegend ? RoomTokens.Surface.line2 : outline, lineWidth: Tokens.wall)
         if let unmapped = geometry.notMapped?.insetBy(dx: Tokens.roomGap, dy: Tokens.roomGap),
            !unmapped.isEmpty {
             let room = Path(roundedRect: unmapped, cornerRadius: RoomTokens.Radius.planRoom)
-            paint.fill(geometry.contextGrid, RoomTokens.Surface.line2, clip: room)
-            paint.stroke(room, outline, style: Tokens.dashedWall)
+            if usesExternalLegend {
+                paint.fill(room, RoomTokens.Surface.group)
+                paint.stroke(room, RoomTokens.Surface.line2, style: Tokens.dashedWall)
+            } else {
+                paint.fill(geometry.contextGrid, RoomTokens.Surface.line2, clip: room)
+                paint.stroke(room, outline, style: Tokens.dashedWall)
+            }
+        }
+        if usesExternalLegend, !usesSolidKinds {
+            for room in geometry.layout.rooms {
+                guard case .kind(let key) = room.id, let kind = RoomTokens.Kind(rawValue: key),
+                      let frame = geometry.frame(for: room.id)?.insetBy(dx: Tokens.roomGap, dy: Tokens.roomGap),
+                      !frame.isEmpty else { continue }
+                paint.fill(Path(roundedRect: frame, cornerRadius: RoomTokens.Radius.planRoom),
+                           kind.fill.opacity(Tokens.categoryWash))
+            }
         }
         if usesSolidKinds {
             drawSolidKinds(geometry, paint: &paint)
@@ -221,13 +251,13 @@ struct RoomDotPlanView: View {
                             ink: RoomTokens.Ink.secondary, centeredVertically: true)
             }
         }
-        if focused || hover != nil {
-            let frame = (hover ?? selection).flatMap { geometry.frame(for: $0) } ?? geometry.wall
+        if focused || highlightedRoom != nil {
+            let frame = highlightedRoom.flatMap { geometry.frame(for: $0) } ?? geometry.wall
             let ring = Path(roundedRect: frame.insetBy(dx: -Tokens.focusOffset, dy: -Tokens.focusOffset),
                             cornerRadius: RoomTokens.Radius.planRoom)
             paint.stroke(ring, accent.text, lineWidth: Tokens.focusWall)
         }
-        drawRoomLabels(presentation, geometry: geometry, paint: &paint)
+        if !usesExternalLegend { drawRoomLabels(presentation, geometry: geometry, paint: &paint) }
         return paint
     }
 
@@ -244,7 +274,7 @@ struct RoomDotPlanView: View {
     }
 
     private func drawSolidKinds(_ geometry: RoomOverviewPlanGeometry, paint: inout RoomCanvasFrame) {
-        let focus = hover ?? selection
+        let focus = highlightedRoom
         for room in geometry.layout.rooms {
             guard case let .kind(key) = room.id, let kind = RoomTokens.Kind(rawValue: key),
                   let bounds = geometry.frame(for: room.id)?.insetBy(dx: Tokens.roomGap, dy: Tokens.roomGap),
@@ -278,7 +308,7 @@ struct RoomDotPlanView: View {
                 paint.stroke(path, freeInk, lineWidth: RoomTokens.Dots.freeRingStroke)
             case .kind(let key):
                 if let kind = RoomTokens.Kind(rawValue: key) {
-                    let focusedKind = hover ?? selection
+                    let focusedKind = highlightedRoom
                     let dims = focusedKind.map { $0 != room } ?? false
                     paint.fill(path, kind.mark.opacity(dims ? Tokens.dimmedKind : 1))
                 }

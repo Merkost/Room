@@ -75,6 +75,14 @@ enum RoomTokens {
     enum OverviewPlan {
         static let dimmedKind = 0.18
         static let quietLabelOpacity = 0.7
+        static let categoryWash = 0.55
+        static let chartMinimumWidth: CGFloat = 310
+        static let chartHeight: CGFloat = 166
+        static let compactChartHeight: CGFloat = 134
+        static let legendWidth: CGFloat = 192
+        static let legendColumnMinimum: CGFloat = 140
+        static let legendRowHeight: CGFloat = 22
+        static let swatchSize: CGFloat = 8
         static let pad: CGFloat = 5
         static let captionHeight: CGFloat = 14
         static let outerRadius: CGFloat = 10

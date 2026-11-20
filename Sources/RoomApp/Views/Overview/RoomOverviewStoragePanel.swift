@@ -132,3 +132,124 @@ struct RoomOverviewStoragePanel: View {
         .accessibilityHidden(true)
     }
 }
+
+struct RoomOverviewStorageMap: View {
+    let plan: RoomOverviewPlanInput
+    let belowGoal: Bool
+    let hidden: Bool
+    let density: RoomTokens.Density
+    let solidKinds: Bool
+    let openDiskMap: () -> Void
+
+    @Environment(\.roomAccent) private var accent
+    @Environment(\.roomMotion) private var motion
+    @State private var hoveredLegend: RoomPlanRoom?
+    @State private var highlightedMapRoom: RoomPlanRoom?
+
+    private typealias Tokens = RoomTokens.OverviewPlan
+
+    var body: some View {
+        let rows = RoomOverviewPlanPresentation(plan: plan, hidden: hidden,
+            solidKinds: solidKinds && !plan.kindValues.isEmpty, format: RoomFormat.overviewBytes).rows
+        VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: RoomTokens.Space.group) {
+                    heading
+                    Spacer(minLength: 0)
+                    mapButton.fixedSize()
+                }
+                VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
+                    heading
+                    mapButton
+                }
+            }
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: RoomTokens.Space.group) {
+                    diagram(height: density == .calm ? Tokens.chartHeight : Tokens.compactChartHeight)
+                        .frame(minWidth: Tokens.chartMinimumWidth)
+                    legend(rows, columns: [GridItem(.flexible())]).frame(width: Tokens.legendWidth)
+                }
+                VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
+                    diagram(height: Tokens.compactChartHeight)
+                    legend(rows, columns: [GridItem(.adaptive(minimum: Tokens.legendColumnMinimum),
+                                                   spacing: RoomTokens.Space.inner)])
+                }
+            }
+        }
+        .padding(RoomTokens.Space.group)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoomTokens.Surface.group, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.popover))
+    }
+
+    private var heading: some View {
+        VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
+            Text("Storage map").font(RoomTokens.Typography.title).accessibilityHeading(.h2)
+            if plan.mapping != nil {
+                Text("Categories update as folders finish.").font(RoomTokens.Typography.caption)
+                    .foregroundStyle(RoomTokens.Ink.secondary)
+            }
+        }
+    }
+
+    private var mapButton: some View {
+        Button(action: openDiskMap) {
+            Label("Open Disk Map", systemImage: "arrow.up.right")
+                .labelStyle(.titleAndIcon)
+        }
+        .roomSecondary()
+        .accessibilityIdentifier("RoomOverviewOpenDiskMap")
+    }
+
+    private func diagram(height: CGFloat) -> some View {
+        RoomDotPlanView(plan: plan, belowGoal: belowGoal, hidden: hidden,
+                        displayHeight: height, density: density, solidKinds: solidKinds,
+                        usesExternalLegend: true, legendHighlight: hoveredLegend,
+                        onHighlightChange: { highlightedMapRoom = $0 }, openDiskMap: openDiskMap)
+    }
+
+    private func legend(_ rows: [RoomOverviewPlanPresentation.Row], columns: [GridItem]) -> some View {
+        let ordered = rows.filter { $0.id == .free } + rows.filter {
+            if case .kind = $0.id { return true }
+            return false
+        } + rows.filter { $0.id == .notMapped }
+        return LazyVGrid(columns: columns, alignment: .leading, spacing: 0) {
+            ForEach(ordered) { row in
+                let highlighted = (highlightedMapRoom ?? hoveredLegend) == row.id
+                HStack(spacing: RoomTokens.Space.row) {
+                    swatch(row.id).frame(width: Tokens.swatchSize, height: Tokens.swatchSize)
+                    Text(row.name).lineLimit(1)
+                    Spacer(minLength: RoomTokens.Space.row)
+                    Text(verbatim: row.visualSize)
+                        .monospacedDigit().foregroundStyle(RoomTokens.Ink.secondary).fixedSize()
+                }
+                .font(RoomTokens.Typography.caption)
+                .padding(.horizontal, RoomTokens.Space.row)
+                .frame(minHeight: Tokens.legendRowHeight)
+                .background {
+                    RoundedRectangle(cornerRadius: RoomTokens.Radius.field)
+                        .fill(RoomTokens.Surface.hover)
+                        .opacity(highlighted ? 1 : 0)
+                        .animation(motion.animation(RoomTokens.Motion.quick, fallback: nil), value: highlighted)
+                }
+                .contentShape(Rectangle())
+                .onHover { inside in
+                    if inside { hoveredLegend = row.id }
+                    else if hoveredLegend == row.id { hoveredLegend = nil }
+                }
+            }
+        }
+        .accessibilityHidden(true)
+    }
+
+    @ViewBuilder private func swatch(_ id: RoomPlanRoom) -> some View {
+        switch id {
+        case .free:
+            Circle().strokeBorder(RoomTokens.Ink.secondary, lineWidth: 1.5)
+        case .notMapped:
+            RoundedRectangle(cornerRadius: RoomTokens.Radius.budgetFill)
+                .strokeBorder(RoomTokens.Ink.secondary, style: StrokeStyle(lineWidth: 1, dash: [2, 2]))
+        case .kind(let key):
+            Circle().fill(RoomTokens.Kind(rawValue: key)?.mark ?? RoomTokens.Ink.secondary)
+        }
+    }
+}
