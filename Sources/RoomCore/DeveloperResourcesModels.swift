@@ -42,6 +42,10 @@ public struct DeveloperActivitySnapshot: Codable, Equatable, Sendable {
     public static var unknown: Self { Self() }
 }
 
+public enum DeveloperResourcesScope: Sendable {
+    case review, toolStorage
+}
+
 public struct DeveloperResourcesRequest: Sendable {
     public let approvedFolders: [URL]
     public let avdRoots: [URL]
@@ -50,15 +54,20 @@ public struct DeveloperResourcesRequest: Sendable {
     public let sdkRoots: [URL]
     public let derivedDataRoots: [URL]
     public let konanRoots: [URL]
+    public let simulatorDeviceRoots: [URL]
+    public let scope: DeveloperResourcesScope
     public let activity: DeveloperActivitySnapshot
     public let limits: DeveloperResourcesLimits
 
     public init(approvedFolders: [URL], avdRoots: [URL] = [], gradleHomes: [URL] = [], projectRoots: [URL] = [],
-                sdkRoots: [URL] = [], derivedDataRoots: [URL] = [], konanRoots: [URL] = [],
-                activity: DeveloperActivitySnapshot = .unknown, limits: DeveloperResourcesLimits = .init()) {
+                sdkRoots: [URL] = [], derivedDataRoots: [URL] = [], konanRoots: [URL] = [], simulatorDeviceRoots: [URL] = [],
+                scope: DeveloperResourcesScope = .review, activity: DeveloperActivitySnapshot = .unknown,
+                limits: DeveloperResourcesLimits = .init()) {
         self.approvedFolders = approvedFolders; self.avdRoots = avdRoots
         self.gradleHomes = gradleHomes; self.projectRoots = projectRoots
         self.sdkRoots = sdkRoots; self.derivedDataRoots = derivedDataRoots; self.konanRoots = konanRoots
+        self.simulatorDeviceRoots = simulatorDeviceRoots
+        self.scope = scope
         self.activity = activity; self.limits = limits
     }
 }
@@ -141,6 +150,18 @@ public struct DeveloperResourcesProgress: Sendable {
     public let currentPath: String
 }
 
+public enum DeveloperStorageKind: String, Codable, Sendable {
+    case gradleDaemon, gradleJDKs, androidSystemImages, simulatorDevices
+}
+
+public struct DeveloperStorageResource: Identifiable, Codable, Equatable, Sendable {
+    public var id: String { kind.rawValue + ":" + url.path }
+    public let kind: DeveloperStorageKind
+    public let url: URL
+    public let allocatedBytes: Int64
+    public let isPartial: Bool
+}
+
 public struct DeveloperResourcesReport: Identifiable, Codable, Equatable, Sendable {
     public let id: UUID
     public let scannedAt: Date
@@ -149,8 +170,10 @@ public struct DeveloperResourcesReport: Identifiable, Codable, Equatable, Sendab
     public let projectWrappers: [GradleProjectWrapper]
     private let recordedProjects: [DeveloperProject]?
     private let recordedToolchains: [DeveloperToolchainResource]?
+    private let recordedStorageResources: [DeveloperStorageResource]?
     public var projects: [DeveloperProject] { recordedProjects ?? [] }
     public var toolchains: [DeveloperToolchainResource] { recordedToolchains ?? [] }
+    public var storageResources: [DeveloperStorageResource] { recordedStorageResources ?? [] }
     public let issues: [ScanIssue]
     public let cancelled: Bool
     public let isPartial: Bool
@@ -158,11 +181,13 @@ public struct DeveloperResourcesReport: Identifiable, Codable, Equatable, Sendab
     enum CodingKeys: String, CodingKey {
         case id, scannedAt, androidDevices, gradleResources, projectWrappers, issues, cancelled, isPartial
         case recordedProjects = "projects", recordedToolchains = "toolchains"
+        case recordedStorageResources = "storageResources"
     }
 
     init(id: UUID, scannedAt: Date, androidDevices: [AndroidVirtualDeviceResource],
          gradleResources: [GradleDeveloperResource], projectWrappers: [GradleProjectWrapper],
          projects: [DeveloperProject] = [], toolchains: [DeveloperToolchainResource] = [],
+         storageResources: [DeveloperStorageResource] = [],
          issues: [ScanIssue], cancelled: Bool, isPartial: Bool) {
         self.id = id
         self.scannedAt = scannedAt
@@ -171,6 +196,7 @@ public struct DeveloperResourcesReport: Identifiable, Codable, Equatable, Sendab
         self.projectWrappers = projectWrappers
         self.recordedProjects = projects
         self.recordedToolchains = toolchains
+        self.recordedStorageResources = storageResources
         self.issues = issues
         self.cancelled = cancelled
         self.isPartial = isPartial

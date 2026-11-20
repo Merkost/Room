@@ -4,8 +4,68 @@ import Synchronization
 import Testing
 @testable import RoomCore
 
-@Suite("Read-only Android and Gradle resource review")
+@Suite("Read-only developer resource review")
 struct DeveloperResourcesEngineTests {
+    @Test("Developer storage measures documented subfolders and keeps them out of toolchain attribution")
+    func toolStorageMeasuresExactRoots() async throws {
+        let f = try DeveloperFixture()
+        defer { f.remove() }
+        let gradle = try f.directory("custom-gradle")
+        let sdk = try f.directory("custom-sdk")
+        let simulatorDevices = try f.directory("custom-device-set")
+        let contents = String(repeating: "x", count: 16_384)
+        _ = try f.write("custom-gradle/daemon/8.10/daemon.log", contents)
+        _ = try f.write("custom-gradle/jdks/jdk-21/Contents/Home/release", contents)
+        _ = try f.write("custom-gradle/caches/8.10/build.bin", contents)
+        _ = try f.write("custom-sdk/system-images/android-35/google_apis/arm64-v8a/system.img", contents)
+        let device = UUID().uuidString
+        _ = try f.write("custom-device-set/\(device)/device.plist", contents)
+        _ = try f.write("custom-device-set/\(device)/data/private/app.bin", contents)
+        _ = try f.write("custom-sdk/platforms/android-35/android.jar", contents)
+
+        let report = await DeveloperResourcesEngine().scan(request: DeveloperResourcesRequest(
+            approvedFolders: [gradle, sdk, simulatorDevices], gradleHomes: [gradle, gradle], sdkRoots: [sdk],
+            simulatorDeviceRoots: [simulatorDevices], scope: .toolStorage))
+
+        #expect(Set(report.storageResources.map(\.kind)) == [.gradleDaemon, .gradleJDKs, .androidSystemImages, .simulatorDevices])
+        #expect(Set(report.storageResources.map { $0.url.path }) == Set([
+            f.url("custom-gradle/daemon").path, f.url("custom-gradle/jdks").path,
+            f.url("custom-sdk/system-images").path, simulatorDevices.path,
+        ]))
+        #expect(report.storageResources.count == 4)
+        #expect(report.storageResources.allSatisfy { $0.allocatedBytes > 0 && !$0.isPartial })
+        #expect(report.toolchains.isEmpty)
+        #expect(report.gradleResources.isEmpty)
+        #expect(report.androidDevices.isEmpty)
+        #expect(!report.isPartial)
+    }
+
+    @Test("Developer storage requires approval and skips links and unrecognized Simulator choices")
+    func toolStorageDoesNotFollowOtherPaths() async throws {
+        let f = try DeveloperFixture()
+        defer { f.remove() }
+        let gradle = try f.directory("gradle")
+        let caches = try f.directory("gradle/caches")
+        let sdk = try f.directory("sdk")
+        let outside = try f.directory("outside")
+        let unrelated = try f.directory("unrelated")
+        _ = try f.write("gradle/daemon/daemon.log", "an unapproved sibling")
+        _ = try f.write("outside/device_set.plist", "unapproved marker")
+        _ = try f.write("outside/system.img", "unapproved runtime")
+        try FileManager.default.createSymbolicLink(at: f.url("sdk/system-images"), withDestinationURL: outside)
+        try FileManager.default.createSymbolicLink(at: f.url("unrelated/device_set.plist"),
+                                                   withDestinationURL: f.url("outside/device_set.plist"))
+
+        let report = await DeveloperResourcesEngine().scan(request: DeveloperResourcesRequest(
+            approvedFolders: [caches, sdk, unrelated], gradleHomes: [gradle], sdkRoots: [sdk],
+            simulatorDeviceRoots: [outside, unrelated], scope: .toolStorage))
+
+        #expect(report.storageResources.isEmpty)
+        #expect(report.issues.contains { $0.url.path == outside.path && $0.message.contains("approval") })
+        #expect(report.issues.contains { $0.url.path == unrelated.path && $0.message.contains("device set") })
+        #expect(report.issues.contains { $0.url.path == f.url("sdk/system-images").path })
+    }
+
     @Test("AVD metadata and sparse allocations are useful without inventing a last-launch date")
     func androidEvidence() async throws {
         let f = try DeveloperFixture()

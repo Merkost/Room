@@ -16,18 +16,22 @@ struct RoomDeveloperModelTests {
         let model = RoomDeveloperModel(access: access, defaults: defaults,
             unreferencedStore: RoomDeveloperUnreferencedStore(directory: home), home: home)
         #if ROOM_APP_STORE
-        #expect(model.folderSuggestions.map(\.role) == [.android, .gradle, .sdk, .xcode, .konan])
-        #expect(RoomDeveloperSection.allCases.map(\.rawValue) == ["Rooms", "Matrix", "Devices"])
+        #expect(model.folderSuggestions.map(\.role) == [.android, .gradle, .sdk, .xcode, .konan, .simulators])
+        #expect(RoomDeveloperSection.allCases.map(\.rawValue) == ["Rooms", "Matrix", "Devices", "Storage"])
         #expect(RoomDeveloperView.suggestionAction == "Choose…")
         #else
-        #expect(model.folderSuggestions.map(\.role) == [.gradle])
-        #expect(RoomDeveloperSection.allCases.map(\.rawValue) == ["Rooms", "Matrix", "Devices", "Worktrees"])
+        #expect(model.folderSuggestions.map(\.role) == [.gradle, .simulators])
+        #expect(RoomDeveloperSection.allCases.map(\.rawValue) == ["Rooms", "Matrix", "Devices", "Storage", "Worktrees"])
         #expect(RoomDeveloperView.suggestionAction == "Use")
         let gradleSuggestion = try #require(model.folderSuggestions.first)
         model.useSuggestion(gradleSuggestion)
         #expect(model.locations.map(\.role) == [.gradle])
         #expect(access.folders.count == 1)
         #endif
+        let simulatorSuggestion = try #require(model.folderSuggestions.first { $0.role == .simulators })
+        #expect(simulatorSuggestion.url == home.appendingPathComponent("Library/Developer/CoreSimulator/Devices", isDirectory: true))
+        #expect(RoomDeveloperView.suggestionAction(for: .simulators) == "Choose…")
+        #expect(!model.locations.contains { $0.role == .simulators })
     }
 
     @Test func unreferencedDatesPersistAndOnlyCompleteScansChangeThem() throws {
