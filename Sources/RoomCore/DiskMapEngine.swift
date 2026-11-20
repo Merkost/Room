@@ -66,10 +66,29 @@ public struct DiskTopLevelRoom: Equatable, Sendable {
 
 public struct DiskScanPolicy: Sendable {
     public let skipApplicationContainers: Bool
+    private let separatelyMappedPaths: Set<String>
     public static let standard = Self(skipApplicationContainers: true)
 
-    public init(skipApplicationContainers: Bool) {
+    public init(skipApplicationContainers: Bool, separatelyMappedFolders: [URL] = []) {
         self.skipApplicationContainers = skipApplicationContainers
+        separatelyMappedPaths = Set(separatelyMappedFolders.map { $0.roomLexicallyNormalized.path })
+    }
+
+    package static func isMediaLibrary(_ url: URL) -> Bool {
+        switch url.pathExtension.lowercased() {
+        case "photoslibrary", "photolibrary", "musiclibrary": true
+        default: false
+        }
+    }
+
+    func separateMappingReason(for url: URL) -> String? {
+        if separatelyMappedPaths.contains(url.path) {
+            return "This folder was left out. Choose it separately to map its contents."
+        }
+        if Self.isMediaLibrary(url) {
+            return "This media library was left out. Choose it separately to map its contents."
+        }
+        return nil
     }
 
     func skipDescending(into url: URL) -> Bool {
@@ -351,6 +370,12 @@ private struct DiskMapWalker {
         if Task.isCancelled {
             cancelled = true
             return (item(url, isDirectory: false, totals: DiskTotals()), DiskTotals())
+        }
+        // Even a metadata lookup can trigger a macOS privacy prompt.
+        if let reason = treePolicy?.separateMappingReason(for: url) {
+            recordIssue(url, reason)
+            treeBuilder?.skip(name, isDirectory: true)
+            return (item(url, isDirectory: true, totals: DiskTotals()), DiskTotals())
         }
         var info = stat()
         guard fstatat(parent, name, &info, AT_SYMLINK_NOFOLLOW) == 0 else {

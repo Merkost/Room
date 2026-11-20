@@ -15,6 +15,31 @@ nonisolated struct RoomStoredTree: Codable, Equatable, Sendable {
     var issueCount: Int
     var tree: RoomTreeNode
     var isPartial: Bool { cancelled || tree.isPartial }
+
+    /// The saved map already bounds the retained nodes. This projection never opens the folders or files.
+    func metadataReport(for root: URL) -> DiskMapReport {
+        func item(_ node: RoomTreeNode) -> DiskMapItem? {
+            let path = RoomTreeLocation(approvalID: rootID, relativePath: node.relativePath)
+            guard !node.relativePath.isEmpty, let resolved = path.resolve(under: root) else { return nil }
+            let url = URL(fileURLWithPath: resolved.path, isDirectory: node.isDirectory)
+            return DiskMapItem(url: url, name: node.name, isDirectory: node.isDirectory, allocatedBytes: node.allocatedBytes,
+                logicalBytes: 0, fileCount: node.fileCount)
+        }
+
+        var pending = tree.children
+        var files: [DiskMapItem] = []
+        while let node = pending.popLast() {
+            if node.isDirectory { pending.append(contentsOf: node.children) }
+            else if let file = item(node) { files.append(file) }
+        }
+        let largest = files.sorted {
+            $0.allocatedBytes == $1.allocatedBytes ? $0.id < $1.id : $0.allocatedBytes > $1.allocatedBytes
+        }.prefix(100)
+        return DiskMapReport(id: UUID(), url: root, scannedAt: scannedAt,
+            children: tree.children.compactMap(item), largestFiles: Array(largest),
+            allocatedBytes: tree.allocatedBytes, logicalBytes: 0, fileCount: tree.fileCount,
+            issues: [], cancelled: cancelled, isPartial: isPartial, unreadableItemCount: issueCount)
+    }
 }
 
 nonisolated enum RoomTreeRootID {

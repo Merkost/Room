@@ -50,7 +50,8 @@ public actor StorageAIEngine {
         #endif
     }
 
-    public func analyze(report: DiskMapReport, configuration: CacheConfiguration = .standard) async -> StorageAnalysisReport {
+    public func analyze(report: DiskMapReport, configuration: CacheConfiguration = .standard,
+                        includesLogicalBytes: Bool = true) async -> StorageAnalysisReport {
         let baseline = StorageAnalyzer.analyze(report: report, configuration: configuration)
         #if ROOM_APP_STORE
         let available = await availability()
@@ -67,7 +68,8 @@ public actor StorageAIEngine {
                     ? String(finding.item.url.path.dropFirst(report.url.path.count)).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
                     : finding.item.url.lastPathComponent).prefix(160)),
                 isDirectory: finding.item.isDirectory, isHidden: finding.item.isHidden,
-                allocatedBytes: finding.item.allocatedBytes, logicalBytes: finding.item.logicalBytes,
+                allocatedBytes: finding.item.allocatedBytes,
+                logicalBytes: includesLogicalBytes ? finding.item.logicalBytes : nil,
                 modifiedAt: finding.item.modifiedAt, category: finding.category.rawValue,
                 disposition: finding.disposition.rawValue)
         }
@@ -192,7 +194,7 @@ struct StorageModelCandidate: Encodable, Sendable {
     let isDirectory: Bool
     let isHidden: Bool
     let allocatedBytes: Int64
-    let logicalBytes: Int64
+    let logicalBytes: Int64?
     let modifiedAt: Date?
     let category: String
     let disposition: String

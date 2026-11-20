@@ -8,7 +8,8 @@ final class RoomNativeFolderPicker {
     private var panel: NSOpenPanel?
     var isPresenting: Bool { panel != nil }
 
-    func choose(title: String, message: String, prompt: String, initialURL: URL?, allowsFiles: Bool = false) async -> URL? {
+    func choose(title: String, message: String, prompt: String, initialURL: URL?, allowsFiles: Bool = false,
+                treatsFilePackagesAsDirectories: Bool = false) async -> URL? {
         guard panel == nil else { panel?.makeKeyAndOrderFront(nil); return nil }
         return await withCheckedContinuation { continuation in
             let chooser = NSOpenPanel()
@@ -18,6 +19,7 @@ final class RoomNativeFolderPicker {
             chooser.prompt = prompt
             chooser.canChooseDirectories = true
             chooser.canChooseFiles = allowsFiles
+            chooser.treatsFilePackagesAsDirectories = treatsFilePackagesAsDirectories
             chooser.allowsMultipleSelection = false
             chooser.canCreateDirectories = false
             chooser.showsHiddenFiles = true

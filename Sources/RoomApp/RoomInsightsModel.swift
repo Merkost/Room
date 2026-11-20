@@ -34,6 +34,11 @@ final class RoomInsightsModel {
     private(set) var analysisReport: StorageAnalysisReport?
     private(set) var isAnalyzingStorage = false
     private(set) var analysisStatus: String?
+    var canAnalyzeStorage: Bool {
+        guard !isAnalyzingStorage, !isScanningDisk, diskMap.current != nil,
+              let root = diskMap.rootURL else { return false }
+        return fileAccess.scope(for: root) != nil
+    }
     let volumeHistory: RoomVolumeHistory
     private(set) var volumeCapacity: RoomVolumeCapacity?
     private(set) var diskCapacitySampledAt: Date?
@@ -61,10 +66,13 @@ final class RoomInsightsModel {
     @ObservationIgnored private let storageAI = StorageAIEngine()
     @ObservationIgnored private let fileAccess: RoomFileAccess
     @ObservationIgnored private let folderPicker: @MainActor (String, String, String, URL?) async -> URL?
+    @ObservationIgnored private let confirmHomeMap: @MainActor () async -> Bool
     @ObservationIgnored private var memoryTask: Task<Void, Never>?
     @ObservationIgnored private var diskTask: Task<Void, Never>?
     @ObservationIgnored private var diskGeneration = UUID()
+    @ObservationIgnored private var diskOpenGeneration = UUID()
     @ObservationIgnored private var analysisTask: Task<Void, Never>?
+    @ObservationIgnored private var analysisRequest: UUID?
     @ObservationIgnored private var monitorTask: Task<Void, Never>?
     @ObservationIgnored private var capacityMonitorTask: Task<Void, Never>?
     @ObservationIgnored private var overviewActive = false
@@ -77,6 +85,7 @@ final class RoomInsightsModel {
     init(access: RoomFileAccess = .shared,
          treeStore: RoomTreeStore = .shared,
          folderPicker: (@MainActor (String, String, String, URL?) async -> URL?)? = nil,
+         confirmHomeMap: (@MainActor () async -> Bool)? = nil,
          volumeHistory: RoomVolumeHistory = .init(),
          capacityReader: @escaping @MainActor () throws -> RoomVolumeCapacity? = RoomVolumeCapacity.read,
          waitForCapacityTick: @escaping @MainActor () async throws -> Void = {
@@ -102,8 +111,10 @@ final class RoomInsightsModel {
         self.capacityReader = capacityReader
         self.waitForCapacityTick = waitForCapacityTick
         self.folderPicker = folderPicker ?? { title, message, prompt, initial in
-            await RoomNativeFolderPicker.shared.choose(title: title, message: message, prompt: prompt, initialURL: initial)
+            await RoomNativeFolderPicker.shared.choose(title: title, message: message, prompt: prompt,
+                initialURL: initial, treatsFilePackagesAsDirectories: true)
         }
+        self.confirmHomeMap = confirmHomeMap ?? Self.askToMapHome
         if let pressureWriter {
             pressureLoad = Task { [weak self] in
                 let saved = await pressureWriter.store.load(RoomPressureHistory.self, from: .pressure,
@@ -249,6 +260,7 @@ final class RoomInsightsModel {
 
     func suspendSavedHistory(_ value: Bool) {
         savedHistorySuspended = value
+        if value { diskOpenGeneration = UUID() }
         if value, isScanningDisk {
             diskTask?.cancel()
             diskGeneration = UUID()
@@ -286,8 +298,14 @@ final class RoomInsightsModel {
         #endif
     }
 
+    var canChooseDiskLocation: Bool { !isScanningDisk && !isChoosingDiskFolder && !savedHistorySuspended }
+
     func chooseDiskFolder() {
         presentFolderPicker(initialURL: diskURL ?? suggestedHome, mapAfterApproval: true)
+    }
+
+    func chooseDiskFolderAndOpenMap() {
+        presentFolderPicker(initialURL: diskURL ?? suggestedHome, mapAfterApproval: true, navigation: .diskMap)
     }
 
     func chooseAccessFolder() {
@@ -315,9 +333,11 @@ final class RoomInsightsModel {
         presentFolderPicker(initialURL: home, mapAfterApproval: false, homeApproval: true)
     }
 
+    private enum DiskPickerNavigation { case unchanged, diskMap, diskMapForNonHome }
+
     private func presentFolderPicker(initialURL: URL, mapAfterApproval: Bool, homeApproval: Bool = false,
-                                     opensSelectedMap: Bool = false) {
-        guard !isChoosingDiskFolder else { return }
+                                     navigation: DiskPickerNavigation = .unchanged) {
+        guard !isChoosingDiskFolder, !mapAfterApproval || canChooseDiskLocation else { return }
         isChoosingDiskFolder = true
         Task { [weak self] in
             guard let self else { return }
@@ -328,6 +348,7 @@ final class RoomInsightsModel {
                 : "Choose a folder to inspect. Room remembers read-only access, including accessible descendants. Supported changes require a separate review and approval."
             guard let url = await self.folderPicker(title, message,
                 mapAfterApproval ? "Allow & Map" : "Remember Folder", initialURL) else { return }
+            if mapAfterApproval, self.isHomeFolder(url), !(await self.confirmHomeMap()) { return }
             let approved: URL
             do {
                 approved = try self.fileAccess.remember(url)
@@ -337,25 +358,73 @@ final class RoomInsightsModel {
             }
             guard mapAfterApproval else { return }
             self.scanAuthorizedDisk(url: approved, scope: approved)
-            if opensSelectedMap, self.isScanningDisk,
-               approved.standardizedFileURL != self.suggestedHome.standardizedFileURL {
+            if self.isScanningDisk,
+               navigation == .diskMap || (navigation == .diskMapForNonHome &&
+                   approved.standardizedFileURL != self.suggestedHome.standardizedFileURL) {
                 self.requestedDestination = .disk
             }
         }
     }
 
     func scanHome() {
+        guard canChooseDiskLocation else { return }
         let home = suggestedHome
         if fileAccess.scope(for: home) != nil { scanDisk(url: home) }
-        else { presentFolderPicker(initialURL: home, mapAfterApproval: true, opensSelectedMap: true) }
+        else { presentFolderPicker(initialURL: home, mapAfterApproval: true, navigation: .diskMapForNonHome) }
     }
 
     func scanDisk(url: URL) {
-        guard let scope = fileAccess.scope(for: url) else {
+        guard canChooseDiskLocation else { return }
+        guard let scope = mappingScope(for: url) else {
             presentFolderPicker(initialURL: url, mapAfterApproval: true)
             return
         }
-        scanAuthorizedDisk(url: url, scope: scope)
+        startApprovedDiskScan(url: url, scope: scope)
+    }
+
+    private var homeMediaFolders: [URL] {
+        ["Pictures", "Music"].map { suggestedHome.appendingPathComponent($0, isDirectory: true) }
+    }
+
+    private func isHomeFolder(_ url: URL) -> Bool {
+        url.standardizedFileURL.path == suggestedHome.standardizedFileURL.path
+    }
+
+    private func mappingScope(for url: URL) -> URL? {
+        guard let scope = fileAccess.scope(for: url) else { return nil }
+        if let folder = homeMediaFolders.first(where: { RoomFileAccess.contains(parent: $0, child: url) }),
+           !RoomFileAccess.contains(parent: folder, child: scope) { return nil }
+        if DiskScanPolicy.isMediaLibrary(url), scope.standardizedFileURL.path != url.standardizedFileURL.path { return nil }
+        return scope
+    }
+
+    private func startApprovedDiskScan(url: URL, scope: URL) {
+        guard isHomeFolder(url) else {
+            scanAuthorizedDisk(url: url, scope: scope)
+            return
+        }
+        isChoosingDiskFolder = true
+        Task { [weak self] in
+            guard let self else { return }
+            defer { self.isChoosingDiskFolder = false }
+            guard await self.confirmHomeMap(), self.mappingScope(for: url) == scope else { return }
+            self.scanAuthorizedDisk(url: url, scope: scope)
+        }
+    }
+
+    private static func askToMapHome() async -> Bool {
+        let alert = NSAlert()
+        alert.messageText = "Map your Home folder?"
+        alert.informativeText = "Room leaves Pictures, Music and media libraries out of a Home map. Choose those folders separately to measure them. macOS may ask about other protected locations."
+        alert.addButton(withTitle: "Map Home")
+        alert.addButton(withTitle: "Cancel")
+        guard let window = NSApp.windows.first(where: { $0.identifier?.rawValue == "RoomPrimaryWindow" && $0.isVisible })
+                ?? NSApp.keyWindow else { return alert.runModal() == .alertFirstButtonReturn }
+        return await withCheckedContinuation { continuation in
+            alert.beginSheetModal(for: window) {
+                continuation.resume(returning: $0 == .alertFirstButtonReturn)
+            }
+        }
     }
 
     private func scanAuthorizedDisk(url: URL, scope: URL, spliceAt: String? = nil) {
@@ -366,10 +435,11 @@ final class RoomInsightsModel {
         analysisStatus = nil
         let generation = UUID()
         diskGeneration = generation
+        diskOpenGeneration = UUID()
         let visibleRoot = spliceAt == nil ? url : diskURL ?? url
         let rootID = diskRootID(url: visibleRoot, scope: scope)
         let location = diskLocation(url: visibleRoot, scope: scope)
-        let isHome = visibleRoot.standardizedFileURL == suggestedHome.standardizedFileURL
+        let isHome = isHomeFolder(visibleRoot)
         let displayPath = diskDisplayPath(visibleRoot)
         let mapsHome = isHome && spliceAt == nil
         isMappingHome = mapsHome
@@ -388,6 +458,7 @@ final class RoomInsightsModel {
         let approved = fileAccess.folders.map(\.url)
         let home = RoomStoreEnvironment.userHome
         #endif
+        let policy = DiskScanPolicy(skipApplicationContainers: true, separatelyMappedFolders: homeMediaFolders)
         diskTask = Task { [weak self, diskEngine] in
             #if ROOM_APP_STORE
             let scopes = (approved + [scope]).map { ($0, $0.startAccessingSecurityScopedResource()) }
@@ -396,7 +467,7 @@ final class RoomInsightsModel {
             let scopedAccess = scope.startAccessingSecurityScopedResource()
             defer { if scopedAccess { scope.stopAccessingSecurityScopedResource() } }
             #endif
-            let mapped = await diskEngine.scanTree(url: url) { [weak self] progress in
+            let mapped = await diskEngine.scanTree(url: url, policy: policy) { [weak self] progress in
                 Task { @MainActor [weak self] in
                     guard let self, self.diskGeneration == generation, self.isScanningDisk else { return }
                     self.diskProgress = progress
@@ -459,36 +530,60 @@ final class RoomInsightsModel {
     func cancelDiskScan() { diskTask?.cancel() }
 
     func analyzeStorage() {
-        guard !isAnalyzingStorage, !isScanningDisk, let report = diskReport else { return }
+        guard canAnalyzeStorage, let map = diskMap.current, let root = diskMap.rootURL else { return }
+        let scanned = diskReport.flatMap { report in
+            report.url.roomLexicallyNormalized.path == root.roomLexicallyNormalized.path && report.scannedAt == map.scannedAt
+                && report.allocatedBytes == map.tree.allocatedBytes && report.fileCount == map.tree.fileCount ? report : nil
+        }
+        let request = UUID()
+        let generation = diskGeneration
+        analysisRequest = request
         isAnalyzingStorage = true
         analysisStatus = nil
-        let scanID = report.id
         #if ROOM_APP_STORE
         let approved = fileAccess.folders.map(\.url)
         let home = RoomStoreEnvironment.userHome
         #endif
         analysisTask = Task { [weak self, storageAI] in
+            defer { self?.finishStorageAnalysis(request: request) }
             #if ROOM_APP_STORE
             let scopes = approved.map { ($0, $0.startAccessingSecurityScopedResource()) }
             defer { for (url, active) in scopes where active { url.stopAccessingSecurityScopedResource() } }
-            let configuration = await Task.detached(priority: .utility) {
-                home.map { CacheConfiguration.store(approvedFolders: approved, userHome: $0) }
-                    ?? CacheConfiguration(roots: [], homeDirectory: report.url)
-            }.value
-            let result = await storageAI.analyze(report: report, configuration: configuration)
-            #else
-            let result = await storageAI.analyze(report: report, configuration: .deep)
             #endif
-            guard let self, !Task.isCancelled, self.diskReport?.id == scanID else { return }
+            let (report, configuration) = await Task.detached(priority: .utility) {
+                let report = scanned ?? map.metadataReport(for: root)
+                #if ROOM_APP_STORE
+                let configuration = home.map { CacheConfiguration.store(approvedFolders: approved, userHome: $0) }
+                    ?? CacheConfiguration(roots: [], homeDirectory: root)
+                #else
+                let configuration = CacheConfiguration.deep
+                #endif
+                return (report, configuration)
+            }.value
+            guard !Task.isCancelled else { return }
+            let result = await storageAI.analyze(report: report, configuration: configuration,
+                includesLogicalBytes: scanned != nil)
+            guard let self, !Task.isCancelled, self.analysisRequest == request, self.diskGeneration == generation,
+                  self.diskMap.rootURL == root, self.diskMap.current == map,
+                  self.fileAccess.scope(for: root) != nil else { return }
             self.analysisReport = result
-            self.analysisStatus = result.availability.reason
-            self.isAnalyzingStorage = false
-            self.analysisTask = nil
+            let status = result.findings.isEmpty
+                ? "No measured items were available to analyse."
+                : result.availability.reason
+            self.analysisStatus = scanned == nil ? "Reviewed the saved map. \(status)" : status
         }
+    }
+
+    private func finishStorageAnalysis(request: UUID) {
+        guard analysisRequest == request else { return }
+        analysisRequest = nil
+        isAnalyzingStorage = false
+        analysisTask = nil
     }
 
     func cancelStorageAnalysis() {
         if isAnalyzingStorage { analysisStatus = "Analysis stopped. Current review kept." }
+        analysisRequest = nil
         analysisTask?.cancel()
         analysisTask = nil
         isAnalyzingStorage = false
@@ -540,7 +635,9 @@ final class RoomInsightsModel {
     }
 
     func openDiskMap(rootURL: URL, relativePath: String? = nil, requestNavigation: Bool = true) {
-        guard fileAccess.scope(for: rootURL) != nil else { return }
+        guard canChooseDiskLocation, let approval = fileAccess.scope(for: rootURL) else { return }
+        let generation = UUID()
+        diskOpenGeneration = generation
         if requestNavigation { requestedDestination = .disk }
         if diskMap.openRetained(rootURL) {
             if let relativePath {
@@ -549,19 +646,24 @@ final class RoomInsightsModel {
             }
             return
         }
-        let approval = fileAccess.scope(for: rootURL) ?? rootURL
         let id = diskRootID(url: rootURL, scope: approval)
         Task {
-            guard !isScanningDisk else { return }
-            if let map = await treeStore.current(rootID: id), let root = await treeStore.root(for: id) {
-                let previous = await treeStore.previous(rootID: id)
-                guard !isScanningDisk else { return }
+            let map = await treeStore.current(rootID: id)
+            let root = await treeStore.root(for: id)
+            let previous = await treeStore.previous(rootID: id)
+            guard diskOpenGeneration == generation, canChooseDiskLocation,
+                  fileAccess.scope(for: rootURL) == approval else { return }
+            if let map, let root {
                 showStored(map, previous: previous, root: root)
                 if let relativePath { diskMap.go(to: relativePath) }
                 await treeStore.open(id)
-            } else if !isScanningDisk {
+            } else {
+                cancelStorageAnalysis()
+                analysisReport = nil
+                analysisStatus = nil
                 diskURL = rootURL
                 diskReport = nil
+                statusMessage = nil
                 diskMap.showUnmapped(rootURL)
             }
         }
@@ -597,8 +699,10 @@ final class RoomInsightsModel {
     func restoreDiskMap() async {
         guard !restoredDiskMap else { return }
         restoredDiskMap = true
+        let generation = diskOpenGeneration
         await updateTreeApprovals()
-        guard let saved = await treeStore.lastOpened(), diskURL == nil, !isScanningDisk else { return }
+        guard let saved = await treeStore.lastOpened(), diskOpenGeneration == generation,
+              diskURL == nil, canChooseDiskLocation else { return }
         showStored(saved.current, previous: saved.previous, root: saved.root)
     }
 
@@ -624,7 +728,11 @@ final class RoomInsightsModel {
             .flatMap { root.location.resolve(under: $0.url) }
         diskURL = url
         diskReport = nil
+        diskProgress = nil
+        statusMessage = nil
+        cancelStorageAnalysis()
         analysisReport = nil
+        analysisStatus = nil
         diskMap.restore(map, previous: previous, root: root, url: url)
     }
 
@@ -633,19 +741,22 @@ final class RoomInsightsModel {
     }
 
     func rescanMappedFolder(_ relativePath: String) {
-        guard !isScanningDisk, !relativePath.isEmpty, let url = diskMap.url(for: relativePath),
-              let scope = fileAccess.scope(for: url) else { return }
+        guard canChooseDiskLocation, !relativePath.isEmpty, let url = diskMap.url(for: relativePath) else { return }
+        guard let scope = mappingScope(for: url) else {
+            presentFolderPicker(initialURL: url, mapAfterApproval: true)
+            return
+        }
         scanAuthorizedDisk(url: url, scope: scope, spliceAt: relativePath)
     }
 
     var canRescanDisk: Bool {
-        guard let diskURL else { return false }
+        guard canChooseDiskLocation, diskMap.current != nil, let diskURL else { return false }
         return fileAccess.scope(for: diskURL) != nil
     }
 
     func rescanDisk() {
-        guard !isScanningDisk, let diskURL, let scope = fileAccess.scope(for: diskURL) else { return }
-        scanAuthorizedDisk(url: diskURL, scope: scope)
+        guard canRescanDisk, let diskURL else { return }
+        scanDisk(url: diskURL)
     }
 
     var canGoUpInApprovedMap: Bool { diskMap.canStepOut }
