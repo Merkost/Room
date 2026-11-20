@@ -425,15 +425,16 @@ private struct MemoryApplicationRow: View {
                 } else {
                     Text("Not in this sample").font(RoomTokens.Typography.caption).foregroundStyle(.tertiary)
                 }
-                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 18)).foregroundStyle(selected ? Color.accentColor : Color.secondary.opacity(0.55))
+                RoomChangingSymbol(name: selected ? "checkmark.circle.fill" : "circle",
+                                   color: selected ? .accentColor : .secondary.opacity(0.55))
+                    .font(.system(size: 18))
             }
             .padding(.horizontal, 12).padding(.vertical, 11)
             .background(selected ? Color.accentColor.opacity(0.065) : Color.clear,
                 in: RoundedRectangle(cornerRadius: RoomTokens.Radius.group))
             .contentShape(RoundedRectangle(cornerRadius: RoomTokens.Radius.group))
         }
-        .buttonStyle(.plain).disabled(disabled)
+        .buttonStyle(RoomHoverButtonStyle(cornerRadius: RoomTokens.Radius.group)).disabled(disabled)
         .accessibilityLabel("\(selected ? "Deselect" : "Select") \(application.name)")
         .accessibilityValue(selected ? "Selected" : "Not selected")
         .accessibilityAddTraits(selected ? [.isSelected] : [])

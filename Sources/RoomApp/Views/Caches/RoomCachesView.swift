@@ -106,6 +106,7 @@ struct RoomCachesView: View {
                         .disabled(model.isScanning || model.isWorking)
                 }
                 .font(RoomTokens.Typography.caption)
+                .roomPanelArrival()
             }
         }
         .foregroundStyle(RoomTokens.Ink.graphite)
@@ -138,8 +139,7 @@ struct RoomCachesView: View {
                 VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
                     Text(hero.heroLabel).font(RoomTokens.Typography.caption).foregroundStyle(RoomTokens.Ink.secondary)
                     metric(format(bytes), number: RoomTokens.Typography.hero, unit: RoomTokens.Typography.counter)
-                        .contentTransition(motion.isFull ? .numericText() : .identity)
-                        .animation(motion.animation(RoomTokens.Motion.countAnimation, fallback: nil), value: bytes)
+                        .roomNumericTransition(format(bytes), enabled: !model.isScanning)
                 }
             } else if !hero.lowerBound {
                 Text(hero.heroLabel).font(RoomTokens.Typography.lead)
@@ -320,12 +320,21 @@ struct RoomCachesView: View {
                     selectionCount
                 }
             }
-            ForEach(rows) { source in
-                RoomCachesRow(source: source, displayedBytes: displayedBytes(source), selected: model.selection.contains(source.id),
-                    canSelect: model.hasReport && !model.isWorking && !model.isScanning && !source.isPartial && source.isAvailable,
-                    focus: $focusedSource, format: format, select: { model.toggleSelection(id: source.id) },
-                    inspect: { inspect(source) }, reveal: { model.reveal(source: source) },
-                    neverSuggest: source.isAvailable && model.ignoreStore != nil ? { neverSuggest(source) } : nil)
+            VStack(spacing: RoomTokens.Space.row) {
+                ForEach(Array(rows.enumerated()), id: \.element.id) { index, source in
+                    RoomCachesRow(source: source, displayedBytes: displayedBytes(source), selected: model.selection.contains(source.id),
+                        canSelect: model.hasReport && !model.isWorking && !model.isScanning && !source.isPartial && source.isAvailable,
+                        focus: $focusedSource, format: format, select: { model.toggleSelection(id: source.id) },
+                        inspect: { inspect(source) }, reveal: { model.reveal(source: source) },
+                        neverSuggest: source.isAvailable && model.ignoreStore != nil ? { neverSuggest(source) } : nil)
+                        .transition(cacheRemoval(index: index))
+                }
+            }
+            .animation(motion.isFull && !hidden && model.movedReceiptID != nil ? RoomTokens.Motion.standard : nil,
+                       value: model.movedReceiptID)
+            .transaction(value: hide) { transaction in
+                transaction.animation = nil
+                transaction.disablesAnimations = true
             }
             if rows.isEmpty { Text("No sources in this view.").font(RoomTokens.Typography.caption) }
         }
@@ -334,6 +343,14 @@ struct RoomCachesView: View {
         .frame(minWidth: 270, maxWidth: .infinity, alignment: .topLeading)
         .padding(RoomTokens.Space.group)
         .background(RoomTokens.Surface.group, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.group))
+    }
+
+    private func cacheRemoval(index: Int) -> AnyTransition {
+        guard motion.isFull, !hidden else { return .identity }
+        let delay = Double(min(index, RoomTokens.Motion.maxStaggered - 1)) * RoomTokens.Motion.stagger
+        return .asymmetric(insertion: .identity,
+            removal: .offset(y: -RoomTokens.Space.row).combined(with: .opacity)
+                .animation(RoomTokens.Motion.standard.delay(delay)))
     }
 
     private func displayedBytes(_ source: RoomSource) -> Int64 {

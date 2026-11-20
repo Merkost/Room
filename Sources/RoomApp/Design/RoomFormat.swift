@@ -36,6 +36,7 @@ struct RoomByteMetric: View {
     let bytes: Int64
     var maximumSize: CGFloat = 38
     var memory = false
+    var animatesChanges = false
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
@@ -56,7 +57,7 @@ struct RoomByteMetric: View {
                 .font(RoomType.figure(size))
                 .tracking(size > 30 ? -0.5 : 0)
                 .monospacedDigit()
-                .contentTransition(.numericText())
+                .roomNumericTransition(amount.value, enabled: animatesChanges)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
             Text(amount.unit)

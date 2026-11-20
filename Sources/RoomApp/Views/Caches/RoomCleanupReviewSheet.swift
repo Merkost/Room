@@ -6,6 +6,7 @@ struct RoomCleanupReviewSheet: View {
     let model: RoomViewModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.roomAccent) private var accent
+    @Environment(\.roomMotion) private var motion
     @State private var committed: RoomCleanupReview?
 
     private var presentation: RoomCleanupReview {
@@ -37,13 +38,25 @@ struct RoomCleanupReviewSheet: View {
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(hidden ? "Name hidden" : row.name)
-                                        .font(RoomTokens.Typography.section).strikethrough(!selected)
+                                        .font(RoomTokens.Typography.section)
+                                        .overlay {
+                                            Rectangle()
+                                                .fill(RoomTokens.Ink.secondary)
+                                                .frame(height: 1)
+                                                .scaleEffect(x: selected ? 0 : 1, y: 1, anchor: .leading)
+                                                .animation(motion.animation(RoomTokens.Motion.standard, fallback: nil), value: selected)
+                                                .allowsHitTesting(false)
+                                                .accessibilityHidden(true)
+                                        }
                                     Text(row.consequence).foregroundStyle(RoomTokens.Ink.secondary)
                                 }
                                 Spacer()
                                 Text(format(row.bytes)).font(RoomTokens.Typography.section.monospacedDigit())
                                 if ticked.contains(row.id) {
-                                    Image(systemName: "checkmark").foregroundStyle(accent.text)
+                                    RoomCheckmarkPath()
+                                        .stroke(accent.text, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+                                        .frame(width: 9, height: 6)
+                                        .roomPanelArrival()
                                         .accessibilityLabel("Saved in receipt")
                                 } else if review.phase == .moving, row.entryIDs.contains(where: { model.cleanupProgress[$0] == .failed }) {
                                     Text("Kept").foregroundStyle(RoomTokens.Ink.secondary)

@@ -38,6 +38,7 @@ struct RoomDiskMapView: View {
                 } else if let level = model.level {
                     if model.hasLostAccess { accessNotice }
                     details(level, isWide: isWide)
+                        .roomPanelArrival(enabled: model.blueprint?.phase == .done)
                 } else {
                     empty
                 }
@@ -254,7 +255,7 @@ struct RoomDiskMapView: View {
                         readout(level, hint: false)
                     }
                 }
-                if isWide && !hidesWideInspector { inspector.frame(width: RoomTokens.Map.inspectorWidth) }
+                if isWide && !hidesWideInspector { wideInspector }
             }
         }
     }
@@ -278,8 +279,14 @@ struct RoomDiskMapView: View {
                 RoomMapReadout(title: "Measured so far",
                                detail: hidden ? "Size hidden" : blueprint.counter(files: { $0.formatted() }, bytes: RoomFormat.bytes))
             }
-            if isWide && !hidesWideInspector { inspector.frame(width: RoomTokens.Map.inspectorWidth) }
+            if isWide && !hidesWideInspector { wideInspector }
         }
+    }
+
+    private var wideInspector: some View {
+        inspector
+            .frame(width: RoomTokens.Map.inspectorWidth)
+            .roomPanelArrival()
     }
 
     private func readout(_ level: RoomTreeNode, hint: Bool) -> some View {

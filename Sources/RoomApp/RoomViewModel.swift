@@ -32,7 +32,7 @@ final class RoomViewModel {
     private(set) var measuredSourceCount = 0
     private(set) var readableSourceCount = 0
     private(set) var cleanupProgress: [UUID: ActivityStatus] = [:]
-    private var movedReceiptID: UUID?
+    private(set) var movedReceiptID: UUID?
     private(set) var isScanning = false
     private(set) var scanScope: RoomCacheScanScope = .full
     private(set) var isPartialScan = false

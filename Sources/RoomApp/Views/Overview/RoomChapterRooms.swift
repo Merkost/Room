@@ -85,7 +85,7 @@ struct RoomChapterRooms: View {
             }
             .frame(height: 36).padding(.horizontal, 8).contentShape(.rect(cornerRadius: RoomTokens.Radius.row))
         }
-        .buttonStyle(RoomChapterRowButtonStyle())
+        .buttonStyle(RoomHoverButtonStyle())
         .help(hide.masksNow ? help : row.name + " · " + help)
         .accessibilityLabel(hide.masksNow
             ? "Room, name hidden, size hidden. \(unavailable ? "Choose folder." : "Open in Disk Map.")"
@@ -107,15 +107,5 @@ struct RoomChapterRooms: View {
                 context.fill(Path(ellipseIn: CGRect(x: end.x - 1.5, y: end.y - 1.5, width: 3, height: 3)), with: .color(color))
             }
         }.accessibilityHidden(true)
-    }
-}
-
-private struct RoomChapterRowButtonStyle: ButtonStyle {
-    @State private var hovering = false
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .background(hovering || configuration.isPressed ? RoomTokens.Surface.hover : .clear, in: .rect(cornerRadius: RoomTokens.Radius.row))
-            .onHover { hovering = $0 }
     }
 }

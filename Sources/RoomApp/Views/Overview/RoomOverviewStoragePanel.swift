@@ -52,7 +52,7 @@ struct RoomOverviewStoragePanel: View {
             Text("Available")
                 .font(RoomTokens.Typography.caption)
                 .foregroundStyle(RoomTokens.Ink.secondary)
-            RoomByteMetric(bytes: balance.plan.freeBytes, maximumSize: 58)
+            RoomByteMetric(bytes: balance.plan.freeBytes, maximumSize: 58, animatesChanges: true)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(hidden ? "Available space hidden" : "\(RoomFormat.bytes(balance.plan.freeBytes)) available")
             if let difference = balance.goalDifference {

@@ -84,6 +84,7 @@ struct RoomOverviewView: View {
                plan.mapping != nil || !plan.kindValues.isEmpty || snapshot.state == .mappingStopped {
                 storageMap(plan, snapshot: snapshot)
                     .modifier(arrivalGroup(2))
+                    .roomPanelArrival(enabled: !animatesArrival || arrived)
             }
             if showRooms && (!rooms.visibleRooms.isEmpty || (snapshot.state != .firstRun && rooms.canChooseFolder)) {
                 RoomChapterRooms(rooms: rooms, calendar: .current, editing: editingRoom, openRoom: openPinned,
@@ -210,9 +211,8 @@ struct RoomOverviewView: View {
 
     private func actionSummary(_ copy: (title: String, detail: String, symbol: String)) -> some View {
         HStack(alignment: .top, spacing: RoomTokens.Space.inner) {
-            Image(systemName: copy.symbol)
+            RoomChangingSymbol(name: copy.symbol, color: accent.text)
                 .font(RoomTokens.Typography.lead)
-                .foregroundStyle(accent.text)
                 .frame(width: RoomTokens.Space.breath2, height: RoomTokens.Space.breath2)
                 .background(accent.wash, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.row))
                 .accessibilityHidden(true)

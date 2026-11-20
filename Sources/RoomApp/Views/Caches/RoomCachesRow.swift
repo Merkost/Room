@@ -22,10 +22,8 @@ struct RoomCachesRow: View {
             Button(action: canSelect ? select : inspect) {
                 HStack(spacing: RoomTokens.Space.row) {
                     if canSelect {
-                        Image(systemName: selected ? "checkmark.square.fill" : "square")
-                            .foregroundStyle(selected ? accent.text : RoomTokens.Ink.secondary)
+                        RoomSelectionCheckmark(selected: selected, color: accent.text)
                             .frame(width: 14)
-                            .accessibilityHidden(true)
                     } else {
                         Image(systemName: "lock.fill")
                             .font(RoomTokens.Typography.micro)
@@ -48,7 +46,7 @@ struct RoomCachesRow: View {
                 .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(RoomHoverButtonStyle())
             .focused(focus, equals: source.id)
             .onKeyPress(.space) {
                 if canSelect { select(); return .handled }
@@ -63,7 +61,7 @@ struct RoomCachesRow: View {
                     .frame(width: 24, height: 24)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(RoomHoverButtonStyle())
             .accessibilityLabel("Inspect \(source.name)")
             .keyboardShortcut(focus.wrappedValue == source.id ? KeyboardShortcut("i", modifiers: .command) : nil)
         }

@@ -16,7 +16,6 @@ struct RoomSidebar: View {
     @Namespace private var selection
     private let unpinPrefix = "sidebar:unpin:"
     private let confirmation = RoomInlineConfirmCenter.shared
-    @State private var hoveredScreen: RoomDestination?
 
     static let items: [NavigationItem] = RoomMenuModel.Destination.allCases.compactMap { menu in
         guard let destination = RoomDestination(rawValue: menu.rawValue) else { return nil }
@@ -75,18 +74,12 @@ struct RoomSidebar: View {
                 if selected {
                     pill.fill(RoomTokens.Surface.line)
                         .matchedGeometryEffect(id: "sidebar-selection", in: selection)
-                } else if hoveredScreen == item.destination {
-                    pill.fill(RoomTokens.Surface.hover)
                 }
             }
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(RoomHoverButtonStyle(showsFeedback: !selected))
         .focused($focusedScreen, equals: item.destination)
-        .onHover { hovered in
-            if hovered { hoveredScreen = item.destination }
-            else if hoveredScreen == item.destination { hoveredScreen = nil }
-        }
         .onKeyPress(.return) {
             navigation.select(route, origin: .keyboard)
             return .handled

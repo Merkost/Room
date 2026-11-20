@@ -3,6 +3,7 @@ import SwiftUI
 
 struct RoomActivityPill: View {
     private static let markSize: CGFloat = 14
+    private static let height: CGFloat = 28
     var stop: (RoomActivityPillState.Tool) -> Void = { _ in }
     var restore: (UUID) -> Void = { _ in }
     var showHistory: () -> Void = {}
@@ -16,15 +17,31 @@ struct RoomActivityPill: View {
     @State private var expanded = false
     @State private var hovered = false
 
+    private enum Mark: Hashable {
+        case idle, scanning, needsAccess, made
+
+        init(_ state: RoomActivityPillState) {
+            switch state {
+            case .scanning: self = .scanning
+            case .needsAccess: self = .needsAccess
+            case .made: self = .made
+            default: self = .idle
+            }
+        }
+    }
+
     var body: some View {
         if let center {
             let state = center.visible
+            let appearance = Mark(state)
             let text = toolbarLabel(state)
             Button {
                 expanded.toggle()
             } label: {
                 HStack(spacing: RoomTokens.Space.row) {
-                    mark(state)
+                    mark(appearance)
+                        .roomPanelArrival()
+                        .id(appearance)
                         .frame(width: Self.markSize, height: Self.markSize)
                     RoomChangingLabel(value: text, animates: !hidden) {
                         Text(text).font(RoomTokens.Typography.caption.monospacedDigit())
@@ -33,11 +50,11 @@ struct RoomActivityPill: View {
                     }
                 }
                 .padding(.horizontal, 10)
-                .frame(minHeight: 28)
+                .frame(minHeight: Self.height)
                 .fixedSize(horizontal: true, vertical: false)
                 .contentShape(Capsule())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(RoomHoverButtonStyle(cornerRadius: Self.height / 2, isActive: expanded))
             .background(RoomTokens.Surface.group, in: Capsule())
             .overlay { Capsule().strokeBorder(RoomTokens.Surface.line2).allowsHitTesting(false) }
             .accessibilityLabel(spoken(state))
@@ -80,20 +97,19 @@ struct RoomActivityPill: View {
     }
 
     @ViewBuilder
-    private func mark(_ state: RoomActivityPillState) -> some View {
-        if case .scanning = state, motion.isFull {
+    private func mark(_ appearance: Mark) -> some View {
+        if appearance == .scanning, motion.isFull {
             TimelineView(.animation) { context in
                 let lap = RoomTokens.Motion.traceLap
                 let elapsed = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: lap)
                 markPath(phase: elapsed / lap, ink: RoomTokens.Ink.secondary)
             }
             .accessibilityHidden(true)
-        } else if case .made = state {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(accent.text)
+        } else if appearance == .made {
+            RoomMadeMark(color: accent.text)
                 .accessibilityHidden(true)
         } else {
-            let ink: Color = if case .needsAccess = state { RoomTokens.Status.elevated } else { RoomTokens.Ink.secondary }
+            let ink = appearance == .needsAccess ? RoomTokens.Status.elevated : RoomTokens.Ink.secondary
             markPath(phase: nil, ink: ink).accessibilityHidden(true)
         }
     }
@@ -164,5 +180,26 @@ struct RoomActivityPill: View {
         case .made: return "Made room. Size hidden."
         default: return "Activity details hidden"
         }
+    }
+}
+
+private struct RoomMadeMark: View {
+    let color: Color
+    @Environment(\.roomMotion) private var motion
+    @State private var settled = false
+
+    var body: some View {
+        let visible = settled || !motion.isFull
+        Circle().fill(color)
+            .overlay {
+                RoomCheckmarkPath()
+                    .trim(from: 0, to: visible ? 1 : 0)
+                    .stroke(RoomTokens.Surface.canvas, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+                    .frame(width: 7, height: 5)
+                    .animation(motion.animation(RoomTokens.Motion.receiptLead, fallback: nil), value: visible)
+            }
+            .scaleEffect(visible ? 1 : 0.6)
+            .animation(motion.animation(RoomTokens.Motion.success, fallback: nil), value: visible)
+            .task { settled = true }
     }
 }

@@ -120,8 +120,9 @@ struct RoomLargestTable: View {
                         }
                         .font(RoomTokens.Typography.body)
                         .frame(minHeight: RoomTokens.Map.largestRowHeight)
+                        .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(RoomHoverButtonStyle())
                 }
             }
             .padding(RoomTokens.Space.row)

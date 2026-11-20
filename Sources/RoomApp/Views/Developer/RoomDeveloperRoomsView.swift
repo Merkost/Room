@@ -120,7 +120,9 @@ struct RoomDeveloperRoomsView: View {
                     } label: {
                         Image(systemName: "arrow.up.forward.app")
                     }
-                    .buttonStyle(.plain).help("Show in Finder").accessibilityLabel("Show \(hide.masksNow ? "version" : row.artifact.version) in Finder")
+                    .buttonStyle(RoomHoverButtonStyle())
+                    .help("Show in Finder")
+                    .accessibilityLabel("Show \(hide.masksNow ? "version" : row.artifact.version) in Finder")
                 }.padding(.vertical, 4)
                 Divider()
             }
