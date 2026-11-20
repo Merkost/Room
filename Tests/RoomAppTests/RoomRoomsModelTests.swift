@@ -55,7 +55,7 @@ struct RoomRoomsModelTests {
         #expect(model.state == .empty && fixture.store.loadSizes().isEmpty)
     }
 
-    @Test func repinWaitsForCancelledWorkerBeforeStartingAnother() async throws {
+    @Test func pinAddsAndWaitsForTheFirstMeasurement() async throws {
         let fixture = try RoomsFixture()
         defer { fixture.remove() }
         let second = fixture.root.appendingPathComponent("second", isDirectory: true)
@@ -66,12 +66,12 @@ struct RoomRoomsModelTests {
         await gate.waitForStarts(1)
         let oldID = try #require(model.pinnedRoom?.id)
         model.pin(url: second)
-        let newID = try #require(model.pinnedRoom?.id)
+        let newID = try #require(model.rooms.last?.id)
         let firstCount = await gate.count
-        #expect(oldID != newID && firstCount == 1)
+        #expect(oldID != newID && firstCount == 1 && model.popoverRoom?.id == oldID)
         await gate.complete(0, with: .measured(fixture.point))
         await gate.waitForStarts(2)
-        #expect(fixture.store.loadSizes()[oldID.uuidString] == nil)
+        #expect(fixture.store.loadSizes()[oldID.uuidString]?.latest == fixture.point)
         await gate.complete(1, with: .measured(fixture.point))
         await roomsWaitUntil { !model.isMeasuring }
         #expect(fixture.store.loadSizes()[newID.uuidString]?.latest == fixture.point)
@@ -111,7 +111,7 @@ struct RoomRoomsModelTests {
         #expect(model.state == .unavailable(room) && count == 1)
     }
 
-    @Test func workingSkipsMeasurementAndFreshnessRequiresMoreThanOneHour() async throws {
+    @Test func workingSkipsMeasurementAndFreshnessExpiresAtOneHour() async throws {
         let fixture = try RoomsFixture()
         defer { fixture.remove() }
         let approved = try fixture.access.remember(fixture.folder)
@@ -130,7 +130,7 @@ struct RoomRoomsModelTests {
         let count = await gate.count
         #expect(!model.isMeasuring && count == 0)
         working = false
-        now = fixture.point.at.addingTimeInterval(3600)
+        now = fixture.point.at.addingTimeInterval(3599)
         model.measureIfNeeded()
         #expect(!model.isMeasuring)
         now = now.addingTimeInterval(1)
@@ -198,7 +198,7 @@ struct RoomRoomsModelTests {
         #expect(await gate.count == 1)
     }
 
-    @Test func replacingAndUnpinningFirstRoomPreservesOtherRooms() async throws {
+    @Test func addingAndUnpinningOneRoomPreservesOtherRooms() async throws {
         let fixture = try RoomsFixture()
         defer { fixture.remove() }
         let otherFolder = fixture.root.appendingPathComponent("Other", isDirectory: true)
@@ -215,12 +215,42 @@ struct RoomRoomsModelTests {
         let model = fixture.model(gate: gate)
         model.pin(url: fixture.folder)
         await gate.waitForStarts(1)
-        #expect(fixture.store.loadRooms().last == other)
-        model.unpin()
+        let added = try #require(model.rooms.last)
+        #expect(model.rooms.map(\.id) == [first.id, other.id, added.id])
+        model.unpin(id: added.id)
         await gate.complete(0, with: .measured(fixture.point))
         await roomsWaitUntil { !model.isMeasuring }
-        #expect(model.pinnedRoom == other && fixture.store.loadRooms() == [other])
+        #expect(model.popoverRoom == first && fixture.store.loadRooms() == [first, other])
         #expect(fixture.store.loadSizes()[other.id.uuidString] == otherLog)
+    }
+
+    @Test func samePinSelectsExisting() async throws {
+        let fixture = try RoomsFixture()
+        defer { fixture.remove() }
+        let gate = RoomsMeasurementGate()
+        let model = fixture.model(gate: gate)
+        model.pin(url: fixture.folder)
+        await gate.waitForStarts(1)
+        let first = try #require(model.rooms.first)
+        model.pin(url: fixture.folder)
+        #expect(model.rooms == [first] && model.selectedRoomID == first.id)
+        await gate.complete(0, with: .measured(fixture.point))
+        await roomsWaitUntil { !model.isMeasuring }
+        #expect(await gate.count == 1)
+    }
+
+    @Test func sixtyFifthRefusedBeforeRememberingAccess() throws {
+        let fixture = try RoomsFixture()
+        defer { fixture.remove() }
+        let seeded = (0..<64).map { n in
+            RoomPinnedRoom(id: UUID(), accessFolderID: "f-\(n)", name: "Room \(n)", order: n)
+        }
+        #expect(fixture.store.saveRooms(seeded))
+        let model = fixture.model(gate: RoomsMeasurementGate())
+        model.pin(url: fixture.folder)
+        #expect(model.rooms == seeded)
+        #expect(fixture.access.folders.isEmpty)
+        #expect(model.notice == "Room keeps up to 64 Rooms. Unpin one first.")
     }
 
     @Test func pickerUsesPinCopyAndCancellationDoesNotCreateARoom() async throws {
@@ -235,8 +265,14 @@ struct RoomRoomsModelTests {
                 #expect(prompt == "Pin" && initial != nil)
                 return nil
             })
+        let preferences = RoomOverviewPreferences()
+        #expect(model.canChooseFolder)
         model.chooseFolder()
-        await roomsWaitUntil { calls == 1 }
+        #expect(!model.canChooseFolder)
+        #expect(preferences.showsRoomsChapter(roomCount: model.visibleRooms.count, allowsEmptyChapter: true))
+        await roomsWaitUntil { calls == 1 && model.canChooseFolder }
+        #expect(model.canChooseFolder)
+        #expect(preferences.showsRoomsChapter(roomCount: model.visibleRooms.count, allowsEmptyChapter: true))
         #expect(model.state == .empty && fixture.access.folders.isEmpty)
         #expect(await gate.count == 0)
     }

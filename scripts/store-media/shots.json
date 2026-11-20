@@ -1,0 +1,52 @@
+[
+  {
+    "name": "01-overview",
+    "capture": "overview.png",
+    "headline": "See what fills your Mac",
+    "detail": "Your available space, storage goal, and mapped folders in one view.",
+    "tone": "paper"
+  },
+  {
+    "name": "02-disk-map",
+    "capture": "disk-map.png",
+    "headline": "Find what takes up space",
+    "detail": "Choose a folder, then follow the map to its largest files.",
+    "tone": "slate"
+  },
+  {
+    "name": "03-cache-review",
+    "capture": "caches-review.png",
+    "headline": "Review before you move",
+    "detail": "Inspect eligible npm downloads before approving a move to Trash.",
+    "tone": "paper"
+  },
+  {
+    "name": "04-developer",
+    "capture": "developer.png",
+    "headline": "See what your projects use",
+    "detail": "Trace build resources and toolchains back to the projects that use them.",
+    "tone": "slate"
+  },
+  {
+    "name": "05-memory",
+    "capture": "memory.png",
+    "headline": "Keep memory in view",
+    "detail": "See current memory pressure and follow it over time.",
+    "tone": "paper"
+  },
+  {
+    "name": "06-monitor",
+    "capture": "monitor.png",
+    "headline": "Check in from the menu bar",
+    "detail": "Glance at available space and memory pressure while you work.",
+    "tone": "slate",
+    "trimTopFraction": 0.0840909091
+  },
+  {
+    "name": "07-ai-tools",
+    "capture": "ai-tools.png",
+    "headline": "See where AI tools put their files",
+    "detail": "Identify caches, session history, worktrees, and local models before deciding what to keep.",
+    "tone": "paper"
+  }
+]

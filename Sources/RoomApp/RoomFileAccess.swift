@@ -2,12 +2,23 @@ import AppKit
 import Foundation
 import Observation
 
-enum RoomInsightDestination: Hashable { case clean, memory, disk }
+nonisolated enum RoomInsightDestination: Hashable, Sendable { case overview, clean, memory, disk }
 
 struct RoomAccessFolder: Identifiable, Equatable {
     let id: String
     let name: String
     let url: URL
+}
+
+struct RoomUnavailableAccessFolder: Identifiable, Equatable {
+    let id: String
+    let url: URL?
+    var name: String { url?.lastPathComponent ?? String(localized: "Unavailable folder") }
+}
+
+struct RoomBookmarkResolution {
+    let url: URL
+    let isStale: Bool
 }
 
 /// Stores only bookmarks created after a native folder-picker approval.
@@ -17,34 +28,45 @@ final class RoomFileAccess {
     private struct Record: Codable {
         let id: String
         var bookmark: Data
+        var lastKnownPath: String?
     }
 
     private let defaults: UserDefaults
     private let key = "RoomApprovedFolderBookmarks"
     private var records: [Record]
-    private(set) var folders: [RoomAccessFolder] = []
+    private var resolvedFolders: [RoomAccessFolder] = []
+    private var stagedRemovalIDs: Set<String> = []
+    var folders: [RoomAccessFolder] { resolvedFolders.filter { !stagedRemovalIDs.contains($0.id) } }
+    private var unresolvedFolders: [RoomUnavailableAccessFolder] = []
+    var unavailableFolders: [RoomUnavailableAccessFolder] {
+        unresolvedFolders.filter { !stagedRemovalIDs.contains($0.id) }
+    }
     private(set) var note: String?
+    @ObservationIgnored private let bookmarkResolver: (Data) throws -> RoomBookmarkResolution
+    @ObservationIgnored private let bookmarkCreator: (URL) throws -> Data
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard,
+         bookmarkResolver: ((Data) throws -> RoomBookmarkResolution)? = nil,
+         bookmarkCreator: ((URL) throws -> Data)? = nil) {
         self.defaults = defaults
+        self.bookmarkResolver = bookmarkResolver ?? Self.resolveBookmark
+        self.bookmarkCreator = bookmarkCreator ?? Self.createBookmark
         records = (defaults.data(forKey: key).flatMap { try? JSONDecoder().decode([Record].self, from: $0) }) ?? []
         resolveBookmarks()
     }
 
     func remember(_ url: URL) throws -> URL {
         reloadRecords()
-        let scope = url.startAccessingSecurityScopedResource()
-        defer { if scope { url.stopAccessingSecurityScopedResource() } }
-        let bookmark = try url.bookmarkData(options: [.withSecurityScope, .securityScopeAllowOnlyReadAccess],
-            includingResourceValuesForKeys: nil, relativeTo: nil)
+        let (bookmark, resolvedURL) = try approvedBookmark(for: url)
         let recordID: String
-        if let folder = folders.first(where: { $0.url.standardizedFileURL.path == url.standardizedFileURL.path }),
+        if let folder = folders.first(where: { Self.lexicalPath($0.url) == Self.lexicalPath(resolvedURL) }),
            let index = records.firstIndex(where: { $0.id == folder.id }) {
             records[index].bookmark = bookmark
+            records[index].lastKnownPath = resolvedURL.path
             recordID = folder.id
         } else {
             recordID = UUID().uuidString
-            records.append(Record(id: recordID, bookmark: bookmark))
+            records.append(Record(id: recordID, bookmark: bookmark, lastKnownPath: resolvedURL.path))
         }
         persist()
         resolveBookmarks()
@@ -54,9 +76,32 @@ final class RoomFileAccess {
         return approved.url
     }
 
+    /// Restore the same root so a retained tree, saved view, or Room keeps its identity.
+    func renew(id: String, approvedURL: URL) throws {
+        reloadRecords()
+        guard let folder = unavailableFolders.first(where: { $0.id == id }),
+              let expected = folder.url, let index = records.firstIndex(where: { $0.id == id }) else {
+            throw CocoaError(.fileNoSuchFile)
+        }
+        let (bookmark, approved) = try approvedBookmark(for: approvedURL)
+        guard Self.lexicalPath(approved) == Self.lexicalPath(expected),
+              !folders.contains(where: { Self.lexicalPath($0.url) == Self.lexicalPath(approved) }) else {
+            throw CocoaError(.fileReadInvalidFileName)
+        }
+        records[index] = Record(id: id, bookmark: bookmark, lastKnownPath: approved.path)
+        persist()
+        resolveBookmarks()
+        guard folders.contains(where: { $0.id == id }) else { throw CocoaError(.fileReadUnknown) }
+    }
+
+    func stageRemoval(id: String) { stagedRemovalIDs.insert(id) }
+
+    func undoRemoval(id: String) { stagedRemovalIDs.remove(id) }
+
     func forget(id: String) {
         reloadRecords()
         records.removeAll { $0.id == id }
+        stagedRemovalIDs.remove(id)
         persist()
         resolveBookmarks()
     }
@@ -90,22 +135,54 @@ final class RoomFileAccess {
     }
 
     private func resolveBookmarks() {
-        note = nil
-        folders = records.compactMap { record in
+        var resolved: [RoomAccessFolder] = []
+        var unavailable: [RoomUnavailableAccessFolder] = []
+        var recordedPath = false
+        for index in records.indices {
+            let record = records[index]
+            let known = record.lastKnownPath.map { URL(filePath: $0, directoryHint: .isDirectory) }
             do {
-                var stale = false
-                let url = try URL(resolvingBookmarkData: record.bookmark, options: [.withSecurityScope, .withoutUI],
-                    relativeTo: nil, bookmarkDataIsStale: &stale)
-                guard !stale else {
-                    note = "A saved folder needs approval again. Choose it with Add Folder."
-                    return nil
+                let bookmark = try bookmarkResolver(record.bookmark)
+                if bookmark.isStale {
+                    unavailable.append(.init(id: record.id, url: known ?? bookmark.url))
+                } else {
+                    let url = bookmark.url
+                    resolved.append(RoomAccessFolder(id: record.id, name: url.lastPathComponent.isEmpty ? url.path : url.lastPathComponent, url: url))
+                    if record.lastKnownPath != url.path {
+                        records[index].lastKnownPath = url.path
+                        recordedPath = true
+                    }
                 }
-                return RoomAccessFolder(id: record.id, name: url.lastPathComponent.isEmpty ? url.path : url.lastPathComponent, url: url)
             } catch {
-                note = "A saved folder is unavailable. Choose it again to renew access."
-                return nil
+                unavailable.append(.init(id: record.id, url: known))
             }
         }
+        resolvedFolders = resolved
+        unresolvedFolders = unavailable
+        note = unavailable.isEmpty ? nil : String(localized: "Renew or remove unavailable folders in Settings.")
+        if recordedPath { persist() }
+    }
+
+    private func approvedBookmark(for url: URL) throws -> (Data, URL) {
+        guard url.isFileURL else { throw CocoaError(.fileReadUnsupportedScheme) }
+        let scope = url.startAccessingSecurityScopedResource()
+        defer { if scope { url.stopAccessingSecurityScopedResource() } }
+        let bookmark = try bookmarkCreator(url)
+        let resolution = try bookmarkResolver(bookmark)
+        guard !resolution.isStale, resolution.url.isFileURL else { throw CocoaError(.fileReadUnknown) }
+        return (bookmark, resolution.url)
+    }
+
+    private static func createBookmark(_ url: URL) throws -> Data {
+        try url.bookmarkData(options: [.withSecurityScope, .securityScopeAllowOnlyReadAccess],
+            includingResourceValuesForKeys: nil, relativeTo: nil)
+    }
+
+    private static func resolveBookmark(_ data: Data) throws -> RoomBookmarkResolution {
+        var stale = false
+        let url = try URL(resolvingBookmarkData: data, options: [.withSecurityScope, .withoutUI, .withoutMounting],
+            relativeTo: nil, bookmarkDataIsStale: &stale)
+        return RoomBookmarkResolution(url: url, isStale: stale)
     }
 
     private func persist() {

@@ -1,0 +1,13 @@
+{
+  "01-overview-map": [
+    {"file": "overview.mov", "start": 0.5, "end": 3.0},
+    {"file": "overview-map-interactive.mov", "start": 0.0, "end": 22.0}
+  ],
+  "02-cache-review": [
+    {"file": "cache-review-interactive.mov"}
+  ],
+  "03-memory-monitor": [
+    {"file": "memory.mov", "start": 0.5, "end": 11.6},
+    {"file": "monitor.mov", "start": 0.5, "end": 11.4, "crop": [1728, 972, 96, 108]}
+  ]
+}

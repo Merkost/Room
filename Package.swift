@@ -7,6 +7,7 @@ let editionSettings: [SwiftSetting] = storeEdition ? [.define("ROOM_APP_STORE")]
 
 let package = Package(
     name: "Room",
+    defaultLocalization: "en",
     platforms: [.macOS("26.0")],
     products: [.executable(name: "Room", targets: ["RoomApp"])],
     targets: [
@@ -14,6 +15,7 @@ let package = Package(
         .executableTarget(
             name: "RoomApp",
             dependencies: ["RoomCore"],
+            resources: [.process("Resources")],
             swiftSettings: [.defaultIsolation(MainActor.self)] + editionSettings
         ),
         .testTarget(name: "RoomCoreTests", dependencies: ["RoomCore"], swiftSettings: editionSettings),

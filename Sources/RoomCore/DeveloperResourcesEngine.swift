@@ -4,14 +4,25 @@ import Foundation
 /// Read-only review. No emulator/Gradle execution, deletion, or implicit home
 /// discovery occurs. Paths and timestamps are evidence, not an unused verdict.
 public actor DeveloperResourcesEngine {
-    public init() { }
+    private let beforeResourceValidation: (@Sendable (URL) -> Void)?
+
+    public init() { beforeResourceValidation = nil }
+
+    init(beforeResourceValidation: @escaping @Sendable (URL) -> Void) {
+        self.beforeResourceValidation = beforeResourceValidation
+    }
 
     public func scan(request: DeveloperResourcesRequest,
                      progress: (@Sendable (DeveloperResourcesProgress) -> Void)? = nil) async -> DeveloperResourcesReport {
         let id = UUID(), date = Date()
         let budget = DRBudget(request.limits)
         var avds: [AndroidVirtualDeviceResource] = [], gradle: [GradleDeveloperResource] = []
+        var simulators: [SimulatorDeviceResource] = []
         var wrappers: [GradleProjectWrapper] = []
+        var projects: [String: DeveloperProject] = [:]
+        var toolchains: [DeveloperToolchainResource] = []
+        var storage: [DeveloperStorageResource] = []
+        var aiStorage: [DeveloperAIStorageResource] = []
         var approvals: [URL] = []
         for supplied in request.approvedFolders.prefix(64) {
             let url = supplied.roomLexicallyNormalized
@@ -22,10 +33,12 @@ public actor DeveloperResourcesEngine {
             } catch { budget.note(url, "The approved folder is unavailable, linked or not owned by this user.") }
         }
         if request.approvedFolders.count > 64 { budget.note(URL(fileURLWithPath: "/"), "Only the first 64 approved folders were considered.") }
-        func permitted(_ supplied: URL) -> URL? {
+        func permitted(_ supplied: URL, reportMissingApproval: Bool = true) -> URL? {
             let url = supplied.roomLexicallyNormalized
             guard supplied.isFileURL, approvals.contains(where: { DRFiles.contains(url, in: $0) }) else {
-                budget.note(url, "This requested location needs explicit folder approval. It was not inspected.")
+                if reportMissingApproval {
+                    budget.note(url, "This requested location needs explicit folder approval. It was not inspected.")
+                }
                 return nil
             }
             return url
@@ -34,19 +47,24 @@ public actor DeveloperResourcesEngine {
             progress?(DeveloperResourcesProgress(phase: phase, inspectedCount: budget.nodes, currentPath: url.path))
         }
         do {
-            var searched: Set<String> = []
-            for supplied in request.projectRoots.prefix(32) {
+            let review = request.scope == .review
+            var searched: [URL] = []
+            let projectRoots = (review ? request.projectRoots : []).prefix(32).sorted { $0.pathComponents.count < $1.pathComponents.count }
+            for supplied in projectRoots {
                 try budget.check()
-                guard let root = permitted(supplied), searched.insert(root.path).inserted else { continue }
-                update("Project wrappers", root)
-                do { try DRProjects.find(root, budget: budget, wrappers: &wrappers) }
+                guard let root = permitted(supplied),
+                      !searched.contains(where: { DRFiles.contains(root, in: $0) }) else { continue }
+                searched.append(root)
+                update("Project versions", root)
+                do { try DRProjects.find(root, budget: budget, wrappers: &wrappers, projects: &projects) }
                 catch is CancellationError { throw CancellationError() }
                 catch is DRStop { throw DRStop.limit }
-                catch { budget.note(root, "Project wrapper inspection was incomplete; no scripts or build configuration were executed.") }
+                catch { budget.note(root, "Project version inspection was incomplete. No builds were run.") }
                 await Task.yield()
             }
             var seenAVDs: Set<String> = []
-            for supplied in request.avdRoots.prefix(32) {
+            let scansDevices = review || request.scope == .devices
+            for supplied in (scansDevices ? request.avdRoots : []).prefix(32) {
                 try budget.check()
                 guard let root = permitted(supplied) else { continue }
                 update("Android devices", root)
@@ -67,8 +85,43 @@ public actor DeveloperResourcesEngine {
                 }
                 await Task.yield()
             }
+            if request.scope == .devices {
+                var seenRoots: Set<String> = []
+                for supplied in request.simulatorDeviceRoots.prefix(32) {
+                    try budget.check()
+                    let root = supplied.roomLexicallyNormalized
+                    guard seenRoots.insert(root.path).inserted else { continue }
+                    guard supplied.isFileURL, approvals.contains(where: { $0.path == root.path }) else {
+                        budget.note(root, "Choose this Simulator Devices folder explicitly before measuring it.")
+                        continue
+                    }
+                    update("Apple simulators", root)
+                    let children: [URL]
+                    let volume: dev_t
+                    do {
+                        volume = try DRFiles.directory(root).st_dev
+                        children = try DRFiles.children(root, budget: budget)
+                        guard try DRFiles.isSimulatorDeviceSet(root, budget: budget, children: children) else {
+                            budget.note(root, "Choose the Simulator Devices folder containing the simulator device set.")
+                            continue
+                        }
+                    } catch is CancellationError { throw CancellationError() }
+                    catch is DRStop { throw DRStop.limit }
+                    catch { budget.note(root, "The Simulator Devices folder could not be inspected safely."); continue }
+                    for url in children {
+                        guard let id = UUID(uuidString: url.lastPathComponent) else { continue }
+                        try budget.resource()
+                        update("Apple simulators", url)
+                        do { simulators.append(try simulatorDevice(url, id: id, volume: volume, budget: budget)) }
+                        catch is CancellationError { throw CancellationError() }
+                        catch is DRStop { throw DRStop.limit }
+                        catch { budget.note(url, "Simulator device metadata could not be read safely.") }
+                    }
+                    await Task.yield()
+                }
+            }
             var seenGradle: Set<String> = []
-            for supplied in request.gradleHomes.prefix(32) {
+            for supplied in (review ? request.gradleHomes : []).prefix(32) {
                 guard supplied.isFileURL else { budget.note(supplied, "Choose a local Gradle home folder."); continue }
                 let home = supplied.roomLexicallyNormalized
                 for (relative, kind) in [("wrapper/dists", GradleDeveloperResourceKind.distribution), ("caches", .sharedCache)] {
@@ -93,7 +146,7 @@ public actor DeveloperResourcesEngine {
                             if kind == .distribution, distribution == nil { continue }
                             let version = kind == .distribution ? distribution?.version : DRVersions.version(url.lastPathComponent)
                             let type = kind == .distribution ? distribution?.type : nil
-                            let measured = try DRFiles.measure(url, budget: budget)
+                            let measured = try DRFiles.measure(url, budget: budget, beforeFinalValidation: beforeResourceValidation)
                             let matches = version.map { value in wrappers.filter {
                                 $0.version == value && (kind != .distribution || $0.distributionType == type)
                             } } ?? []
@@ -114,19 +167,226 @@ public actor DeveloperResourcesEngine {
                 }
                 await Task.yield()
             }
+            let rootsByKind: [(RoomDevPinKind, [URL])] = review ? [
+                (.derivedData, request.derivedDataRoots), (.ndk, request.sdkRoots), (.kotlinNative, request.konanRoots),
+            ] : []
+            var seenToolchains: Set<String> = []
+            for (kind, roots) in rootsByKind {
+                for supplied in roots.prefix(32) {
+                    try budget.check()
+                    guard let root = permitted(supplied) else { continue }
+                    update(kind.title, root)
+                    let location = kind == .ndk ? root.appendingPathComponent("ndk", isDirectory: true) : root
+                    try readToolchains(in: location, kind: kind, approvals: approvals, budget: budget,
+                                       seen: &seenToolchains, results: &toolchains)
+                    await Task.yield()
+                }
+            }
+            let storageRoots: [(DeveloperStorageKind, [URL], String?)] = request.scope == .toolStorage ? [
+                (.gradleDaemon, request.gradleHomes, "daemon"),
+                (.gradleJDKs, request.gradleHomes, "jdks"),
+                (.androidSystemImages, request.sdkRoots, "system-images"),
+                (.simulatorDevices, request.simulatorDeviceRoots, nil),
+            ] : []
+            for (kind, roots, child) in storageRoots {
+                var seen: Set<String> = []
+                for supplied in roots.prefix(32) where supplied.isFileURL {
+                    try budget.check()
+                    let candidate = child.map { supplied.appendingPathComponent($0, isDirectory: true) } ?? supplied
+                    // The other Gradle and SDK resources may have approval for only one child.
+                    guard let root = permitted(candidate, reportMissingApproval: child == nil),
+                          seen.insert(root.path).inserted else { continue }
+                    update("Tool storage", root)
+                    if let resource = try readStorage(in: root, kind: kind, budget: budget) {
+                        storage.append(resource)
+                    }
+                    await Task.yield()
+                }
+            }
+            if request.scope == .aiTools {
+                let files = DRMeasuredFiles()
+                for supplied in request.aiToolRoots.prefix(32) {
+                    try budget.check()
+                    let root = supplied.url.roomLexicallyNormalized
+                    guard supplied.url.isFileURL, approvals.contains(where: { $0.path == root.path }) else {
+                        budget.note(root, "Choose this tool's folder explicitly before measuring it.")
+                        continue
+                    }
+                    let cacheNames = try aiCacheNames(for: supplied.tool, in: root, budget: budget)
+                    for location in DRAIStorageLocation.catalogue(for: supplied.tool) {
+                        try budget.node()
+                        let first = String(location.path.prefix { $0 != "/" })
+                        if (first == "cache" || first == "Cache"), !cacheNames.contains(first) { continue }
+                        let url = root.appendingPathComponent(location.path)
+                        guard !aiStorage.contains(where: { DRFiles.contains(url, in: $0.url) || DRFiles.contains($0.url, in: url) })
+                        else { continue }
+                        update("AI tool storage", url)
+                        if let resource = try readAIStorage(in: url, tool: supplied.tool, location: location, budget: budget, files: files) {
+                            aiStorage.append(resource)
+                        }
+                    }
+                    await Task.yield()
+                }
+            }
         } catch is CancellationError { }
         catch { budget.limited = true }
-        if request.projectRoots.count > 32 || request.avdRoots.count > 32 || request.gradleHomes.count > 32 {
+        let roleRoots: [[URL]] = switch request.scope {
+        case .devices: [request.avdRoots, request.simulatorDeviceRoots]
+        case .toolStorage: [request.gradleHomes, request.sdkRoots, request.simulatorDeviceRoots]
+        case .review: [request.projectRoots, request.avdRoots, request.gradleHomes, request.sdkRoots, request.derivedDataRoots, request.konanRoots]
+        case .aiTools: []
+        }
+        let exceededRoots = request.scope == .aiTools ? request.aiToolRoots.count > 32 : roleRoots.contains(where: { $0.count > 32 })
+        if exceededRoots {
             budget.note(approvals.first ?? URL(fileURLWithPath: "/"), "Each resource role is limited to its first 32 selected roots.")
         }
         if budget.limited { budget.note(approvals.first ?? URL(fileURLWithPath: "/"), "The bounded scan reached a time, depth, node or resource limit. Results and size measurements may be incomplete.") }
+        toolchains.append(contentsOf: gradle.compactMap { resource in
+            guard resource.kind == .distribution, let version = resource.version,
+                  let type = resource.distributionType else { return nil }
+            return DeveloperToolchainResource(path: resource.url.path, kind: .gradle, version: version + "-" + type,
+                                              gradleType: type, bytes: resource.allocatedBytes, partial: resource.isPartial)
+        })
         return DeveloperResourcesReport(id: id, scannedAt: date,
             androidDevices: avds.sorted { $0.allocatedBytes > $1.allocatedBytes },
             gradleResources: gradle.sorted { $0.allocatedBytes > $1.allocatedBytes },
             projectWrappers: wrappers.sorted { $0.propertiesURL.path < $1.propertiesURL.path },
+            projects: projects.values.sorted { $0.root < $1.root }, toolchains: toolchains,
+            storageResources: storage.sorted {
+                if $0.allocatedBytes == $1.allocatedBytes { return $0.id < $1.id }
+                return $0.allocatedBytes > $1.allocatedBytes
+            },
+            aiStorageResources: aiStorage.sorted {
+                if $0.allocatedBytes == $1.allocatedBytes { return $0.id < $1.id }
+                return $0.allocatedBytes > $1.allocatedBytes
+            },
+            simulatorDevices: simulators.sorted {
+                if $0.allocatedBytes == $1.allocatedBytes { return $0.id < $1.id }
+                return $0.allocatedBytes > $1.allocatedBytes
+            },
             issues: budget.issues, cancelled: Task.isCancelled,
             isPartial: Task.isCancelled || budget.limited || !budget.issues.isEmpty || avds.contains(where: \.isPartial)
-                || gradle.contains(where: \.isPartial) || wrappers.contains(where: \.isPartial))
+                || gradle.contains(where: \.isPartial) || wrappers.contains(where: \.isPartial)
+                || toolchains.contains(where: \.partial) || storage.contains(where: \.isPartial)
+                || aiStorage.contains(where: \.isPartial) || simulators.contains(where: \.isPartial))
+    }
+
+    private func aiCacheNames(for tool: DeveloperAITool, in root: URL, budget: DRBudget) throws -> Set<String> {
+        // On case-insensitive volumes, a desktop Cache can alias a CLI's lowercase cache.
+        // Check the spelling before treating a CLI cache as a desktop rendering cache.
+        guard tool == .codex || tool == .claudeCode else { return ["cache", "Cache"] }
+        do {
+            return Set(try DRFiles.children(root, budget: budget).map(\.lastPathComponent))
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch is DRStop {
+            throw DRStop.limit
+        } catch {
+            budget.note(root, "The cache folder names could not be confirmed safely.")
+            return []
+        }
+    }
+
+    private func readAIStorage(in url: URL, tool: DeveloperAITool, location: DRAIStorageLocation,
+                               budget: DRBudget, files: DRMeasuredFiles) throws -> DeveloperAIStorageResource? {
+        do {
+            let metadata = try DRFiles.metadata(url)
+            let allocatedBytes: Int64
+            let partial: Bool
+            if location.isFile {
+                guard DRFiles.isRegular(metadata) else { throw DRReadError.invalidRoot }
+                try budget.resource()
+                allocatedBytes = files.allocatedBytes(adding: metadata)
+                beforeResourceValidation?(url)
+                partial = (try? DRFiles.metadata(url)).map { DRFiles.same(metadata, $0) } != true
+                if partial { budget.note(url, "This file changed or became unavailable while it was measured.") }
+            } else {
+                guard DRFiles.isDirectory(metadata) else { throw DRReadError.invalidRoot }
+                try budget.resource()
+                let measured = try DRFiles.measure(url, budget: budget, beforeFinalValidation: beforeResourceValidation,
+                                                   files: files, recordsEvidence: false)
+                allocatedBytes = measured.allocated
+                partial = measured.partial
+            }
+            return DeveloperAIStorageResource(tool: tool, title: location.title, url: url,
+                allocatedBytes: allocatedBytes, isPartial: partial, category: location.category)
+        } catch DRReadError.missing {
+            return nil
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch is DRStop {
+            throw DRStop.limit
+        } catch {
+            budget.note(url, "This AI tool location could not be measured safely.")
+            return nil
+        }
+    }
+
+    private func readStorage(in root: URL, kind: DeveloperStorageKind, budget: DRBudget) throws -> DeveloperStorageResource? {
+        do {
+            try DRFiles.directory(root)
+            if kind == .simulatorDevices, try !DRFiles.isSimulatorDeviceSet(root, budget: budget) {
+                budget.note(root, "Choose the Simulator Devices folder containing the simulator device set.")
+                return nil
+            }
+            try budget.resource()
+            let bytes = try DRFiles.measure(root, budget: budget, beforeFinalValidation: beforeResourceValidation,
+                                            staysOnVolume: kind == .simulatorDevices)
+            return DeveloperStorageResource(kind: kind, url: root, allocatedBytes: bytes.allocated, isPartial: bytes.partial)
+        } catch DRReadError.missing where kind != .simulatorDevices {
+            return nil
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch is DRStop {
+            throw DRStop.limit
+        } catch {
+            budget.note(root, "This tool storage folder could not be measured safely.")
+            return nil
+        }
+    }
+
+    private func readToolchains(in root: URL, kind: RoomDevPinKind, approvals: [URL], budget: DRBudget,
+                                seen: inout Set<String>, results: inout [DeveloperToolchainResource]) throws {
+        do {
+            for child in try DRFiles.children(root, budget: budget) {
+                try budget.check()
+                let version: String?
+                switch kind {
+                case .ndk: version = RoomDevParse.version(child.lastPathComponent)
+                case .kotlinNative: version = RoomDevParse.konan(child.lastPathComponent)
+                case .derivedData: version = child.lastPathComponent
+                case .gradle: return
+                }
+                guard let version, seen.insert(child.path).inserted else { continue }
+                do {
+                    guard DRFiles.isDirectory(try DRFiles.metadata(child)) else { continue }
+                    try budget.resource()
+                    let measured = try DRFiles.measure(child, budget: budget, beforeFinalValidation: beforeResourceValidation)
+                    var artifact = DeveloperToolchainResource(path: child.path, kind: kind, version: version,
+                                                              bytes: measured.allocated, partial: measured.partial)
+                    if kind == .derivedData {
+                        let info = child.appendingPathComponent("info.plist")
+                        do {
+                            if let raw = RoomDevParse.derivedDataWorkspace(try DRFiles.data(info, budget: budget,
+                                                                         limit: budget.limits.maximumProjectFileBytes)) {
+                                let workspace = URL(fileURLWithPath: raw).roomLexicallyNormalized
+                                artifact.workspacePath = workspace.path
+                                if approvals.contains(where: { DRFiles.contains(workspace, in: $0) }) {
+                                    artifact.workspacePresent = DRFiles.presence(workspace)
+                                }
+                            }
+                        } catch is CancellationError { throw CancellationError() }
+                        catch is DRStop { throw DRStop.limit }
+                        catch { /* This artifact has an unknown workspace. */ }
+                    }
+                    results.append(artifact)
+                } catch is CancellationError { throw CancellationError() }
+                catch is DRStop { throw DRStop.limit }
+                catch { budget.note(child, "This toolchain could not be measured safely.") }
+            }
+        } catch is CancellationError { throw CancellationError() }
+        catch is DRStop { throw DRStop.limit }
+        catch { budget.note(root, "This toolchain location is unavailable or cannot be read safely.") }
     }
 
     private func androidDevice(_ url: URL, request: DeveloperResourcesRequest, budget: DRBudget) throws -> AndroidVirtualDeviceResource {
@@ -140,7 +400,7 @@ public actor DeveloperResourcesEngine {
         } catch is CancellationError { throw CancellationError() }
         catch is DRStop { throw DRStop.limit }
         catch { configPartial = true; budget.note(configURL, "AVD configuration is missing, malformed, changed or exceeds the bounded read size. Some device details are unknown.") }
-        let measured = try DRFiles.measure(url, budget: budget)
+        let measured = try DRFiles.measure(url, budget: budget, beforeFinalValidation: beforeResourceValidation)
         let name = String(url.lastPathComponent.dropLast(4))
         let api = DRProperties.androidAPI(config["target"]) ?? DRProperties.androidAPI(config["image.sysdir.1"])
         let hardware = [config["hw.device.manufacturer"], config["hw.device.name"]].compactMap { $0 }.joined(separator: " ")
@@ -152,6 +412,35 @@ public actor DeveloperResourcesEngine {
             lastUseNote: "Last launch is not recorded reliably in the inspected standard files. Log, launch-record, snapshot and file dates below are evidence only; they do not establish last use or that this device is unnecessary.",
             evidence: measured.evidence,
             activity: try activity(for: url, avdName: name, measured: measured, snapshot: request.activity, budget: budget))
+    }
+
+    private func simulatorDevice(_ url: URL, id: UUID, volume: dev_t, budget: DRBudget) throws -> SimulatorDeviceResource {
+        let original = try DRFiles.directory(url)
+        guard original.st_dev == volume else { throw DRReadError.invalidRoot }
+        let metadataURL = url.appendingPathComponent("device.plist")
+        let data = try DRFiles.data(metadataURL, budget: budget, limit: budget.limits.maximumFileBytes)
+        guard let fields = try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
+              let name = (fields["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !name.isEmpty, name.rangeOfCharacter(from: .controlCharacters) == nil else { throw DRReadError.malformed }
+        if let rawID = fields["UDID"] ?? fields["udid"], (rawID as? String).flatMap(UUID.init(uuidString:)) != id {
+            throw DRReadError.malformed
+        }
+        // These are descriptive identifiers from the device's local plist. They do not resolve to paths.
+        func identifier(_ value: Any?, prefix: String) -> String? {
+            guard let value = value as? String, value.hasPrefix(prefix), value.count <= 200,
+                  value.count > prefix.count,
+                  value.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || ".-_".contains($0)) })
+            else { return nil }
+            return value
+        }
+        let runtime = identifier(fields["runtime"] ?? fields["runtimeIdentifier"], prefix: "com.apple.CoreSimulator.SimRuntime.")
+        let type = identifier(fields["deviceType"] ?? fields["deviceTypeIdentifier"], prefix: "com.apple.CoreSimulator.SimDeviceType.")
+        guard runtime != nil || type != nil else { throw DRReadError.malformed }
+        let measured = try DRFiles.measure(url, budget: budget, beforeFinalValidation: beforeResourceValidation,
+                                           recordsEvidence: false, staysOnVolume: true)
+        guard DRFiles.same(original, try DRFiles.directory(url)) else { throw DRReadError.changed }
+        return SimulatorDeviceResource(url: url, displayName: String(name.prefix(160)), runtimeIdentifier: runtime,
+            deviceTypeIdentifier: type, allocatedBytes: measured.allocated, isPartial: measured.partial)
     }
 
     private func activity(for url: URL, avdName: String?, measured: DRMeasurement,
@@ -208,13 +497,110 @@ private final class DRBudget {
     }
 }
 private enum DRStop: Error { case limit }
-private enum DRReadError: Error { case invalidRoot, unreadable, malformed, oversize, changed }
+private enum DRReadError: Error { case invalidRoot, missing, unreadable, malformed, oversize, changed }
+
+private struct DRAIStorageLocation {
+    let path: String
+    let title: String
+    let category: DeveloperAIStorageCategory
+    let isFile: Bool
+
+    init(_ path: String, _ title: String, _ category: DeveloperAIStorageCategory, isFile: Bool = false) {
+        self.path = path
+        self.title = title
+        self.category = category
+        self.isFile = isFile
+    }
+
+    static func catalogue(for tool: DeveloperAITool) -> [Self] {
+        let renderingCaches: [Self] = [
+            .init("Cache", "App cache", .cache), .init("Code Cache", "Code cache", .cache),
+            .init("GPUCache", "Graphics cache", .cache), .init("ShaderCache", "Shader cache", .cache),
+            .init("Default/Cache", "Default profile cache", .cache),
+            .init("Default/Code Cache", "Default profile code cache", .cache),
+            .init("Default/GPUCache", "Default profile graphics cache", .cache),
+        ]
+        switch tool {
+        case .codex:
+            return renderingCaches + [
+                .init("cache", "Tool cache", .cache),
+                .init("models_cache.json", "Model catalogue cache", .cache, isFile: true),
+                .init("log", "Diagnostic logs", .diagnostics),
+                .init("history.jsonl", "Prompt history", .history, isFile: true),
+                .init("sessions", "Sessions", .history),
+                .init("archived_sessions", "Archived sessions", .history),
+                .init("packages", "Runtime packages", .runtime),
+                .init(".tmp", "Tool staging and active work", .runtime),
+                .init("worktrees", "Worktree files and builds", .worktrees),
+            ]
+        case .claudeCode:
+            return renderingCaches + [
+                .init("cache/model-catalog", "Model catalogue cache", .cache),
+                .init("cache/changelog.md", "Cached changelog", .cache, isFile: true),
+                .init("debug", "Diagnostic logs", .diagnostics),
+                .init("projects", "Project sessions", .history),
+                .init("file-history", "File history", .history),
+                .init("downloads", "Tool downloads", .runtime),
+                .init("worktrees", "Worktree files and builds", .worktrees),
+            ]
+        case .chatGPT:
+            return renderingCaches + [
+                .init("NetworkCache", "Network cache", .cache),
+                .init("WebKit/NetworkCache", "WebKit network cache", .cache),
+            ]
+        case .cursor:
+            return renderingCaches + [
+                .init("CachedData", "Cached app data", .cache),
+                .init("CachedExtensionVSIXs", "Extension download cache", .cache),
+            ]
+        case .gemini:
+            return [
+                .init("history", "Project checkpoints", .history),
+                .init("tmp", "Workspace data and sessions", .history),
+            ]
+        case .copilot:
+            return [
+                .init("logs", "Session logs", .diagnostics),
+                .init("session-state", "Sessions and workspace data", .history),
+                .init("command-history-state", "Command history", .history),
+                .init("session-store.db", "Session index", .history, isFile: true),
+            ]
+        case .ollama:
+            return [.init("logs", "App and server logs", .diagnostics), .init("models", "Installed models", .runtime)]
+        }
+    }
+}
+
+private final class DRMeasuredFiles {
+    private struct Location: Hashable {
+        let device: dev_t
+        let inode: ino_t
+    }
+    private var measured: Set<Location> = []
+
+    func add(_ metadata: stat) -> Bool {
+        measured.insert(Location(device: metadata.st_dev, inode: metadata.st_ino)).inserted
+    }
+
+    func allocatedBytes(adding metadata: stat) -> Int64 {
+        add(metadata) ? max(0, Int64(metadata.st_blocks)) * 512 : 0
+    }
+}
 private struct DRMeasurement { var allocated: Int64 = 0; var logical: Int64 = 0; var partial = false; var evidence: [DeveloperResourceEvidence] = [] }
 
 private enum DRFiles {
     static func contains(_ child: URL, in parent: URL) -> Bool { child.path == parent.path || child.path.hasPrefix(parent.path + "/") }
     static func isDirectory(_ info: stat) -> Bool { info.st_mode & UInt16(S_IFMT) == UInt16(S_IFDIR) }
     static func isRegular(_ info: stat) -> Bool { info.st_mode & UInt16(S_IFMT) == UInt16(S_IFREG) }
+    static func isSimulatorDeviceSet(_ root: URL, budget: DRBudget, children: [URL]? = nil) throws -> Bool {
+        func hasMarker(_ directory: URL, named name: String) -> Bool {
+            (try? metadata(directory.appendingPathComponent(name))).map(isRegular) ?? false
+        }
+        if hasMarker(root, named: "device_set.plist") { return true }
+        return try (children ?? Self.children(root, budget: budget)).contains {
+            UUID(uuidString: $0.lastPathComponent) != nil && hasMarker($0, named: "device.plist")
+        }
+    }
     static func same(_ a: stat, _ b: stat) -> Bool {
         a.st_dev == b.st_dev && a.st_ino == b.st_ino && a.st_mode == b.st_mode && a.st_size == b.st_size
             && a.st_mtimespec.tv_sec == b.st_mtimespec.tv_sec && a.st_mtimespec.tv_nsec == b.st_mtimespec.tv_nsec
@@ -226,8 +612,10 @@ private enum DRFiles {
         guard fd >= 0 else { throw DRReadError.unreadable }
         for component in url.pathComponents where component != "/" {
             let next = openat(fd, component, O_SEARCH | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+            let failure = errno
             close(fd)
-            guard next >= 0 else { throw DRReadError.unreadable }; fd = next
+            guard next >= 0 else { throw failure == ENOENT ? DRReadError.missing : DRReadError.unreadable }
+            fd = next
         }
         return fd
     }
@@ -240,7 +628,10 @@ private enum DRFiles {
     static func metadata(_ url: URL) throws -> stat {
         let fd = try openDirectory(url.deletingLastPathComponent()); defer { close(fd) }
         var info = stat()
-        guard fstatat(fd, url.lastPathComponent, &info, AT_SYMLINK_NOFOLLOW) == 0, info.st_uid == getuid() else { throw DRReadError.unreadable }
+        guard fstatat(fd, url.lastPathComponent, &info, AT_SYMLINK_NOFOLLOW) == 0 else {
+            throw errno == ENOENT ? DRReadError.missing : DRReadError.unreadable
+        }
+        guard info.st_uid == getuid() else { throw DRReadError.unreadable }
         return info
     }
     static func children(_ url: URL, budget: DRBudget) throws -> [URL] {
@@ -269,30 +660,51 @@ private enum DRFiles {
         guard fstat(fd, &end) == 0, same(info, end) else { throw DRReadError.changed }
         return result.sorted { $0.lastPathComponent < $1.lastPathComponent }
     }
-    static func text(_ url: URL, budget: DRBudget) throws -> String {
+    static func presence(_ url: URL) -> Bool? {
+        do {
+            let parent = try openDirectory(url.deletingLastPathComponent())
+            defer { close(parent) }
+            var info = stat()
+            guard fstatat(parent, url.lastPathComponent, &info, AT_SYMLINK_NOFOLLOW) == 0 else {
+                return errno == ENOENT ? false : nil
+            }
+            return info.st_uid == getuid() && (isDirectory(info) || isRegular(info)) ? true : nil
+        } catch DRReadError.missing { return false }
+        catch { return nil }
+    }
+
+    static func text(_ url: URL, budget: DRBudget, limit: Int? = nil) throws -> String {
+        let bytes = try data(url, budget: budget, limit: limit ?? budget.limits.maximumFileBytes)
+        guard let text = String(data: bytes, encoding: .utf8), !text.contains("\0") else { throw DRReadError.malformed }
+        return text
+    }
+
+    static func data(_ url: URL, budget: DRBudget, limit: Int) throws -> Data {
         try budget.node()
         let parent = try openDirectory(url.deletingLastPathComponent()); defer { close(parent) }
         let fd = openat(parent, url.lastPathComponent, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
         guard fd >= 0 else { throw DRReadError.unreadable }; defer { close(fd) }
         var before = stat()
         guard fstat(fd, &before) == 0, before.st_uid == getuid(), isRegular(before), before.st_nlink == 1 else { throw DRReadError.unreadable }
-        guard before.st_size >= 0, before.st_size <= budget.limits.maximumFileBytes else { throw DRReadError.oversize }
-        var bytes: [UInt8] = [], chunk = [UInt8](repeating: 0, count: 8_192)
+        guard before.st_size >= 0, before.st_size <= limit else { throw DRReadError.oversize }
+        var bytes = Data(), chunk = [UInt8](repeating: 0, count: 8_192)
+        bytes.reserveCapacity(Int(before.st_size))
         while true {
             try budget.check()
             let count = Darwin.read(fd, &chunk, chunk.count)
             if count == 0 { break }
             if count < 0 { if errno == EINTR { continue }; throw DRReadError.unreadable }
             bytes.append(contentsOf: chunk.prefix(count))
-            guard bytes.count <= budget.limits.maximumFileBytes else { throw DRReadError.oversize }
+            guard bytes.count <= limit else { throw DRReadError.oversize }
         }
         var after = stat()
         guard fstat(fd, &after) == 0, same(before, after) else { throw DRReadError.changed }
-        guard let text = String(bytes: bytes, encoding: .utf8), !text.contains("\0") else { throw DRReadError.malformed }
-        return text
+        return bytes
     }
-    static func measure(_ url: URL, budget: DRBudget) throws -> DRMeasurement {
-        var result = DRMeasurement(), seen: Set<String> = []
+    static func measure(_ url: URL, budget: DRBudget, beforeFinalValidation: ((URL) -> Void)?,
+                        files: DRMeasuredFiles = DRMeasuredFiles(), recordsEvidence: Bool = true,
+                        staysOnVolume: Bool = false) throws -> DRMeasurement {
+        var result = DRMeasurement()
         var latest: Date?
         let root = try directory(url)
         func walk(_ current: URL, depth: Int) throws {
@@ -302,14 +714,25 @@ private enum DRFiles {
             for child in entries {
                 do {
                     let info = try metadata(child)
-                    let date = Date(timeIntervalSince1970: TimeInterval(info.st_mtimespec.tv_sec))
-                    if latest == nil || date > latest! { latest = date }
-                    let relative = String(child.path.dropFirst(url.path.count + 1))
-                    if let evidence = evidence(child, relative: relative, info: info), result.evidence.count < 32 { result.evidence.append(evidence) }
+                    if staysOnVolume, info.st_dev != root.st_dev {
+                        result.partial = true
+                        budget.note(child, "An item on another volume was skipped.")
+                        continue
+                    }
+                    if recordsEvidence {
+                        let date = Date(timeIntervalSince1970: TimeInterval(info.st_mtimespec.tv_sec))
+                        if latest == nil || date > latest! { latest = date }
+                        let relative = String(child.path.dropFirst(url.path.count + 1))
+                        if result.evidence.count < 32, let evidence = evidence(child, relative: relative, info: info) {
+                            result.evidence.append(evidence)
+                        }
+                    }
                     if isDirectory(info) { try walk(child, depth: depth + 1) }
                     else if isRegular(info) {
-                        let key = "\(info.st_dev):\(info.st_ino)"
-                        if seen.insert(key).inserted { result.allocated += max(0, Int64(info.st_blocks)) * 512; result.logical += max(0, Int64(info.st_size)) }
+                        if files.add(info) {
+                            result.allocated += max(0, Int64(info.st_blocks)) * 512
+                            result.logical += max(0, Int64(info.st_size))
+                        }
                     } else { result.partial = true; budget.note(child, "A link or special item was skipped; its target was not inspected.") }
                 } catch is CancellationError { throw CancellationError() }
                 catch is DRStop { throw DRStop.limit }
@@ -320,7 +743,11 @@ private enum DRFiles {
         catch is CancellationError { throw CancellationError() }
         catch is DRStop { result.partial = true }
         catch { result.partial = true; budget.note(url, "Resource measurement was incomplete.") }
-        if let after = try? directory(url), !same(root, after) { result.partial = true; budget.note(url, "The resource changed while it was measured.") }
+        beforeFinalValidation?(url)
+        if (try? directory(url)).map({ same(root, $0) }) != true {
+            result.partial = true
+            budget.note(url, "The resource changed or became unavailable while it was measured.")
+        }
         if let latest {
             result.evidence.append(DeveloperResourceEvidence(kind: .filesystemChanged, label: "Latest measured file change", url: url, date: latest,
                 uncertainty: "File modification is not a last-launch or last-build timestamp."))
@@ -349,46 +776,134 @@ private enum DRFiles {
 private enum DRProjects {
     static let skipped: Set<String> = [".git", ".gradle", ".build", ".claude", ".codex", "node_modules", "build", "dist", "Pods", "vendor",
         "local.properties", "gradle.properties", ".env", ".env.local"]
-    static func find(_ root: URL, budget: DRBudget, wrappers: inout [GradleProjectWrapper]) throws {
+    static let settingsNames: Set<String> = ["settings.gradle.kts", "settings.gradle"]
+    static let buildNames: Set<String> = ["build.gradle.kts", "build.gradle"]
+
+    struct Sources {
+        var wrapper: URL?
+        var catalog: URL?
+        var scripts: [URL] = []
+        var xcode = false
+    }
+
+    static func find(_ root: URL, budget: DRBudget, wrappers: inout [GradleProjectWrapper],
+                     projects: inout [String: DeveloperProject]) throws {
+        var sources: [String: Sources] = [:]
+        var buildFiles: [URL] = []
         func walk(_ url: URL, depth: Int) throws {
             try budget.check()
-            guard depth <= budget.limits.maximumDepth else { budget.note(url, "Nested project search reached its depth limit."); return }
+            guard depth <= budget.limits.maximumDepth else {
+                budget.note(url, "Nested project search reached its depth limit.")
+                return
+            }
             for child in try DRFiles.children(url, budget: budget) {
-                if skipped.contains(child.lastPathComponent) { continue }
+                let name = child.lastPathComponent
+                if skipped.contains(name) || name.hasPrefix(".env.") { continue }
                 do {
                     let info = try DRFiles.metadata(child)
-                    if DRFiles.isDirectory(info) { try walk(child, depth: depth + 1) }
-                    else if DRFiles.isRegular(info), child.lastPathComponent == "gradle-wrapper.properties",
-                            child.deletingLastPathComponent().lastPathComponent == "wrapper",
-                            child.deletingLastPathComponent().deletingLastPathComponent().lastPathComponent == "gradle" {
-                        if wrappers.contains(where: { $0.propertiesURL.path == child.path }) { continue }
-                        try budget.resource()
-                        let project = child.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-                        do {
-                            let properties = try DRProperties.selected(try DRFiles.text(child, budget: budget), keys: ["distributionUrl"])
-                            let parsed = properties["distributionUrl"].flatMap(DRVersions.distributionURL)
-                            wrappers.append(GradleProjectWrapper(projectURL: project, propertiesURL: child,
-                                version: parsed?.version, distributionType: parsed?.type,
-                                note: parsed == nil ? "The selected wrapper's version is unknown; its distribution URL is missing or nonstandard. No URL credentials are retained."
-                                    : "Version inferred from this wrapper's distribution filename. The archive was not executed; this does not establish when the project last ran.", isPartial: parsed == nil))
-                        } catch is CancellationError { throw CancellationError() }
-                        catch is DRStop { throw DRStop.limit }
-                        catch {
-                            budget.note(child, "Wrapper metadata is malformed, changed, inaccessible or exceeds the bounded read size.")
-                            wrappers.append(GradleProjectWrapper(projectURL: project, propertiesURL: child,
-                                version: nil, distributionType: nil, note: "Wrapper version is unknown. No build scripts or credentials files were read.", isPartial: true))
+                    if DRFiles.isDirectory(info) {
+                        if name.hasSuffix(".xcodeproj") { sources[url.path, default: Sources()].xcode = true }
+                        else { try walk(child, depth: depth + 1) }
+                    } else if DRFiles.isRegular(info) {
+                        if settingsNames.contains(name) {
+                            sources[url.path, default: Sources()].scripts.append(child)
+                        } else if buildNames.contains(name) {
+                            buildFiles.append(child)
+                        } else if name == "libs.versions.toml", url.lastPathComponent == "gradle",
+                                  url.path != root.path {
+                            sources[url.deletingLastPathComponent().path, default: Sources()].catalog = child
+                        } else if name == "gradle-wrapper.properties", url.lastPathComponent == "wrapper",
+                                  url.deletingLastPathComponent().lastPathComponent == "gradle" {
+                            let project = url.deletingLastPathComponent().deletingLastPathComponent()
+                            if DRFiles.contains(project, in: root) {
+                                sources[project.path, default: Sources()].wrapper = child
+                            }
                         }
-                    } else if !DRFiles.isRegular(info) { budget.note(child, "A linked or special project item was skipped; its target was not inspected.") }
+                    } else {
+                        budget.note(child, "A linked or special project item was skipped; its target was not inspected.")
+                    }
                 } catch is CancellationError { throw CancellationError() }
                 catch is DRStop { throw DRStop.limit }
                 catch { budget.note(child, "A project item is inaccessible or changed. No symbolic-link target was followed.") }
             }
         }
         try walk(root, depth: 0)
+
+        // Nearest Gradle root owns each module's build script. Keep standalone
+        // scripts as project roots when there is no wrapper, catalog or settings.
+        for script in buildFiles.sorted(by: { $0.pathComponents.count < $1.pathComponents.count }) {
+            let start = script.deletingLastPathComponent()
+            var candidate = start
+            var owner: String?
+            while DRFiles.contains(candidate, in: root) {
+                if let found = sources[candidate.path], found.wrapper != nil || found.catalog != nil || !found.scripts.isEmpty {
+                    owner = candidate.path
+                    break
+                }
+                if candidate.path == root.path { break }
+                candidate.deleteLastPathComponent()
+            }
+            sources[owner ?? start.path, default: Sources()].scripts.append(script)
+        }
+
+        for (path, files) in sources.sorted(by: { $0.key < $1.key }) {
+            try budget.resource()
+            let url = URL(fileURLWithPath: path, isDirectory: true)
+            var project = DeveloperProject(root: path, name: url.lastPathComponent, hasXcodeProject: files.xcode)
+            if let wrapper = files.wrapper {
+                let parsed = try readWrapper(wrapper, project: url, budget: budget)
+                wrappers.append(parsed)
+                if let version = parsed.version, let type = parsed.distributionType {
+                    project.gradle = DeveloperProject.GradlePin(version: version, type: type)
+                }
+            }
+            let catalog: RoomDevParse.Catalog?
+            if let url = files.catalog { catalog = try readScript(url, budget: budget).flatMap(RoomDevParse.versionCatalog) }
+            else { catalog = nil }
+            project.agp = catalog?.agp
+            project.kotlin = catalog?.kotlin
+            for script in files.scripts {
+                guard let text = try readScript(script, budget: budget),
+                      let parsed = RoomDevParse.buildScript(text, catalog: catalog) else { continue }
+                project.agp = project.agp ?? parsed.agp
+                project.kotlin = project.kotlin ?? parsed.kotlin
+                project.ndk = project.ndk ?? parsed.ndk
+                project.multiplatform = project.multiplatform || parsed.appliesMultiplatform
+                project.appleNativeTargets = project.appleNativeTargets || parsed.appleNativeTargets
+            }
+            projects[path] = project
+        }
+    }
+
+    private static func readWrapper(_ file: URL, project: URL, budget: DRBudget) throws -> GradleProjectWrapper {
+        let parsed: (version: String, type: String)?
+        do {
+            parsed = RoomDevParse.wrapper(try DRFiles.text(file, budget: budget))
+        } catch is CancellationError { throw CancellationError() }
+        catch is DRStop { throw DRStop.limit }
+        catch {
+            parsed = nil
+            budget.note(file, "Wrapper metadata is malformed, changed, inaccessible or exceeds the bounded read size.")
+        }
+        return GradleProjectWrapper(projectURL: project, propertiesURL: file, version: parsed?.version,
+                                    distributionType: parsed?.type,
+                                    note: parsed == nil ? "The selected wrapper's version is unknown. No URL credentials are retained."
+                                        : "Version inferred from this wrapper's distribution filename. This does not establish when the project last ran.",
+                                    isPartial: parsed == nil)
+    }
+
+    private static func readScript(_ file: URL, budget: DRBudget) throws -> String? {
+        do { return try DRFiles.text(file, budget: budget, limit: budget.limits.maximumProjectFileBytes) }
+        catch is CancellationError { throw CancellationError() }
+        catch is DRStop { throw DRStop.limit }
+        catch {
+            budget.note(file, "Project version metadata could not be read safely or exceeds the bounded read size.")
+            return nil
+        }
     }
 }
 
-private enum DRProperties {
+enum DRProperties {
     static func selected(_ text: String, keys: Set<String>) throws -> [String: String] {
         var result: [String: String] = [:]
         for raw in text.split(whereSeparator: \.isNewline) {

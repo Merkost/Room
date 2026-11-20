@@ -36,20 +36,18 @@ struct RoomPopoverActionTests {
         #expect(!fixture.cache.isScanning)
     }
 
-    @Test func pinnedRoomOpensDiskMapAtApprovedFolder() async throws {
+    @Test func pinnedRoomRequestsItsRouteWithoutScanning() async throws {
         let fixture = try PopoverActionFixture()
         defer { fixture.remove() }
         fixture.rooms.pin(url: fixture.root)
-        let url = try #require(fixture.rooms.pinnedURL)
+        let id = try #require(fixture.rooms.pinnedRoom?.id)
         var opened = false
         let view = RoomMenuBarView(insights: fixture.insights, cacheModel: fixture.cache,
                                    rooms: fixture.rooms, openRoom: { opened = true }, showSettings: {})
         view.openPinnedRoom()
-        #expect(opened && fixture.insights.requestedDestination == .disk)
-        #expect(fixture.insights.diskURL == url)
+        #expect(opened && fixture.insights.requestedPinnedRoom == id)
+        #expect(fixture.insights.diskURL == nil && !fixture.insights.isScanningDisk)
         let deadline = ContinuousClock.now.advanced(by: .seconds(15))
-        while fixture.insights.isScanningDisk, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
-        #expect(!fixture.insights.isScanningDisk)
         fixture.rooms.cancelMeasurement()
         while fixture.rooms.isMeasuring, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
         #expect(!fixture.rooms.isMeasuring)

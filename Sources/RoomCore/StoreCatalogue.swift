@@ -5,7 +5,22 @@ extension CacheConfiguration {
     /// A sandboxed catalogue is built only from explicitly approved physical
     /// folders. Construction never enumerates a directory or probes a known
     /// cache path outside those approvals. Unknown selected data is inspect-only.
-    public static func store(approvedFolders: [URL], userHome: URL) -> CacheConfiguration {
+    public static func store(approvedFolders: [URL], userHome: URL, npmContinuation: String? = nil) -> CacheConfiguration {
+        store(approvedFolders: approvedFolders, userHome: userHome, npmContinuation: npmContinuation, exactRestoreParents: nil)
+    }
+
+    #if ROOM_APP_STORE
+    /// Uses only the exact original bucket approvals from Restore's native review
+    /// for npm. Other known cache families keep their regular catalogue policy.
+    public static func storeRecovery(approvedFolders: [URL], approvedOriginalParents: [URL],
+                                     userHome: URL) -> CacheConfiguration {
+        store(approvedFolders: approvedFolders + approvedOriginalParents, userHome: userHome,
+              npmContinuation: nil, exactRestoreParents: approvedOriginalParents)
+    }
+    #endif
+
+    private static func store(approvedFolders: [URL], userHome: URL, npmContinuation: String?,
+                              exactRestoreParents: [URL]?) -> CacheConfiguration {
         let home = userHome.roomLexicallyNormalized
         guard userHome.isFileURL, home.path != "/" else {
             return CacheConfiguration(roots: [], homeDirectory: home,
@@ -64,7 +79,14 @@ extension CacheConfiguration {
             folders.contains { StoreFolderBoundary.contains(location.url, in: $0) }
         }
         #if ROOM_APP_STORE
-        let npm = StoreNPMCatalogue.discover(approvedFolders: folders, userHome: home)
+        let npmBase = StoreNPMCatalogue.bucketBase(in: home)
+        let npm: (roots: [CacheRoot], issues: [ScanIssue], coverage: NPMDiscoveryCoverage?)
+        if let exactRestoreParents {
+            let recovery = StoreNPMCatalogue.recovery(approvedParents: exactRestoreParents, userHome: home)
+            npm = (recovery.roots, recovery.issues, nil)
+        } else {
+            npm = StoreNPMCatalogue.discover(approvedFolders: folders, userHome: home, continuation: npmContinuation)
+        }
         issues.append(contentsOf: npm.issues)
         // The mutable parent remains visible as inventory. Only independently
         // verified immutable leaves have the exception; no index/tmp bucket can move.
@@ -75,28 +97,39 @@ extension CacheConfiguration {
                 consequence: "Mutable indexes, temporary content and unsupported objects stay inspect-only. Only separately verified old SHA512 download objects can be reviewed for Trash.",
                 minimumAge: root.minimumAge, scope: root.scope,
                 cleanupPolicy: .inspectOnly("Mutable npm index/tmp data is inspect-only. Review individual verified SHA512 objects instead."),
-                excludedURLs: npm.roots.map(\.url), inspectionNodeLimit: root.inspectionNodeLimit,
+                excludedURLs: root.excludedURLs + [npmBase], inspectionNodeLimit: root.inspectionNodeLimit,
                 inspectionTimeLimit: root.inspectionTimeLimit)
         }
-        catalogue.append(contentsOf: npm.roots)
+        let npmRoots = npm.roots
+        let npmCoverage = npm.coverage
+        #else
+        let npmRoots: [CacheRoot] = []
+        let npmCoverage: NPMDiscoveryCoverage? = nil
         #endif
-        let known = catalogue.filter { root in folders.contains { StoreFolderBoundary.contains(root.url, in: $0) } }
+        let known = catalogue.filter { root in folders.contains { StoreFolderBoundary.contains(root.url, in: $0) } } + npmRoots
         var roots = known
         for folder in folders {
             // A selected known root has its own measurement; do not inventory it
             // a second time. Selecting a subfolder never promotes it to a cache.
             if known.contains(where: { $0.url.path == folder.path }) { continue }
+            #if ROOM_APP_STORE
+            if npmCoverage != nil || npmContinuation != nil, StoreFolderBoundary.contains(folder, in: npmBase),
+               folder.pathComponents.count <= npmBase.pathComponents.count + 2 { continue }
+            let batchExclusions = StoreFolderBoundary.contains(npmBase, in: folder) ? [npmBase] : []
+            #else
+            let batchExclusions: [URL] = []
+            #endif
             let excludes = (known.map(\.url) + protected.map(\.url)).filter {
                 StoreFolderBoundary.contains($0, in: folder)
             }
             let reason = "This selected folder may contain user work, persistent app state or installed resources. It is inspect-only; names and locations do not establish that files are unnecessary."
             roots.append(CacheRoot(id: "store-selected-" + folder.path, title: folder.lastPathComponent,
                 subtitle: folder.path, symbol: "folder", category: "apps", url: folder,
-                consequence: reason, cleanupPolicy: .inspectOnly(reason), excludedURLs: excludes,
+                consequence: reason, cleanupPolicy: .inspectOnly(reason), excludedURLs: excludes + batchExclusions,
                 inspectionNodeLimit: 25_000, inspectionTimeLimit: 2))
         }
         return CacheConfiguration(roots: roots, protectedLocations: protected,
-            homeDirectory: home, inspectionIssues: issues, readAccessRoots: folders)
+            homeDirectory: home, inspectionIssues: issues, readAccessRoots: folders, npmDiscovery: npmCoverage)
     }
 }
 

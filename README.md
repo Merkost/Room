@@ -1,65 +1,87 @@
-<p align="center"><img src="Resources/Room-1024.png" width="116" alt="Room icon"></p>
+<p align="center"><img src="Resources/Room-1024.png" width="96" alt="Room app icon"></p>
 
 <h1 align="center">Room</h1>
-<p align="center">Storage, clearly. A little more room for your Mac.</p>
-<p align="center"><a href="https://room.merkost.dev">Website</a> · <a href="https://room.merkost.dev/support/">Support</a> · <a href="https://room.merkost.dev/privacy/">Privacy</a></p>
 
-Room is a native macOS utility for understanding storage, reviewing developer resources, and monitoring memory. Built with SwiftUI, AppKit, and Liquid Glass. Free, with no ads or in-app purchases.
+<p align="center"><strong>See what fills your Mac.</strong></p>
+<p align="center"><a href="https://room.merkost.dev/">Website</a> · <a href="https://room.merkost.dev/support/">Support</a> · <a href="https://room.merkost.dev/privacy/">Privacy</a></p>
 
-![Room Disk Map showing sample folders](Resources/RoomPreview.png)
+Room is a native Mac app for mapping storage, reviewing cache moves, and watching memory. It runs locally and requires no account. Built by Merkost.
 
-## See what is taking space
+## What Room does
 
-- **Clean** — measure known cache locations, distinguish clearable files from held storage, and review supported changes before moving anything to Trash.
-- **Disk Map** — explore allocated space by folder, including hidden files, categories, and large items. Scan, Rescan, and Stop stay visible beside the current folder.
-- **Developer** — inspect Android virtual devices and group Gradle versions with references from selected project wrappers. This view is read-only; metadata dates and missing references do not prove non-use.
-- **Memory** — understand RAM, compression, swap, and memory pressure. Choose RAM or available storage for the menu bar, with configurable pressure colors and swap details.
-- **Activity** — keep local cleanup receipts and restore eligible unchanged items when their original locations remain available.
+- **Overview** shows free space, a timeline for your Mac’s storage, and folders you’ve pinned.
+- **Disk Map** turns folders you choose into a visual map. Find large files, explore accessible hidden items, compare scans, and save useful views.
+- **Caches** shows what’s taking up space and lets you review eligible moves. Room keeps a receipt for each move so you can restore unchanged items when their original locations are available.
+- **Developer** shows virtual devices, SDK and build storage, and tool versions referenced by projects. AI Tools shows local caches, session storage, models, and worktrees by tool.
+- **Memory** shows pressure, RAM use, compression, and swap. The menu bar can show memory or free space.
 
-Optional on-device analysis adds review suggestions when supported; local rules remain available. Suggestions do not authorize deletion. Storage scans start on demand, while the optional menu-bar monitor periodically samples memory and disk capacity.
+## Editions
 
-## Two editions
+| | Mac App Store | Direct |
+| --- | --- | --- |
+| Cache moves | Eligible npm downloads older than 30 days that pass local verification. Moving them requires approval for each exact folder. | A broader cache catalog with eligibility checks and a review before moving files. |
+| Memory | Monitoring and suggestions. | Monitoring, suggestions, and a review for quitting selected apps normally. |
+| Storage suggestions | Local rules and optional Apple on-device analysis. | Local rules, Apple on-device analysis, or a separately installed local model runtime. |
+| Worktrees | — | Review eligible finished worktrees before moving them to Trash. |
 
-| | Store | Direct |
-|---|---|---|
-| File access | Remembered read-only folder approvals; reviewed changes require temporary exact write grants. | Broader known-location scans, subject to macOS permissions and user-enabled Full Disk Access. |
-| Cache cleanup | Old, locally verified npm download objects only. | Broader known-cache catalogue with conservative eligibility checks. |
-| Memory | Monitoring and suggestions. | Monitoring plus an explicit normal app-quit review. |
-| Analysis | Apple on-device models when available; local rules otherwise. | Apple models, an optional separately installed local runtime, or rules. |
-| Agent worktrees | Excluded. General agent-cache cleanup is not enabled. | Separate worktree review with live remote verification and conservative holds. |
+Room moves eligible files to Trash. They still use disk space there until you empty it. Recovery checks the item and its original location before restoring it.
 
-The Store cleanup exception covers supported SHA512-addressed npm download objects modified more than 30 days ago, within approved folders and bounded local verification limits. Verification does not prove an object is unused: installs may download it again, active installs may retry, and offline installs may fail. npm indexes, temporary data, installed packages, and other process-guarded caches stay held.
+## Developer storage
 
-Cache cleanup holds unknown files, credentials, installed resources, and project source. Direct-edition worktrees have a separate explicit review before an eligible finished worktree can move to Trash. Trash retains disk space until you empty it; Room never empties Trash. Restore refuses changed files and occupied destinations. Folder approvals cover accessible descendants, while macOS protections and separate-volume approvals still apply.
+| Choose this folder | Room can measure |
+| --- | --- |
+| Gradle User Home, usually `~/.gradle` | `daemon/` logs and registries, plus toolchain JDKs in `jdks/`. [Gradle directory layout](https://docs.gradle.org/current/userguide/directory_layout.html) |
+| Android SDK, usually `~/Library/Android/sdk` | Emulator OS images in `system-images/`. [Android emulator directories](https://developer.android.com/studio/run/emulator-commandline#directories) |
+| `~/Library/Developer/CoreSimulator/Devices` | Simulator devices and their app data. Manage Simulator OS runtimes separately in Xcode. [Xcode components](https://developer.apple.com/documentation/xcode/downloading-and-installing-additional-xcode-components) |
 
-## Release status
+Room measures disk space used by these folders. These sizes are for inspection in Developer.
 
-As of 22 October 2026, **Store 1.0.0 (5)** has been distribution-signed, uploaded, processed, and attached in App Store Connect. The English listing, six screenshots, and a 26-second native app preview are attached. Apple confirmed **Waiting for Review** on 22 October 2026. **Direct 1.8.0 (13)** passed its release build and native Scan/Stop checks. The website will show public Store availability after release.
+### AI tool storage
 
-Fresh tests passed for both editions: **186 Direct tests** and **171 Store tests**. Native Store 5 cleanup, Quit/relaunch, a fresh recovery write grant, and exact-byte Restore passed using disposable data. See [release evidence and boundaries](docs/RELEASE.md).
+Open **Developer → AI Tools → Choose Tool Folder**. Pick the tool’s actual data folder if you use a custom location.
 
-## Build
+| Tool | Where to look | Room reports |
+| --- | --- | --- |
+| Codex | `~/.codex` or `CODEX_HOME` | Cache, logs, sessions, runtime packages, and worktree files and builds. [Codex source](https://github.com/openai/codex/blob/main/codex-rs/cli/src/main.rs) |
+| Claude | `~/.claude`, `CLAUDE_CONFIG_DIR`, or the desktop app’s profile folder | Recognised caches, diagnostics, session and file history, downloads, and worktree files and builds. [Claude Code settings](https://code.claude.com/docs/en/settings) |
+| ChatGPT and Cursor | The app’s local cache or profile folder | Recognised app, code, and graphics caches. Available folders vary by app version. |
+| Gemini CLI | `~/.gemini` | Session and checkpoint storage. The `tmp/` folder can include resumable work. [Gemini CLI sessions](https://geminicli.com/docs/cli/session-management/) |
+| GitHub Copilot CLI | `~/.copilot` or `COPILOT_HOME` | Logs, session and command history, and the session index. [Copilot CLI folders](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-config-dir-reference) |
+| Ollama | `~/.ollama`, or a separately chosen tool folder | Local models and logs in the approved folder. [Ollama FAQ](https://docs.ollama.com/faq) |
 
-Requires an Apple silicon Mac, macOS 26+, and Xcode with Swift 6.2 or newer. The app has no external package dependencies.
+AI Tools reads file sizes and leaves every item in place. It skips links and ignores credentials and settings.
+
+## Build and test
+
+You’ll need an Apple silicon Mac running macOS 26 or later, and Xcode with Swift 6.2 or later.
 
 ```sh
-# Direct edition
-./scripts/build.sh
-
-# Locally signed sandbox preview
-./scripts/build-store.sh
-
-# Tests
-swift test
-ROOM_EDITION=store swift test
+git clone https://github.com/Merkost/Room.git
+cd Room
+swift build
 ```
 
-The build scripts produce local candidates. Store distribution uses the separate [archive/export workflow](scripts/STORE-ARCHIVE.md) and requires the publisher’s signing assets. Tests use isolated fixtures; some exercise macOS Trash with their own temporary files.
+Build a local app bundle for either edition from the repository root.
 
-## Design and architecture
+```sh
+./scripts/build.sh "$PWD/.build/Room.app"
+./scripts/build-store.sh "$PWD/.build/Room Store.app"
+```
 
-Room uses system typography, a stable adaptive toolbar, compact numeric hierarchy, native glass controls, keyboard shortcuts, and the Mac’s Reduce Motion and Reduce Transparency preferences. The selected C4 soft-pocket mark is shared across the app and website. Cancelled scans keep partial results explicit.
+The second command builds a locally signed sandbox preview. Distribution uses the [Mac App Store archive workflow](scripts/STORE-ARCHIVE.md).
 
-`RoomCore` owns scanning, classification, cleanup, and recovery. `RoomApp` owns state, native permissions, and views. See [architecture](docs/ARCHITECTURE.md), [design](DESIGN.md), and [App Store copy](docs/APP_STORE.md). The `website/` directory contains the marketing, support, and privacy pages; it has no analytics, advertising SDK, sign-in, or third-party font dependency.
+```sh
+swift test
+ROOM_EDITION=store swift test --scratch-path .build/store-tests
+```
 
-© 2026 Konstantin Merenkov. All rights reserved.
+## Project links
+
+- [Architecture](docs/ARCHITECTURE.md) covers the SwiftUI and AppKit interface, file access, scanning, and recovery.
+- [Design](DESIGN.md) describes the interface and its interaction rules.
+- [Release notes](docs/RELEASE.md) record past builds and verification.
+- [GitHub issues](https://github.com/Merkost/Room/issues) is the place to report bugs or propose improvements.
+
+## License
+
+A project license is pending.

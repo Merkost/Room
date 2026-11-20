@@ -5,14 +5,16 @@ public struct DeveloperResourcesLimits: Sendable {
     public let maximumDepth: Int
     public let maximumResources: Int
     public let maximumFileBytes: Int
+    public let maximumProjectFileBytes: Int
     public let timeLimit: TimeInterval
 
     public init(maximumNodes: Int = 100_000, maximumDepth: Int = 18, maximumResources: Int = 256,
-                maximumFileBytes: Int = 65_536, timeLimit: TimeInterval = 12) {
+                maximumFileBytes: Int? = nil, timeLimit: TimeInterval = 12) {
         self.maximumNodes = min(500_000, max(1, maximumNodes))
         self.maximumDepth = min(64, max(1, maximumDepth))
         self.maximumResources = min(1_024, max(1, maximumResources))
-        self.maximumFileBytes = min(262_144, max(64, maximumFileBytes))
+        self.maximumFileBytes = min(262_144, max(64, maximumFileBytes ?? 65_536))
+        self.maximumProjectFileBytes = min(262_144, max(64, maximumFileBytes ?? 262_144))
         self.timeLimit = min(60, max(0, timeLimit))
     }
 }
@@ -40,18 +42,49 @@ public struct DeveloperActivitySnapshot: Codable, Equatable, Sendable {
     public static var unknown: Self { Self() }
 }
 
+public enum DeveloperResourcesScope: Sendable {
+    case review, devices, toolStorage, aiTools
+}
+
+public enum DeveloperAITool: String, CaseIterable, Codable, Sendable {
+    case codex, claudeCode, chatGPT, cursor, gemini, copilot, ollama
+}
+
+public struct DeveloperAIToolRoot: Sendable {
+    public let tool: DeveloperAITool
+    public let url: URL
+
+    public init(tool: DeveloperAITool, url: URL) {
+        self.tool = tool
+        self.url = url
+    }
+}
+
 public struct DeveloperResourcesRequest: Sendable {
     public let approvedFolders: [URL]
     public let avdRoots: [URL]
     public let gradleHomes: [URL]
     public let projectRoots: [URL]
+    public let sdkRoots: [URL]
+    public let derivedDataRoots: [URL]
+    public let konanRoots: [URL]
+    public let simulatorDeviceRoots: [URL]
+    public let aiToolRoots: [DeveloperAIToolRoot]
+    public let scope: DeveloperResourcesScope
     public let activity: DeveloperActivitySnapshot
     public let limits: DeveloperResourcesLimits
 
     public init(approvedFolders: [URL], avdRoots: [URL] = [], gradleHomes: [URL] = [], projectRoots: [URL] = [],
-                activity: DeveloperActivitySnapshot = .unknown, limits: DeveloperResourcesLimits = .init()) {
+                sdkRoots: [URL] = [], derivedDataRoots: [URL] = [], konanRoots: [URL] = [], simulatorDeviceRoots: [URL] = [],
+                aiToolRoots: [DeveloperAIToolRoot] = [], scope: DeveloperResourcesScope = .review,
+                activity: DeveloperActivitySnapshot = .unknown,
+                limits: DeveloperResourcesLimits = .init()) {
         self.approvedFolders = approvedFolders; self.avdRoots = avdRoots
         self.gradleHomes = gradleHomes; self.projectRoots = projectRoots
+        self.sdkRoots = sdkRoots; self.derivedDataRoots = derivedDataRoots; self.konanRoots = konanRoots
+        self.simulatorDeviceRoots = simulatorDeviceRoots
+        self.aiToolRoots = aiToolRoots
+        self.scope = scope
         self.activity = activity; self.limits = limits
     }
 }
@@ -98,6 +131,16 @@ public struct AndroidVirtualDeviceResource: Identifiable, Codable, Equatable, Se
     public let activity: DeveloperResourceActivity
 }
 
+public struct SimulatorDeviceResource: Identifiable, Codable, Equatable, Sendable {
+    public var id: String { url.path }
+    public let url: URL
+    public let displayName: String
+    public let runtimeIdentifier: String?
+    public let deviceTypeIdentifier: String?
+    public let allocatedBytes: Int64
+    public let isPartial: Bool
+}
+
 public enum GradleDeveloperResourceKind: String, Codable, Sendable {
     case distribution, versionCache, sharedCache
 }
@@ -134,13 +177,78 @@ public struct DeveloperResourcesProgress: Sendable {
     public let currentPath: String
 }
 
+public enum DeveloperStorageKind: String, Codable, Sendable {
+    case gradleDaemon, gradleJDKs, androidSystemImages, simulatorDevices
+}
+
+public struct DeveloperStorageResource: Identifiable, Codable, Equatable, Sendable {
+    public var id: String { kind.rawValue + ":" + url.path }
+    public let kind: DeveloperStorageKind
+    public let url: URL
+    public let allocatedBytes: Int64
+    public let isPartial: Bool
+}
+
+public enum DeveloperAIStorageCategory: String, Codable, Sendable {
+    case cache, history, diagnostics, runtime, worktrees
+}
+
+public struct DeveloperAIStorageResource: Identifiable, Codable, Equatable, Sendable {
+    public var id: String { tool.rawValue + ":" + url.path }
+    public let tool: DeveloperAITool
+    public let title: String
+    public let url: URL
+    public let allocatedBytes: Int64
+    public let isPartial: Bool
+    public let category: DeveloperAIStorageCategory
+}
+
 public struct DeveloperResourcesReport: Identifiable, Codable, Equatable, Sendable {
     public let id: UUID
     public let scannedAt: Date
     public let androidDevices: [AndroidVirtualDeviceResource]
     public let gradleResources: [GradleDeveloperResource]
     public let projectWrappers: [GradleProjectWrapper]
+    private let recordedProjects: [DeveloperProject]?
+    private let recordedToolchains: [DeveloperToolchainResource]?
+    private let recordedStorageResources: [DeveloperStorageResource]?
+    private let recordedAIStorageResources: [DeveloperAIStorageResource]?
+    private let recordedSimulatorDevices: [SimulatorDeviceResource]?
+    public var projects: [DeveloperProject] { recordedProjects ?? [] }
+    public var toolchains: [DeveloperToolchainResource] { recordedToolchains ?? [] }
+    public var storageResources: [DeveloperStorageResource] { recordedStorageResources ?? [] }
+    public var aiStorageResources: [DeveloperAIStorageResource] { recordedAIStorageResources ?? [] }
+    public var simulatorDevices: [SimulatorDeviceResource] { recordedSimulatorDevices ?? [] }
     public let issues: [ScanIssue]
     public let cancelled: Bool
     public let isPartial: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id, scannedAt, androidDevices, gradleResources, projectWrappers, issues, cancelled, isPartial
+        case recordedProjects = "projects", recordedToolchains = "toolchains"
+        case recordedStorageResources = "storageResources"
+        case recordedAIStorageResources = "aiStorageResources"
+        case recordedSimulatorDevices = "simulatorDevices"
+    }
+
+    init(id: UUID, scannedAt: Date, androidDevices: [AndroidVirtualDeviceResource],
+         gradleResources: [GradleDeveloperResource], projectWrappers: [GradleProjectWrapper],
+         projects: [DeveloperProject] = [], toolchains: [DeveloperToolchainResource] = [],
+         storageResources: [DeveloperStorageResource] = [], aiStorageResources: [DeveloperAIStorageResource] = [],
+         simulatorDevices: [SimulatorDeviceResource] = [],
+         issues: [ScanIssue], cancelled: Bool, isPartial: Bool) {
+        self.id = id
+        self.scannedAt = scannedAt
+        self.androidDevices = androidDevices
+        self.gradleResources = gradleResources
+        self.projectWrappers = projectWrappers
+        self.recordedProjects = projects
+        self.recordedToolchains = toolchains
+        self.recordedStorageResources = storageResources
+        self.recordedAIStorageResources = aiStorageResources
+        self.recordedSimulatorDevices = simulatorDevices
+        self.issues = issues
+        self.cancelled = cancelled
+        self.isPartial = isPartial
+    }
 }

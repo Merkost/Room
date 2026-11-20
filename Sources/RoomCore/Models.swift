@@ -69,6 +69,16 @@ public struct VolumeInfo: Codable, Equatable, Sendable {
     public var usedBytes: Int64 { max(0, totalBytes - availableBytes) }
 }
 
+public struct NPMDiscoveryCoverage: Codable, Equatable, Sendable {
+    public let inspectedBuckets: Int
+    public let hasMore: Bool
+    /// An opaque continuation for the same physical read grants only.
+    public let nextCursor: String?
+    public let scopeID: String
+    public let isContinuation: Bool
+    public var isBatch: Bool { hasMore || isContinuation }
+}
+
 public struct ScanReport: Codable, Equatable, Sendable {
     public let id: UUID
     public let scannedAt: Date
@@ -77,10 +87,26 @@ public struct ScanReport: Codable, Equatable, Sendable {
     public let issues: [ScanIssue]
     public let volume: VolumeInfo
     public let cancelled: Bool
-    public var isPartial: Bool { cancelled || !issues.isEmpty || groups.contains(where: \.isPartial) || protectedData.contains(where: \.isPartial) }
+    public let npmDiscovery: NPMDiscoveryCoverage?
+    public var isPartial: Bool {
+        cancelled || npmDiscovery?.isBatch == true || !issues.isEmpty
+            || groups.contains(where: \.isPartial) || protectedData.contains(where: \.isPartial)
+    }
     public var totalBytes: Int64 { groups.reduce(0) { $0 + $1.totalBytes } }
     public var eligibleBytes: Int64 { groups.reduce(0) { $0 + $1.eligibleBytes } }
     public var eligibleEntries: [CacheEntry] { groups.flatMap(\.eligibleEntries) }
+
+    init(id: UUID, scannedAt: Date, groups: [CacheGroup], protectedData: [ProtectedData],
+         issues: [ScanIssue], volume: VolumeInfo, cancelled: Bool, npmDiscovery: NPMDiscoveryCoverage? = nil) {
+        self.id = id
+        self.scannedAt = scannedAt
+        self.groups = groups
+        self.protectedData = protectedData
+        self.issues = issues
+        self.volume = volume
+        self.cancelled = cancelled
+        self.npmDiscovery = npmDiscovery
+    }
 }
 
 /// Incremental reports are informational; cleanup IDs are minted only at completion.
@@ -110,6 +136,14 @@ public enum ActivityStatus: String, Codable, Sendable {
     case failed
 }
 
+public enum RoomMoveFailure: String, Codable, Sendable, CaseIterable {
+    case changed, inUse, access, staleScan, receiptNotSaved, cancelled, other
+}
+
+public enum RoomRestoreSkip: String, Codable, Sendable, CaseIterable {
+    case occupied, missing, changed, access, other
+}
+
 public struct ActivityItem: Identifiable, Codable, Equatable, Sendable {
     public let id: UUID
     public let rootID: String
@@ -127,6 +161,7 @@ public struct ActivityItem: Identifiable, Codable, Equatable, Sendable {
     /// Store receipts retain OS-granted access to the exact moved item, never
     /// broad access to the user's Trash. Older/direct receipts decode as nil.
     public var trashAccessBookmark: Data? = nil
+    public var failure: RoomMoveFailure? = nil
 }
 
 public struct ActivityReceipt: Identifiable, Codable, Equatable, Sendable {
@@ -134,6 +169,10 @@ public struct ActivityReceipt: Identifiable, Codable, Equatable, Sendable {
     public let date: Date
     public var items: [ActivityItem]
     public var issues: [ScanIssue]
+    /// Only the just-completed operation can report a failed final write. A loaded receipt was already saved.
+    public internal(set) var finalWriteFailed = false
+
+    private enum CodingKeys: String, CodingKey { case id, date, items, issues }
     public var trashedBytes: Int64 { items.filter { $0.status == .trashed }.reduce(0) { $0 + $1.byteCount } }
     public var trashedCount: Int { items.filter { $0.status == .trashed }.count }
     public var canRestore: Bool { items.contains { $0.status == .trashed } }
@@ -143,6 +182,24 @@ public struct RestoreReport: Codable, Equatable, Sendable {
     public let receipt: ActivityReceipt
     public let restoredCount: Int
     public let issues: [ScanIssue]
+    public var skips: [RoomRestoreSkip: Int] = [:]
+
+    init(receipt: ActivityReceipt, restoredCount: Int, issues: [ScanIssue], skips: [RoomRestoreSkip: Int] = [:]) {
+        self.receipt = receipt
+        self.restoredCount = restoredCount
+        self.issues = issues
+        self.skips = skips
+    }
+
+    private enum CodingKeys: String, CodingKey { case receipt, restoredCount, issues, skips }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        receipt = try values.decode(ActivityReceipt.self, forKey: .receipt)
+        restoredCount = try values.decode(Int.self, forKey: .restoredCount)
+        issues = try values.decode([ScanIssue].self, forKey: .issues)
+        skips = try values.decodeIfPresent([RoomRestoreSkip: Int].self, forKey: .skips) ?? [:]
+    }
 }
 
 public enum CacheScope: Sendable {
@@ -259,24 +316,26 @@ public struct CacheConfiguration: Sendable {
     /// nil preserves the direct edition's implicit catalogue. Store catalogues
     /// use an explicit (possibly empty) list, including for volume metadata.
     public let readAccessRoots: [URL]?
+    public let npmDiscovery: NPMDiscoveryCoverage?
 
     public init(roots: [CacheRoot], protectedLocations: [ProtectedLocation] = [],
                 homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
                 inspectionIssues: [ScanIssue] = [], readAccessRoots: [URL]? = nil,
-                protectedMeasurementExclusions: [URL] = []) {
+                protectedMeasurementExclusions: [URL] = [], npmDiscovery: NPMDiscoveryCoverage? = nil) {
         self.roots = roots
         self.protectedLocations = protectedLocations
         self.protectedMeasurementExclusions = protectedMeasurementExclusions.map(\.roomLexicallyNormalized)
         self.homeDirectory = homeDirectory.roomLexicallyNormalized
         self.inspectionIssues = inspectionIssues
         self.readAccessRoots = readAccessRoots?.map(\.roomLexicallyNormalized)
+        self.npmDiscovery = npmDiscovery
     }
 }
 
 extension URL {
     /// Foundation's standardizedFileURL may rewrite /private/tmp to the /tmp
     /// symlink alias on macOS. Normalize dot components without resolving links.
-    var roomLexicallyNormalized: URL {
+    package var roomLexicallyNormalized: URL {
         var components: [String] = []
         for component in path.split(separator: "/", omittingEmptySubsequences: true) {
             switch component {

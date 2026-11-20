@@ -32,6 +32,7 @@ enum RoomTokens {
     enum Typography {
         /// Tier 1: the Overview answer and the one hero figure per screen. Regular weight, tabular.
         static let hero = Font.system(size: 40, weight: .regular).monospacedDigit()
+        static let heroTracking: CGFloat = -0.8
         /// Sibling figures (Caches found, Kept safe), Memory pressure word next to the pocket.
         static let figure = Font.system(size: 22, weight: .regular).monospacedDigit()
         /// Toolbar titles, chapter headings (semibold) and the quiet greeting / goal sentence (regular).
@@ -41,8 +42,12 @@ enum RoomTokens {
         static let section = Font.system(size: 13, weight: .semibold)
         static let body = Font.system(size: 13, weight: .regular)
         static let bodyStrong = Font.system(size: 13, weight: .medium)
+        static let counter = Font.system(size: 17, weight: .regular).monospacedDigit()
+        static let roomGlyph = Font.system(size: 10, weight: .medium)
         static let numeric = Font.system(size: 13, weight: .regular).monospacedDigit()
         static let caption = Font.system(size: 12, weight: .regular)
+        static let sidebarGroup = Font.system(size: 11, weight: .semibold)
+        static let navigationLabel = Font.system(size: 12, weight: .medium)
         static let captionNumeric = Font.system(size: 12, weight: .regular).monospacedDigit()
         static let aboutHeading = Font.system(size: 22, weight: .semibold)
         static let aboutTagline = Font.system(size: 15, weight: .medium)
@@ -56,6 +61,46 @@ enum RoomTokens {
         static func unit(for figureSize: CGFloat) -> Font { .system(size: max(14, figureSize * 0.4), weight: .regular) }
         /// Tracking: -0.5 for 40 pt, -0.2 for 22 pt, 0 below.
         static func tracking(for size: CGFloat) -> CGFloat { size >= 30 ? -0.5 : size >= 20 ? -0.2 : 0 }
+    }
+
+    enum Overview {
+        static let greetingLineHeight: CGFloat = 20
+        static let answerLineHeight: CGFloat = 44
+        static let goalLineHeight: CGFloat = 22
+        static let goalSpacing: CGFloat = 10
+        static let actionSpacing: CGFloat = 20
+        static let actionHeight: CGFloat = 34
+    }
+
+    enum OverviewPlan {
+        static let dimmedKind = 0.18
+        static let quietLabelOpacity = 0.7
+        static let categoryWash = 0.55
+        static let chartMinimumWidth: CGFloat = 310
+        static let chartHeight: CGFloat = 166
+        static let compactChartHeight: CGFloat = 134
+        static let legendWidth: CGFloat = 192
+        static let legendColumnMinimum: CGFloat = 140
+        static let legendRowHeight: CGFloat = 22
+        static let swatchSize: CGFloat = 8
+        static let pad: CGFloat = 5
+        static let captionHeight: CGFloat = 14
+        static let outerRadius: CGFloat = 10
+        static let wall: CGFloat = 1.5
+        static let elevatedWall: CGFloat = 2
+        static let dashedWall = StrokeStyle(lineWidth: 1, dash: [4, 3])
+        static let focusWall: CGFloat = 2
+        static let focusOffset: CGFloat = 1
+        static let roomGap: CGFloat = 2
+        static let labelInset: CGFloat = 8
+        static let labelLineHeight: CGFloat = 14
+        static let freeLabelHeight: CGFloat = 28
+        static let goalInset: CGFloat = 6
+        static let minimumGoalWidth: CGFloat = 20
+        static let goalLabelSize = CGSize(width: 72, height: 18)
+        static let gridPoint: CGFloat = 1
+        static let gridPitchFactor: CGFloat = 0.5
+        static let freeLabel = Font.system(size: 12, weight: .semibold)
     }
 
     // MARK: Spacing (pt). Calm is the default density; Compact is v2's spacing.
@@ -87,6 +132,8 @@ enum RoomTokens {
 
     // MARK: Radii (concentric: outer = inner + padding)
     enum Radius {
+        static let budgetOverrun: CGFloat = 1
+        static let budgetFill: CGFloat = 2
         static let tile: CGFloat = 5
         static let field: CGFloat = 6
         static let row: CGFloat = 8
@@ -96,6 +143,23 @@ enum RoomTokens {
         static let sheet: CGFloat = 20
         static let planRoom: CGFloat = 3
         static let plan: CGFloat = 11
+    }
+
+    enum Onboarding {
+        static let width: CGFloat = 620
+        static let height: CGFloat = 540
+        static let planWidth: CGFloat = 300
+        static let planHeight: CGFloat = 262
+        static let supportingWidth: CGFloat = 210
+        static let choicePadding: CGFloat = 14
+    }
+
+    enum Sidebar {
+        static let iconWidth: CGFloat = 16
+        static let innerPadding: CGFloat = 8
+        static let pitchGap: CGFloat = 2
+        static let barHeight: CGFloat = 4
+        static let minimumTarget: CGFloat = 24
     }
 
     // MARK: Identity
@@ -157,6 +221,7 @@ enum RoomTokens {
 
     // MARK: Status: memory pressure and the free-space goal only. Never used for data series.
     enum Status {
+        static let pressureLaneOpacity = 0.08
         static let normal = Color.room(light: 0x2E7D4F, dark: 0x5CC08A, name: "room.status.normal")
         static let elevated = Color.room(light: 0xA3590A, dark: 0xF0A040, name: "room.status.elevated")
         static let critical = Color.room(light: 0xC4242A, dark: 0xFF6B66, name: "room.status.critical")
@@ -192,16 +257,42 @@ enum RoomTokens {
         static let tileInk2 = Color.room(light: 0x3E4448, dark: 0xC5CCD0, name: "room.tile.ink2")
     }
 
+    enum Map {
+        static let inspectorWidth: CGFloat = 260
+        static let inspectorBreakpoint: CGFloat = 688
+        static let minimumHeight: CGFloat = 360
+        static let controlsHeight: CGFloat = 36
+        static let readoutHeight: CGFloat = 28
+        static let largestRowHeight: CGFloat = 23
+        static let kindBarHeight: CGFloat = 12
+        static let kindHoverOpacity = 0.18
+        static let focusStroke: CGFloat = 2
+        static let labelPaddingX: CGFloat = 7
+        static let labelPaddingY: CGFloat = 3
+        static let hatchStroke: CGFloat = 1.5
+        static let hatchPitch: CGFloat = 6.5
+        static let pendingTileOpacity = 0.34
+        static let pendingGroupOpacity = 0.4
+        static let blueprintGridPitch: CGFloat = 12
+        static let blueprintGridDot: CGFloat = 1
+        static let blueprintWallStroke: CGFloat = 1
+    }
+
     // MARK: Motion values (the environment value in RoomMotion folds in Gentle motion + Reduce Motion)
     enum Motion {
         static let quick = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.12)
         static let standard = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.20)
         static let exit = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.12)
-        static let page = Animation.spring(response: 0.32, dampingFraction: 1)
+        static let pageResponse = 0.32
+        static let page = Animation.spring(response: pageResponse, dampingFraction: 1)
+        static let compareGlide = Animation.spring(response: 0.36, dampingFraction: 1)
+        static let receiptLead = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.28)
+        static let onboardingText = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.24).delay(0.07)
         static let settle = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.24)
         static let success = Animation.spring(response: 0.28, dampingFraction: 0.7)  // the only overshoot
         static let fade = Animation.easeOut(duration: 0.15)                          // Reduce Motion fallback
         static let count: TimeInterval = 0.32
+        static let countAnimation = Animation.easeOut(duration: count)
         static let stagger: TimeInterval = 0.03
         static let settleStagger: TimeInterval = 0.07
         static let maxStaggered = 12
@@ -236,6 +327,7 @@ enum RoomTokens {
         static let skeletonStagger: TimeInterval = 0.06
         /// Sidebar collapse: labels 100 ms, then the panel 220 ms starting at 110 ms.
         static let sidebarLabels = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.10)
+        static let sidebarWidth = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.22)
         static let sidebarPanel = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.22).delay(0.11)
         /// Make room: stage 1 lift 260 ms, 16 ms per dot; stage 2 lights 640 ms per dot, 60 ms apart.
         static let liftDuration: TimeInterval = 0.26, liftPerDot: TimeInterval = 0.016
@@ -304,12 +396,35 @@ struct RoomMotionRoot: ViewModifier {
 // MARK: - Button styles (no inline tints anywhere else)
 
 struct RoomPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.modifier(RoomPressFeedback(pressed: configuration.isPressed))
+    }
+}
+
+private struct RoomPressFeedback: ViewModifier {
+    let pressed: Bool
     @Environment(\.roomMotion) private var motion
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(pressed && motion.isFull ? RoomTokens.Motion.pressScale : 1)
+            .opacity(pressed && !motion.isFull ? 0.7 : 1)
+            .animation(motion.isFull ? RoomTokens.Motion.quick : nil, value: pressed)
+    }
+}
+
+private struct RoomScreenPrimaryStyle: ButtonStyle {
+    let accent: RoomTokens.Accent
+    @Environment(\.isEnabled) private var enabled
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed && motion.isFull ? RoomTokens.Motion.pressScale : 1)
-            .opacity(configuration.isPressed && !motion.isFull ? 0.7 : 1)
-            .animation(motion.isFull ? RoomTokens.Motion.quick : nil, value: configuration.isPressed)
+            .font(RoomTokens.Typography.bodyStrong)
+            .padding(.horizontal, RoomTokens.Space.group)
+            .frame(minHeight: RoomTokens.Overview.actionHeight)
+            .foregroundStyle(enabled ? Color.white : RoomTokens.Ink.secondary)
+            .background(enabled ? accent.fill : RoomTokens.Surface.track, in: Capsule())
+            .contentShape(Capsule())
+            .modifier(RoomPressFeedback(pressed: configuration.isPressed))
     }
 }
 
@@ -317,6 +432,9 @@ extension View {
     /// The one filled button per context: native prominent glass in the accent fill.
     func roomPrimary(_ accent: RoomTokens.Accent) -> some View {
         buttonStyle(.glassProminent).tint(accent.fill).controlSize(.large)
+    }
+    func roomScreenPrimary(_ accent: RoomTokens.Accent) -> some View {
+        buttonStyle(RoomScreenPrimaryStyle(accent: accent))
     }
     /// Secondary actions: ordinary glass.
     func roomSecondary() -> some View { buttonStyle(.glass).controlSize(.large) }

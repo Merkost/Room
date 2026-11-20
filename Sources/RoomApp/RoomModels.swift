@@ -1,6 +1,6 @@
 import Foundation
 
-nonisolated enum RoomDestination: String, Hashable, Sendable { case clean, memory, disk, developer, activity }
+nonisolated enum RoomDestination: String, Hashable, Sendable { case overview, clean, memory, disk, developer }
 
 enum RoomCacheScanScope: String, CaseIterable, Identifiable, Sendable {
     case full, quick
@@ -84,4 +84,6 @@ nonisolated struct RoomActivityItem: Identifiable, Sendable {
     let message: String
     let isRestored: Bool
     let canRestore: Bool
+    var bytes: Int64 = 0
+    var source: String?
 }

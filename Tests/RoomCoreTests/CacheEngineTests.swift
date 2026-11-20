@@ -6,6 +6,29 @@ import Testing
 
 @Suite("Filesystem safety", .serialized)
 struct CacheEngineTests {
+    @Test func cleanReportsEachItemAfterItsReceiptIsSaved() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        _ = try fixture.write("cache/first", "cached")
+        _ = try fixture.write("cache/second", "cached")
+        let engine = fixture.engine(root: fixture.root())
+        let report = await engine.scan()
+        let ids = Set(report.eligibleEntries.map(\.id))
+        try #require(ids.count == 2)
+        let seen = Mutex<Set<UUID>>([])
+        let receipt = await engine.clean(entryIDs: ids) { id, status in
+            // Read durable bytes directly. Engine history repairs interrupted pending items,
+            // so it is deliberately not used to inspect an active cleanup.
+            let files = (try? FileManager.default.contentsOfDirectory(at: fixture.base.appendingPathComponent("activity"),
+                includingPropertiesForKeys: nil)) ?? []
+            let saved = files.compactMap { try? JSONDecoder().decode(ActivityReceipt.self, from: Data(contentsOf: $0)) }
+                .flatMap(\.items).first { $0.id == id }
+            #expect(saved?.status == status && status == .trashed)
+            seen.withLock { $0.insert(id) }
+        }
+        #expect(receipt.trashedCount == 2 && seen.withLock { $0 } == ids)
+    }
+
     @Test("The production catalogue contains only explicit cache locations")
     func explicitCatalogue() {
         let configuration = CacheConfiguration.standard

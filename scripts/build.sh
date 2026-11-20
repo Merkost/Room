@@ -12,6 +12,13 @@ swift build --package-path "$source_dir" --scratch-path "$task_build_dir" --conf
 binary_dir="$(swift build --package-path "$source_dir" --scratch-path "$task_build_dir" --configuration "$configuration" --show-bin-path)"
 mkdir -p "$staged_app/Contents/MacOS" "$staged_app/Contents/Resources"
 cp "$binary_dir/Room" "$staged_app/Contents/MacOS/Room"
+resources="$binary_dir/Room_RoomApp.bundle/Contents/Resources"
+if [[ ! -d "$resources" ]]; then
+    resources="$binary_dir/Room_RoomApp.bundle"
+fi
+for localization in "$resources"/*.lproj(N/); do
+    cp -R "$localization" "$staged_app/Contents/Resources/"
+done
 cp "$source_dir/Resources/Info.plist" "$staged_app/Contents/Info.plist"
 if [[ -f "$source_dir/Resources/Room.icns" ]]; then
     cp "$source_dir/Resources/Room.icns" "$staged_app/Contents/Resources/Room.icns"

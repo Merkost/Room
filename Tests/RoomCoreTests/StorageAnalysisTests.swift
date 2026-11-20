@@ -81,6 +81,27 @@ struct StorageAnalysisTests {
             #expect(finding.disposition == expected)
         }
     }
+
+    @Test("Exact private system roots and descendants stay protected")
+    func privateSystemBoundaries() throws {
+        let fixture = AnalysisFixture()
+        let protected = ["/private/etc", "/private/etc/services.bin", "/private/var/db", "/private/var/db/metadata.bin"]
+        let review = ["/private/tmp", "/private/tmp/work.bin", "/private/etc-other", "/private/var/db-copy"]
+        let items = (protected + review).map { path in
+            let url = URL(fileURLWithPath: path)
+            return DiskMapItem(url: url, name: url.lastPathComponent, isDirectory: !path.hasSuffix(".bin"),
+                allocatedBytes: 4_096, logicalBytes: 4_096, fileCount: 1)
+        }
+        let report = StorageAnalyzer.analyze(report: fixture.report(items), configuration: fixture.configuration)
+        for path in protected {
+            let finding = try #require(report.findings.first { $0.item.url.path == path })
+            #expect(finding.disposition == .protected && finding.reason.contains("System-managed data"))
+        }
+        for path in review {
+            let finding = try #require(report.findings.first { $0.item.url.path == path })
+            #expect(finding.disposition == .review)
+        }
+    }
 }
 
 struct AnalysisFixture: Sendable {
