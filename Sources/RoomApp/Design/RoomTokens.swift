@@ -290,10 +290,12 @@ enum RoomTokens {
         static let onboardingText = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.24).delay(0.07)
         static let settle = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.24)
         static let success = Animation.spring(response: 0.28, dampingFraction: 0.7)  // the only overshoot
-        static let fade = Animation.easeOut(duration: 0.15)                          // Reduce Motion fallback
+        nonisolated static let fadeDuration: TimeInterval = 0.15                                // Reduce Motion fallback
+        nonisolated static let fadeCurve = UnitCurve.easeOut
+        static let fade = Animation.timingCurve(fadeCurve, duration: fadeDuration)
         static let count: TimeInterval = 0.32
         static let countAnimation = Animation.easeOut(duration: count)
-        static let stagger: TimeInterval = 0.03
+        nonisolated static let stagger: TimeInterval = 0.03
         static let settleStagger: TimeInterval = 0.07
         static let maxStaggered = 12
         static let tooltipDelay: TimeInterval = 0.5
@@ -312,7 +314,11 @@ enum RoomTokens {
             .spring(response: min(0.62, 0.26 + abs(distanceGB) * 0.003), dampingFraction: 1)
         }
         /// Motion.morph: Your week range / mode morph, 340 ms ease-in-out cubic.
-        static let morph = Animation.timingCurve(0.65, 0, 0.35, 1, duration: 0.34)
+        nonisolated static let morphDuration: TimeInterval = 0.34
+        nonisolated static let morphCurve = UnitCurve.bezier(startControlPoint: .init(x: 0.65, y: 0),
+                                               endControlPoint: .init(x: 0.35, y: 1))
+        nonisolated static let historyDotDuration: TimeInterval = 0.22
+        nonisolated static let historyDotRise: CGFloat = 6
         /// Motion.wake: parameters live in RoomPure (34 pt, τ 150 ms, gain 1.2, ring 0.42 pt/ms); the drawn ring lasts 650 ms.
         static let ringDrawn: TimeInterval = 0.65
         /// Pill width spring and history stack spring (both without overshoot).

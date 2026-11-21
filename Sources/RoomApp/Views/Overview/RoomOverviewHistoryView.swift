@@ -75,20 +75,20 @@ private struct RoomOverviewHistoryPopover: View {
     @State private var metric = RoomOverviewHistoryMetric.change
     @State private var hovering: Int?
     @State private var keyboard: Int?
+    @State private var transition: RoomOverviewHistoryTransition?
 
     private let chartHeight: CGFloat = 200
-    private let bytesPerGB: Double = 1_000_000_000
 
     var body: some View {
         let history = RoomOverviewHistory(log: log, range: range, now: now, calendar: .autoupdatingCurrent)
         VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
             Text("Your week").font(RoomTokens.Typography.title).accessibilityHeading(.h1)
             HStack(spacing: RoomTokens.Space.inner) {
-                Picker("Time range", selection: $range) {
+                Picker("Time range", selection: Binding(get: { range }, set: { changePlot(range: $0, metric: metric) })) {
                     ForEach(RoomOverviewHistoryRange.allCases, id: \.self) { Text($0.title).tag($0) }
                 }
                 .focused($rangeFocused)
-                Picker("Storage metric", selection: $metric) {
+                Picker("Storage metric", selection: Binding(get: { metric }, set: { changePlot(range: range, metric: $0) })) {
                     ForEach(RoomOverviewHistoryMetric.allCases, id: \.self) { Text($0.title).tag($0) }
                 }
             }
@@ -116,40 +116,50 @@ private struct RoomOverviewHistoryPopover: View {
         .padding(RoomTokens.Space.group)
         .frame(width: 520)
         .task { rangeFocused = true }
-        .onChange(of: range) { _, _ in hovering = nil; keyboard = nil }
-        .onChange(of: metric) { _, _ in hovering = nil; keyboard = nil }
+        .onChange(of: log) { _, _ in transition = nil }
+        .onChange(of: goal) { _, _ in transition = nil }
+        .onChange(of: motion) { _, _ in transition = nil }
+        .task(id: transition?.start) {
+            guard let transition else { return }
+            try? await ContinuousClock().sleep(until: transition.start.advanced(by: .seconds(transition.duration)))
+            guard !Task.isCancelled, self.transition?.start == transition.start else { return }
+            self.transition = nil
+        }
     }
 
     private func chart(_ history: RoomOverviewHistory) -> some View {
         let points = history.points
         let domain = bounds(history)
         let selection = hovering ?? keyboard
-        let xLabels = points.filter { range != .day || $0.id.isMultiple(of: 4) }.map { Double($0.id) }
+        let xLabels = points.filter { point in
+            switch range {
+            case .day: point.id.isMultiple(of: 4)
+            case .week: true
+            case .twelveWeeks: (points.count - 1 - point.id).isMultiple(of: 2)
+            }
+        }.map { Double($0.id) }
+        let plot = RoomOverviewHistoryPlot(history: history, range: range, metric: metric,
+            domain: domain, now: now, selected: selection)
         return Chart {
+            // Keep explicit axes mounted in Free Space even when there are no native marks.
+            RuleMark(y: .value("Plot boundary", domain.lowerBound))
+                .foregroundStyle(Color.clear)
+                .accessibilityHidden(true)
             if metric == .change {
                 RuleMark(y: .value("No change", 0)).foregroundStyle(RoomTokens.Surface.line2)
-                ForEach(points) { point in
-                    if let bytes = point.usedChange {
-                        changeMarks(point, bytes: bytes, selected: selection == point.id)
-                    }
-                }
-            } else {
-                ForEach(points) { point in
-                    if let bytes = point.sample?.freeBytes {
-                        freeSpaceMarks(point, bytes: bytes, isLatest: history.latest(for: .freeSpace)?.id == point.id,
-                                       selected: selection == point.id, floor: domain.lowerBound)
-                    }
-                }
-                if range == .twelveWeeks, let goal {
-                    RuleMark(y: .value("Goal", gb(goal)))
-                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3]))
-                        .foregroundStyle((history.latest(for: .freeSpace)?.sample?.freeBytes ?? goal) < goal
-                                         ? RoomTokens.Status.elevated : accent.text)
-                }
+            } else if range == .twelveWeeks, let goal {
+                goalMarks(points, goal: goal, selected: selection, latest: history.latest(for: .freeSpace)?.sample)
             }
-            if let selection {
+            if let selection, points.indices.contains(selection) {
                 RuleMark(x: .value("Selected", Double(selection)))
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 2])).foregroundStyle(RoomTokens.Ink.secondary)
+                if let bytes = points[selection].value(for: metric) {
+                    PointMark(x: .value("Selected", Double(selection)), y: .value("Measurement", gb(bytes)))
+                        .symbol {
+                            Circle().strokeBorder(accent.text, lineWidth: 1.5)
+                                .frame(width: RoomTokens.Space.inner, height: RoomTokens.Space.inner)
+                        }
+                }
             }
         }
         .chartXScale(domain: -0.5...(Double(points.count) - 0.5))
@@ -171,27 +181,16 @@ private struct RoomOverviewHistoryPopover: View {
                     if let number = value.as(Double.self) {
                         Text(hide.masksNow ? "••" : number.formatted(.number.precision(.fractionLength(0...1))))
                             .font(RoomTokens.Typography.micro)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                            .frame(width: RoomTokens.Space.breath2, alignment: .trailing)
                     }
                 }
             }
         }
-        .chartPlotStyle { plot in
-            plot.background {
-                Canvas { context, size in
-                    let width = size.width / Double(points.count)
-                    var hatch = Path()
-                    for point in points where point.value(for: metric) == nil && point.bucket <= now {
-                        let x = Double(point.id) * width
-                        for y in stride(from: -width, to: size.height, by: 6) {
-                            let start = max(0, -y)
-                            let end = min(width, size.height - y)
-                            guard start < end else { continue }
-                            hatch.move(to: CGPoint(x: x + start, y: y + start))
-                            hatch.addLine(to: CGPoint(x: x + end, y: y + end))
-                        }
-                    }
-                    context.stroke(hatch, with: .color(RoomTokens.Surface.hatch), lineWidth: 1)
-                }
+        .chartPlotStyle { area in
+            area.background {
+                RoomOverviewHistoryPlotView(plot: plot, transition: transition).equatable()
             }
         }
         .chartOverlay { proxy in
@@ -213,8 +212,6 @@ private struct RoomOverviewHistoryPopover: View {
             }
         }
         .frame(height: chartHeight)
-        .animation(motion.animation(RoomTokens.Motion.morph, fallback: RoomTokens.Motion.fade), value: range)
-        .animation(motion.animation(RoomTokens.Motion.morph, fallback: RoomTokens.Motion.fade), value: metric)
         .focusable()
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Storage history, \(range.title), \(metric.title)")
@@ -240,54 +237,44 @@ private struct RoomOverviewHistoryPopover: View {
         }
     }
 
-    @ChartContentBuilder private func changeMarks(_ point: RoomOverviewHistoryPoint, bytes: Int64, selected: Bool) -> some ChartContent {
-        let count = Int(abs(gb(bytes)).rounded())
-        if range == .week, count > 0, count <= 32 {
-            ForEach(1...count, id: \.self) { index in
-                let value = Double(index) * (bytes > 0 ? 1 : -1)
-                PointMark(x: .value("Period", Double(point.id)), y: .value("Change", value))
-                    .symbolSize(selected ? 28 : 18)
-                    .symbol {
-                        if bytes > 0 {
-                            Circle().fill(accent.fill).frame(width: selected ? 7.5 : 6, height: selected ? 7.5 : 6)
-                        } else {
-                            Circle().strokeBorder(accent.text, lineWidth: 1.2)
-                                .frame(width: selected ? 7.5 : 6, height: selected ? 7.5 : 6)
-                        }
-                    }
-            }
-        } else if bytes == 0 {
-            PointMark(x: .value("Period", Double(point.id)), y: .value("No change", 0))
-                .symbolSize(selected ? 24 : 12)
-                .foregroundStyle(RoomTokens.Ink.secondary)
-        } else {
-            BarMark(x: .value("Period", Double(point.id)), y: .value("Change", gb(bytes)),
-                    width: .ratio(selected ? 0.84 : 0.67))
-                .foregroundStyle(bytes > 0 ? accent.fill : RoomTokens.Surface.used)
-        }
-    }
-
-    @ChartContentBuilder private func freeSpaceMarks(_ point: RoomOverviewHistoryPoint, bytes: Int64,
-                                                     isLatest: Bool, selected: Bool, floor: Double) -> some ChartContent {
-        if range == .twelveWeeks {
-            AreaMark(x: .value("Period", Double(point.id)), yStart: .value("Floor", floor),
-                     yEnd: .value("Free space", gb(bytes)), series: .value("Continuous samples", point.run))
-                .foregroundStyle(accent.wash)
-            if let goal, let delta = point.sample.map({ $0.freeBytes - goal }) {
-                let width = selected ? 0.29 : 0.18
+    @ChartContentBuilder private func goalMarks(_ points: [RoomOverviewHistoryPoint], goal: Int64,
+                                                  selected: Int?, latest: RoomVolumeSample?) -> some ChartContent {
+        ForEach(points) { point in
+            if let bytes = point.sample?.freeBytes {
+                let width = selected == point.id ? 0.29 : 0.18
                 RectangleMark(xStart: .value("Start", Double(point.id) - width),
                               xEnd: .value("End", Double(point.id) + width),
-                              yStart: .value("Goal", gb(goal)), yEnd: .value("Free space", gb(bytes)))
-                    .foregroundStyle(delta < 0 ? RoomTokens.Status.elevated : accent.fill)
+                              yStart: .value("Lower", gb(min(bytes, goal))),
+                              yEnd: .value("Upper", gb(max(bytes, goal))))
+                    .foregroundStyle(bytes < goal ? RoomTokens.Status.elevated : accent.fill)
             }
         }
-        LineMark(x: .value("Period", Double(point.id)), y: .value("Free space", gb(bytes)),
-                 series: .value("Continuous samples", point.run))
-            .foregroundStyle(accent.text)
-            .lineStyle(StrokeStyle(lineWidth: 2))
-        PointMark(x: .value("Period", Double(point.id)), y: .value("Free space", gb(bytes)))
-            .foregroundStyle(accent.text)
-            .symbolSize(isLatest || selected ? 45 : 12)
+        RuleMark(y: .value("Goal", gb(goal)))
+            .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3]))
+            .foregroundStyle((latest?.freeBytes ?? goal) < goal ? RoomTokens.Status.elevated : accent.text)
+    }
+
+    private func changePlot(range nextRange: RoomOverviewHistoryRange, metric nextMetric: RoomOverviewHistoryMetric) {
+        guard nextRange != range || nextMetric != metric else { return }
+        let instant = ContinuousClock.now
+        let calendar = Calendar.autoupdatingCurrent
+        let source: [RoomOverviewHistoryTransition.Layer]
+        if let transition {
+            source = transition.layers(at: instant)
+        } else {
+            let old = RoomOverviewHistory(log: log, range: range, now: now, calendar: calendar)
+            let plot = RoomOverviewHistoryPlot(history: old, range: range, metric: metric,
+                domain: bounds(old), now: now, selected: hovering ?? keyboard)
+            source = [.init(plot: plot, opacity: 1)]
+        }
+        let next = RoomOverviewHistory(log: log, range: nextRange, now: now, calendar: calendar)
+        let target = RoomOverviewHistoryPlot(history: next, range: nextRange, metric: nextMetric,
+            domain: bounds(next, range: nextRange, metric: nextMetric), now: now, selected: nil)
+        transition = RoomOverviewHistoryTransition(source: source, target: target, morphs: motion.isFull, start: instant)
+        range = nextRange
+        metric = nextMetric
+        hovering = nil
+        keyboard = nil
     }
 
     @ViewBuilder private func notes(_ history: RoomOverviewHistory) -> some View {
@@ -305,9 +292,8 @@ private struct RoomOverviewHistoryPopover: View {
                 .font(RoomTokens.Typography.caption).foregroundStyle(RoomTokens.Ink.secondary)
         }
         if range == .twelveWeeks, metric == .freeSpace {
-            let history = RoomOverviewHistory(log: log, range: .twelveWeeks, now: now, calendar: .autoupdatingCurrent)
             if let months = history.monthsUntilGoal(goal) {
-                RoomMaskable("At this pace, about \(months) \(months == 1 ? "month" : "months") to your free-space goal.")
+                RoomMaskable("At this pace, free space could fall to your goal in about \(months) \(months == 1 ? "month" : "months").")
                     .font(RoomTokens.Typography.caption)
                     .foregroundStyle(RoomTokens.Ink.secondary)
             }
@@ -315,6 +301,11 @@ private struct RoomOverviewHistoryPopover: View {
     }
 
     private func bounds(_ history: RoomOverviewHistory) -> ClosedRange<Double> {
+        bounds(history, range: range, metric: metric)
+    }
+
+    private func bounds(_ history: RoomOverviewHistory, range: RoomOverviewHistoryRange,
+                        metric: RoomOverviewHistoryMetric) -> ClosedRange<Double> {
         var values = history.points.compactMap { $0.value(for: metric) }.map(gb)
         if metric == .change { values.append(0) }
         else if range == .twelveWeeks, let goal { values.append(gb(goal)) }
@@ -352,12 +343,13 @@ private struct RoomOverviewHistoryPopover: View {
         var transaction = Transaction()
         transaction.disablesAnimations = true
         withTransaction(transaction) {
+            transition = nil
             hovering = nil
             keyboard = index
         }
     }
 
-    private func gb(_ bytes: Int64) -> Double { Double(bytes) / bytesPerGB }
+    private func gb(_ bytes: Int64) -> Double { Double(bytes) / RoomOverviewHistoryPlot.gigabyte }
 }
 
 nonisolated private struct RoomOverviewHistoryChartAccessibility: AXChartDescriptorRepresentable {
@@ -378,7 +370,7 @@ nonisolated private struct RoomOverviewHistoryChartAccessibility: AXChartDescrip
         }
         let samples = history.points.compactMap { point -> AXDataPoint? in
             guard let value = point.value(for: metric) else { return nil }
-            return AXDataPoint(x: Double(point.id), y: Double(value) / 1_000_000_000)
+            return AXDataPoint(x: Double(point.id), y: Double(value) / RoomOverviewHistoryPlot.gigabyte)
         }
         let series = AXDataSeriesDescriptor(name: metric.title, isContinuous: false, dataPoints: samples)
         return AXChartDescriptor(title: "Your week", summary: summary, xAxis: x, yAxis: y,

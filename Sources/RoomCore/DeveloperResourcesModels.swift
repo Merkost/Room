@@ -69,6 +69,7 @@ public struct DeveloperResourcesRequest: Sendable {
     public let derivedDataRoots: [URL]
     public let konanRoots: [URL]
     public let simulatorDeviceRoots: [URL]
+    public let simulatorRuntimeRoots: [URL]
     public let aiToolRoots: [DeveloperAIToolRoot]
     public let scope: DeveloperResourcesScope
     public let activity: DeveloperActivitySnapshot
@@ -76,13 +77,14 @@ public struct DeveloperResourcesRequest: Sendable {
 
     public init(approvedFolders: [URL], avdRoots: [URL] = [], gradleHomes: [URL] = [], projectRoots: [URL] = [],
                 sdkRoots: [URL] = [], derivedDataRoots: [URL] = [], konanRoots: [URL] = [], simulatorDeviceRoots: [URL] = [],
-                aiToolRoots: [DeveloperAIToolRoot] = [], scope: DeveloperResourcesScope = .review,
+                simulatorRuntimeRoots: [URL] = [], aiToolRoots: [DeveloperAIToolRoot] = [], scope: DeveloperResourcesScope = .review,
                 activity: DeveloperActivitySnapshot = .unknown,
                 limits: DeveloperResourcesLimits = .init()) {
         self.approvedFolders = approvedFolders; self.avdRoots = avdRoots
         self.gradleHomes = gradleHomes; self.projectRoots = projectRoots
         self.sdkRoots = sdkRoots; self.derivedDataRoots = derivedDataRoots; self.konanRoots = konanRoots
         self.simulatorDeviceRoots = simulatorDeviceRoots
+        self.simulatorRuntimeRoots = simulatorRuntimeRoots
         self.aiToolRoots = aiToolRoots
         self.scope = scope
         self.activity = activity; self.limits = limits
@@ -179,6 +181,12 @@ public struct DeveloperResourcesProgress: Sendable {
 
 public enum DeveloperStorageKind: String, Codable, Sendable {
     case gradleDaemon, gradleJDKs, androidSystemImages, simulatorDevices
+    case simulatorRuntimeBundle, simulatorRuntimeImage
+}
+
+public struct SimulatorRuntimeMetadata: Codable, Equatable, Sendable {
+    public let name: String
+    public let build: String?
 }
 
 public struct DeveloperStorageResource: Identifiable, Codable, Equatable, Sendable {
@@ -187,6 +195,15 @@ public struct DeveloperStorageResource: Identifiable, Codable, Equatable, Sendab
     public let url: URL
     public let allocatedBytes: Int64
     public let isPartial: Bool
+    public let runtime: SimulatorRuntimeMetadata?
+
+    init(kind: DeveloperStorageKind, url: URL, allocatedBytes: Int64, isPartial: Bool, runtime: SimulatorRuntimeMetadata? = nil) {
+        self.kind = kind
+        self.url = url
+        self.allocatedBytes = allocatedBytes
+        self.isPartial = isPartial
+        self.runtime = runtime
+    }
 }
 
 public enum DeveloperAIStorageCategory: String, Codable, Sendable {

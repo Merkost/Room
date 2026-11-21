@@ -4,10 +4,11 @@ import RoomCore
 
 /// Roles reference shared read-only bookmarks; no second set of permissions is stored.
 enum RoomDeveloperFolderRole: String, CaseIterable, Codable, Identifiable {
-    case android, gradle, project, sdk, xcode, konan, simulators
+    case android, gradle, project, sdk, xcode, konan, simulators, simulatorRuntimes
     case codex, claudeCode, chatGPT, cursor, gemini, copilot, ollama
     var id: String { rawValue }
-    var supportsToolStorage: Bool { self == .gradle || self == .sdk || self == .simulators }
+    var requiresFolderPicker: Bool { self == .simulators || self == .simulatorRuntimes || aiTool != nil }
+    static let storageRoles: [Self] = [.gradle, .sdk, .simulators, .simulatorRuntimes]
     static let deviceRoles: [Self] = [.android, .simulators]
     var title: String {
         switch self {
@@ -18,6 +19,7 @@ enum RoomDeveloperFolderRole: String, CaseIterable, Codable, Identifiable {
         case .xcode: "Xcode DerivedData"
         case .konan: "Kotlin/Native home"
         case .simulators: "Simulator Devices"
+        case .simulatorRuntimes: "Simulator Runtimes"
         case .codex: "Codex"
         case .claudeCode: "Claude"
         case .chatGPT: "ChatGPT"
@@ -36,6 +38,7 @@ enum RoomDeveloperFolderRole: String, CaseIterable, Codable, Identifiable {
         case .xcode: "hammer.fill"
         case .konan: "terminal"
         case .simulators: "iphone.gen3"
+        case .simulatorRuntimes: "opticaldiscdrive"
         case .codex: "terminal"
         case .claudeCode, .gemini: "sparkle"
         case .chatGPT: "bubble.left.and.bubble.right"
@@ -50,7 +53,6 @@ enum RoomDeveloperFolderRole: String, CaseIterable, Codable, Identifiable {
     static var aiRoles: [Self] { allCases.filter { $0.aiTool != nil } }
 
     func suggestedURL(in home: URL?) -> URL? {
-        guard let home else { return nil }
         let path: String
         switch self {
         case .android: path = ".android/avd"
@@ -60,6 +62,8 @@ enum RoomDeveloperFolderRole: String, CaseIterable, Codable, Identifiable {
         case .xcode: path = "Library/Developer/Xcode/DerivedData"
         case .konan: path = ".konan"
         case .simulators: path = "Library/Developer/CoreSimulator/Devices"
+        case .simulatorRuntimes:
+            return URL(fileURLWithPath: "/System/Library/AssetsV2/com_apple_MobileAsset_iOSSimulatorRuntime", isDirectory: true)
         case .codex: path = ".codex"
         case .claudeCode: path = ".claude"
         case .chatGPT: path = "Library/Caches/com.openai.chat"
@@ -68,7 +72,7 @@ enum RoomDeveloperFolderRole: String, CaseIterable, Codable, Identifiable {
         case .copilot: path = ".copilot"
         case .ollama: path = ".ollama"
         }
-        return home.appendingPathComponent(path, isDirectory: true)
+        return home?.appendingPathComponent(path, isDirectory: true)
     }
 }
 
@@ -156,15 +160,12 @@ final class RoomDeveloperModel {
 
     var folderSuggestions: [RoomDeveloperFolderSuggestion] {
         let configured = Set(locations.map(\.role))
-        let roles = section == .devices ? RoomDeveloperFolderRole.deviceRoles : RoomDeveloperFolderRole.allCases
-        return roles.filter {
-            $0 != .project && !configured.contains($0) && ($0.aiTool != nil) == (section == .aiTools)
-        }.compactMap { role in
+        return selectableFolderRoles.filter { !configured.contains($0) }.compactMap { role in
             let url = role.suggestedURL(in: home)
             #if ROOM_APP_STORE
             return RoomDeveloperFolderSuggestion(role: role, url: url)
             #else
-            if role == .simulators || role.aiTool != nil { return RoomDeveloperFolderSuggestion(role: role, url: url) }
+            if role.requiresFolderPicker { return RoomDeveloperFolderSuggestion(role: role, url: url) }
             var directory: ObjCBool = false
             guard let url, FileManager.default.fileExists(atPath: url.path, isDirectory: &directory),
                   directory.boolValue else { return nil }
@@ -177,7 +178,7 @@ final class RoomDeveloperModel {
         #if ROOM_APP_STORE
         addFolder(role: suggestion.role)
         #else
-        if suggestion.role == .simulators || suggestion.role.aiTool != nil {
+        if suggestion.role.requiresFolderPicker {
             addFolder(role: suggestion.role)
             return
         }
@@ -188,6 +189,15 @@ final class RoomDeveloperModel {
         #endif
     }
 
+    var selectableFolderRoles: [RoomDeveloperFolderRole] {
+        switch section {
+        case .devices: RoomDeveloperFolderRole.deviceRoles
+        case .storage: RoomDeveloperFolderRole.storageRoles
+        case .aiTools: RoomDeveloperFolderRole.aiRoles
+        default: RoomDeveloperFolderRole.allCases.filter { $0 != .project && $0 != .simulatorRuntimes && $0.aiTool == nil }
+        }
+    }
+
     var locations: [RoomDeveloperLocation] {
         records.compactMap { record in
             access.folders.first(where: { $0.id == record.folderID }).map { RoomDeveloperLocation(role: record.role, folder: $0) }
@@ -196,14 +206,14 @@ final class RoomDeveloperModel {
     private var scanLocations: [RoomDeveloperLocation] {
         switch section {
         case .devices: locations.filter { RoomDeveloperFolderRole.deviceRoles.contains($0.role) }
-        case .storage: locations.filter { $0.role.supportsToolStorage }
+        case .storage: locations.filter { RoomDeveloperFolderRole.storageRoles.contains($0.role) }
         case .aiTools: locations.filter { $0.role.aiTool != nil }
-        default: locations.filter { $0.role != .simulators && $0.role.aiTool == nil }
+        default: locations.filter { $0.role != .simulators && $0.role != .simulatorRuntimes && $0.role.aiTool == nil }
         }
     }
     var sectionLocations: [RoomDeveloperLocation] {
-        if section == .devices { return scanLocations }
-        return locations.filter { ($0.role.aiTool != nil) == (section == .aiTools) }
+        if [.devices, .storage, .aiTools].contains(section) { return scanLocations }
+        return locations.filter { $0.role != .simulatorRuntimes && $0.role.aiTool == nil }
     }
     var canScan: Bool { !isChoosingFolder && !scanLocations.isEmpty }
     var accessRevision: [String] { access.folders.map(\.id).sorted() }
@@ -215,17 +225,19 @@ final class RoomDeveloperModel {
     func addFolder(role: RoomDeveloperFolderRole) {
         guard !isChoosingFolder, !isScanning else { return }
         isChoosingFolder = true
-        let message = role.aiTool != nil
-            ? "Choose the tool’s data folder. Room measures known locations by file size alone."
-            : role == .simulators
-            ? "Choose the Simulator Devices folder to read device names and measure installed apps and device data."
-            : "Room reads sizes and version files here. It never changes anything in this folder."
+        let message = switch role {
+        case .simulators: "Choose the Simulator Devices folder to measure each device’s installed apps and data."
+        case .simulatorRuntimes: "Choose a folder containing Simulator runtime bundles, backing images, or Apple Simulator assets."
+        case _ where role.aiTool != nil: "Choose the tool’s data folder. Room measures known locations by file size alone."
+        default: "Room reads sizes and version files here. It never changes anything in this folder."
+        }
         Task { [weak self] in
             guard let self else { return }
             defer { self.isChoosingFolder = false }
             guard let selected = await RoomNativeFolderPicker.shared.choose(title: role.title,
                 message: message,
-                prompt: "Allow", initialURL: role.suggestedURL(in: self.home)) else { return }
+                prompt: "Allow", initialURL: role.suggestedURL(in: self.home),
+                treatsFilePackagesAsDirectories: role == .simulatorRuntimes) else { return }
             self.remember(selected, role: role)
         }
     }
@@ -292,6 +304,7 @@ final class RoomDeveloperModel {
             derivedDataRoots: current.filter { $0.role == .xcode }.map(\.folder.url),
             konanRoots: current.filter { $0.role == .konan }.map(\.folder.url),
             simulatorDeviceRoots: current.filter { $0.role == .simulators }.map(\.folder.url),
+            simulatorRuntimeRoots: current.filter { $0.role == .simulatorRuntimes }.map(\.folder.url),
             aiToolRoots: current.compactMap { location in
                 location.role.aiTool.map { DeveloperAIToolRoot(tool: $0, url: location.folder.url) }
             }, scope: scope)

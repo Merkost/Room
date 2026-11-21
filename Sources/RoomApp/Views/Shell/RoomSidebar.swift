@@ -18,6 +18,7 @@ struct RoomSidebar: View {
     @FocusState private var focusedScreen: RoomDestination?
     @Namespace private var selection
     @State private var editingSavedView: RoomSavedView?
+    @State private var editingRoom: RoomPinnedRoom?
     private let deleteViewPrefix = "sidebar:delete-view:"
     private let unpinPrefix = "sidebar:unpin:"
     private let confirmation = RoomInlineConfirmCenter.shared
@@ -50,7 +51,6 @@ struct RoomSidebar: View {
         .padding(.horizontal, RoomTokens.Space.row)
         .padding(.vertical, RoomTokens.Space.inner)
         .frame(maxHeight: .infinity, alignment: .top)
-        .disabled(RoomCommandWindowContext.current == .modal)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Room views")
         .onDisappear { finishPendingChanges() }
@@ -58,6 +58,19 @@ struct RoomSidebar: View {
         .sheet(item: $editingSavedView) { view in
             RoomSavedViewNameEditor(title: "Rename View", action: "Rename", name: hide.masksNow ? "" : view.name) {
                 savedViews?.rename(view.id, to: $0) == true
+            }
+        }
+        .sheet(item: $editingRoom) { snapshot in
+            if let room = rooms.visibleRooms.first(where: { $0.id == snapshot.id }) {
+                VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
+                    Text("Edit Room").font(RoomTokens.Typography.title).accessibilityHeading(.h1)
+                    RoomPinnedRoomEditor(rooms: rooms, room: room, hidden: hide.masksNow) { editingRoom = nil }
+                }
+                .padding(RoomTokens.Space.group)
+                .frame(width: 320)
+            } else {
+                Button("Done") { editingRoom = nil }
+                    .padding(RoomTokens.Space.group)
             }
         }
     }
@@ -272,6 +285,8 @@ struct RoomSidebar: View {
             return true
         }
         .contextMenu {
+            Button("Edit Room…") { editingRoom = room }
+                .disabled(!rooms.canUnpin || hide.masksNow)
             if let url = rooms.url(for: room.id) {
                 Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
             }

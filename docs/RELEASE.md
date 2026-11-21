@@ -2,9 +2,13 @@
 
 ## Store media handoff — 20 November 2026
 
-The local handoff has six 2880×1800 Store screenshots and three native Room previews. The videos run for 24.50 seconds (Overview and Disk Map), 26.67 seconds (Caches review), and 22.00 seconds (Memory and Monitor). FFprobe verified the 1920×1080 H.264 encodes and stereo AAC. The Monitor uses a fixture window with the native readout. [Capture, render and verify Store media](APP_STORE.md#capture-store-media)
+The local handoff has seven 2880×1800 Store screenshots, including Developer → AI Tools, and three native Room previews. The videos run for 24.50 seconds (Overview and Disk Map), 26.67 seconds (Caches review), and 22.00 seconds (Memory and Monitor). FFprobe verified the 1920×1080 H.264 encodes and stereo AAC. The Monitor uses a fixture window with the native readout. [Capture, render and verify Store media](APP_STORE.md#capture-store-media)
 
 These media files are local release artifacts. App Store Connect processing and publication for this handoff remain unverified. The October entries below describe earlier release evidence.
+
+## Local Store signing — 21 November 2026
+
+Xcode created a development-signed arm64 archive for `com.merkost.room`. Local verification confirmed the app signature, App Sandbox, user-selected file access, and app-scoped bookmarks. The archived app launched and opened the Simulator Runtimes folder picker. Xcode stopped distribution export because it could not find the Mac Installer Distribution identity or a matching Store provisioning profile. The local keychain check also found no valid Store app distribution identity for Room’s team. [Store archive and verification](../scripts/STORE-ARCHIVE.md)
 
 ## Historical candidates — 22 October 2026
 
