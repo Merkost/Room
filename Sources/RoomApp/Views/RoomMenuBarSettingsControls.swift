@@ -138,22 +138,22 @@ struct RoomMenuBarSettingsControls: View {
                 RoomSettingsSwitch(title: "Show swap in the popover", isOn: $showSwap)
             }
         case .pinnedRoom:
-            RoomSettingsFormRow("Pinned Room") {
+            RoomSettingsFormRow("Room in the popover") {
                 HStack(spacing: RoomTokens.Space.row) {
-                    if let room = rooms.pinnedRoom {
-                        Text(room.name).lineLimit(1).truncationMode(.middle).transition(.opacity)
-                        Text("·").foregroundStyle(RoomTokens.Ink.secondary).transition(.opacity)
-                        Button("Unpin") { rooms.unpin() }
-                            .buttonStyle(.plain).foregroundStyle(accent.text).transition(.opacity)
-                    } else {
-                        Button("Pin a Folder…") {
-                            NSApp.activate()
-                            rooms.chooseFolder()
-                        }
-                        .buttonStyle(.plain).foregroundStyle(accent.text).transition(.opacity)
+                    if !rooms.visibleRooms.isEmpty {
+                        Picker("Room in the popover", selection: Binding(get: { rooms.popoverRoom?.id }, set: { id in
+                            if let id { rooms.move(id: id, to: 0) }
+                        })) {
+                            ForEach(rooms.visibleRooms) { room in Text(room.name).tag(Optional(room.id)) }
+                        }.labelsHidden().fixedSize()
                     }
+                    Button("Pin a Folder…") {
+                        NSApp.activate()
+                        rooms.chooseFolder()
+                    }
+                    .buttonStyle(.plain).foregroundStyle(accent.text)
+                    .disabled(!rooms.canChooseFolder)
                 }
-                .animation(fade, value: rooms.pinnedRoom?.id)
             }
         }
     }

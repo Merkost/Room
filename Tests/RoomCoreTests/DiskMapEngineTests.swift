@@ -37,6 +37,33 @@ struct DiskMapEngineTests {
         #expect(try Data(contentsOf: first) == Data(repeating: 0x5A, count: 11_000))
     }
 
+    @Test func broadMapSkipsSeparateMediaFoldersAndNestedLibraries() async throws {
+        let fixture = try DiskFixture()
+        defer { fixture.remove() }
+        let visible = try fixture.write("selected/Projects/visible.bin", count: 8_000)
+        let pictures = try fixture.directory("selected/Pictures")
+        let music = try fixture.directory("selected/Music")
+        let library = try fixture.directory("selected/Projects/Archive.photoslibrary")
+        _ = try fixture.write("selected/Pictures/photo.jpg", count: 9_000)
+        _ = try fixture.write("selected/Music/track.aac", count: 5_000)
+        _ = try fixture.write("selected/Projects/Archive.photoslibrary/private.bin", count: 4_000)
+        let scanner = DiskMapEngine()
+        let policy = DiskScanPolicy(skipApplicationContainers: true, separatelyMappedFolders: [pictures, music])
+
+        let home = await scanner.scanTree(url: fixture.selected, policy: policy)
+        #expect(home.report.isPartial)
+        #expect(home.report.fileCount == 1 && home.report.logicalBytes == 8_000)
+        #expect(home.report.largestFiles.map(\.url) == [visible])
+        #expect(Set(home.report.issues.map { $0.url.path }) == [pictures.path, music.path, library.path])
+        #expect(home.tree.descendant(at: "Pictures")?.isPartial == true)
+        #expect(home.tree.descendant(at: "Projects/Archive.photoslibrary")?.isPartial == true)
+
+        let selectedPictures = await scanner.scanTree(url: pictures, policy: policy)
+        #expect(!selectedPictures.report.isPartial && selectedPictures.report.fileCount == 1)
+        let selectedLibrary = await scanner.scanTree(url: library, policy: policy)
+        #expect(!selectedLibrary.report.isPartial && selectedLibrary.report.fileCount == 1)
+    }
+
     @Test("An approved readable child can be scanned through an execute-only ancestor")
     func executeOnlyAncestor() async throws {
         let fixture = try DiskFixture()

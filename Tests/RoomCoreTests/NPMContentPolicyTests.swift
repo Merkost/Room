@@ -208,6 +208,126 @@ struct NPMContentPolicyTests {
 #if ROOM_APP_STORE
 @Suite("Store npm prefix approval")
 struct StoreNPMPrefixTests {
+    @Test("Bounded npm batches reach later and sparse buckets without revisiting pages")
+    func npmBatchesAreDisjointAndReachLaterBuckets() throws {
+        let fixture = try NPMFixture()
+        defer { fixture.remove() }
+        let directories = try (0..<300).map { index in
+            let prefix = String(format: "%04x", index)
+            return try fixture.directory(".npm/_cacache/content-v2/sha512/\(prefix.prefix(2))/\(prefix.suffix(2))")
+        }
+        let last = try fixture.directory(".npm/_cacache/content-v2/sha512/ff/ff")
+        let approved = [fixture.home.appendingPathComponent(".npm")]
+        var visited: Set<String> = []
+        var cursor: String?
+        var first: NPMDiscoveryCoverage?
+        var lastCoverage: NPMDiscoveryCoverage?
+        for index in 0..<20 {
+            let page = CacheConfiguration.store(approvedFolders: approved, userHome: fixture.home, npmContinuation: cursor)
+            let coverage = try #require(page.npmDiscovery)
+            if index == 0 { first = coverage }
+            lastCoverage = coverage
+            #expect(coverage.isContinuation == (index > 0))
+            let npm = page.roots.filter { $0.contentValidation == .npmSHA512 }
+            #expect(npm.count == coverage.inspectedBuckets && npm.count <= 256)
+            let paths = Set(npm.map { $0.url.path })
+            #expect(visited.isDisjoint(with: paths))
+            visited.formUnion(paths)
+            cursor = coverage.nextCursor
+            if cursor == nil { break }
+        }
+        #expect(first?.hasMore == true)
+        #expect(lastCoverage?.hasMore == false && lastCoverage?.isBatch == true)
+        #expect(visited == Set((directories + [last]).map(\.path)))
+    }
+
+    @Test("A continuation fails closed when approval scope or physical folder identity changes")
+    func npmCursorCannotCrossApprovalOrReplacement() throws {
+        let fixture = try NPMFixture()
+        defer { fixture.remove() }
+        for index in 0..<300 {
+            let prefix = String(format: "%04x", index)
+            _ = try fixture.directory(".npm/_cacache/content-v2/sha512/\(prefix.prefix(2))/\(prefix.suffix(2))")
+        }
+        let scope = fixture.home.appendingPathComponent(".npm")
+        let initial = CacheConfiguration.store(approvedFolders: [scope], userHome: fixture.home)
+        let cursor = try #require(initial.npmDiscovery?.nextCursor)
+        let prefix = fixture.home.appendingPathComponent(".npm/_cacache/content-v2/sha512/01")
+        let otherScope = CacheConfiguration.store(approvedFolders: [prefix], userHome: fixture.home, npmContinuation: cursor)
+        #expect(otherScope.roots.allSatisfy { $0.contentValidation == nil })
+        #expect(otherScope.npmDiscovery?.nextCursor == nil)
+        #expect(otherScope.inspectionIssues.contains { $0.message.contains("does not match") })
+
+        let saved = fixture.home.appendingPathComponent("previous-account-folder")
+        try FileManager.default.moveItem(at: scope, to: saved)
+        _ = try fixture.directory(".npm/_cacache/content-v2/sha512/01/11")
+        let replacement = CacheConfiguration.store(approvedFolders: [scope], userHome: fixture.home, npmContinuation: cursor)
+        #expect(replacement.roots.allSatisfy { $0.contentValidation == nil })
+        #expect(replacement.npmDiscovery?.nextCursor == nil)
+        #expect(replacement.inspectionIssues.contains { $0.message.contains("physical identity") })
+    }
+
+    @Test("An npm receipt restores from its exact approved parent even when ordinary discovery omits it")
+    func restoreOutsideDiscoveryBudget() async throws {
+        let fixture = try NPMFixture()
+        defer { fixture.remove() }
+        let items = try (0..<300).map { index in try fixture.content(Data("owned download \(index)".utf8)) }
+        let broadApproval = fixture.home.appendingPathComponent(".npm")
+        let ordinary = CacheConfiguration.store(approvedFolders: [broadApproval], userHome: fixture.home)
+        let discovered = Set(ordinary.roots.filter { $0.contentValidation == .npmSHA512 }.map { $0.url.path })
+        let original = try #require(items.first { !discovered.contains($0.deletingLastPathComponent().path) })
+        let parent = original.deletingLastPathComponent()
+        let contents = try Data(contentsOf: original)
+
+        let exactCatalogue = CacheConfiguration.store(approvedFolders: [parent], userHome: fixture.home)
+        let scanner = fixture.engine(configuration: exactCatalogue)
+        let scan = await scanner.scan()
+        let candidate = try #require(scan.eligibleEntries.first { $0.url.path == original.path })
+        let receipt = await scanner.clean(entryIDs: [candidate.id])
+        try #require(receipt.trashedCount == 1)
+        let moved = try #require(receipt.items.first?.trashURL)
+
+        let recoveryWithoutExactApproval = CacheConfiguration.storeRecovery(
+            approvedFolders: [broadApproval], approvedOriginalParents: [], userHome: fixture.home)
+        #expect(!recoveryWithoutExactApproval.roots.contains { $0.contentValidation == .npmSHA512 })
+        let unapproved = fixture.engine(configuration: recoveryWithoutExactApproval)
+        await #expect(throws: (any Error).self) {
+            try await unapproved.restoreAuthorizationLocations(receiptID: receipt.id)
+        }
+
+        let recovery = CacheConfiguration.storeRecovery(approvedFolders: [broadApproval],
+            approvedOriginalParents: [parent, parent], userHome: fixture.home)
+        let restoredRoots = recovery.roots.filter { $0.contentValidation == .npmSHA512 }
+        #expect(restoredRoots.count == 1 && restoredRoots.first?.url.path == parent.path)
+        #expect(restoredRoots.first?.id == receipt.items.first?.rootID)
+        let restarted = fixture.engine(configuration: recovery)
+        #expect(try await restarted.restoreAuthorizationLocations(receiptID: receipt.id).map(\.path) == [parent.path])
+        let restored = await restarted.restore(receiptID: receipt.id, approvedTrashItems: [moved])
+        try #require(restored.restoredCount == 1, "\(restored.issues.map(\.message))")
+        #expect(try Data(contentsOf: original) == contents)
+        #expect(!FileManager.default.fileExists(atPath: moved.path))
+    }
+
+    @Test("An npm recovery parent must be the physical bucket in the requested home")
+    func restoreRejectsLinkedAndUnsafeParents() throws {
+        let fixture = try NPMFixture()
+        defer { fixture.remove() }
+        let physical = try fixture.directory(".npm/_cacache/content-v2/sha512/aa/bb")
+        let linked = physical.deletingLastPathComponent().appendingPathComponent("cc")
+        try FileManager.default.createSymbolicLink(at: linked, withDestinationURL: physical)
+        let unsafe = try fixture.directory(".npm/_cacache/content-v2/sha512/ab/cd")
+        try #require(chmod(unsafe.path, 0o777) == 0)
+        let otherHome = try fixture.directory("different-home")
+        let recovery = CacheConfiguration.storeRecovery(approvedFolders: [],
+            approvedOriginalParents: [physical, physical.deletingLastPathComponent(), linked, unsafe], userHome: fixture.home)
+        #expect(recovery.roots.filter { $0.contentValidation == .npmSHA512 }.map { $0.url.path } == [physical.path])
+        #expect(recovery.inspectionIssues.contains { $0.url.path == linked.path })
+        #expect(recovery.inspectionIssues.contains { $0.url.path == unsafe.path })
+        let wrongHome = CacheConfiguration.storeRecovery(approvedFolders: [],
+            approvedOriginalParents: [physical], userHome: otherHome)
+        #expect(wrongHome.roots.allSatisfy { $0.contentValidation == nil })
+    }
+
     @Test("Exact native bucket approval enables only its verified leaf and keeps every other family held")
     func exactBucket() async throws {
         let f = try NPMFixture()

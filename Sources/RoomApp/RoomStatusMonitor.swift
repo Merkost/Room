@@ -82,6 +82,7 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
             })
             .modifier(RoomMotionRoot())
             .modifier(RoomAccentRoot())
+            .modifier(RoomHideRoot())
         )
         hosting.sizingOptions = [.preferredContentSize]
         popover.contentViewController = hosting
@@ -94,7 +95,7 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
     func updateOpenSettings(_ action: @escaping () -> Void) { openSettings = action }
 
     func setEnabled(_ enabled: Bool) {
-        if !enabled { rooms.cancelMeasurement() }
+        if !enabled { rooms.setPopoverActive(false) }
         guard isEnabled != enabled else { return }
         isEnabled = enabled
         observationGeneration = UUID()
@@ -168,7 +169,8 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         insights.scanMemory()
         insights.refreshDiskCapacity()
-        rooms.measureIfNeeded()
+        Task { await cacheModel.makeRoomStore?.checkNow() }
+        rooms.setPopoverActive(true)
         if let window = popover.contentViewController?.view.window {
             window.title = "Room Monitor"
             window.identifier = NSUserInterfaceItemIdentifier("RoomMemoryMonitorPopover")
@@ -182,7 +184,10 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
         openRoom()
     }
 
-    func popoverDidClose(_ notification: Notification) { statusItem?.button?.highlight(false) }
+    func popoverDidClose(_ notification: Notification) {
+        statusItem?.button?.highlight(false)
+        rooms.setPopoverActive(false)
+    }
 
     private func observeMemory(generation: UUID) {
         guard isEnabled, generation == observationGeneration else { return }

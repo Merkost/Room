@@ -177,6 +177,50 @@ struct AgentWorkEngineTests {
         #expect(!FileManager.default.fileExists(atPath: fixture.worktree.path))
     }
 
+    @Test("A final directory read error forbids cleanup even when all measured entries match")
+    func incompleteFinalSnapshotBlocksCleanup() async throws {
+        let fixture = try await AgentFixture()
+        defer { fixture.remove() }
+        var identity = stat()
+        try #require(lstat(fixture.worktree.path, &identity) == 0)
+        let device = identity.st_dev
+        let inode = identity.st_ino
+        let failNextEOF = Mutex(false)
+        let didFail = Mutex(false)
+        let reader = AgentDirectoryReader { stream in
+            var current = stat()
+            let isSource = fstat(dirfd(stream), &current) == 0
+                && current.st_dev == device && current.st_ino == inode
+            let entry = readdir(stream)
+            if entry == nil, errno == 0, isSource, failNextEOF.withLock({ pending in
+                let shouldFail = pending
+                pending = false
+                return shouldFail
+            }) {
+                didFail.withLock { $0 = true }
+                errno = EIO
+            }
+            return entry
+        }
+        let runner: @Sendable (URL, [String], URL?, TimeInterval) async throws -> AgentCommandResult = { tool, arguments, directory, timeout in
+            let result = try await AgentCommand.run(tool, arguments, directory, timeout)
+            if result.status == 0, arguments.contains("lock") {
+                failNextEOF.withLock { $0 = true }
+            }
+            return result
+        }
+        let engine = AgentWorkEngine(home: fixture.home, activity: fixture.activity, fixtureTrash: fixture.trash,
+            clock: { fixture.future }, runner: runner, directoryReader: reader)
+        let report = await engine.scan(approvedProjectRoots: [fixture.project])
+        let item = try #require(report.items.first { $0.url.path == fixture.worktree.path })
+        #expect(item.heldReasons.isEmpty)
+        await #expect(throws: (any Error).self) { try await engine.clean(worktreeID: item.id, confirmsFinished: true) }
+        #expect(didFail.withLock { $0 })
+        #expect(FileManager.default.fileExists(atPath: fixture.worktree.appendingPathComponent("tracked.txt").path))
+        #expect(try FileManager.default.contentsOfDirectory(atPath: fixture.trash.path).isEmpty)
+        #expect(await engine.history().first?.status == .failed)
+    }
+
     @Test("lsof access errors and stderr never count as complete activity evidence")
     func incompleteProcessEvidence() {
         let normal = Data("p101\0cnode\0fcwd\0n/private/tmp/project\0".utf8)

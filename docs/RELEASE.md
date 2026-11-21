@@ -1,6 +1,16 @@
 # Release
 
-## Current candidates — 22 October 2026
+## Store media handoff — 20 November 2026
+
+The local handoff has seven 2880×1800 Store screenshots, including Developer → AI Tools, and three native Room previews. The videos run for 24.50 seconds (Overview and Disk Map), 26.67 seconds (Caches review), and 22.00 seconds (Memory and Monitor). FFprobe verified the 1920×1080 H.264 encodes and stereo AAC. The Monitor uses a fixture window with the native readout. [Capture, render and verify Store media](APP_STORE.md#capture-store-media)
+
+These media files are local release artifacts. App Store Connect processing and publication for this handoff remain unverified. The October entries below describe earlier release evidence.
+
+## Local Store signing — 21 November 2026
+
+Xcode created a development-signed arm64 archive for `com.merkost.room`. Local verification confirmed the app signature, App Sandbox, user-selected file access, and app-scoped bookmarks. The archived app launched and opened the Simulator Runtimes folder picker. Xcode stopped distribution export because it could not find the Mac Installer Distribution identity or a matching Store provisioning profile. The local keychain check also found no valid Store app distribution identity for Room’s team. [Store archive and verification](../scripts/STORE-ARCHIVE.md)
+
+## Historical candidates — 22 October 2026
 
 - **Store 1.0.0 (5)** — final native archive and genuine Mac App Store export succeeded. The app, installer, profile, entitlements, and exact C4 icon passed distribution verification. Xcode reported **Upload succeeded**. Apple completed build processing and build 5 was selected for version 1.0.0. Apple confirmed the submission as **Waiting for Review** on 22 October 2026 at 10:03 AM (Australia/Sydney). Approval and public availability remain pending.
 - **Direct 1.8.0 (13)** — final Release rebuild succeeded in **157.34 s**. Actual Scan and Stop were verified without moving files; the Full scan scope was preserved.
@@ -60,8 +70,8 @@ The Direct edition retains broader guarded cache scanning, explicit normal app-q
 
 ## App Review submission
 
-A 26-second preview has been rendered from actual native Store 5 window captures and uploaded. It shows the Disk Map with synthetic folders and Memory with live macOS readings, using explanatory captions and simple scene dissolves. The 1920×1080, 30 fps H.264 High 4.0 video has BT.709 color and silent stereo AAC; full decode and black-frame checks passed. Apple accepted the complete version for review with the video and six screenshots attached. The App Review receipt confirms build 5, one submitted app version, and **Waiting for Review**. Submission ID: `87820e2e-77fb-4907-9316-eaa678821364`. Automatic release after approval is selected. Approval and live Store release are later outcomes; neither is claimed.
+A 26-second preview was rendered from actual native Store 5 window captures and uploaded. It showed the Disk Map with synthetic folders and Memory with live macOS readings, using explanatory captions and scene dissolves. The 1920×1080, 30 fps H.264 High 4.0 video had BT.709 color and silent stereo AAC. Full decode and black-frame checks passed. The App Review receipt confirmed build 5, one submitted app version with the video and six screenshots attached, and **Waiting for Review**. Automatic release after approval was selected at the time.
 
 Support: `https://room.merkost.dev/support/`. Privacy: `https://room.merkost.dev/privacy/`.
 
-Local evidence paths above are relative to the task’s `work/room-native/` evidence directory; credentials, key locations, and private contacts are deliberately excluded.
+The historical evidence filenames refer to private release records kept by the publisher.

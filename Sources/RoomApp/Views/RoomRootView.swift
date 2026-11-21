@@ -6,155 +6,188 @@ struct RoomRootView: View {
     @Bindable var insights: RoomInsightsModel
     @Bindable var memoryActions: MemoryActionsModel
     @Bindable var rooms: RoomRoomsModel
+    @Bindable var navigation: RoomWindowNavigation
     #if !ROOM_APP_STORE
     @Bindable var agentWork: AgentWorkModel
     #endif
-    @AppStorage("RoomOnboardingVersion") private var onboardingVersion = 0
+    var isOnboardingBusy: () -> Bool = { false }
+    var enableOnboardingMonitor: () -> Void = {}
+    var showOnboardingMonitor: () -> Void = {}
+    @State private var onboardingFollowUp: [RoomOnboardingEffect] = []
+    @AppStorage(RoomOverviewPreferences.densityKey) private var overviewDensity = RoomTokens.Density.calm
     @AppStorage("RoomAppearance") private var appearance = "dark"
-    @AppStorage("RoomMotionEnabled") private var motionEnabled = true
-    @AppStorage("RoomLastDestination") private var lastDestination = RoomDestination.clean.rawValue
+    @Environment(\.roomHide) private var hide
     @Environment(\.openSettings) private var openSettings
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var developer = RoomDeveloperModel()
-    @State private var destination = RoomOpenOn.resolve(
-        preference: UserDefaults.standard.string(forKey: "RoomOpenOn") ?? RoomOpenOn.last.rawValue,
-        last: UserDefaults.standard.string(forKey: "RoomLastDestination"))
+    @Environment(\.roomMotion) private var motion
+    @State private var developer = RoomDeveloperModel(unreferencedStore: .init(writer: .shared), activityCenter: .shared)
     @State private var sheet: RoomSheet?
-    @State private var expanded = false
-    @State private var category: RoomCategory?
-    @State private var sourceFilter: RoomSourceFilter = .all
-    @State private var query = ""
+    @State private var showingCustomise = false
+    @State private var editingRoom: UUID?
+    @State private var leftOverviewAt: ContinuousClock.Instant?
+    @State private var savedViews = RoomSavedViewsStore()
+    @State private var openedSavedView: RoomSavedViewDisplay?
+    @State private var savedViewRetry = UUID()
 
-    private var animate: Animation? { motionEnabled && !reduceMotion ? .smooth(duration: 0.24) : nil }
-    private var selectedCount: Int { model.sources.filter { model.selection.contains($0.id) && $0.isAvailable }.count }
-    private var matchingSources: [RoomSource] {
-        model.sources.filter { source in
-            (category == nil || source.category == category) &&
-            (sourceFilter == .all || (sourceFilter == .clearable ? source.isAvailable :
-                source.bytes > source.eligibleBytes || !source.heldReasons.isEmpty || source.blockedReason != nil || source.isPartial)) &&
-            (query.isEmpty || (source.name + " " + source.subtitle + " " + source.path).localizedCaseInsensitiveContains(query))
-        }.sorted { lhs, rhs in
-            if lhs.isAvailable != rhs.isAvailable { return lhs.isAvailable }
-            if lhs.eligibleBytes != rhs.eligibleBytes { return lhs.eligibleBytes > rhs.eligibleBytes }
-            return lhs.bytes > rhs.bytes
+    private struct SavedViewRequest: Equatable {
+        let route: RoomRoute
+        let retry: UUID
+    }
+
+    private var savedViewDisplay: RoomSavedViewDisplay? {
+        guard case .savedView(let id) = navigation.route,
+              let view = savedViews.entries.first(where: { $0.id == id }) else { return nil }
+        if let openedSavedView, openedSavedView.view.id == id {
+            return RoomSavedViewDisplay(requestID: openedSavedView.requestID, view: view, result: openedSavedView.result)
         }
+        return RoomSavedViewDisplay(requestID: savedViewRetry, view: view, result: nil)
     }
-    private var visibleSources: [RoomSource] {
-        expanded || category != nil || sourceFilter != .all || !query.isEmpty
-            ? matchingSources : Array(matchingSources.prefix(8))
-    }
+
+    private var destination: RoomDestination { navigation.destination }
     private var colorScheme: ColorScheme? {
         switch appearance { case "light": .light; case "dark": .dark; default: nil }
     }
-    private func refreshCurrentView() {
+    private var screenActions: RoomScreenActions {
+        var commands = destinationActions
+        commands.showHistory = { sheet = .history }
+        return commands
+    }
+
+    private var destinationActions: RoomScreenActions {
         switch destination {
-        case .clean: if model.isScanning { model.cancelScan() } else { model.scan() }
-        case .memory: insights.scanMemory()
+        case .overview:
+            RoomScreenActions(destination: .overview, canRescan: true, rescan: {
+                insights.refreshDiskCapacity()
+                rooms.measureNext()
+            }, customise: { showingCustomise.toggle() })
+        case .clean:
+            RoomScreenActions(destination: .clean, canRescan: model.canRescanFromMenu, isScanning: model.isScanning,
+                              rescan: model.rescanFromMenu, stop: model.cancelScan)
         case .disk:
-            if insights.isScanningDisk { insights.cancelDiskScan() }
-            else if let url = insights.diskURL { insights.scanDisk(url: url) }
-        case .developer: if developer.isScanning { developer.stop() } else { developer.scan() }
-        case .activity: break
+            diskActions
+        case .developer:
+            RoomScreenActions(destination: .developer, canRescan: developer.canScan, isScanning: developer.isScanning,
+                              rescan: developer.scan, stop: developer.stop)
+        case .memory:
+            RoomScreenActions(destination: .memory, canRescan: true, isScanning: insights.isScanningMemory,
+                              rescan: insights.scanMemory)
         }
     }
 
-    var body: some View {
-        ZStack {
-            RoomAmbientBackground()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    switch destination {
-                    case .clean:
-                        overview
-                            .transition(.opacity.combined(with: .offset(y: reduceMotion ? 0 : 8)))
-                    case .memory:
-                        #if ROOM_APP_STORE
-                        RoomMemoryView(insights: insights, memoryActions: memoryActions)
-                            .transition(.opacity.combined(with: .offset(y: reduceMotion ? 0 : 8)))
-                        #else
-                        RoomMemoryView(insights: insights, memoryActions: memoryActions, agentWork: agentWork)
-                            .transition(.opacity.combined(with: .offset(y: reduceMotion ? 0 : 8)))
-                        #endif
-                    case .disk:
-                        RoomDiskMapView(insights: insights)
-                            .transition(.opacity.combined(with: .offset(y: reduceMotion ? 0 : 8)))
-                    case .developer:
-                        RoomDeveloperView(model: developer)
-                            .transition(.opacity.combined(with: .offset(y: reduceMotion ? 0 : 6)))
-                    case .activity:
-                        RoomActivityView(model: model)
-                            .transition(.opacity.combined(with: .offset(y: reduceMotion ? 0 : 8)))
-                    }
-                }
-                .padding(.horizontal, 28)
-                .padding(.top, 24)
-                .padding(.bottom, 28)
-                .frame(maxWidth: 1120)
-                .frame(maxWidth: .infinity)
-            }
-            .scrollIndicators(.hidden)
+    private var diskActions: RoomScreenActions {
+        let mayUseMap = savedViewDisplay?.showsMap ?? true
+        var actions = RoomScreenActions(destination: .disk, canRescan: mayUseMap && insights.canRescanDisk,
+            isScanning: insights.isScanningDisk, rescan: insights.rescanDisk, stop: insights.cancelDiskScan,
+            canEnclose: mayUseMap && insights.canGoUpInApprovedMap, enclose: insights.encloseApprovedDiskFolder)
+        guard mayUseMap else { return actions }
+        if insights.diskMap.current != nil {
+            actions.showDiskInspector = { insights.toggleDiskInspector() }
+            actions.diskInspectorVisible = insights.diskInspectorVisible
         }
-        .frame(minWidth: 800, minHeight: 650)
-        .preferredColorScheme(colorScheme)
-        .toolbar {
-            ToolbarItem(placement: .navigation) {
-                HStack(spacing: 6) {
-                    RoomMark().fill(.primary, style: FillStyle(eoFill: true))
-                        .frame(width: 24, height: 24)
-                        .accessibilityHidden(true)
-                    Text("Room").font(RoomType.heading(15))
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .accessibilityElement(children: .combine)
+        if let title = diskComparisonTitle {
+            actions.comparisonTitle = title
+            actions.compareDiskMap = { insights.compareDiskMap() }
+        }
+        return actions
+    }
+
+    var body: some View {
+        RoomShellView(navigation: navigation, rooms: rooms, insights: insights, selectRoom: openPinnedRoom,
+                      savedViews: savedViews, selectSavedView: openSavedView) {
+            RoomScreenScaffold(title: screenActions.title, subtitle: screenSubtitle, scrolls: destination != .disk,
+                               requestedDensity: destination == .overview ? overviewDensity : nil) {
+                screenContent
             }
-            .sharedBackgroundVisibility(.hidden)
+        }
+        .preferredColorScheme(colorScheme)
+        .focusedSceneValue(\.roomScreen, screenActions)
+        .toolbar {
             ToolbarItem(placement: .principal) {
-                RoomNavigationBar(selection: $destination)
+                RoomActivityPill(stop: stopActivity, restore: restoreActivity, showHistory: { sheet = .history },
+                                 prefersQuietIdleLabel: destination == .overview)
             }
             .sharedBackgroundVisibility(.hidden)
             ToolbarItemGroup(placement: .primaryAction) {
-                Button { openSettings() } label: { Image(systemName: "slider.horizontal.3") }
-                    .help("Settings")
-                    .accessibilityLabel("Settings")
+                RoomHistoryButton(model: model, show: { sheet = .history }, restore: restoreFromCaches)
+                if destination == .overview {
+                    Button { showingCustomise.toggle() } label: {
+                        Label("Customise", systemImage: "slider.horizontal.3")
+                            .labelStyle(.titleAndIcon)
+                    }
+                    .help("Customise Overview")
+                    .accessibilityIdentifier("RoomCustomiseOverview")
+                    .popover(isPresented: $showingCustomise) {
+                        RoomCustomisePopover(rooms: rooms, capacityBytes: insights.volumeCapacity?.capacityBytes ?? 210_000_000_000,
+                            selected: $editingRoom, hidden: hide.masksNow,
+                            canChoosePlanStyle: RoomOverviewStyle.isAvailable(homeKinds: insights.homeKinds),
+                            hasRecentReceipts: model.makeRoomStore != nil)
+                    }
+                }
             }
         }
-        .animation(animate, value: destination)
-        .animation(animate, value: expanded)
-        .animation(animate, value: category)
-        .animation(animate, value: model.selectedBytes)
-        .animation(animate, value: model.totalBytes)
-        .animation(animate, value: model.isScanning)
-        .onChange(of: destination) { _, destination in lastDestination = destination.rawValue }
-        .sheet(item: $sheet) { selected in
+        .sheet(item: $sheet, onDismiss: performOnboardingFollowUp) { selected in
             switch selected {
-            case .review: RoomReviewSheet(model: model)
+            case .review: RoomCleanupReviewSheet(model: model)
             case .source(let source): RoomSourceSheet(source: source, model: model)
             case .welcome:
-                RoomOnboardingView { onboardingVersion = 1; sheet = nil }
-            case .protectedSources: RoomProtectedSheet(model: model)
+                RoomOnboardingView(capacity: insights.volumeCapacity, isWorking: isOnboardingBusy(),
+                                   openPrivacySettings: insights.openPrivacySettings, onFinish: finishWelcome)
+            case .protectedSources: RoomWhatStaysSheet(model: model)
             case .scanIssues: RoomScanIssuesSheet(issues: model.scanIssues)
+            case .history: RoomHistorySheet(model: model)
+            #if ROOM_APP_STORE
+            case .restore(let record): RoomStoreRestoreSheet(model: model, record: record)
+            #endif
             }
         }
-        .alert("Room couldn’t complete that", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) {
-            Button("OK") { model.errorMessage = nil }
-        } message: { Text(model.errorMessage ?? "") }
-        .task {
-            if onboardingVersion < 1 { sheet = .welcome }
-            await model.refreshHistory()
+        .alert(model.operationAlert?.title ?? "Room couldn’t complete that",
+               isPresented: Binding(get: { model.operationAlert != nil || model.errorMessage != nil }, set: { if !$0 { dismissAlert() } })) {
+            if let alert = model.operationAlert {
+                Button(alert.primary.rawValue) { performAlertAction(alert.primary) }
+                if let secondary = alert.secondary { Button(secondary, role: .cancel, action: dismissAlert) }
+            } else {
+                Button("OK", action: dismissAlert)
+            }
+        } message: { Text(model.operationAlert?.message ?? model.errorMessage ?? "") }
+        .onAppear { if navigation.needsWelcome { sheet = .welcome } }
+        .onReceive(NotificationCenter.default.publisher(for: .roomSavedHistoryForgotten)) { _ in
+            developer.clearUnreferencedHistory()
         }
         .onChange(of: developer.accessRevision) { _, _ in developer.accessChanged() }
         #if ROOM_APP_STORE
         .onChange(of: model.storeAccessRevision) { _, _ in model.storeAccessChanged() }
         #endif
-        .onChange(of: insights.requestedDestination, initial: true) { _, requested in
-            guard let requested else { return }
-            switch requested {
-            case .clean: destination = .clean
-            case .memory: destination = .memory
-            case .disk: destination = .disk
-            }
-            insights.requestedDestination = nil
+        .onChange(of: insights.requestedDestination, initial: true) { _, _ in
+            navigation.consumeRequest(from: insights)
+        }
+        .onChange(of: insights.requestedPinnedRoom, initial: true) { _, id in
+            guard let id else { return }
+            openPinnedRoom(id)
+            insights.requestedPinnedRoom = nil
+        }
+        .onChange(of: insights.diskMap.current) { _, map in
+            if let map, let root = insights.diskMap.rootURL { rooms.applyMap(map, root: root) }
+        }
+        .onChange(of: navigation.route, initial: true) { _, route in
+            if destination != .overview { showingCustomise = false }
+            RoomHideControl.shared.cancelPeek()
+            guard case .room(let id) = route, let url = rooms.url(for: id) else { return }
+            insights.openDiskMap(rootURL: url, requestNavigation: false)
+        }
+        .task { await savedViews.load() }
+        .task(id: SavedViewRequest(route: navigation.route, retry: savedViewRetry)) {
+            openedSavedView = nil
+            guard case .savedView(let id) = navigation.route else { return }
+            await savedViews.load()
+            guard !Task.isCancelled, let view = savedViews.visible.first(where: { $0.id == id }) else { return }
+            let outcome = await insights.openSavedDiskView(view)
+            guard !Task.isCancelled, navigation.route == .savedView(id) else { return }
+            openedSavedView = RoomSavedViewDisplay(requestID: UUID(), view: view, result: outcome)
+        }
+        .onChange(of: savedViews.entries.map(\.id)) { old, new in
+            for removed in Set(old).subtracting(new) { navigation.removeRoute(.savedView(removed)) }
+        }
+        .onChange(of: rooms.rooms.map(\.id)) { old, new in
+            for removed in Set(old).subtracting(new) { navigation.removeRoute(.room(removed)) }
         }
         .onChange(of: insights.requestedSettings, initial: true) { _, requested in
             guard requested else { return }
@@ -168,445 +201,152 @@ struct RoomRootView: View {
         }
     }
 
-    private var overview: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(model.isScanning ? "Measuring storage" : "Storage overview")
-                    .font(RoomType.heading(24))
-                    .tracking(-0.4)
-                Text(heroSubtitle)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .center, spacing: 12) {
-                    scanScopePicker
-                    Spacer(minLength: 16)
-                    scanActions
-                }
-                VStack(alignment: .leading, spacing: 12) {
-                    scanScopePicker
-                    scanActions
-                }
-            }
-
-            if model.lastScanned != nil || !model.sources.isEmpty {
-                storageSummary
-            }
-
-            if model.isScanning {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 16) {
-                        Text("\(model.scannedLocationCount) of \(model.scanLocationCount) \(model.scanLocationCount == 1 ? "location" : "locations")")
-                            .fixedSize()
-                        Text(model.currentScanPath)
-                            .frame(maxWidth: .infinity, alignment: .trailing)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                            .help(model.currentScanPath)
-                    }
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
-                    ProgressView(value: model.scanProgress).tint(.secondary)
-                }
-                .accessibilityElement(children: .combine)
-            }
-
-            sourceSection
-
-            HStack(alignment: .center, spacing: 12) {
-                Button { sheet = .protectedSources } label: {
-                    Label("What stays", systemImage: "lock.shield")
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .help("See the data Room protects")
-                if model.hasPartialMeasurements && !model.isScanning {
-                    Text("Some sizes are lower bounds")
-                        .foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 12)
-                if model.isScanning {
-                    HStack(spacing: 7) {
-                        ProgressView().controlSize(.mini)
-                        Text("Measuring…")
-                    }
-                } else if !model.scanIssues.isEmpty {
-                    Button("\(model.scanIssues.count) scan \(model.scanIssues.count == 1 ? "note" : "notes")") { sheet = .scanIssues }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
-                } else if let lastScanned = model.lastScanned {
-                    Text("Scanned \(lastScanned, style: .relative) ago")
-                        .foregroundStyle(.secondary)
-                }
-                if model.availableBytes > 0 {
-                    Text("·").foregroundStyle(.tertiary)
-                    Text("\(RoomFormat.bytes(model.availableBytes)) available")
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .font(.system(size: 12))
-
-            if let message = model.statusMessage, !message.isEmpty, !model.isScanning {
-                Text(message)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                    .accessibilityAddTraits(.updatesFrequently)
-            }
-        }
-    }
-
-    private var storageSummary: some View {
-        HStack(alignment: .center, spacing: 24) {
-            VStack(alignment: .leading, spacing: 7) {
-                Text(model.isScanning ? "Measured so far" : "Measured storage")
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
-                HStack(alignment: .firstTextBaseline, spacing: 5) {
-                    if model.hasPartialMeasurements {
-                        Text("≥").font(RoomType.figure(24)).foregroundStyle(.secondary)
-                    }
-                    RoomByteMetric(bytes: model.totalBytes, maximumSize: 38)
-                }
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("\(model.hasPartialMeasurements ? "At least " : "")\(RoomFormat.bytes(model.totalBytes)) measured across scanned storage locations")
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            Divider().frame(height: 44)
-            summaryMetric("Clearable", bytes: model.clearableBytes)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            Divider().frame(height: 44)
-            summaryMetric("Held", bytes: model.heldBytes, lowerBound: model.hasPartialMeasurements)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(20)
-        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-    }
-
-    private func summaryMetric(_ title: String, bytes: Int64, lowerBound: Bool = false) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title)
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-            Text("\(lowerBound ? "≥ " : "")\(RoomFormat.bytes(bytes))")
-                .font(RoomType.figure(24))
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-        }
-        .accessibilityElement(children: .combine)
-    }
-
-    @ViewBuilder private var scanScopePicker: some View {
+    private func finishWelcome(_ choice: RoomOnboardingChoice?) {
+        guard choice == nil || !isOnboardingBusy() else { return }
         #if ROOM_APP_STORE
-        HStack(spacing: 12) {
-            Label(model.approvedStoreFolderCount == 0 ? "No folders approved" : "\(model.approvedStoreFolderCount) approved \(model.approvedStoreFolderCount == 1 ? "folder" : "folders")", systemImage: "folder.badge.checkmark")
-                .font(.system(size: 12)).foregroundStyle(.secondary)
-                .fixedSize()
-            Button("Manage access") {
-                insights.requestedSettingsTab = .folders
-                openSettings()
-            }
-                .buttonStyle(.glass).controlSize(.large)
-                .disabled(model.isWorking || model.isScanning)
-                .accessibilityIdentifier("RoomStoreManageFolderAccess")
-        }
-        .frame(minHeight: 36)
+        let edition = RoomOnboardingEdition.store
         #else
-        Picker("Scan scope", selection: Binding(get: { model.scanScope }, set: { model.setScanScope($0) })) {
-            ForEach(RoomCacheScanScope.allCases) { scope in Text(scope.title).tag(scope) }
-        }
-        .pickerStyle(.segmented)
-        .controlSize(.large)
-        .labelsHidden()
-        .font(.system(size: 13, weight: .medium))
-        .frame(width: 228)
-        .frame(minHeight: 36)
-        .accessibilityLabel("Scan scope")
-        .accessibilityIdentifier("RoomCacheScanScopePicker")
-        .disabled(model.isScanning || model.isWorking)
-        .help("Full scan includes developer stores, app and hidden caches, logs, and your temporary folder. Quick scan checks the core catalogue.")
+        let edition = RoomOnboardingEdition.direct
         #endif
+        let effects = choice.map { RoomOnboardingFlow.effects($0, edition: edition) } ?? RoomOnboardingFlow.skipEffects
+        onboardingFollowUp = effects.filter { $0 != .markSeen && $0 != .close }
+        if effects.contains(.markSeen) { navigation.dismissWelcome() }
+        if effects.contains(.close) { sheet = nil }
     }
 
-    private var scanActions: some View {
-        HStack(alignment: .center, spacing: 10) {
-            Button(action: refreshCurrentView) {
-                Label(scanButtonTitle, systemImage: model.isScanning ? "stop.fill" : "magnifyingglass")
-                    .font(.system(size: 13, weight: .semibold))
-                    .padding(.horizontal, 4)
-            }
-            .buttonStyle(.glassProminent)
-            .tint(.accentColor)
-            .controlSize(.large)
-            .frame(minHeight: 36)
-            .disabled(!model.canScan)
-            .keyboardShortcut("r", modifiers: .command)
-            .accessibilityIdentifier("RoomCacheScanButton")
-
-            if model.canReviewCleanup {
-                Button { sheet = .review } label: {
-                    Label("Review \(RoomFormat.bytes(model.selectedBytes))", systemImage: "arrow.right")
-                        .font(.system(size: 13, weight: .medium))
-                        .padding(.horizontal, 4)
-                }
-                .buttonStyle(.glass)
-                .controlSize(.large)
-                .frame(minHeight: 36)
-                .keyboardShortcut(.return, modifiers: .command)
+    private func performOnboardingFollowUp() {
+        let effects = onboardingFollowUp
+        onboardingFollowUp = []
+        for effect in effects {
+            switch effect {
+            case .markSeen, .close: break
+            case .navigate(let raw):
+                if let destination = RoomDestination(rawValue: raw) { navigation.select(destination) }
+            case .chooseHomeAccess, .chooseDiskFolder: insights.chooseDiskFolder()
+            case .chooseStoreCachesFolder:
+                #if ROOM_APP_STORE
+                model.chooseStoreFolder(scanAfterApproval: true)
+                #endif
+            case .startCachesCheck:
+                #if !ROOM_APP_STORE
+                model.scan()
+                #endif
+            case .enableMenuBar: enableOnboardingMonitor()
+            case .showMonitorOnce: showOnboardingMonitor()
             }
         }
-        .fixedSize(horizontal: true, vertical: false)
     }
 
-    private var scanButtonTitle: String {
-        if model.isScanning { return "Stop scan" }
-        #if ROOM_APP_STORE
-        if model.approvedStoreFolderCount == 0 { return "Choose folder & scan" }
-        #endif
-        return "Scan caches"
+    private var diskComparisonTitle: String? {
+        guard let date = insights.diskMap.comparison?.date else { return nil }
+        let day = date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))
+        return String(localized: "menu.disk.compareDate", defaultValue: "Compare with \(day)")
     }
 
-    private var heroSubtitle: String {
-        if model.isScanning { return "Measured so far. Your apps can stay open." }
-        if model.isPartialScan { return "Partial measurements. Scan again to finish." }
+    private var screenSubtitle: String? {
+        switch destination {
+        case .overview: nil
+        case .disk: nil
+        case .clean: model.cachesStatus
+        case .memory, .developer: nil
+        }
+    }
+
+    private func openPinnedRoom(_ id: UUID) {
+        guard insights.canChooseDiskLocation else { return }
+        guard rooms.url(for: id) != nil else {
+            rooms.chooseFolder(replacingApprovalFor: id)
+            return
+        }
+        navigation.select(.room(id), origin: .controlActivation)
+    }
+
+    @ViewBuilder private var screenContent: some View {
+        switch destination {
+        case .overview:
+            RoomOverviewView(insights: insights, rooms: rooms,
+                             navigate: { navigation.select(.screen($0), origin: .controlActivation) }, refresh: insights.refreshDiskCapacity,
+                             cacheModel: model, editingRoom: showingCustomise ? editingRoom : nil,
+                             showAllRooms: { showingCustomise = true }, restoreRecent: restoreFromCaches,
+                             animatesArrival: overviewArrival)
+                .onDisappear { leftOverviewAt = .now }
+        case .clean:
+            RoomCachesView(model: model, review: { sheet = .review },
+                inspect: { sheet = .source($0) }, showKept: { sheet = .protectedSources },
+                showScanNotes: { sheet = .scanIssues }, restore: restoreFromCaches)
+                .roomPanelArrival(enabled: navigation.selectionOrigin == .pointer, from: RoomTokens.Space.tight)
+        case .memory:
+            RoomMemoryView(insights: insights, memoryActions: memoryActions)
+        case .disk:
+            RoomDiskMapView(insights: insights, rooms: rooms, savedViews: savedViews,
+                savedViewDisplay: savedViewDisplay, openSavedView: openSavedView)
+        case .developer:
+            #if ROOM_APP_STORE
+            RoomDeveloperView(model: developer)
+            #else
+            RoomDeveloperView(model: developer, agentWork: agentWork, memoryReport: insights.memoryReport)
+            #endif
+        }
+    }
+
+    private func openSavedView(_ id: UUID) {
+        guard insights.canChooseDiskLocation, savedViews.visible.contains(where: { $0.id == id }) else { return }
+        if navigation.route == .savedView(id) {
+            savedViewRetry = UUID()
+        } else {
+            navigation.select(.savedView(id), origin: .controlActivation)
+        }
+    }
+
+    private var overviewArrival: Bool {
+        guard navigation.selectionOrigin != .keyboard, !navigation.needsWelcome else { return false }
+        guard let leftOverviewAt else { return true }
+        return leftOverviewAt.duration(to: .now) >= .seconds(600)
+    }
+
+    private func restoreFromCaches(_ record: RoomActivity) {
         #if ROOM_APP_STORE
-        if model.lastScanned == nil { return "Choose folders to inspect supported developer storage." }
+        sheet = .restore(record)
         #else
-        if model.lastScanned == nil { return "Caches, developer stores, and temporary files." }
+        Task { await model.restore(record: record) }
         #endif
-        if model.totalBytes == 0 { return "No cache data measured. Check scan notes for access issues." }
-        if model.clearableBytes == 0 { return "Found on disk. Inspect each source to see what is held and why." }
-        if selectedCount == 0 { return "Choose the sources you want to move to Trash." }
-        return "\(selectedCount) \(selectedCount == 1 ? "source" : "sources") selected. \(RoomFormat.bytes(model.selectedBytes)) ready for review."
     }
 
-    private var sourceSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 12) {
-                    sourceSectionTitle
-                    Spacer(minLength: 12)
-                    if !model.sources.isEmpty { sourceFilters }
-                }
-                VStack(alignment: .leading, spacing: 12) {
-                    sourceSectionTitle
-                    if !model.sources.isEmpty { sourceFilters }
-                }
-            }
-            .padding(.bottom, 2)
+    private func restoreActivity(_ id: UUID) {
+        guard !model.isScanning, !model.isWorking, let receipt = model.activity.first(where: { $0.id == id && $0.canRestore }) else { return }
+        restoreFromCaches(receipt)
+    }
 
-            if model.sources.isEmpty {
-                sourceEmptyState
-            } else if visibleSources.isEmpty {
-                HStack(spacing: 12) {
-                    Image(systemName: "line.3.horizontal.decrease").foregroundStyle(.secondary)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("No matching sources").font(.system(size: 14, weight: .medium))
-                        Text(sourceFilter == .clearable ? "Open Held to see why files are protected." : "Try another category or filter.")
-                            .font(.system(size: 13)).foregroundStyle(.secondary)
-                    }
-                    Spacer(minLength: 0)
-                }
-                .padding(20)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 16))
-            } else {
-                LazyVStack(spacing: 2) {
-                    ForEach(visibleSources) { source in
-                        RoomSourceRow(source: source,
-                                      selected: model.selection.contains(source.id),
-                                      disabled: model.isScanning || model.isPartialScan || model.isWorking,
-                                      toggle: { model.toggleSelection(id: source.id) },
-                                      inspect: { sheet = .source(source) })
-                    }
-                }
-            }
-
-            if model.sources.count > 8 && category == nil && sourceFilter == .all && query.isEmpty {
-                Button {
-                    expanded.toggle()
-                } label: {
-                    HStack(spacing: 6) {
-                        Text(expanded ? "Show less" : "Show all \(model.sources.count) sources")
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 11, weight: .medium))
-                            .rotationEffect(.degrees(expanded ? 180 : 0))
-                    }
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-                }
-                .buttonStyle(.plain)
-            }
+    private func stopActivity(_ tool: RoomActivityPillState.Tool) {
+        switch tool {
+        case .caches: model.cancelScan()
+        case .diskMap: insights.cancelDiskScan()
+        case .developer: developer.stop()
         }
     }
 
-    private var sourceSectionTitle: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 7) {
-            Text("Sources").font(.system(size: 16, weight: .semibold))
-            if !model.sources.isEmpty {
-                Text(matchingSources.count == model.sources.count ? "\(model.sources.count)" : "\(matchingSources.count) of \(model.sources.count)")
-                    .font(.system(size: 12)).foregroundStyle(.secondary).monospacedDigit()
-            }
-        }
-        .fixedSize()
+    private func dismissAlert() {
+        model.operationAlert = nil
+        model.errorMessage = nil
     }
 
-    private var sourceFilters: some View {
-        HStack(spacing: 12) {
-            sourceSearch
-            Picker("Show sources", selection: $sourceFilter) {
-                Text("All").tag(RoomSourceFilter.all)
-                Text("Clearable").tag(RoomSourceFilter.clearable)
-                Text("Held").tag(RoomSourceFilter.held)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .accessibilityLabel("Show sources")
-            .frame(width: 220)
-            sourceCategoryMenu
-        }
-        .fixedSize(horizontal: true, vertical: false)
-    }
-
-    private var sourceEmptyState: some View {
-        HStack(alignment: .center, spacing: 14) {
-            Image(systemName: model.isScanning ? "magnifyingglass" : "externaldrive")
-                .font(.system(size: 23, weight: .regular))
-                .foregroundStyle(.secondary)
-                .frame(width: 30)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 5) {
-                Text(model.isScanning ? "Preparing locations" : model.isPartialScan ? "Scan again to finish" : model.lastScanned == nil ? "Ready for a scan" : "No sources measured")
-                    .font(.system(size: 14, weight: .medium))
-                Text(model.isScanning ? "Results appear as each source is measured." : model.lastScanned == nil ? "A scan measures storage before you review any changes." : "Check scan notes for access or inspection limits.")
-                    .font(.system(size: 13)).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(20)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-    }
-
-    private var sourceSearch: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-            TextField("Find a source", text: $query)
-                .textFieldStyle(.plain)
-                .frame(width: 130)
-                .accessibilityLabel("Find a cache source")
-        }
-        .font(.system(size: 13))
-        .padding(.horizontal, 10).padding(.vertical, 7)
-        .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
-        .overlay { RoundedRectangle(cornerRadius: 8).strokeBorder(Color.primary.opacity(0.12), lineWidth: 1) }
-    }
-
-    private var sourceCategoryMenu: some View {
-        Menu {
-            Button("All sources") { category = nil }
-            ForEach(RoomCategory.allCases) { item in
-                Button(item.title) { category = item }
-            }
-            Divider()
-            Button("Select recommended") { model.selectRecommended() }
-            Button("Deselect all") { model.clearSelection() }
-        } label: {
-            Text(category?.title ?? "All categories").font(.system(size: 13))
-        }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
-        .disabled(model.isWorking)
-    }
-
-}
-
-private struct RoomSourceRow: View {
-    let source: RoomSource
-    let selected: Bool
-    let disabled: Bool
-    let toggle: () -> Void
-    let inspect: () -> Void
-    @State private var hovering = false
-
-    private var statusLabel: String {
-        if source.isInspectionOnly { return "Inspect only" }
-        if source.isAvailable { return "\(RoomFormat.bytes(source.eligibleBytes)) clearable" }
-        return source.isPartial ? "Partial" : "Held"
-    }
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Toggle(source.name, isOn: Binding(get: { selected }, set: { _ in toggle() }))
-                .toggleStyle(.checkbox)
-                .labelsHidden()
-                .disabled(disabled || source.isInspectionOnly || !source.isAvailable)
-                .accessibilityLabel("Select \(source.name)")
-                .frame(width: 18)
-                .help(source.blockedReason ?? (source.isInspectionOnly ? "This source is available for inspection only." : source.isAvailable ? "Include this source in the cleanup review." : "This source is held and cannot be selected."))
-
-            Image(systemName: source.symbol)
-                .font(.system(size: 17, weight: .regular))
-                .foregroundStyle(.secondary)
-                .frame(width: 24)
-
-            Button(action: inspect) {
-                HStack(alignment: .center, spacing: 20) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(source.name)
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                        Text(source.subtitle)
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                    VStack(alignment: .trailing, spacing: 4) {
-                        Text("\(source.isPartial ? "≥ " : "")\(RoomFormat.bytes(source.bytes))")
-                            .font(.system(size: 14, weight: .medium))
-                            .monospacedDigit()
-                            .foregroundStyle(.primary)
-                        Text(statusLabel)
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(minWidth: 112, alignment: .trailing)
-                    .fixedSize(horizontal: true, vertical: false)
-
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .opacity(hovering ? 1 : 0.65)
-                }
-                .frame(maxWidth: .infinity, minHeight: 48)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help(source.blockedReason ?? source.subtitle)
-            .accessibilityLabel("Inspect \(source.name), \(RoomFormat.bytes(source.bytes)) measured, \(statusLabel)")
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(selected ? Color.accentColor.opacity(0.065) : hovering ? Color.primary.opacity(0.045) : Color.clear, in: RoundedRectangle(cornerRadius: 12))
-        .onHover { hovering = $0 }
-        .contextMenu {
-            Button("Inspect source", action: inspect)
+    private func performAlertAction(_ action: RoomActionAlert.Primary) {
+        dismissAlert()
+        switch action {
+        case .checkAgain: model.scan()
+        case .reviewAgain: if model.canReviewCleanup { sheet = .review }
+        case .showSkipped, .showWhy: sheet = .history
+        case .showInTrash: model.openTrash()
+        case .ok: break
         }
     }
 }
-
-private enum RoomSourceFilter: Hashable { case all, clearable, held }
 
 private enum RoomSheet: Identifiable {
-    case review, source(RoomSource), welcome, protectedSources, scanIssues
+    case review, source(RoomSource), welcome, protectedSources, scanIssues, history
+    #if ROOM_APP_STORE
+    case restore(RoomActivity)
+    #endif
     var id: String {
         switch self {
         case .review: "review"
@@ -614,6 +354,10 @@ private enum RoomSheet: Identifiable {
         case .welcome: "welcome"
         case .protectedSources: "protected"
         case .scanIssues: "issues"
+        case .history: "history"
+        #if ROOM_APP_STORE
+        case .restore(let record): "restore-\(record.id)"
+        #endif
         }
     }
 }

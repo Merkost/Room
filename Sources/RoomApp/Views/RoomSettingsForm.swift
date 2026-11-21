@@ -21,7 +21,7 @@ struct RoomSettingsFormRow<Content: View>: View {
                 content
                 if let hint {
                     Text(hint)
-                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                        .font(RoomTokens.Typography.micro).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }

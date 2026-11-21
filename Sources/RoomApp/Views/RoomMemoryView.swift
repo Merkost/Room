@@ -1,23 +1,22 @@
+import AppKit
 import RoomCore
 import SwiftUI
 
 struct RoomMemoryView: View {
     @Bindable var insights: RoomInsightsModel
     @Bindable var memoryActions: MemoryActionsModel
-    #if !ROOM_APP_STORE
-    @Bindable var agentWork: AgentWorkModel
-    #endif
-    @AppStorage("RoomMotionEnabled") private var motionEnabled = true
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
+    @AppStorage("RoomMemoryRange") private var range = RoomMemoryRange.day
+    @Environment(\.roomAccent) private var accent
+    @Environment(\.roomMotion) private var motion
     @State private var showingIssues = false
     #if !ROOM_APP_STORE
     @State private var quitReview: MemoryQuitReview?
     @State private var showingAllApps = false
-    @State private var section: MemorySection = .apps
     #endif
 
     private var animation: Animation? {
-        motionEnabled && !reduceMotion ? .smooth(duration: 0.25) : nil
+        motion.animation(RoomTokens.Motion.standard, fallback: nil)
     }
 
     var body: some View {
@@ -26,7 +25,7 @@ struct RoomMemoryView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Memory").font(RoomType.heading(24))
                     Text(memoryIntroduction)
-                        .font(.system(size: 13)).foregroundStyle(.secondary)
+                        .font(RoomTokens.Typography.body).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 12)
                 Button { insights.scanMemory() } label: {
@@ -35,24 +34,18 @@ struct RoomMemoryView: View {
                 }
                 .buttonStyle(.glass).controlSize(.large)
                 .disabled(insights.isScanningMemory)
-                .keyboardShortcut("r", modifiers: .command)
                 .accessibilityIdentifier("RoomMemoryRefreshButton")
             }
 
-            if let report = insights.memoryReport {
-                memorySummary(report)
-            } else {
-                VStack(alignment: .leading, spacing: 12) {
-                    if insights.isScanningMemory {
-                        ProgressView("Reading memory…").controlSize(.small)
-                    } else {
-                        Text("Ready to read your Mac’s current memory.")
-                            .font(.system(size: 14)).foregroundStyle(.secondary)
-                    }
-                }
-                .frame(maxWidth: .infinity, minHeight: 88, alignment: .leading)
+            let now = Date()
+            let level = insights.memoryReport.flatMap { RoomPressureLevel(memoryPressureRaw: $0.pressure.rawValue) }
+            let series = range.series(in: insights.pressureHistory)
+            let finding = pressureFinding(series: series, now: now)
+            pressureOverview(level: level, finding: finding)
+            RoomPressureTimeline(series: series, now: now, level: level, finding: finding, range: $range)
+            if let report = insights.memoryReport, countersAvailable(report) {
+                memorySummary(report, now: now)
             }
-
             #if ROOM_APP_STORE
             if let report = insights.memoryReport {
                 if !report.recommendations.isEmpty { recommendations(report) }
@@ -61,24 +54,9 @@ struct RoomMemoryView: View {
             #else
             if let report = insights.memoryReport, !report.recommendations.isEmpty { recommendations(report) }
 
-            Picker("Memory view", selection: $section) {
-                Text("Apps").tag(MemorySection.apps)
-                Text("Agent work").tag(MemorySection.agentWork)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .accessibilityLabel("Memory view")
-            .accessibilityIdentifier("RoomMemorySectionPicker")
-            .frame(width: 270)
-            .disabled(memoryActions.isApplying)
-
-            if section == .apps {
-                if let report = insights.memoryReport {
-                    applicationsSection(report)
-                    if !memoryActions.results.isEmpty { quitResults }
-                }
-            } else {
-                RoomAgentWorkView(model: agentWork, memoryReport: insights.memoryReport)
+            if let report = insights.memoryReport {
+                applicationsSection(report)
+                if !memoryActions.results.isEmpty { quitResults }
             }
             #endif
 
@@ -88,12 +66,8 @@ struct RoomMemoryView: View {
                     Text("Current measurements describe pressure and workload. No RAM saving is assumed.")
                         .frame(maxWidth: .infinity, alignment: .leading)
                     #else
-                    if section == .apps {
-                        Text("Resident memory includes shared pages. App rows show the main process only; helpers are not added.")
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    } else {
-                        Spacer(minLength: 0)
-                    }
+                    Text("Resident memory includes shared pages. App rows show the main process only; helpers are not added.")
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     #endif
                     VStack(alignment: .trailing, spacing: 5) {
                         Text("Scanned \(report.scannedAt, style: .relative) ago").fixedSize()
@@ -102,21 +76,25 @@ struct RoomMemoryView: View {
                         }
                     }
                 }
-                .font(.system(size: 12)).foregroundStyle(.secondary)
+                .font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
             }
             if let status = insights.statusMessage {
-                Text(status).font(.system(size: 13)).foregroundStyle(.secondary)
+                Text(status).font(RoomTokens.Typography.body).foregroundStyle(.secondary)
             }
         }
         .animation(animation, value: insights.memoryReport?.usedBytes)
         .animation(animation, value: memoryActions.selectedCount)
-        #if !ROOM_APP_STORE
-        .animation(animation, value: section)
-        #endif
         .task {
             memoryActions.refresh(from: insights.memoryReport)
-            if insights.memoryReport == nil && !insights.isScanningMemory { insights.scanMemory() }
+
         }
+        .onChange(of: scenePhase, initial: true) { _, _ in updateMonitoring() }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didChangeOcclusionStateNotification)) { notification in
+            guard let window = notification.object as? NSWindow,
+                  window.identifier == RoomApplicationDelegate.primaryWindowID else { return }
+            updateMonitoring(in: window)
+        }
+        .onDisappear { insights.setMemoryActive(false) }
         .onChange(of: insights.memoryReport?.id) { _, _ in memoryActions.refresh(from: insights.memoryReport) }
         .sheet(isPresented: $showingIssues) { RoomScanIssuesSheet(issues: insights.memoryReport?.issues ?? []) }
         #if !ROOM_APP_STORE
@@ -134,18 +112,24 @@ struct RoomMemoryView: View {
         #endif
     }
 
+    private func updateMonitoring(in window: NSWindow? = nil) {
+        let primary = window ?? NSApp?.windows.first { $0.identifier == RoomApplicationDelegate.primaryWindowID }
+        let visible = primary?.occlusionState.contains(.visible) ?? true
+        insights.setMemoryActive(scenePhase == .active && visible)
+    }
+
     private var memoryIntroduction: String {
         #if ROOM_APP_STORE
         "Memory pressure, compression, and swap on your Mac."
         #else
-        "Memory pressure, apps, and agent work on your Mac."
+        "Memory pressure, compression, and swap on your Mac."
         #endif
     }
 
     #if ROOM_APP_STORE
     @ViewBuilder private func storeMeasuredProcesses(_ report: MemoryReport) -> some View {
         if !report.processes.isEmpty {
-            DisclosureGroup("Measured processes") {
+            DisclosureGroup("Apps using the most") {
                 VStack(spacing: 12) {
                     ForEach(Array(report.processes.prefix(8))) { process in
                         HStack(spacing: 16) {
@@ -154,15 +138,15 @@ struct RoomMemoryView: View {
                             Text(RoomFormat.memoryBytes(process.residentBytes)).monospacedDigit()
                                 .foregroundStyle(.secondary)
                         }
-                        .font(.system(size: 13))
+                        .font(RoomTokens.Typography.body)
                     }
                     Text("Resident memory can include shared pages. These values are not added as a system total.")
-                        .font(.system(size: 12)).foregroundStyle(.secondary)
+                        .font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(.top, 12)
             }
-            .font(.system(size: 14))
+            .font(RoomTokens.Typography.body)
         }
     }
     #endif
@@ -172,34 +156,35 @@ struct RoomMemoryView: View {
             VStack(alignment: .leading, spacing: 16) {
                 ForEach(report.recommendations) { recommendation in
                     VStack(alignment: .leading, spacing: 5) {
-                        Text(recommendation.title).font(.system(size: 14, weight: .medium))
+                        Text(recommendation.title).font(RoomTokens.Typography.bodyStrong)
                         Text(recommendation.detail)
-                            .font(.system(size: 13)).foregroundStyle(.secondary)
+                            .font(RoomTokens.Typography.body).foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }
             .padding(.top, 12)
         }
-        .font(.system(size: 14))
+        .font(RoomTokens.Typography.body)
     }
 
     #if !ROOM_APP_STORE
     private func applicationsSection(_ report: MemoryReport) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Apps you can close").font(.system(size: 15, weight: .medium))
+                Text("Apps using the most").font(RoomTokens.Typography.title)
                 Spacer()
                 Button("Activity Monitor") { insights.openActivityMonitor() }
                     .buttonStyle(.plain).foregroundStyle(.secondary)
             }
             if memoryActions.applications.isEmpty {
                 Text("No eligible user apps are available. System apps and Room stay protected.")
-                    .font(.system(size: 14)).foregroundStyle(.secondary)
+                    .font(RoomTokens.Typography.body).foregroundStyle(.secondary)
             } else {
                 VStack(spacing: 2) {
                     ForEach(Array(memoryActions.applications.prefix(showingAllApps ? .max : 7))) { application in
                         MemoryApplicationRow(application: application,
+                            maximumBytes: memoryActions.applications.first?.residentBytes ?? 0,
                             selected: memoryActions.selection.contains(application.id), disabled: memoryActions.isApplying,
                             toggle: { memoryActions.toggleSelection(id: application.id) })
                     }
@@ -208,16 +193,16 @@ struct RoomMemoryView: View {
                     Button(showingAllApps ? "Show fewer apps" : "Show all \(memoryActions.applications.count) apps") {
                         showingAllApps.toggle()
                     }
-                    .buttonStyle(.plain).font(.system(size: 13)).foregroundStyle(.secondary)
+                    .buttonStyle(.plain).font(RoomTokens.Typography.body).foregroundStyle(.secondary)
                 }
                 HStack(spacing: 12) {
                     if memoryActions.selectedCount > 0 {
-                        Text("\(memoryActions.selectedCount) selected").font(.system(size: 14)).foregroundStyle(.secondary)
+                        Text("\(memoryActions.selectedCount) selected").font(RoomTokens.Typography.body).foregroundStyle(.secondary)
                         Button("Clear") { memoryActions.clearSelection() }
-                            .buttonStyle(.plain).font(.system(size: 13)).foregroundStyle(.secondary)
+                            .buttonStyle(.plain).font(RoomTokens.Typography.body).foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button(memoryActions.selectedCount > 0 ? "Review \(memoryActions.selectedCount) \(memoryActions.selectedCount == 1 ? "app" : "apps")" : "Review apps") {
+                    Button("Quit apps…") {
                         quitReview = memoryActions.review()
                     }
                     .buttonStyle(.glassProminent).controlSize(.regular)
@@ -238,7 +223,7 @@ struct RoomMemoryView: View {
                                     Text(RoomFormat.memoryBytes(process.residentBytes)).monospacedDigit().foregroundStyle(.secondary)
                                     Image(systemName: "arrow.up.right").foregroundStyle(.tertiary)
                                 }
-                                .font(.system(size: 13)).padding(.vertical, 7)
+                                .font(RoomTokens.Typography.body).padding(.vertical, 7)
                                 .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
@@ -247,11 +232,11 @@ struct RoomMemoryView: View {
                     }
                     .padding(.horizontal, 5).padding(.top, 5)
                 }
-                .font(.system(size: 13)).foregroundStyle(.secondary)
+                .font(RoomTokens.Typography.body).foregroundStyle(.secondary)
                 .padding(.top, 8)
             }
             if let message = memoryActions.statusMessage {
-                Text(message).font(.system(size: 13)).foregroundStyle(.secondary)
+                Text(message).font(RoomTokens.Typography.body).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -259,14 +244,14 @@ struct RoomMemoryView: View {
 
     private var quitResults: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Quit requests").font(.system(size: 14, weight: .medium))
+            Text("Quit requests").font(RoomTokens.Typography.bodyStrong)
             ForEach(memoryActions.results) { result in
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: result.status == .closed ? "checkmark.circle" : result.status == .pending ? "clock" : "info.circle")
-                        .foregroundStyle(result.status == .closed ? Color.green : Color.secondary)
+                        .foregroundStyle(result.status == .closed ? RoomTokens.Status.normal : RoomTokens.Ink.secondary)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(result.name).font(.system(size: 14, weight: .medium))
-                        Text(result.message).font(.system(size: 13)).foregroundStyle(.secondary)
+                        Text(result.name).font(RoomTokens.Typography.bodyStrong)
+                        Text(result.message).font(RoomTokens.Typography.body).foregroundStyle(.secondary)
                     }
                     Spacer(minLength: 0)
                 }
@@ -276,90 +261,149 @@ struct RoomMemoryView: View {
 
     #endif
 
-    private func memorySummary(_ report: MemoryReport) -> some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .center, spacing: 24) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("In use").font(.system(size: 13, weight: .medium)).foregroundStyle(.secondary)
-                    if countersUnavailable(report) {
-                        Text("Unavailable").font(RoomType.figure(34))
+    private func pressureOverview(level: RoomPressureLevel?, finding: String) -> some View {
+        HStack(alignment: .top, spacing: 25) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Memory pressure").font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
+                HStack(spacing: 10) {
+                    RoomPocketScrubber(level: level, size: 34)
+                        .animation(motion.isFull ? RoomTokens.Motion.standard : nil, value: level)
+                    Text(level?.word ?? "—").font(RoomTokens.Typography.figure)
+                        .foregroundStyle(RoomPocketScrubber.color(level))
+                }.accessibilityElement(children: .combine)
+                Text(finding)
+                    .font(RoomTokens.Typography.body).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if insights.memoryReport?.pressure == .unknown {
+                    Button("Open Activity Monitor") { insights.openActivityMonitor() }
+                        .roomLink(accent)
+                }
+            }.frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("What is memory pressure?").font(RoomTokens.Typography.section)
+                Text("It shows how hard macOS is working to meet memory demand. A large amount of memory in use can be normal.")
+                    .font(RoomTokens.Typography.body).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }.frame(width: 225, alignment: .leading).padding(16)
+                .background(RoomTokens.Surface.group, in: .rect(cornerRadius: RoomTokens.Radius.group))
+        }
+    }
+
+    private func pressureFinding(series: RoomPressureSeries, now: Date) -> String {
+        if insights.memoryReport?.pressure == .unknown {
+            return "Room can't read memory pressure right now. Activity Monitor can."
+        }
+        return RoomPressureFinding.sentence(series, now: now, rangeName: "last " + range.title) {
+            $0.formatted(date: .omitted, time: .shortened)
+        }
+    }
+
+    private func memorySummary(_ report: MemoryReport, now: Date) -> some View {
+        let samples = insights.memorySamples.samples
+        let average = RoomMemoryInUse.average(samples.map { ($0.at, $0.bytes) }, now: now)
+        let window = samples.filter { $0.at <= now && now.timeIntervalSince($0.at) <= 3_600 }.map(\.bytes)
+        let compressed = max(0, min(report.usedBytes, report.compressedBytes))
+        let appAndWired = max(0, report.usedBytes - compressed)
+        let wired = max(0, min(appAndWired, report.wiredBytes ?? 0))
+        return VStack(alignment: .leading, spacing: 15) {
+            HStack(alignment: .top, spacing: 22) {
+                VStack(alignment: .leading, spacing: 9) {
+                    Text(average.map { "In use · \($0.caption)" } ?? "In use")
+                        .font(RoomTokens.Typography.title)
+                    HStack(spacing: 20) {
+                        memoryCounter("Current", bytes: report.usedBytes, font: RoomTokens.Typography.figure)
+                        memoryCounter("Average", bytes: average?.bytes, font: RoomTokens.Typography.figure)
+                    }
+                    Text("of \(RoomFormat.memoryBytes(report.totalBytes))")
+                        .font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
+                }.frame(maxWidth: .infinity, alignment: .leading)
+                if let average {
+                    VStack(alignment: .trailing, spacing: 5) {
+                        usageSparkline(window, average: average.bytes).frame(width: 150, height: 40)
+                        Text("dashed: average").font(RoomTokens.Typography.micro).foregroundStyle(.secondary)
+                    }.accessibilityHidden(true)
+                }
+            }
+            Text("Where it goes").font(RoomTokens.Typography.title)
+            GeometryReader { geometry in
+                let scale = geometry.size.width / Double(max(1, report.totalBytes))
+                HStack(spacing: 0) {
+                    if report.wiredBytes != nil {
+                        usageSegment("App", appAndWired - wired, color: RoomTokens.Surface.used, scale: scale)
+                        usageSegment("Wired", wired, color: RoomTokens.Ink.secondary, scale: scale)
                     } else {
-                        RoomByteMetric(bytes: report.usedBytes, maximumSize: 40, memory: true)
-                            .fixedSize(horizontal: true, vertical: false)
+                        usageSegment("App and wired", appAndWired, color: RoomTokens.Surface.used, scale: scale)
                     }
-                    Text("\(RoomFormat.memoryBytes(report.totalBytes)) physical memory")
-                        .font(.system(size: 13)).foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                VStack(alignment: .trailing, spacing: 8) {
-                    Text("Memory pressure").font(.system(size: 12)).foregroundStyle(.secondary)
-                    HStack(spacing: 7) {
-                        Circle().fill(pressureColor(report)).frame(width: 7, height: 7)
-                        Text(pressureTitle(report)).font(.system(size: 14, weight: .semibold))
-                    }
-                    .foregroundStyle(pressureColor(report))
-                }
-                .accessibilityElement(children: .combine)
-            }
-
-            if !countersUnavailable(report) {
-                GeometryReader { geometry in
-                    let total = Double(max(1, report.totalBytes))
-                    let compressed = min(total, Double(max(0, report.compressedBytes)))
-                    let used = min(total, Double(max(0, report.usedBytes)))
-                    HStack(spacing: 0) {
-                        Rectangle().fill(pressureColor(report).opacity(0.7))
-                            .frame(width: geometry.size.width * max(0, used - compressed) / total)
-                        Rectangle().fill(pressureColor(report).opacity(0.38))
-                            .frame(width: geometry.size.width * min(used, compressed) / total)
-                        Rectangle().fill(Color.primary.opacity(0.065))
-                    }
-                    .clipShape(Capsule())
-                }
-                .frame(height: 12)
-                .accessibilityLabel("\(RoomFormat.memoryBytes(report.usedBytes)) in use, including \(RoomFormat.memoryBytes(report.compressedBytes)) compressed")
-
-                HStack(alignment: .top, spacing: 24) {
-                    memoryCounter("Available / reclaimable", bytes: report.availableBytes)
-                    memoryCounter("Compressed", bytes: report.compressedBytes)
-                    memoryCounter("Swap used", bytes: RoomMonitorPresentation.measuredSwap(report), valueColor: pressureColor(report))
-                }
+                    usageSegment("Compressed", compressed, color: RoomTokens.Surface.line2, scale: scale)
+                    usageSegment("Available", max(0, report.availableBytes), color: RoomTokens.Surface.track, scale: scale)
+                }.clipShape(.capsule)
+            }.frame(height: 12)
+            HStack(alignment: .top, spacing: 18) {
+                memoryCounter("App and wired", bytes: appAndWired)
+                memoryCounter("Compressed", bytes: compressed)
+                memoryCounter("Swap used", bytes: RoomMonitorPresentation.measuredSwap(report))
             }
         }
-        .padding(20)
-        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
-    private func memoryCounter(_ title: String, bytes: Int64?, valueColor: Color = .primary) -> some View {
+    private func usageSegment(_ title: String, _ bytes: Int64, color: Color, scale: Double) -> some View {
+        let label = "\(title) · \(RoomFormat.memoryBytes(bytes))"
+        return Rectangle().fill(color)
+            .frame(width: Double(bytes) * scale)
+            .focusable(bytes > 0)
+            .accessibilityLabel(label)
+            .help(label)
+    }
+
+    private func usageSparkline(_ values: [Int64], average: Int64) -> some View {
+        Canvas { context, size in
+            let points = RoomSparkline.points(values + [average], width: size.width, height: size.height)
+            guard let averagePoint = points.last, !values.isEmpty else { return }
+            var mean = Path()
+            mean.move(to: CGPoint(x: 0, y: averagePoint.y))
+            mean.addLine(to: CGPoint(x: size.width, y: averagePoint.y))
+            context.stroke(mean, with: .color(RoomTokens.Ink.secondary), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+            var line = Path()
+            for (index, point) in points.dropLast().enumerated() {
+                let x = size.width * Double(index) / Double(max(1, values.count - 1))
+                let position = CGPoint(x: x, y: point.y)
+                if index == 0 { line.move(to: position) } else { line.addLine(to: position) }
+            }
+            context.stroke(line, with: .color(accent.fill), lineWidth: 1.5)
+        }
+    }
+
+    private func memoryCounter(_ title: String, bytes: Int64?, font: Font = RoomTokens.Typography.counter) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(bytes.map(RoomFormat.memoryBytes) ?? "Unavailable")
-                .font(RoomType.figure(20)).monospacedDigit()
-                .foregroundStyle(valueColor)
+            Text(title).font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
+            Text(bytes.map(RoomFormat.memoryBytes) ?? "—")
+                .font(font).monospacedDigit()
+                .foregroundStyle(RoomTokens.Ink.graphite)
                 .lineLimit(1).minimumScaleFactor(0.8)
-            Text(title).font(.system(size: 12)).foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .combine)
+        }.accessibilityElement(children: .combine)
     }
 
-    private func countersUnavailable(_ report: MemoryReport) -> Bool {
-        report.totalBytes > 0 && report.usedBytes == 0 && report.availableBytes == 0
+    private func countersAvailable(_ report: MemoryReport) -> Bool {
+        report.totalBytes > 0 && (report.usedBytes > 0 || report.availableBytes > 0)
     }
+}
 
-    private func pressureTitle(_ report: MemoryReport) -> String {
-        switch report.pressure { case .normal: "Normal"; case .elevated: "Elevated"; case .critical: "High"; case .unknown: "Unavailable" }
-    }
-    private func pressureColor(_ report: MemoryReport) -> Color {
-        switch report.pressure { case .normal: .green; case .elevated: .orange; case .critical: .red; case .unknown: .secondary }
+private struct RoomMemoryProcessBar: View {
+    let bytes: Int64
+    let maximum: Int64
+
+    var body: some View {
+        Capsule().fill(RoomTokens.Surface.used)
+            .frame(width: 60 * Double(max(0, min(bytes, maximum))) / Double(max(1, maximum)), height: 4)
+            .frame(width: 60, alignment: .leading)
+            .accessibilityHidden(true)
     }
 }
 
 #if !ROOM_APP_STORE
-private enum MemorySection: Hashable { case apps, agentWork }
-
 private struct MemoryApplicationRow: View {
     let application: MemoryApplication
+    let maximumBytes: Int64
     let selected: Bool
     let disabled: Bool
     let toggle: () -> Void
@@ -373,22 +417,24 @@ private struct MemoryApplicationRow: View {
                     Image(systemName: "app.fill").font(.system(size: 24)).foregroundStyle(.secondary)
                         .frame(width: 29, height: 29)
                 }
-                Text(application.name).font(.system(size: 14)).lineLimit(1)
+                Text(application.name).font(RoomTokens.Typography.body).lineLimit(1)
                 Spacer(minLength: 10)
                 if let resident = application.residentBytes {
-                    Text("≈ \(RoomFormat.memoryBytes(resident))").font(.system(size: 14)).monospacedDigit().foregroundStyle(.secondary)
+                    Text("≈ \(RoomFormat.memoryBytes(resident))").font(RoomTokens.Typography.body).monospacedDigit().foregroundStyle(.secondary)
+                    RoomMemoryProcessBar(bytes: resident, maximum: maximumBytes)
                 } else {
-                    Text("Not in this sample").font(.system(size: 12)).foregroundStyle(.tertiary)
+                    Text("Not in this sample").font(RoomTokens.Typography.caption).foregroundStyle(.tertiary)
                 }
-                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 18)).foregroundStyle(selected ? Color.accentColor : Color.secondary.opacity(0.55))
+                RoomChangingSymbol(name: selected ? "checkmark.circle.fill" : "circle",
+                                   color: selected ? .accentColor : .secondary.opacity(0.55))
+                    .font(.system(size: 18))
             }
             .padding(.horizontal, 12).padding(.vertical, 11)
             .background(selected ? Color.accentColor.opacity(0.065) : Color.clear,
-                in: RoundedRectangle(cornerRadius: 13))
-            .contentShape(RoundedRectangle(cornerRadius: 13))
+                in: RoundedRectangle(cornerRadius: RoomTokens.Radius.group))
+            .contentShape(RoundedRectangle(cornerRadius: RoomTokens.Radius.group))
         }
-        .buttonStyle(.plain).disabled(disabled)
+        .buttonStyle(RoomHoverButtonStyle(cornerRadius: RoomTokens.Radius.group)).disabled(disabled)
         .accessibilityLabel("\(selected ? "Deselect" : "Select") \(application.name)")
         .accessibilityValue(selected ? "Selected" : "Not selected")
         .accessibilityAddTraits(selected ? [.isSelected] : [])
@@ -407,7 +453,7 @@ private struct MemoryQuitReviewSheet: View {
                 VStack(alignment: .leading, spacing: 9) {
                     Text("A little breathing room.").font(RoomType.heading(24))
                     Text("Review \(review.count) \(review.count == 1 ? "app" : "apps") before requesting a normal quit.")
-                        .font(.system(size: 14)).foregroundStyle(.secondary)
+                        .font(RoomTokens.Typography.body).foregroundStyle(.secondary)
                 }
                 Spacer()
                 Image(systemName: "power.circle").font(.system(size: 31, weight: .light)).foregroundStyle(.secondary)
@@ -417,10 +463,10 @@ private struct MemoryQuitReviewSheet: View {
                     ForEach(review.applications) { application in
                         HStack(spacing: 12) {
                             if let icon = application.icon { Image(nsImage: icon).resizable().frame(width: 26, height: 26) }
-                            Text(application.name).font(.system(size: 14))
+                            Text(application.name).font(RoomTokens.Typography.body)
                             Spacer()
                             if let resident = application.residentBytes {
-                                Text("≈ \(RoomFormat.memoryBytes(resident))").font(.system(size: 14)).monospacedDigit().foregroundStyle(.secondary)
+                                Text("≈ \(RoomFormat.memoryBytes(resident))").font(RoomTokens.Typography.body).monospacedDigit().foregroundStyle(.secondary)
                             }
                         }
                     }
@@ -431,14 +477,14 @@ private struct MemoryQuitReviewSheet: View {
             VStack(alignment: .leading, spacing: 8) {
                 if review.residentBytes > 0 {
                     Text("About \(RoomFormat.memoryBytes(review.residentBytes)) resident in this sample")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(RoomTokens.Typography.bodyStrong)
                 }
                 if review.unmeasuredCount > 0 {
                     Text("\(review.unmeasuredCount) \(review.unmeasuredCount == 1 ? "app is" : "apps are") outside the current process sample.")
-                        .font(.system(size: 13)).foregroundStyle(.secondary)
+                        .font(RoomTokens.Typography.body).foregroundStyle(.secondary)
                 }
                 Text("Apps may ask you to save unsaved work or cancel. Nothing is forced to close. Resident sizes include shared pages and exclude helpers; they are not a promise of freed RAM.")
-                    .font(.system(size: 14)).foregroundStyle(.secondary)
+                    .font(RoomTokens.Typography.body).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             HStack(spacing: 12) {

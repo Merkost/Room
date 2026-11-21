@@ -23,6 +23,7 @@ public actor CacheEngine {
     private let npmContentLimits: NPMContentLimits
     private var candidates: [UUID: Candidate] = [:]
     private var activeScan: UUID?
+    private var activeCleanup: UUID?
     private var receipts: [ActivityReceipt] = []
 
     public init(configuration: CacheConfiguration = .standard, activityDirectory: URL? = nil) {
@@ -80,6 +81,10 @@ public actor CacheEngine {
     }
 
     public func scan(progress: (@Sendable (CacheScanProgress) async -> Void)? = nil) async -> ScanReport {
+        guard activeCleanup == nil else {
+            return ScanReport(id: UUID(), scannedAt: Date(), groups: [], protectedData: [], issues: [],
+                              volume: VolumeInfo(totalBytes: 0, availableBytes: 0), cancelled: true)
+        }
         candidates.removeAll()
         let scanID = UUID()
         activeScan = scanID
@@ -111,7 +116,8 @@ public actor CacheEngine {
                     }, issues: group.issues, isPartial: group.isPartial, isInspectionOnly: group.isInspectionOnly)
             } : groups
             return ScanReport(id: scanID, scannedAt: Date(), groups: visibleGroups, protectedData: protectedData,
-                issues: issues, volume: volume, cancelled: incomplete)
+                issues: issues, volume: volume, cancelled: incomplete,
+                npmDiscovery: incomplete ? nil : configuration.npmDiscovery)
         }
 
 
@@ -340,8 +346,14 @@ public actor CacheEngine {
         #endif
     }
 
-    public func clean(entryIDs: Set<UUID>) async -> ActivityReceipt {
+    public func clean(entryIDs: Set<UUID>, progress: (@Sendable (UUID, ActivityStatus) async -> Void)? = nil) async -> ActivityReceipt {
         var receipt = ActivityReceipt(id: UUID(), date: Date(), items: [], issues: [])
+        guard activeCleanup == nil else {
+            receipt.issues.append(ScanIssue(url: activityDirectory, message: "Wait for the current cleanup to finish."))
+            return receipt
+        }
+        activeCleanup = receipt.id
+        defer { activeCleanup = nil }
         let contentBudget = NPMContentBudget(npmContentLimits)
         for id in entryIDs.sorted(by: { $0.uuidString < $1.uuidString }) {
             guard let candidate = candidates[id] else {
@@ -360,13 +372,17 @@ public actor CacheEngine {
         catch {
             receipt.issues.append(ScanIssue(url: activityDirectory,
                 message: "Nothing moved: the recovery receipt could not be saved. \(error.localizedDescription)"))
-            for index in receipt.items.indices { receipt.items[index].status = .failed }
+            for index in receipt.items.indices {
+                receipt.items[index].status = .failed
+                receipt.items[index].failure = .receiptNotSaved
+            }
             return receipt
         }
 
         for index in receipt.items.indices {
             if Task.isCancelled {
                 receipt.items[index].status = .failed
+                receipt.items[index].failure = .cancelled
                 receipt.items[index].message = "Cleanup cancelled before this item moved."
                 continue
             }
@@ -379,14 +395,14 @@ public actor CacheEngine {
                 try Self.validateAncestors(candidate.entry.url)
                 guard try Self.metadata(candidate.entry.url).identity == candidate.snapshot.identity,
                       Self.sameObject(try Self.metadata(candidate.entry.url.deletingLastPathComponent()).identity, candidate.parentIdentity) else {
-                    throw EngineError.message("The item changed after scanning. Scan again.")
+                    throw EngineError.move(.changed, "The item changed after scanning. Scan again.")
                 }
                 if candidate.root.contentValidation != nil {
                     try NPMContentPolicy.verify(source: candidate.entry.url, originalURL: candidate.entry.url,
                         root: candidate.root, identity: candidate.snapshot.identity, budget: contentBudget)
                     guard try Self.metadata(candidate.entry.url).identity == candidate.snapshot.identity,
                           Self.sameObject(try Self.metadata(candidate.entry.url.deletingLastPathComponent()).identity, candidate.parentIdentity) else {
-                        throw EngineError.message("The npm object or its parent changed after verification. Nothing moved.")
+                        throw EngineError.move(.changed, "The npm object or its parent changed after verification. Nothing moved.")
                     }
                 }
                 let returnedTrashURL = try trashProvider(candidate.entry.url)
@@ -419,7 +435,10 @@ public actor CacheEngine {
                 if case EngineError.movedWithoutURL = error {
                     receipt.items[index].status = .trashed
                     candidates.removeValue(forKey: id)
-                } else if receipt.items[index].trashURL == nil { receipt.items[index].status = .failed }
+                } else if receipt.items[index].trashURL == nil {
+                    receipt.items[index].status = .failed
+                    receipt.items[index].failure = Self.moveFailure(error)
+                }
                 receipt.items[index].message = error.localizedDescription
                 receipt.issues.append(ScanIssue(url: candidate.entry.url, message: error.localizedDescription))
             }
@@ -430,13 +449,22 @@ public actor CacheEngine {
                 // Stop further moves if a durable recovery record is unavailable.
                 for later in receipt.items.indices where later > index && receipt.items[later].status == .pending {
                     receipt.items[later].status = .failed
+                    receipt.items[later].failure = .receiptNotSaved
                     receipt.items[later].message = "Stopped because the recovery receipt could not be saved."
                 }
                 break
             }
+            await progress?(id, receipt.items[index].status)
         }
-        upsert(receipt)
-        try? persist(receipt)
+        do {
+            try persist(receipt)
+            for item in receipt.items where item.failure == .cancelled {
+                await progress?(item.id, item.status)
+            }
+        } catch {
+            receipt.finalWriteFailed = true
+            upsert(receipt)
+        }
         return receipt
     }
 
@@ -447,12 +475,14 @@ public actor CacheEngine {
             includingPropertiesForKeys: nil) {
             for file in files where file.pathExtension == "json" {
                 guard let metadata = try? Self.metadata(file), metadata.isRegular,
-                      metadata.owner == getuid(), metadata.identity.byteCount < 8_000_000,
+                      metadata.owner == getuid(), metadata.identity.byteCount < Self.maximumReceiptBytes,
                       let data = try? Data(contentsOf: file),
                       var receipt = try? JSONDecoder().decode(ActivityReceipt.self, from: data),
-                      file.lastPathComponent == "\(receipt.id.uuidString).json" else { continue }
+                      file.lastPathComponent == "\(receipt.id.uuidString).json",
+                      receipt.id != activeCleanup else { continue }
                 for index in receipt.items.indices where receipt.items[index].status == .pending {
                     receipt.items[index].status = .failed
+                    receipt.items[index].failure = .other
                     receipt.items[index].message = "An earlier cleanup was interrupted. Check the original location and Finder’s Trash before trying again."
                 }
                 if byID[receipt.id] == nil { byID[receipt.id] = receipt }
@@ -463,14 +493,20 @@ public actor CacheEngine {
     }
 
     public func restore(receiptID: UUID, approvedTrashItems: [URL] = []) async -> RestoreReport {
+        guard activeCleanup == nil else {
+            let issue = ScanIssue(url: activityDirectory, message: "Wait for the current cleanup to finish.")
+            return RestoreReport(receipt: ActivityReceipt(id: receiptID, date: Date(), items: [], issues: [issue]),
+                restoredCount: 0, issues: [issue], skips: [.other: 1])
+        }
         let stored = history()
         guard var receipt = stored.first(where: { $0.id == receiptID }) else {
             let issue = ScanIssue(url: activityDirectory, message: "The activity receipt could not be found.")
             return RestoreReport(receipt: ActivityReceipt(id: receiptID, date: Date(), items: [], issues: [issue]),
-                restoredCount: 0, issues: [issue])
+                restoredCount: 0, issues: [issue], skips: [.missing: 1])
         }
         var issues: [ScanIssue] = []
         var restoredCount = 0
+        var skips: [RoomRestoreSkip: Int] = [:]
         let contentBudget = NPMContentBudget(npmContentLimits)
         for index in receipt.items.indices where receipt.items[index].status == .trashed {
             if Task.isCancelled { break }
@@ -488,11 +524,11 @@ public actor CacheEngine {
                 try Self.validateAncestors(anchor)
                 let anchorMetadata = try Self.metadata(anchor)
                 guard anchorMetadata.owner == getuid(), Self.sameObject(anchorMetadata.identity, item.rootIdentity) else {
-                    throw EngineError.message("The original cache folder was replaced. Restore this item manually from Trash.")
+                    throw EngineError.restore(.changed, "The original cache folder was replaced. Restore this item manually from Trash.")
                 }
                 try validateRestoreParent(item)
                 guard !Self.existsWithoutFollowingLinks(item.originalURL) else {
-                    throw EngineError.message("A newer item already exists at the original location. It was kept; the previous item remains in Trash.")
+                    throw EngineError.restore(.occupied, "A newer item already exists at the original location. It was kept; the previous item remains in Trash.")
                 }
                 guard let trashURL = item.trashURL, let identity = item.trashIdentity,
                       let fingerprint = item.trashFingerprint else {
@@ -505,7 +541,7 @@ public actor CacheEngine {
                       current.issues.isEmpty, !current.measurementLimited, !current.hasSymbolicLink,
                       !current.hasForeignOwner, !current.hasMultipleLinks, !current.hasUnsupportedType,
                       Self.sameObject(identity, item.originalIdentity) else {
-                    throw EngineError.message("The item in Trash changed or is unavailable. Restore it manually in Finder.")
+                    throw EngineError.restore(.changed, "The item in Trash changed or is unavailable. Restore it manually in Finder.")
                 }
                 try requireInactive(root)
                 if root.contentValidation != nil {
@@ -516,7 +552,7 @@ public actor CacheEngine {
                 try validateRestoreParent(item)
                 try Self.validateAncestors(trashURL)
                 guard try Self.metadata(trashURL).identity == current.identity else {
-                    throw EngineError.message("The item in Trash changed during recovery. Nothing moved.")
+                    throw EngineError.restore(.changed, "The item in Trash changed during recovery. Nothing moved.")
                 }
                 // moveItem fails if a new destination appears; it never overwrites it.
                 try FileManager.default.moveItem(at: trashURL, to: item.originalURL)
@@ -525,6 +561,7 @@ public actor CacheEngine {
                 restoredCount += 1
                 try persist(receipt)
             } catch {
+                if receipt.items[index].status == .trashed { skips[Self.restoreSkip(error), default: 0] += 1 }
                 receipt.items[index].message = error.localizedDescription
                 issues.append(ScanIssue(url: item.originalURL, message: error.localizedDescription))
             }
@@ -533,7 +570,7 @@ public actor CacheEngine {
         upsert(receipt)
         do { try persist(receipt) }
         catch { issues.append(ScanIssue(url: activityDirectory, message: "The restore receipt could not be saved. \(error.localizedDescription)")) }
-        return RestoreReport(receipt: receipt, restoredCount: restoredCount, issues: issues)
+        return RestoreReport(receipt: receipt, restoredCount: restoredCount, issues: issues, skips: skips)
     }
 
     private func validateRestoreParent(_ item: ActivityItem) throws {
@@ -542,7 +579,7 @@ public actor CacheEngine {
         if let identity = item.originalParentIdentity {
             let current = try Self.metadata(parent)
             guard current.owner == getuid(), Self.sameObject(current.identity, identity) else {
-                throw EngineError.message("The original parent folder was replaced. Restore this item manually from Trash.")
+                throw EngineError.restore(.changed, "The original parent folder was replaced. Restore this item manually from Trash.")
             }
         }
     }
@@ -609,25 +646,25 @@ public actor CacheEngine {
         let anchor = candidate.root.scope == .singleFile ? candidate.root.url.deletingLastPathComponent() : candidate.root.url
         let anchorMetadata = try Self.metadata(anchor)
         guard anchorMetadata.owner == getuid(), Self.sameObject(anchorMetadata.identity, candidate.anchorIdentity) else {
-            throw EngineError.message("The cache folder was replaced after scanning. Scan again.")
+            throw EngineError.move(.changed, "The cache folder was replaced after scanning. Scan again.")
         }
         let parent = try Self.metadata(candidate.entry.url.deletingLastPathComponent())
         guard parent.owner == getuid(), Self.sameObject(parent.identity, candidate.parentIdentity) else {
-            throw EngineError.message("The cache item's parent folder was replaced. Nothing moved.")
+            throw EngineError.move(.changed, "The cache item's parent folder was replaced. Nothing moved.")
         }
         let current = try Self.snapshot(candidate.entry.url)
         if candidate.root.childNameRule != nil, current.identity.mode & UInt16(S_IFMT) != UInt16(S_IFDIR) {
-            throw EngineError.message("This generated cache is no longer a folder. Nothing moved.")
+            throw EngineError.move(.changed, "This generated cache is no longer a folder. Nothing moved.")
         }
         guard current.identity == candidate.snapshot.identity,
               current.fingerprint == candidate.snapshot.fingerprint,
               current.issues.isEmpty, !current.hasSymbolicLink, !current.hasForeignOwner,
               !current.hasUnsupportedType, !current.hasMultipleLinks else {
-            throw EngineError.message("The item or its contents changed after scanning. Scan again.")
+            throw EngineError.move(.changed, "The item or its contents changed after scanning. Scan again.")
         }
         let minimumAge = candidate.root.contentValidation == nil ? candidate.root.minimumAge : max(candidate.root.minimumAge, NPMContentPolicy.minimumAge)
         guard Date().timeIntervalSince(current.latestModification) >= minimumAge else {
-            throw EngineError.message("The item was recently modified. It will stay in place.")
+            throw EngineError.move(.changed, "The item was recently modified. It will stay in place.")
         }
         try requireInactive(candidate.root)
         if verifyContent, candidate.root.contentValidation != nil {
@@ -649,7 +686,7 @@ public actor CacheEngine {
             #endif
         }
         if let name = Self.activeProcess(for: root, in: names) {
-            throw EngineError.message("\(name) started running. Quit it and scan again.")
+            throw EngineError.move(.inUse, "\(name) started running. Quit it and scan again.")
         }
     }
 
@@ -723,6 +760,8 @@ public actor CacheEngine {
     }
     #endif
 
+    private static let maximumReceiptBytes: Int64 = 8_000_000
+
     private func persist(_ receipt: ActivityReceipt) throws {
         try Self.validateAncestors(activityDirectory, allowMissing: true)
         try FileManager.default.createDirectory(at: activityDirectory, withIntermediateDirectories: true,
@@ -735,7 +774,11 @@ public actor CacheEngine {
             let value = try Self.metadata(url)
             guard value.isRegular, value.owner == getuid() else { throw EngineError.message("The activity receipt is not a regular owned file.") }
         }
-        try encoder.encode(receipt).write(to: url, options: [.atomic])
+        let data = try encoder.encode(receipt)
+        guard data.count < Self.maximumReceiptBytes else {
+            throw EngineError.message("This selection is too large to save a recovery receipt. Choose fewer items.")
+        }
+        try data.write(to: url, options: [.atomic])
         _ = chmod(url.path, 0o600)
         upsert(receipt)
     }
@@ -841,20 +884,53 @@ private struct Metadata {
 
 private enum EngineError: LocalizedError {
     case message(String)
+    case move(RoomMoveFailure, String)
+    case restore(RoomRestoreSkip, String)
+    case file(Int32, String)
     case movedWithoutURL
     var errorDescription: String? {
         switch self {
         case .message(let value): value
+        case .move(_, let value), .restore(_, let value), .file(_, let value): value
         case .movedWithoutURL: "macOS moved this item to Trash without returning its location. Restore it from Finder’s Trash."
         }
     }
 }
 
 extension CacheEngine {
+    private static func moveFailure(_ error: any Error) -> RoomMoveFailure {
+        if case EngineError.move(let failure, _) = error { return failure }
+        let fileCode = posixCode(error)
+        if fileCode == EACCES || fileCode == EPERM || isCocoaError(error, .fileWriteNoPermission, .fileReadNoPermission) { return .access }
+        if fileCode == ENOENT || fileCode == ENOTDIR || isCocoaError(error, .fileNoSuchFile, .fileReadNoSuchFile) { return .changed }
+        return error is CancellationError ? .cancelled : .other
+    }
+
+    private static func restoreSkip(_ error: any Error) -> RoomRestoreSkip {
+        if case EngineError.restore(let skip, _) = error { return skip }
+        let fileCode = posixCode(error)
+        if fileCode == EACCES || fileCode == EPERM || isCocoaError(error, .fileWriteNoPermission, .fileReadNoPermission) { return .access }
+        if fileCode == ENOENT || fileCode == ENOTDIR || isCocoaError(error, .fileNoSuchFile, .fileReadNoSuchFile) { return .missing }
+        if fileCode == EEXIST || isCocoaError(error, .fileWriteFileExists) { return .occupied }
+        return .other
+    }
+
+    private static func posixCode(_ error: any Error) -> Int32? {
+        if case EngineError.file(let code, _) = error { return code }
+        let value = error as NSError
+        return value.domain == NSPOSIXErrorDomain ? Int32(exactly: value.code) : nil
+    }
+
+    private static func isCocoaError(_ error: any Error, _ codes: CocoaError.Code...) -> Bool {
+        let value = error as NSError
+        return value.domain == NSCocoaErrorDomain && codes.contains { $0.rawValue == value.code }
+    }
+
     private static func metadata(_ url: URL) throws -> Metadata {
         var info = stat()
         guard lstat(url.path, &info) == 0 else {
-            throw EngineError.message("Could not inspect \(url.lastPathComponent): \(String(cString: strerror(errno))).")
+            let code = errno
+            throw EngineError.file(code, "Could not inspect \(url.lastPathComponent): \(String(cString: strerror(code))).")
         }
         return metadata(info)
     }
