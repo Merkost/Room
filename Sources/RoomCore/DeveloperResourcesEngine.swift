@@ -24,13 +24,21 @@ public actor DeveloperResourcesEngine {
         var storage: [DeveloperStorageResource] = []
         var aiStorage: [DeveloperAIStorageResource] = []
         var approvals: [URL] = []
+        let runtimeRoots = request.scope == .toolStorage ? Array(request.simulatorRuntimeRoots.prefix(32)) : []
+        let runtimePaths = Set(runtimeRoots.filter(\.isFileURL).map { $0.roomLexicallyNormalized.path })
+        var runtimeApprovals: Set<String> = []
         for supplied in request.approvedFolders.prefix(64) {
             let url = supplied.roomLexicallyNormalized
+            let scansRuntime = runtimePaths.contains(url.path)
             do {
                 guard supplied.isFileURL, url.path != "/" else { throw DRReadError.invalidRoot }
-                _ = try DRFiles.directory(url)
-                if !approvals.contains(where: { $0.path == url.path }) { approvals.append(url) }
-            } catch { budget.note(url, "The approved folder is unavailable, linked or not owned by this user.") }
+                let info = try DRFiles.directory(url, ownership: scansRuntime ? .readable : .currentUser)
+                if info.st_uid == getuid(), !approvals.contains(where: { $0.path == url.path }) { approvals.append(url) }
+                if scansRuntime { runtimeApprovals.insert(url.path) }
+            } catch {
+                budget.note(url, scansRuntime ? "The approved Simulator Runtimes folder is unavailable or linked."
+                    : "The approved folder is unavailable, linked or not owned by this user.")
+            }
         }
         if request.approvedFolders.count > 64 { budget.note(URL(fileURLWithPath: "/"), "Only the first 64 approved folders were considered.") }
         func permitted(_ supplied: URL, reportMissingApproval: Bool = true) -> URL? {
@@ -203,6 +211,21 @@ public actor DeveloperResourcesEngine {
                     await Task.yield()
                 }
             }
+            let runtimeFiles = DRMeasuredFiles()
+            var seenRuntimeRoots: Set<String> = []
+            for supplied in runtimeRoots {
+                try budget.check()
+                let root = supplied.roomLexicallyNormalized
+                guard supplied.isFileURL, runtimeApprovals.contains(root.path) else {
+                    budget.note(root, "Choose this Simulator Runtimes folder explicitly before measuring it.")
+                    continue
+                }
+                guard seenRuntimeRoots.insert(root.path).inserted else { continue }
+                update("Simulator runtimes", root)
+                try DRSimulatorRuntimes.read(in: root, budget: budget, files: runtimeFiles,
+                                             beforeFinalValidation: beforeResourceValidation, results: &storage)
+                await Task.yield()
+            }
             if request.scope == .aiTools {
                 let files = DRMeasuredFiles()
                 for supplied in request.aiToolRoots.prefix(32) {
@@ -232,7 +255,7 @@ public actor DeveloperResourcesEngine {
         catch { budget.limited = true }
         let roleRoots: [[URL]] = switch request.scope {
         case .devices: [request.avdRoots, request.simulatorDeviceRoots]
-        case .toolStorage: [request.gradleHomes, request.sdkRoots, request.simulatorDeviceRoots]
+        case .toolStorage: [request.gradleHomes, request.sdkRoots, request.simulatorDeviceRoots, request.simulatorRuntimeRoots]
         case .review: [request.projectRoots, request.avdRoots, request.gradleHomes, request.sdkRoots, request.derivedDataRoots, request.konanRoots]
         case .aiTools: []
         }
@@ -588,6 +611,190 @@ private final class DRMeasuredFiles {
 }
 private struct DRMeasurement { var allocated: Int64 = 0; var logical: Int64 = 0; var partial = false; var evidence: [DeveloperResourceEvidence] = [] }
 
+private enum DROwnership {
+    case currentUser, readable
+
+    func allows(_ info: stat) -> Bool { self == .readable || info.st_uid == getuid() }
+}
+
+private enum DRSimulatorRuntimes {
+    private static let bundlePrefix = "com.apple.CoreSimulator.SimRuntime."
+    private static let assetPrefix = "com.apple.MobileAsset."
+    private static let assetSuffix = "SimulatorRuntime"
+
+    static func read(in root: URL, budget: DRBudget, files: DRMeasuredFiles,
+                     beforeFinalValidation: ((URL) -> Void)?, results: inout [DeveloperStorageResource]) throws {
+        do {
+            let volume = try DRFiles.directory(root, ownership: .readable).st_dev
+            let directPackage = ["simruntime", "asset"].contains(root.pathExtension.lowercased())
+            let candidates = directPackage ? [root]
+                : try DRFiles.children(root, budget: budget, ownership: .readable, volume: volume)
+            let catalogue = candidates.contains(where: { $0.pathExtension.lowercased() == "dmg" })
+                ? try imageCatalogue(in: root, volume: volume, budget: budget) : [:]
+            for url in candidates {
+                try budget.check()
+                do {
+                    switch url.pathExtension.lowercased() {
+                    case "simruntime":
+                        guard !results.contains(where: { $0.url.path == url.path }) else { continue }
+                        let item = try bundle(url, volume: volume, budget: budget, beforeFinalValidation: beforeFinalValidation)
+                        results.append(item)
+                    case "asset":
+                        try assetImages(in: url, volume: volume, budget: budget, files: files,
+                                        beforeFinalValidation: beforeFinalValidation, results: &results)
+                    case "dmg":
+                        let declared = catalogue[url.path]
+                        guard let metadata = declared ?? looseImageMetadata(url) else { continue }
+                        try appendImage(url, metadata: metadata, checkTrailer: declared == nil, volume: volume,
+                                        budget: budget, files: files, beforeFinalValidation: beforeFinalValidation, results: &results)
+                    default: continue
+                    }
+                } catch is CancellationError { throw CancellationError() }
+                catch is DRStop { throw DRStop.limit }
+                catch {
+                    budget.note(url, "This runtime backing item could not be measured safely. Mounted runtime views and links are skipped.")
+                }
+            }
+        } catch is CancellationError { throw CancellationError() }
+        catch is DRStop { throw DRStop.limit }
+        catch { budget.note(root, "The approved Simulator Runtimes folder could not be read.") }
+    }
+
+    private static func bundle(_ url: URL, volume: dev_t, budget: DRBudget,
+                               beforeFinalValidation: ((URL) -> Void)?) throws -> DeveloperStorageResource {
+        try budget.node()
+        let original = try DRFiles.directory(url, ownership: .readable)
+        guard original.st_dev == volume, try !DRFiles.readOnlyVolume(url) else { throw DRReadError.invalidRoot }
+        let contents = url.appendingPathComponent("Contents", isDirectory: true)
+        // A mounted runtime's metadata can look like a bundle while the actual OS lives in an image.
+        let payloads = ["RuntimeRoot", "Resources/RuntimeRoot"].map { contents.appendingPathComponent($0) }
+        guard payloads.contains(where: { (try? DRFiles.directory($0, ownership: .readable).st_dev) == volume })
+        else { throw DRReadError.invalidRoot }
+        let fields = try plist(contents.appendingPathComponent("Info.plist"), volume: volume, budget: budget)
+        guard let fallbackName = bundleName(fields["CFBundleIdentifier"]) else { throw DRReadError.malformed }
+        let metadata = SimulatorRuntimeMetadata(name: string(fields["CFBundleName"]) ?? fallbackName,
+                                                build: string(fields["ProductBuildVersion"]))
+        try budget.resource()
+        let measurement = try DRFiles.measure(url, budget: budget, beforeFinalValidation: beforeFinalValidation,
+                                               recordsEvidence: false, staysOnVolume: true, ownership: .readable)
+        guard DRFiles.same(original, try DRFiles.directory(url, ownership: .readable)) else { throw DRReadError.changed }
+        return .init(kind: .simulatorRuntimeBundle, url: url, allocatedBytes: measurement.allocated,
+                     isPartial: measurement.partial, runtime: metadata)
+    }
+
+    private static func assetImages(in asset: URL, volume: dev_t, budget: DRBudget, files: DRMeasuredFiles,
+                                    beforeFinalValidation: ((URL) -> Void)?, results: inout [DeveloperStorageResource]) throws {
+        guard try DRFiles.directory(asset, ownership: .readable).st_dev == volume else { throw DRReadError.invalidRoot }
+        let fields = try plist(asset.appendingPathComponent("Info.plist"), volume: volume, budget: budget)
+        guard let identifier = string(fields["CFBundleIdentifier"]), identifier.hasPrefix(assetPrefix),
+              identifier.hasSuffix(assetSuffix), let platform = platformName(String(identifier.dropFirst(assetPrefix.count).dropLast(assetSuffix.count)))
+        else { return }
+        let properties = fields["MobileAssetProperties"] as? [String: Any] ?? [:]
+        let name = string(properties["SimulatorVersion"]).map { "\(platform) \($0)" } ?? "\(platform) Simulator Runtime"
+        let metadata = SimulatorRuntimeMetadata(name: name, build: string(properties["Build"]))
+        let payloads = asset.appendingPathComponent("AssetData/Restore", isDirectory: true)
+        for image in try DRFiles.children(payloads, budget: budget, ownership: .readable, volume: volume)
+        where image.pathExtension.lowercased() == "dmg" {
+            do {
+                try appendImage(image, metadata: metadata, checkTrailer: false, volume: volume,
+                                budget: budget, files: files, beforeFinalValidation: beforeFinalValidation, results: &results)
+            } catch is CancellationError { throw CancellationError() }
+            catch is DRStop { throw DRStop.limit }
+            catch { budget.note(image, "This Simulator runtime image was inaccessible, linked or changed.") }
+        }
+    }
+
+    private static func appendImage(_ url: URL, metadata: SimulatorRuntimeMetadata, checkTrailer: Bool, volume: dev_t,
+                                    budget: DRBudget, files: DRMeasuredFiles, beforeFinalValidation: ((URL) -> Void)?,
+                                    results: inout [DeveloperStorageResource]) throws {
+        try budget.node()
+        guard !results.contains(where: { $0.url.path == url.path }) else { return }
+        let info = try DRFiles.metadata(url, ownership: .readable)
+        guard DRFiles.isRegular(info), info.st_dev == volume, info.st_size > 0 else { throw DRReadError.invalidRoot }
+        if checkTrailer, try !DRFiles.hasDiskImageTrailer(url, matching: info) { return }
+        beforeFinalValidation?(url)
+        guard DRFiles.same(info, try DRFiles.metadata(url, ownership: .readable)) else { throw DRReadError.changed }
+        guard files.add(info) else { return }
+        try budget.resource()
+        results.append(.init(kind: .simulatorRuntimeImage, url: url, allocatedBytes: max(0, Int64(info.st_blocks)) * 512,
+                             isPartial: false, runtime: metadata))
+    }
+
+    private static func imageCatalogue(in root: URL, volume: dev_t, budget: DRBudget) throws -> [String: SimulatorRuntimeMetadata] {
+        let url = root.appendingPathComponent("images.plist")
+        do {
+            _ = try DRFiles.metadata(url, ownership: .readable)
+            let fields = try plist(url, volume: volume, budget: budget)
+            var images: [String: SimulatorRuntimeMetadata] = [:]
+            for image in (fields["images"] as? [[String: Any]] ?? []).prefix(budget.limits.maximumResources) {
+                try budget.node()
+                let path = (image["path"] as? [String: Any])?["relative"] ?? image["path"]
+                guard let path = string(path, limit: 4_096), let candidate = localImage(path, in: root),
+                      let info = image["runtimeInfo"] as? [String: Any], let name = bundleName(info["bundleIdentifier"])
+                else { continue }
+                images[candidate.path] = .init(name: name, build: string(info["build"]))
+            }
+            return images
+        } catch DRReadError.missing { return [:] }
+        catch is CancellationError { throw CancellationError() }
+        catch is DRStop { throw DRStop.limit }
+        catch {
+            budget.note(url, "The runtime image catalogue could not be read safely.")
+            return [:]
+        }
+    }
+
+    private static func localImage(_ path: String, in root: URL) -> URL? {
+        let url: URL
+        if path.hasPrefix("file:") {
+            guard let local = URL(string: path), local.isFileURL, (local.host ?? "").isEmpty || local.host == "localhost" else { return nil }
+            url = local.roomLexicallyNormalized
+        } else {
+            url = (path.hasPrefix("/") ? URL(fileURLWithPath: path) : root.appendingPathComponent(path)).roomLexicallyNormalized
+        }
+        return url.deletingLastPathComponent().path == root.path && url.pathExtension.lowercased() == "dmg" ? url : nil
+    }
+
+    private static func plist(_ url: URL, volume: dev_t, budget: DRBudget) throws -> [String: Any] {
+        let data = try DRFiles.data(url, budget: budget, limit: budget.limits.maximumFileBytes, ownership: .readable, volume: volume)
+        guard let fields = try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
+        else { throw DRReadError.malformed }
+        return fields
+    }
+
+    private static func string(_ value: Any?, limit: Int = 160) -> String? {
+        guard let value = (value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty, value.count <= limit, value.rangeOfCharacter(from: .controlCharacters) == nil else { return nil }
+        return value
+    }
+
+    private static func platformName(_ name: String) -> String? {
+        switch name.lowercased() {
+        case "ios": "iOS"
+        case "tvos": "tvOS"
+        case "watchos": "watchOS"
+        case "visionos", "xros": "visionOS"
+        default: nil
+        }
+    }
+
+    private static func bundleName(_ value: Any?) -> String? {
+        guard let identifier = string(value), identifier.hasPrefix(bundlePrefix) else { return nil }
+        let parts = identifier.dropFirst(bundlePrefix.count).split(separator: "-")
+        guard let platform = parts.first.flatMap({ platformName(String($0)) }) else { return nil }
+        let version = parts.dropFirst().prefix { $0.allSatisfy(\.isNumber) }.joined(separator: ".")
+        return version.isEmpty ? "\(platform) Simulator Runtime" : "\(platform) \(version)"
+    }
+
+    private static func looseImageMetadata(_ url: URL) -> SimulatorRuntimeMetadata? {
+        let name = url.deletingPathExtension().lastPathComponent.replacingOccurrences(of: "_", with: " ")
+        guard name.localizedCaseInsensitiveContains("Simulator Runtime"),
+              let first = name.split(separator: " ").first, platformName(String(first)) != nil,
+              let display = string(name) else { return nil }
+        return .init(name: display, build: nil)
+    }
+}
+
 private enum DRFiles {
     static func contains(_ child: URL, in parent: URL) -> Bool { child.path == parent.path || child.path.hasPrefix(parent.path + "/") }
     static func isDirectory(_ info: stat) -> Bool { info.st_mode & UInt16(S_IFMT) == UInt16(S_IFDIR) }
@@ -619,26 +826,46 @@ private enum DRFiles {
         }
         return fd
     }
-    @discardableResult static func directory(_ url: URL) throws -> stat {
+    @discardableResult static func directory(_ url: URL, ownership: DROwnership = .currentUser) throws -> stat {
         let fd = try openDirectory(url); defer { close(fd) }
         var info = stat()
-        guard fstat(fd, &info) == 0, isDirectory(info), info.st_uid == getuid() else { throw DRReadError.invalidRoot }
+        guard fstat(fd, &info) == 0, isDirectory(info), ownership.allows(info) else { throw DRReadError.invalidRoot }
         return info
     }
-    static func metadata(_ url: URL) throws -> stat {
+    static func readOnlyVolume(_ url: URL) throws -> Bool {
+        let fd = try openDirectory(url); defer { close(fd) }
+        var info = statfs()
+        guard fstatfs(fd, &info) == 0 else { throw DRReadError.unreadable }
+        return info.f_flags & UInt32(MNT_RDONLY) != 0
+    }
+    static func metadata(_ url: URL, ownership: DROwnership = .currentUser) throws -> stat {
         let fd = try openDirectory(url.deletingLastPathComponent()); defer { close(fd) }
         var info = stat()
         guard fstatat(fd, url.lastPathComponent, &info, AT_SYMLINK_NOFOLLOW) == 0 else {
             throw errno == ENOENT ? DRReadError.missing : DRReadError.unreadable
         }
-        guard info.st_uid == getuid() else { throw DRReadError.unreadable }
+        guard ownership.allows(info) else { throw DRReadError.unreadable }
         return info
     }
-    static func children(_ url: URL, budget: DRBudget) throws -> [URL] {
+    static func hasDiskImageTrailer(_ url: URL, matching expected: stat) throws -> Bool {
+        guard expected.st_size >= 512 else { return false }
+        let parent = try openDirectory(url.deletingLastPathComponent()); defer { close(parent) }
+        let fd = openat(parent, url.lastPathComponent, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
+        guard fd >= 0 else { throw DRReadError.unreadable }; defer { close(fd) }
+        var before = stat()
+        guard fstat(fd, &before) == 0, same(before, expected) else { throw DRReadError.changed }
+        // An exported UDIF image advertises its format in the final 512-byte record.
+        var signature = [UInt8](repeating: 0, count: 4)
+        let count = pread(fd, &signature, signature.count, before.st_size - 512)
+        var after = stat()
+        guard count == signature.count, fstat(fd, &after) == 0, same(before, after) else { throw DRReadError.changed }
+        return signature == Array("koly".utf8)
+    }
+    static func children(_ url: URL, budget: DRBudget, ownership: DROwnership = .currentUser, volume: dev_t? = nil) throws -> [URL] {
         try budget.node()
         let fd = try openDirectory(url); defer { close(fd) }
         var info = stat()
-        guard fstat(fd, &info) == 0, info.st_uid == getuid() else { throw DRReadError.unreadable }
+        guard fstat(fd, &info) == 0, ownership.allows(info), volume == nil || volume == info.st_dev else { throw DRReadError.unreadable }
         // Reopen the exact directory for readdir; O_SEARCH itself is not readable.
         let readable = openat(fd, ".", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         guard readable >= 0 else { throw DRReadError.unreadable }
@@ -679,13 +906,14 @@ private enum DRFiles {
         return text
     }
 
-    static func data(_ url: URL, budget: DRBudget, limit: Int) throws -> Data {
+    static func data(_ url: URL, budget: DRBudget, limit: Int, ownership: DROwnership = .currentUser, volume: dev_t? = nil) throws -> Data {
         try budget.node()
         let parent = try openDirectory(url.deletingLastPathComponent()); defer { close(parent) }
         let fd = openat(parent, url.lastPathComponent, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
         guard fd >= 0 else { throw DRReadError.unreadable }; defer { close(fd) }
         var before = stat()
-        guard fstat(fd, &before) == 0, before.st_uid == getuid(), isRegular(before), before.st_nlink == 1 else { throw DRReadError.unreadable }
+        guard fstat(fd, &before) == 0, ownership.allows(before), isRegular(before), before.st_nlink == 1,
+              volume == nil || volume == before.st_dev else { throw DRReadError.unreadable }
         guard before.st_size >= 0, before.st_size <= limit else { throw DRReadError.oversize }
         var bytes = Data(), chunk = [UInt8](repeating: 0, count: 8_192)
         bytes.reserveCapacity(Int(before.st_size))
@@ -703,17 +931,17 @@ private enum DRFiles {
     }
     static func measure(_ url: URL, budget: DRBudget, beforeFinalValidation: ((URL) -> Void)?,
                         files: DRMeasuredFiles = DRMeasuredFiles(), recordsEvidence: Bool = true,
-                        staysOnVolume: Bool = false) throws -> DRMeasurement {
+                        staysOnVolume: Bool = false, ownership: DROwnership = .currentUser) throws -> DRMeasurement {
         var result = DRMeasurement()
         var latest: Date?
-        let root = try directory(url)
+        let root = try directory(url, ownership: ownership)
         func walk(_ current: URL, depth: Int) throws {
             try budget.check()
             guard depth <= budget.limits.maximumDepth else { result.partial = true; budget.note(current, "The resource depth limit was reached."); return }
-            let entries = try children(current, budget: budget)
+            let entries = try children(current, budget: budget, ownership: ownership, volume: staysOnVolume ? root.st_dev : nil)
             for child in entries {
                 do {
-                    let info = try metadata(child)
+                    let info = try metadata(child, ownership: ownership)
                     if staysOnVolume, info.st_dev != root.st_dev {
                         result.partial = true
                         budget.note(child, "An item on another volume was skipped.")
@@ -744,7 +972,7 @@ private enum DRFiles {
         catch is DRStop { result.partial = true }
         catch { result.partial = true; budget.note(url, "Resource measurement was incomplete.") }
         beforeFinalValidation?(url)
-        if (try? directory(url)).map({ same(root, $0) }) != true {
+        if (try? directory(url, ownership: ownership)).map({ same(root, $0) }) != true {
             result.partial = true
             budget.note(url, "The resource changed or became unavailable while it was measured.")
         }

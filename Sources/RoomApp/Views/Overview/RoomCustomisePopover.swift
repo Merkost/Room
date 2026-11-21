@@ -62,7 +62,7 @@ struct RoomCustomisePopover: View {
                             Text(hidden ? RoomRoomsChapter.hiddenText(item.name, lettersToo: true) : item.name).tag(item.id)
                         }
                     }
-                    RoomCustomiseEditor(rooms: rooms, room: room, hidden: hidden).id(room.id)
+                    RoomPinnedRoomEditor(rooms: rooms, room: room, hidden: hidden).id(room.id)
                 }
                 RoomInlineUndoRows(prefix: "room/unpin/")
                 RoomInlineConfirmButton(id: resetID, title: "Reset Overview", confirmTitle: "Reset preferences?",
@@ -90,10 +90,11 @@ struct RoomCustomisePopover: View {
     }
 }
 
-private struct RoomCustomiseEditor: View {
+struct RoomPinnedRoomEditor: View {
     @Bindable var rooms: RoomRoomsModel
     let room: RoomPinnedRoom
     let hidden: Bool
+    var done: (() -> Void)? = nil
     @State private var name = ""
     @State private var budget = ""
     @State private var budgetIssue = false
@@ -150,16 +151,29 @@ private struct RoomCustomiseEditor: View {
                         .font(RoomTokens.Typography.caption).foregroundStyle(RoomTokens.Status.elevated)
                 }
             }
-            HStack(spacing: RoomTokens.Space.row) {
-                Button("Move Up") { rooms.move(id: room.id, to: room.order - 1) }.disabled(room.order == 0)
-                Button("Move Down") { rooms.move(id: room.id, to: room.order + 1) }
-                    .disabled(room.order >= rooms.rooms.count - 1)
+            if let done {
+                Button("Done") {
+                    if !hidden {
+                        rename()
+                        saveBudget()
+                        guard !budgetIssue else { focus = .budget; return }
+                    }
+                    done()
+                }
+                .keyboardShortcut(.defaultAction)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+            } else {
+                HStack(spacing: RoomTokens.Space.row) {
+                    Button("Move Up") { rooms.move(id: room.id, to: room.order - 1) }.disabled(room.order == 0)
+                    Button("Move Down") { rooms.move(id: room.id, to: room.order + 1) }
+                        .disabled(room.order >= rooms.rooms.count - 1)
+                }
+                RoomInlineConfirmButton(id: "room/unpin/" + room.id.uuidString, title: "Forget this Room",
+                    confirmTitle: "Forget this Room?", doneLine: "Room forgotten", isAllowed: rooms.canUnpin,
+                    stage: { rooms.stageUnpin(room.id) }, commit: { rooms.commitUnpin(room.id) },
+                    undo: { rooms.undoUnpin(room.id) })
+                    .help("Removes its Room and size history. Folder access is kept.")
             }
-            RoomInlineConfirmButton(id: "room/unpin/" + room.id.uuidString, title: "Forget this Room",
-                confirmTitle: "Forget this Room?", doneLine: "Room forgotten", isAllowed: rooms.canUnpin,
-                stage: { rooms.stageUnpin(room.id) }, commit: { rooms.commitUnpin(room.id) },
-                undo: { rooms.undoUnpin(room.id) })
-                .help("Removes its Room and size history. Folder access is kept.")
         }
         .onAppear {
             name = room.name

@@ -32,7 +32,8 @@ Room moves eligible files to Trash. They still use disk space there until you em
 | --- | --- |
 | Gradle User Home, usually `~/.gradle` | `daemon/` logs and registries, plus toolchain JDKs in `jdks/`. [Gradle directory layout](https://docs.gradle.org/current/userguide/directory_layout.html) |
 | Android SDK, usually `~/Library/Android/sdk` | Emulator OS images in `system-images/`. [Android emulator directories](https://developer.android.com/studio/run/emulator-commandline#directories) |
-| `~/Library/Developer/CoreSimulator/Devices` | Simulator devices and their app data. Manage Simulator OS runtimes separately in Xcode. [Xcode components](https://developer.apple.com/documentation/xcode/downloading-and-installing-additional-xcode-components) |
+| `~/Library/Developer/CoreSimulator/Devices` | Simulator devices and their app data. |
+| Simulator runtime folder, approved under **Developer → Storage** | Allocated storage for supported Simulator runtime bundles and backing disk images. Manage installed runtimes in Xcode. [Xcode components](https://developer.apple.com/documentation/xcode/downloading-and-installing-additional-xcode-components) |
 
 Room measures disk space used by these folders. These sizes are for inspection in Developer.
 

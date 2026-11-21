@@ -193,9 +193,7 @@ struct RoomDeveloperView: View {
                             }
                         }
                         Menu("Choose another folder…") {
-                            let roles = section == .devices ? RoomDeveloperFolderRole.deviceRoles
-                                : RoomDeveloperFolderRole.allCases.filter { $0 != .project && $0.aiTool == nil }
-                            ForEach(roles) { role in
+                            ForEach(model.selectableFolderRoles) { role in
                                 Button(role.title) { model.addFolder(role: role) }
                             }
                         }
@@ -325,7 +323,7 @@ struct RoomDeveloperView: View {
                     .accessibilityHeading(.h2)
                 Spacer(minLength: 0)
                 Menu {
-                    ForEach([RoomDeveloperFolderRole.gradle, .sdk, .simulators]) { role in
+                    ForEach(RoomDeveloperFolderRole.storageRoles) { role in
                         Button { model.addFolder(role: role) } label: {
                             Label(role.title, systemImage: role.symbol)
                         }
@@ -334,6 +332,11 @@ struct RoomDeveloperView: View {
                     Label("Choose Folder…", systemImage: "folder.badge.plus")
                 }
                 .disabled(model.isScanning || model.isChoosingFolder)
+            }
+            if model.sectionLocations.contains(where: { $0.role == .simulatorRuntimes }) {
+                Text("Runtime sizes cover stored bundles and backing images. Manage installed runtimes in Xcode Settings → Components.")
+                    .font(RoomTokens.Typography.caption)
+                    .foregroundStyle(RoomTokens.Ink.secondary)
             }
             if let report = model.storageReport, !report.storageResources.isEmpty {
                 ForEach(report.storageResources) { resource in
@@ -361,10 +364,20 @@ struct RoomDeveloperView: View {
                 .background(accent.wash, in: .rect(cornerRadius: RoomTokens.Radius.row))
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
-                Text(resource.kind.title)
-                    .font(RoomTokens.Typography.section)
-                    .foregroundStyle(RoomTokens.Ink.graphite)
-                    .help(resource.kind.detail)
+                if let runtime = resource.runtime {
+                    RoomMaskable(runtime.name, kind: .name)
+                        .font(RoomTokens.Typography.section)
+                        .foregroundStyle(RoomTokens.Ink.graphite)
+                    Text(runtime.build.map { "\(resource.kind.title) · \($0)" } ?? resource.kind.title)
+                        .font(RoomTokens.Typography.caption)
+                        .foregroundStyle(RoomTokens.Ink.secondary)
+                        .help(resource.kind.detail)
+                } else {
+                    Text(resource.kind.title)
+                        .font(RoomTokens.Typography.section)
+                        .foregroundStyle(RoomTokens.Ink.graphite)
+                        .help(resource.kind.detail)
+                }
                 RoomMaskable(resource.url.path, kind: .name)
                     .font(RoomTokens.Typography.caption)
                     .foregroundStyle(RoomTokens.Ink.secondary)
@@ -411,7 +424,7 @@ struct RoomDeveloperView: View {
     }
 
     static func suggestionAction(for role: RoomDeveloperFolderRole) -> String {
-        role == .simulators ? "Choose…" : suggestionAction
+        role.requiresFolderPicker ? "Choose…" : suggestionAction
     }
 }
 
@@ -422,6 +435,8 @@ private extension DeveloperStorageKind {
         case .gradleJDKs: "Gradle JDKs"
         case .androidSystemImages: "Android System Images"
         case .simulatorDevices: "Simulator Device Data"
+        case .simulatorRuntimeBundle: "Simulator Runtime Bundle"
+        case .simulatorRuntimeImage: "Simulator Runtime Image"
         }
     }
 
@@ -431,6 +446,8 @@ private extension DeveloperStorageKind {
         case .gradleJDKs: "shippingbox"
         case .androidSystemImages: "opticaldiscdrive"
         case .simulatorDevices: "iphone.gen3"
+        case .simulatorRuntimeBundle: "shippingbox"
+        case .simulatorRuntimeImage: "opticaldiscdrive"
         }
     }
 
@@ -440,6 +457,8 @@ private extension DeveloperStorageKind {
         case .gradleJDKs: "JDKs managed by Gradle for builds."
         case .androidSystemImages: "Installed operating system images shared by Android virtual devices."
         case .simulatorDevices: "Installed apps and device data. Xcode manages simulator runtimes separately."
+        case .simulatorRuntimeBundle: "Stand-alone package for a shared Simulator operating system."
+        case .simulatorRuntimeImage: "Allocated space used by the stored disk image for a shared Simulator operating system."
         }
     }
 }
