@@ -107,7 +107,7 @@ struct RoomDotPlanView: View {
     }
 
     var body: some View {
-        let presentation = RoomOverviewPlanPresentation(plan: plan, hidden: hidden, solidKinds: usesSolidKinds, format: RoomFormat.overviewBytes)
+        let presentation = RoomOverviewPlanPresentation(plan: plan, hidden: hidden, solidKinds: usesSolidKinds, format: RoomFormat.gb)
         GeometryReader { proxy in
             let inputs = Inputs(plan: plan, size: proxy.size)
             ZStack(alignment: .bottomLeading) {
@@ -230,12 +230,14 @@ struct RoomDotPlanView: View {
     private func paint(_ presentation: RoomOverviewPlanPresentation) -> RoomCanvasFrame {
         var paint = RoomCanvasFrame()
         guard let geometry = drawing else { return paint }
-        let outline = contrast == .increased ? RoomTokens.Surface.line2 : RoomTokens.Ink.secondary
+        // Increase Contrast: thicker walls and solid rings; the line tokens switch to their HC steps by themselves.
+        let outline = RoomTokens.Ink.secondary
+        let wallWidth = RoomContrast.planWall(contrast)
         let wall = Path(roundedRect: geometry.wall, cornerRadius: Tokens.outerRadius)
         if usesExternalLegend {
             paint.fill(wall, RoomTokens.Surface.canvas)
         }
-        paint.stroke(wall, usesExternalLegend ? RoomTokens.Surface.line2 : outline, lineWidth: Tokens.wall)
+        paint.stroke(wall, usesExternalLegend ? RoomTokens.Surface.line2 : outline, lineWidth: wallWidth)
         if let unmapped = geometry.notMapped?.insetBy(dx: Tokens.roomGap, dy: Tokens.roomGap),
            !unmapped.isEmpty {
             let room = Path(roundedRect: unmapped, cornerRadius: RoomTokens.Radius.planRoom)
@@ -309,7 +311,7 @@ struct RoomDotPlanView: View {
     }
 
     private var freeInk: Color {
-        RoomTokens.Ink.secondary.opacity(contrast == .increased ? 1 : RoomTokens.Dots.freeRingOpacity)
+        RoomTokens.Ink.secondary.opacity(RoomContrast.ringOpacity(contrast))
     }
 
     private func drawFreeRings(_ geometry: RoomOverviewPlanGeometry, paint: inout RoomCanvasFrame) {

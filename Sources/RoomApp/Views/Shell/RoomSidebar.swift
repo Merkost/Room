@@ -19,6 +19,8 @@ struct RoomSidebar: View {
     @Namespace private var selection
     @State private var editingSavedView: RoomSavedView?
     @State private var editingRoom: RoomPinnedRoom?
+    @State private var hoveredScreen: RoomDestination?
+    @State private var commandHeld = false
     private let deleteViewPrefix = "sidebar:delete-view:"
     private let unpinPrefix = "sidebar:unpin:"
     private let confirmation = RoomInlineConfirmCenter.shared
@@ -44,8 +46,10 @@ struct RoomSidebar: View {
                 }
             }
             .scrollIndicators(.hidden)
-            if mode == .labelled, showsLabels, let freeText = foot.freeText, let used = foot.usedFraction {
+            if RoomSidebarFoot.isShown(route: navigation.route, labelled: mode == .labelled && showsLabels),
+               let freeText = foot.freeText, let used = foot.usedFraction {
                 volumeFoot(freeText: freeText, used: used)
+                    .transition(.opacity)
             }
         }
         .padding(.horizontal, RoomTokens.Space.row)
@@ -53,6 +57,9 @@ struct RoomSidebar: View {
         .frame(maxHeight: .infinity, alignment: .top)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Room views")
+        .animation(motion.animation(RoomTokens.Motion.standard, fallback: RoomTokens.Motion.fade),
+                   value: navigation.route == .screen(.overview))
+        .onModifierKeysChanged(mask: .command, initial: true) { _, keys in commandHeld = keys.contains(.command) }
         .onDisappear { finishPendingChanges() }
         .onChange(of: navigation.route) { _, _ in finishPendingChanges() }
         .sheet(item: $editingSavedView) { view in
@@ -80,7 +87,7 @@ struct RoomSidebar: View {
         let selected = navigation.route == route
         return Button {
             let origin = RoomSelectionOrigin.controlActivation
-            withAnimation(origin == .pointer ? motion.animation(RoomTokens.Motion.standard, fallback: nil) : nil) {
+            withAnimation(Self.selectionAnimation(origin: origin, motion: motion)) {
                 navigation.select(route, origin: origin)
             }
         } label: {
@@ -99,9 +106,13 @@ struct RoomSidebar: View {
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 if let shortcut = item.shortcut {
+                    // Hints only while the pointer is on the row or ⌘ is held: the column stays calm otherwise.
                     Text(verbatim: "⌘\(shortcut)").font(RoomTokens.Typography.micro)
                         .monospacedDigit()
                         .foregroundStyle(selected ? accent.text : RoomTokens.Ink.secondary)
+                        .opacity(Self.showsShortcut(hovered: hoveredScreen == item.destination, commandHeld: commandHeld) ? 1 : 0)
+                        .animation(motion.animation(RoomTokens.Motion.quick, fallback: nil), value: commandHeld)
+                        .animation(motion.animation(RoomTokens.Motion.quick, fallback: nil), value: hoveredScreen)
                         .accessibilityHidden(true)
                 }
             }
@@ -109,6 +120,9 @@ struct RoomSidebar: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(RoomHoverButtonStyle(showsFeedback: !selected))
+        .onHover { inside in
+            if inside { hoveredScreen = item.destination } else if hoveredScreen == item.destination { hoveredScreen = nil }
+        }
         .focused($focusedScreen, equals: item.destination)
         .onKeyPress(.return) {
             navigation.select(route, origin: .keyboard)
@@ -125,6 +139,14 @@ struct RoomSidebar: View {
         .accessibilityIdentifier("RoomNavigation-\(item.id)")
         .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
+
+    /// Pointer selection moves the pill (matched geometry, 200 ms). Keyboard selection is instant, and Reduce Motion
+    /// drops the travel too (14-MOTION §5).
+    static func selectionAnimation(origin: RoomSelectionOrigin, motion: RoomMotionPolicy) -> Animation? {
+        origin == .pointer ? motion.animation(RoomTokens.Motion.standard, fallback: nil) : nil
+    }
+
+    static func showsShortcut(hovered: Bool, commandHeld: Bool) -> Bool { hovered || commandHeld }
 
     private var pill: RoundedRectangle { RoundedRectangle(cornerRadius: RoomTokens.Radius.row) }
 
@@ -165,11 +187,11 @@ struct RoomSidebar: View {
                 pinned(room, size: String(localized: "nav.room.needsAccess", defaultValue: "Needs access", bundle: RoomCopy.bundle),
                        spokenSize: nil, needsAccess: true)
             } else if let sample = rooms.log(for: room.id)?.latest {
-                let size = RoomFormat.bytes(sample.bytes)
+                let size = RoomFormat.gb(sample.bytes)
                 pinned(room, size: sample.partial ? "≥ \(size)" : size,
                        spokenSize: sample.partial ? "at least \(size)" : size)
             } else {
-                pinned(room, size: "—", spokenSize: String(localized: "nav.room.notMeasured",
+                pinned(room, size: RoomFormat.notMeasured, spokenSize: String(localized: "nav.room.notMeasured",
                        defaultValue: "Not measured yet", bundle: RoomCopy.bundle))
             }
         }
@@ -253,7 +275,7 @@ struct RoomSidebar: View {
 
         return Button {
             let origin = RoomSelectionOrigin.controlActivation
-            withAnimation(origin == .pointer ? motion.animation(RoomTokens.Motion.standard, fallback: nil) : nil) {
+            withAnimation(Self.selectionAnimation(origin: origin, motion: motion)) {
                 openRoom(room.id)
             }
         } label: {

@@ -41,7 +41,7 @@ struct RoomShellView<Detail: View>: View {
         let capacity = insights.volumeCapacity
         return RoomSidebarFoot.make(capacityBytes: capacity?.capacityBytes, freeBytes: capacity?.freeBytes,
                                     goalBytes: goalEnabled ? Int64(goalBytes) : nil,
-                                    volumeName: capacity?.volumeName, hidden: false, format: RoomFormat.bytes)
+                                    volumeName: capacity?.volumeName, hidden: false, format: RoomFormat.gb)
     }
 
     @MainActor private func changeMode(to target: RoomSidebarMode) async {

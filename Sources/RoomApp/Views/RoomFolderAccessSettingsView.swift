@@ -93,7 +93,7 @@ struct RoomFolderAccessSettingsView: View {
                         .accessibilityIdentifier("RoomFullDiskAccessButton")
                     #endif
                 }
-                .buttonStyle(.glass)
+                .buttonStyle(.glass).tint(nil)
             }
 
             Section {

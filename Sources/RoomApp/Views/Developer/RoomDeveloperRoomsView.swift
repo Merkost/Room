@@ -136,7 +136,7 @@ struct RoomDeveloperRoomsView: View {
                     }
                 }
                 Spacer(minLength: 0)
-                RoomMaskable(row.totalBytes > 0 ? RoomDeveloperFormat.whole(row.totalBytes, partial: row.partial || summary.partial) : "—")
+                RoomMaskable(row.totalBytes > 0 ? RoomDeveloperFormat.whole(row.totalBytes, partial: row.partial || summary.partial) : RoomFormat.notMeasured)
                     .font(RoomTokens.Typography.numeric)
                     .fixedSize()
             }
@@ -312,6 +312,6 @@ struct RoomDeveloperRoomsView: View {
     }
 
     private func measured(_ bytes: Int64, partial: Bool) -> String {
-        (partial ? "≥ " : "") + RoomFormat.bytes(bytes)
+        RoomFormat.gb(bytes, partial: partial)
     }
 }

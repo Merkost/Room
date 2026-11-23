@@ -31,7 +31,7 @@ struct RoomAgentWorkView: View {
                 Button { model.addProject() } label: {
                     Label("Add project", systemImage: "folder.badge.plus")
                 }
-                .buttonStyle(.glass)
+                .buttonStyle(.glass).tint(nil)
                 .disabled(model.isWorking || model.isScanning || model.verifyingID != nil)
                 .accessibilityIdentifier("RoomAgentWorkAddProjectButton")
 
@@ -211,7 +211,7 @@ struct RoomAgentWorkView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         if receipt.status == .trashed || receipt.status == .needsAttention {
                             Button("Restore") { sheet = .restore(receipt) }
-                                .buttonStyle(.glass)
+                                .buttonStyle(.glass).tint(nil)
                                 .disabled(model.isWorking || model.isScanning)
                                 .accessibilityLabel("Restore \(receipt.originalURL.lastPathComponent)")
                         }
@@ -267,7 +267,7 @@ private struct AgentWorkRow: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     VStack(alignment: .trailing, spacing: 4) {
-                        Text("\(item.isPartial ? "≥ " : "")\(RoomFormat.bytes(item.allocatedBytes))")
+                        Text("\(item.isPartial ? "≥ " : "")\(RoomFormat.gb(item.allocatedBytes))")
                             .font(.system(size: 14, weight: .medium)).monospacedDigit()
                         Text("\(item.processIDs.count) linked \(item.processIDs.count == 1 ? "PID" : "PIDs")")
                             .font(.system(size: 12)).foregroundStyle(.secondary)
@@ -280,7 +280,7 @@ private struct AgentWorkRow: View {
             }
             .buttonStyle(.plain)
             .help(item.url.path)
-            .accessibilityLabel("Inspect worktree \(item.title), \(RoomFormat.bytes(item.allocatedBytes)), \(item.processIDs.count) linked \(item.processIDs.count == 1 ? "process" : "processes")")
+            .accessibilityLabel("Inspect worktree \(item.title), \(RoomFormat.gb(item.allocatedBytes)), \(item.processIDs.count) linked \(item.processIDs.count == 1 ? "process" : "processes")")
 
             HStack(spacing: 10) {
                 if verifying { ProgressView().controlSize(.mini) }
@@ -294,16 +294,16 @@ private struct AgentWorkRow: View {
                 Spacer(minLength: 12)
                 if let verificationUnavailableReason {
                     Button("Rescan", action: verify)
-                        .buttonStyle(.glass)
+                        .buttonStyle(.glass).tint(nil)
                         .disabled(disabled)
                         .help(verificationUnavailableReason)
                 } else if item.canReviewForCleanup {
                     Button("Review tree", action: review)
-                        .buttonStyle(.glass)
+                        .buttonStyle(.glass).tint(nil)
                         .disabled(disabled)
                 } else {
                     Button("Verify remote", action: verify)
-                        .buttonStyle(.glass)
+                        .buttonStyle(.glass).tint(nil)
                         .disabled(disabled)
                         .help("Contact this checkout’s configured remote to verify its current commit. This does not mark the work finished.")
                 }
@@ -331,7 +331,7 @@ private struct AgentWorkDetailSheet: View {
         VStack(alignment: .leading, spacing: 20) {
             RoomSheetHeading(title: item.title, subtitle: "\(ownerTitle(item.owner)) · \(branchTitle(item))")
             HStack(alignment: .firstTextBaseline, spacing: 18) {
-                Text("\(item.isPartial ? "≥ " : "")\(RoomFormat.bytes(item.allocatedBytes))")
+                Text("\(item.isPartial ? "≥ " : "")\(RoomFormat.gb(item.allocatedBytes))")
                     .font(RoomType.figure(34))
                 Text("allocated on disk").font(.system(size: 12)).foregroundStyle(.secondary)
                 Spacer()
@@ -370,7 +370,7 @@ private struct AgentWorkDetailSheet: View {
 
             HStack {
                 Button("Done") { dismiss() }
-                    .buttonStyle(.glass).keyboardShortcut(.cancelAction)
+                    .buttonStyle(.glass).tint(nil).keyboardShortcut(.cancelAction)
                     .disabled(model.isWorking)
                 Spacer()
                 if item.canReviewForCleanup, model.verificationUnavailableReason(for: item) == nil {
@@ -393,7 +393,7 @@ private struct AgentWorkDetailSheet: View {
             if let reason {
                 Text(reason).font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
                 Button("Rescan Worktrees") { dismiss(); model.scan() }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.glass).tint(nil)
                     .disabled(model.isWorking || model.isScanning || model.verifyingID != nil)
             } else {
                 Text(item.pushVerification.detail)
@@ -406,7 +406,7 @@ private struct AgentWorkDetailSheet: View {
                 Button(model.verifyingID == item.id ? "Stop verification" : "Verify remote") {
                     if model.verifyingID == item.id { model.stop() } else { model.verify(item) }
                 }
-                .buttonStyle(.glass)
+                .buttonStyle(.glass).tint(nil)
                 .disabled(model.verifyingID != item.id && !model.canVerify(item))
             }
             Text(isLocalProof(item.pushVerification)
@@ -472,7 +472,7 @@ private struct AgentWorkCleanupSheet: View {
         VStack(alignment: .leading, spacing: 20) {
             RoomSheetHeading(title: "Review one worktree.", subtitle: item.title)
             HStack(alignment: .firstTextBaseline, spacing: 12) {
-                Text(RoomFormat.bytes(item.allocatedBytes)).font(RoomType.figure(34))
+                Text(RoomFormat.gb(item.allocatedBytes)).font(RoomType.figure(34))
                 Text("to move to Trash").font(.system(size: 12)).foregroundStyle(.secondary)
             }
             ScrollView {
@@ -490,7 +490,7 @@ private struct AgentWorkCleanupSheet: View {
 
                     if needsRecheck {
                         Button("Review again") { Task { await checkReview() } }
-                            .buttonStyle(.glass)
+                            .buttonStyle(.glass).tint(nil)
                             .disabled(model.isWorking)
                             .accessibilityIdentifier("RoomAgentWorkReviewAgainButton")
                     } else if !prepared {
@@ -508,7 +508,7 @@ private struct AgentWorkCleanupSheet: View {
 
             HStack {
                 Button("Cancel") { dismiss() }
-                    .buttonStyle(.glass).keyboardShortcut(.cancelAction)
+                    .buttonStyle(.glass).tint(nil).keyboardShortcut(.cancelAction)
                     .disabled(model.isWorking)
                 Spacer()
                 if model.isWorking { ProgressView().controlSize(.small) }
@@ -569,7 +569,7 @@ private struct AgentWorkRestoreSheet: View {
                         .fixedSize(horizontal: false, vertical: true)
                     if needsRecheck {
                         Button("Check again") { Task { await checkRecovery() } }
-                            .buttonStyle(.glass)
+                            .buttonStyle(.glass).tint(nil)
                             .disabled(model.isWorking)
                             .accessibilityIdentifier("RoomAgentWorkRestoreCheckAgainButton")
                     } else if !prepared {
@@ -587,7 +587,7 @@ private struct AgentWorkRestoreSheet: View {
 
             HStack {
                 Button("Cancel") { dismiss() }
-                    .buttonStyle(.glass).keyboardShortcut(.cancelAction)
+                    .buttonStyle(.glass).tint(nil).keyboardShortcut(.cancelAction)
                     .disabled(model.isWorking)
                 Spacer()
                 if model.isWorking { ProgressView().controlSize(.small) }
@@ -645,7 +645,7 @@ private struct AgentWorkPermissions: View {
                         Button(isGitMetadata ? "Allow Git metadata" : restoring ? "Allow destination parent" : "Allow checkout") {
                             Task { await model.allow(url) }
                         }
-                        .buttonStyle(.glass)
+                        .buttonStyle(.glass).tint(nil)
                         .disabled(model.isWorking)
                         .fixedSize()
                     }

@@ -371,8 +371,10 @@ final class RoomInsightsModel {
 
     private enum DiskPickerNavigation { case unchanged, diskMap, diskMapForNonHome }
 
+    /// `homeConfirmed`: the person already chose to map their home folder (onboarding), so the
+    /// "Map your Home folder?" alert is not asked a second time (D-ONV-8).
     private func presentFolderPicker(initialURL: URL, mapAfterApproval: Bool, homeApproval: Bool = false,
-                                     navigation: DiskPickerNavigation = .unchanged) {
+                                     homeConfirmed: Bool = false, navigation: DiskPickerNavigation = .unchanged) {
         guard !isChoosingDiskFolder, !mapAfterApproval || canChooseDiskLocation else { return }
         isChoosingDiskFolder = true
         Task { [weak self] in
@@ -384,7 +386,7 @@ final class RoomInsightsModel {
                 : "Choose a folder to inspect. Room remembers read-only access, including accessible descendants. Supported changes require a separate review and approval."
             guard let url = await self.folderPicker(title, message,
                 mapAfterApproval ? "Allow & Map" : "Remember Folder", initialURL) else { return }
-            if mapAfterApproval, self.isHomeFolder(url), !(await self.confirmHomeMap()) { return }
+            if mapAfterApproval, self.isHomeFolder(url), !homeConfirmed, !(await self.confirmHomeMap()) { return }
             let approved: URL
             do {
                 approved = try self.fileAccess.remember(url)
@@ -402,20 +404,28 @@ final class RoomInsightsModel {
         }
     }
 
-    func scanHome() {
+    func scanHome() { scanHome(confirmed: false) }
+
+    /// `confirmed`: chosen as "Map my home folder" in onboarding; every other route still asks "Map your Home folder?".
+    func scanHome(confirmed: Bool) {
         guard canChooseDiskLocation else { return }
         let home = suggestedHome
-        if fileAccess.scope(for: home) != nil { scanDisk(url: home) }
-        else { presentFolderPicker(initialURL: home, mapAfterApproval: true, navigation: .diskMapForNonHome) }
+        if fileAccess.scope(for: home) != nil { scanDisk(url: home, homeConfirmed: confirmed) }
+        else {
+            presentFolderPicker(initialURL: home, mapAfterApproval: true, homeConfirmed: confirmed,
+                                navigation: .diskMapForNonHome)
+        }
     }
 
-    func scanDisk(url: URL) {
+    func scanDisk(url: URL) { scanDisk(url: url, homeConfirmed: false) }
+
+    private func scanDisk(url: URL, homeConfirmed: Bool) {
         guard canChooseDiskLocation else { return }
         guard let scope = mappingScope(for: url) else {
-            presentFolderPicker(initialURL: url, mapAfterApproval: true)
+            presentFolderPicker(initialURL: url, mapAfterApproval: true, homeConfirmed: homeConfirmed)
             return
         }
-        startApprovedDiskScan(url: url, scope: scope)
+        startApprovedDiskScan(url: url, scope: scope, homeConfirmed: homeConfirmed)
     }
 
     private var homeMediaFolders: [URL] {
@@ -434,8 +444,8 @@ final class RoomInsightsModel {
         return scope
     }
 
-    private func startApprovedDiskScan(url: URL, scope: URL) {
-        guard isHomeFolder(url) else {
+    private func startApprovedDiskScan(url: URL, scope: URL, homeConfirmed: Bool = false) {
+        guard isHomeFolder(url), !homeConfirmed else {
             scanAuthorizedDisk(url: url, scope: scope)
             return
         }
@@ -862,9 +872,27 @@ final class RoomInsightsModel {
         restoredDiskMap = true
         let generation = diskOpenGeneration
         await updateTreeApprovals()
-        guard let saved = await treeStore.lastOpened(), diskOpenGeneration == generation,
+        guard let saved = await treeStore.launchMap(), diskOpenGeneration == generation,
               diskURL == nil, canChooseDiskLocation else { return }
         showStored(saved.current, previous: saved.previous, root: saved.root)
+    }
+
+    /// True when Disk Map shows something other than the top of the home map, and a home map exists to go back to.
+    var canGoBackToHomeMap: Bool {
+        guard let home = diskMap.catalog.homeRootID, !isScanningDisk else { return false }
+        return diskMap.current?.rootID != home || !diskMap.levelPath.isEmpty
+    }
+
+    /// "Back to home folder": the top of the saved home map. Reads nothing new.
+    func showHomeMap() async {
+        if let home = diskMap.catalog.homeRootID, diskMap.current?.rootID == home {
+            diskMap.go(to: "")
+            return
+        }
+        let generation = diskOpenGeneration
+        guard let saved = await treeStore.homeEntry(), diskOpenGeneration == generation, !isScanningDisk else { return }
+        showStored(saved.current, previous: saved.previous, root: saved.root)
+        await treeStore.open(saved.current.rootID)
     }
 
     func observeTreeChanges() async {

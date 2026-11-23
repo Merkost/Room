@@ -146,7 +146,7 @@ struct RoomActivityPill: View {
     private func rawLabel(_ state: RoomActivityPillState) -> String {
         switch state {
         case .idle(let bytes):
-            bytes.map { "\(RoomFormat.overviewBytes($0)) free" } ?? "Free space unavailable"
+            bytes.map { "\(RoomFormat.gb($0)) free" } ?? "Free space unavailable"
         case .scanning(_, let location, _, _):
             location.isEmpty ? "Checking…" : location
         case .needsAccess(let folders):
@@ -172,6 +172,9 @@ struct RoomActivityPill: View {
     }
 
     private func spoken(_ state: RoomActivityPillState) -> String {
+        if !hidden, prefersQuietIdleLabel, case .idle(.some) = state {
+            return String(localized: "Up to date") + ". " + rawLabel(state)
+        }
         guard hidden else { return rawLabel(state) }
         switch state {
         case .idle: return "Free space hidden"

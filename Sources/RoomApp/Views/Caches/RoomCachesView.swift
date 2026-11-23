@@ -1,6 +1,32 @@
 import RoomCore
 import SwiftUI
 
+/// Copy for the Caches ready state (REVIEW §3 Caches). The Store edition keeps its folder sentence first.
+/// The check's progress line: determinate when the engine reports how many places it will read.
+nonisolated enum RoomCachesProgress {
+    static func isDeterminate(total: Int) -> Bool { total > 0 }
+
+    static func line(completed: Int, total: Int) -> String? {
+        guard isDeterminate(total: total) else { return nil }
+        return "Checking, \(min(completed, total)) of \(total) places"
+    }
+}
+
+nonisolated enum RoomCachesReadyCopy {
+    static let promise = "Room checks these places. Nothing is deleted. You review before anything moves to Trash."
+
+    static func lead(needsFolder: Bool) -> String {
+        needsFolder ? "Choose a folder to check, then review what can move to Trash." : promise
+    }
+
+    /// The last result as a number, or nil when there is none to show.
+    static func lastResult(_ check: RoomCachesCheck, format: (Int64) -> String) -> String? {
+        guard check.bytes > 0 else { return nil }
+        let amount = format(check.bytes)
+        return "\(check.partial ? RoomFormat.lowerBound(amount) : amount) could go"
+    }
+}
+
 struct RoomCachesView: View {
     @Environment(\.roomHide) private var hide
     private var hidden: Bool { hide.masksNow }
@@ -16,6 +42,8 @@ struct RoomCachesView: View {
     @Environment(\.colorSchemeContrast) private var contrast
     @State private var filter = Filter.clearable
     @State private var undo: Undo?
+    @State private var travellingReceipt: String?
+    @State private var pillOrigin = CGPoint.zero
     @FocusState private var focusedSource: String?
 
     private enum Filter: String, CaseIterable {
@@ -124,6 +152,7 @@ struct RoomCachesView: View {
                 .roomPanelChange(model.isScanning)
             } else if !model.isScanning && !model.hasReport && !model.isPartialScan && !model.isAfterRestore {
                 startingPlaces
+                lastReceipt
             }
             if !model.scanIssues.isEmpty {
                 Button(action: showScanNotes) {
@@ -142,6 +171,19 @@ struct RoomCachesView: View {
             }
         }
         .foregroundStyle(RoomTokens.Ink.graphite)
+        .overlay(alignment: .top) {
+            if let travellingReceipt {
+                RoomReceiptTravelPill(text: travellingReceipt, origin: pillOrigin) { self.travellingReceipt = nil }
+            }
+        }
+        .onGeometryChange(for: CGPoint.self) { proxy in
+            let frame = proxy.frame(in: .named(RoomScreenScaffold<EmptyView>.space))
+            return CGPoint(x: frame.midX, y: frame.minY + RoomTokens.Map.readoutHeight / 2)
+        } action: { pillOrigin = $0 }
+        .onChange(of: model.movedReceiptID) { old, new in
+            guard let new, new != old, let receipt = model.activity.first(where: { $0.id == new }) else { return }
+            travellingReceipt = "Moved \(format(receipt.bytes)) to Trash"
+        }
         .task(id: undo) {
             guard undo != nil else { return }
             do { try await Task.sleep(for: .seconds(8)) } catch { return }
@@ -149,22 +191,42 @@ struct RoomCachesView: View {
         }
     }
 
+    /// Ready state: one sentence on what the click does, the last result as a number, then the action.
     private var startPanel: some View {
-        let title: String
-        let message: String
-        if model.cachesCheckStore.check != nil {
-            title = "Check caches again"
-            message = needsFolderApproval
-                ? "Choose a folder to see which caches you can clear now."
-                : "Run a fresh check to see which caches you can clear now."
-        } else {
-            title = "Find caches you can clear"
-            message = needsFolderApproval
-                ? "Choose a folder to check, then review what can move to Trash."
-                : "Check for temporary files, then review what can move to Trash."
-        }
+        let check = model.cachesCheckStore.check
+        let title = check != nil ? "Check caches again" : "Find caches you can clear"
+        let message = RoomCachesReadyCopy.lead(needsFolder: needsFolderApproval)
         return RoomStartPanel(title: title, message: message, artwork: .caches) {
-            startAction
+            VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
+                if let check, let result = RoomCachesReadyCopy.lastResult(check, format: format) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        // The toolbar already says when; this says what.
+                        Text("Last check")
+                            .font(RoomTokens.Typography.caption)
+                            .foregroundStyle(RoomTokens.Ink.secondary)
+                        Text(result)
+                            .font(RoomTokens.Typography.figure)
+                            .monospacedDigit()
+                            .foregroundStyle(RoomTokens.Ink.graphite)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(hidden ? "Last check, size hidden" : "Last check: \(result)")
+                }
+                startAction
+            }
+        }
+    }
+
+    /// The lower half of the ready state: the last receipt, so the page answers "what happened last time".
+    @ViewBuilder private var lastReceipt: some View {
+        if model.movedReceipt == nil, let receipt = model.activity.first {
+            VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
+                Text("Last cleanup").font(RoomTokens.Typography.section).accessibilityHeading(.h2)
+                RoomReceiptView(receipt: receipt, entry: model.makeRoomStore?.entry(for: receipt.id),
+                    restore: model.isWorking || model.isScanning || !receipt.canRestore ? nil : { restore(receipt) })
+            }
+            .frame(maxWidth: RoomTokens.Space.measure, alignment: .leading)
+            .transition(.opacity)
         }
     }
 
@@ -202,12 +264,11 @@ struct RoomCachesView: View {
                     Text("Checking caches…")
                         .font(RoomTokens.Typography.title)
                         .accessibilityHeading(.h1)
-                    if model.scanLocationCount > 0 {
-                        let completed = model.scannedLocationCount
-                        let total = model.scanLocationCount
-                        RoomMaskable(String(localized: "\(completed) of \(total) locations checked"))
+                    if let line = RoomCachesProgress.line(completed: model.scannedLocationCount, total: model.scanLocationCount) {
+                        RoomMaskable(line)
                             .font(RoomTokens.Typography.caption)
                             .foregroundStyle(RoomTokens.Ink.secondary)
+                            .roomNumericTransition(model.scannedLocationCount)
                     }
                 }
                 Spacer(minLength: 0)
@@ -216,10 +277,20 @@ struct RoomCachesView: View {
                 }
                 .roomSecondary()
             }
-            if let progress = model.scanProgress, model.scanLocationCount > 0, !hidden {
-                ProgressView(value: progress)
-                    .tint(accent.fill)
-                    .accessibilityLabel("Cache check progress")
+            // Determinate when the engine reports places, indeterminate until it does; never a spinner.
+            if !hidden {
+                if let progress = model.scanProgress,
+                   RoomCachesProgress.isDeterminate(total: model.scanLocationCount) {
+                    ProgressView(value: progress)
+                        .tint(accent.fill)
+                        .animation(motion.animation(RoomTokens.Motion.standard, fallback: nil), value: progress)
+                        .accessibilityLabel("Cache check progress")
+                } else {
+                    ProgressView()
+                        .progressViewStyle(.linear)
+                        .tint(accent.fill)
+                        .accessibilityLabel("Checking caches")
+                }
             }
         }
         .padding(RoomTokens.Space.group)
@@ -263,8 +334,8 @@ struct RoomCachesView: View {
             if let bytes = hero.heroBytes {
                 VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
                     Text(hero.heroLabel).font(RoomTokens.Typography.caption).foregroundStyle(RoomTokens.Ink.secondary)
-                    metric(format(bytes), number: RoomTokens.Typography.hero, unit: RoomTokens.Typography.counter)
-                        .roomNumericTransition(format(bytes), enabled: !model.isScanning)
+                    metric(format(bytes, hero: true), number: RoomTokens.Typography.hero, unit: RoomTokens.Typography.counter)
+                        .roomNumericTransition(format(bytes, hero: true), enabled: !model.isScanning)
                 }
             } else if !hero.lowerBound {
                 Text(hero.heroLabel).font(RoomTokens.Typography.lead)
@@ -316,7 +387,7 @@ struct RoomCachesView: View {
                     Button(action: review) {
                         Label(bytes > 0 ? "Review \(format(bytes))" : "Review", systemImage: "checklist")
                     }
-                    .roomScreenPrimary(accent).disabled(!model.canReviewCleanup)
+                    .roomScreenPrimary(accent).disabled(!model.canReviewCleanup) // one-filled: exclusive with Check (hero.primary switch)
                     .help(hero.disabledReason ?? "Review the selected caches.")
                 }
             case .none: EmptyView()
@@ -340,7 +411,7 @@ struct RoomCachesView: View {
             Label(String(localized: "caches.action.choose", defaultValue: "Choose Folder & Check",
                 table: "Caches", bundle: RoomCopy.bundle), systemImage: "folder.badge.plus")
         }
-        .roomScreenPrimary(accent)
+        .roomScreenPrimary(accent) // one-filled: exclusive with Check (Store folder approval)
         .disabled(!model.canScan)
     }
 
@@ -462,7 +533,7 @@ struct RoomCachesView: View {
                         focus: $focusedSource, format: format, select: { model.toggleSelection(id: source.id) },
                         inspect: { inspect(source) }, reveal: { model.reveal(source: source) },
                         neverSuggest: source.isAvailable && model.ignoreStore != nil ? { neverSuggest(source) } : nil)
-                        .transition(cacheRemoval(index: index))
+                        .transition(cacheRowTransition(index: index))
                 }
             }
             .animation(motion.isFull && !hidden && model.movedReceiptID != nil ? RoomTokens.Motion.standard : nil,
@@ -486,10 +557,15 @@ struct RoomCachesView: View {
         .background(RoomTokens.Surface.group, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.group))
     }
 
-    private func cacheRemoval(index: Int) -> AnyTransition {
-        guard motion.isFull, !hidden else { return .identity }
-        let delay = Double(min(index, RoomTokens.Motion.maxStaggered - 1)) * RoomTokens.Motion.stagger
-        return .asymmetric(insertion: .identity,
+    /// Results arrive in order (30 ms apart, at most 12 staggered); cleared rows lift away the same way.
+    /// Reduce Motion keeps a plain fade; Hide never animates figures.
+    private func cacheRowTransition(index: Int) -> AnyTransition {
+        guard !hidden else { return .identity }
+        let delay = RoomDS.Motion.stagger(index)
+        guard motion.isFull else { return .opacity.animation(RoomTokens.Motion.fade) }
+        return .asymmetric(
+            insertion: .offset(y: RoomTokens.Space.row).combined(with: .opacity)
+                .animation(RoomTokens.Motion.standard.delay(delay)),
             removal: .offset(y: -RoomTokens.Space.row).combined(with: .opacity)
                 .animation(RoomTokens.Motion.standard.delay(delay)))
     }
@@ -578,8 +654,10 @@ struct RoomCachesView: View {
         .transition(.opacity)
     }
 
-    private func format(_ bytes: Int64) -> String {
-        RoomCachesVisibility.figure(RoomFormat.bytes(bytes), hidden: hidden)
+    private func format(_ bytes: Int64) -> String { format(bytes, hero: false) }
+
+    private func format(_ bytes: Int64, hero: Bool) -> String {
+        RoomCachesVisibility.figure(RoomFormat.gb(bytes, hero: hero), hidden: hidden)
     }
 
     private func neverSuggest(_ source: RoomSource) {

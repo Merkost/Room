@@ -54,19 +54,29 @@ private struct RoomPanelArrival: ViewModifier {
     }
 }
 
-/// Swap the content while leaving the surrounding controls and layout in place.
+/// The old panel leaves before the new one arrives, so two captions are never readable at once (REVIEW §3 overlap).
+nonisolated enum RoomPanelChangeTiming {
+    static let removal: TimeInterval = RoomDS.Motion.Duration.quick.seconds
+    static let insertionDelay: TimeInterval = removal
+    static let insertion: TimeInterval = RoomDS.Motion.Duration.standard.seconds
+}
+
+/// Swap the content while leaving the surrounding controls and layout in place. One ZStack, one alignment: the old
+/// content fades out (120 ms), then the new fades in (Reduce Motion keeps the fades and drops the 6 pt travel).
 private struct RoomPanelChange<Identity: Hashable>: ViewModifier {
     let identity: Identity
     @Environment(\.roomMotion) private var motion
 
     func body(content: Content) -> some View {
+        let arrival: AnyTransition = motion.isFull
+            ? .opacity.combined(with: .offset(y: RoomTokens.Space.tight)) : .opacity
         ZStack(alignment: .topLeading) {
             content.id(identity)
-                .transition(motion.isFull
-                    ? .asymmetric(insertion: .opacity.combined(with: .offset(y: RoomTokens.Space.tight)), removal: .identity)
-                    : .identity)
+                .transition(.asymmetric(
+                    insertion: arrival.animation(RoomTokens.Motion.standard.delay(RoomPanelChangeTiming.insertionDelay)),
+                    removal: .opacity.animation(RoomTokens.Motion.exit)))
         }
-        .animation(motion.animation(RoomTokens.Motion.standard, fallback: nil), value: identity)
+        .animation(motion.animation(RoomTokens.Motion.standard), value: identity)
     }
 }
 

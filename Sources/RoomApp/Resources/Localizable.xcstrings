@@ -706,39 +706,6 @@
         }
       }
     },
-    "onboarding.p1.a11y": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Your Mac: %1$@ free of %2$@."
-          }
-        }
-      }
-    },
-    "onboarding.p1.a11y.hidden": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Your Mac. Sizes hidden."
-          }
-        }
-      }
-    },
-    "onboarding.p1.body": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "See what’s taking up space, check caches and keep a little room free."
-          }
-        }
-      }
-    },
     "onboarding.p1.continue": {
       "extractionState": "manual",
       "localizations": {
@@ -746,94 +713,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Continue"
-          }
-        }
-      }
-    },
-    "onboarding.p1.privacy": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No account. Everything runs on this Mac."
-          }
-        }
-      }
-    },
-    "onboarding.p1.privacy.title": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "On this Mac"
-          }
-        }
-      }
-    },
-    "onboarding.p1.scan": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Room asks for your review before moving any files."
-          }
-        }
-      }
-    },
-    "onboarding.p1.scan.title": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Look first"
-          }
-        }
-      }
-    },
-    "onboarding.p1.step": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "1 of 2"
-          }
-        }
-      }
-    },
-    "onboarding.p1.title": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Room to breathe."
-          }
-        }
-      }
-    },
-    "onboarding.p1.trash": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Every move to Trash gets a receipt, so you can see what moved and restore items."
-          }
-        }
-      }
-    },
-    "onboarding.p1.trash.title": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "A way back"
           }
         }
       }
@@ -849,116 +728,6 @@
         }
       }
     },
-    "onboarding.p2.caches": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Check caches"
-          }
-        }
-      }
-    },
-    "onboarding.p2.caches.direct": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "See which caches could move to Trash. Full Disk Access is optional."
-          }
-        }
-      }
-    },
-    "onboarding.p2.caches.permission": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Open Full Disk Access…"
-          }
-        }
-      }
-    },
-    "onboarding.p2.caches.store": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Room asks for each folder. Only the folders you allow are read."
-          }
-        }
-      }
-    },
-    "onboarding.p2.lead": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Pick one to try. You can come back to the others anytime."
-          }
-        }
-      }
-    },
-    "onboarding.p2.map": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Map a folder"
-          }
-        }
-      }
-    },
-    "onboarding.p2.map.direct": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Pick a folder to see where its space goes. macOS may protect some locations."
-          }
-        }
-      }
-    },
-    "onboarding.p2.map.store": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The folder picker opens at Home. Room reads file sizes only."
-          }
-        }
-      }
-    },
-    "onboarding.p2.memory": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Watch memory in the menu bar"
-          }
-        }
-      }
-    },
-    "onboarding.p2.memory.detail": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Keep an eye on memory pressure without opening a window."
-          }
-        }
-      }
-    },
     "onboarding.p2.skip": {
       "extractionState": "manual",
       "localizations": {
@@ -970,24 +739,717 @@
         }
       }
     },
-    "onboarding.p2.step": {
+    "onboarding.v3.step": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "2 of 2"
+            "value": "%1$d of 3"
           }
         }
       }
     },
-    "onboarding.p2.title": {
+    "onboarding.v3.step1.name": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "What should Room do first?"
+            "value": "Your Mac"
+          }
+        }
+      }
+    },
+    "onboarding.v3.step2.name": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your say"
+          }
+        }
+      }
+    },
+    "onboarding.v3.step3.name": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "First step"
+          }
+        }
+      }
+    },
+    "onboarding.v3.step1.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Room to breathe."
+          }
+        }
+      }
+    },
+    "onboarding.v3.step1.measured": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This is your Mac: %1$@ free of %2$@."
+          }
+        }
+      }
+    },
+    "onboarding.v3.step1.hidden": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This is your Mac. Sizes hidden."
+          }
+        }
+      }
+    },
+    "onboarding.v3.step1.honest": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Room draws only what it has measured."
+          }
+        }
+      }
+    },
+    "onboarding.v3.step1.unreadable": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Room couldn’t read this Mac’s free space just now. Overview asks again on its own."
+          }
+        }
+      }
+    },
+    "onboarding.v3.step1.tooLarge": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Room draws plans of disks up to 26 TB for now."
+          }
+        }
+      }
+    },
+    "onboarding.v3.plan.notMapped": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not mapped yet"
+          }
+        }
+      }
+    },
+    "onboarding.v3.plan.notMappedDetail": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ used. Room hasn’t looked inside."
+          }
+        }
+      }
+    },
+    "onboarding.v3.plan.notMappedDetail.hidden": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Room hasn’t looked inside."
+          }
+        }
+      }
+    },
+    "onboarding.v3.plan.free": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free"
+          }
+        }
+      }
+    },
+    "onboarding.v3.plan.unit": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 dot = about %@"
+          }
+        }
+      }
+    },
+    "onboarding.v3.plan.empty.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your Mac’s plan appears here once macOS answers."
+          }
+        }
+      }
+    },
+    "onboarding.v3.plan.empty.detail": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Room only draws what it has measured."
+          }
+        }
+      }
+    },
+    "onboarding.v3.step2.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nothing moves until you say so."
+          }
+        }
+      }
+    },
+    "onboarding.v3.step2.lead": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Room shows you what it found, then waits. Whatever you move goes to Trash with a receipt, so you can put it back."
+          }
+        }
+      }
+    },
+    "onboarding.v3.example.chip": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Example"
+          }
+        }
+      }
+    },
+    "onboarding.v3.example.move": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Move to Trash"
+          }
+        }
+      }
+    },
+    "onboarding.v3.example.moved": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moved to Trash"
+          }
+        }
+      }
+    },
+    "onboarding.v3.example.putBack": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Put back"
+          }
+        }
+      }
+    },
+    "onboarding.v3.example.back": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Back where it was"
+          }
+        }
+      }
+    },
+    "onboarding.v3.example.row.name": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DerivedData"
+          }
+        }
+      }
+    },
+    "onboarding.v3.example.row.kind": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Xcode cache"
+          }
+        }
+      }
+    },
+    "onboarding.v3.example.row.where": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Now in"
+          }
+        }
+      }
+    },
+    "onboarding.v3.example.row.trash": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trash"
+          }
+        }
+      }
+    },
+    "onboarding.v3.example.row.receipt": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Receipt"
+          }
+        }
+      }
+    },
+    "onboarding.v3.example.row.kept": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kept in History"
+          }
+        }
+      }
+    },
+    "onboarding.v3.example.row.keptShort": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kept"
+          }
+        }
+      }
+    },
+    "onboarding.v3.example.row.restored": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restored"
+          }
+        }
+      }
+    },
+    "onboarding.v3.example.foot": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Room never empties the Trash. That stays yours."
+          }
+        }
+      }
+    },
+    "onboarding.v3.rail.1": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You review first"
+          }
+        }
+      }
+    },
+    "onboarding.v3.rail.1.detail": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nothing is picked for you."
+          }
+        }
+      }
+    },
+    "onboarding.v3.rail.2": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trash, with a receipt"
+          }
+        }
+      }
+    },
+    "onboarding.v3.rail.2.detail": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Every move is written down."
+          }
+        }
+      }
+    },
+    "onboarding.v3.rail.3": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You can put it back"
+          }
+        }
+      }
+    },
+    "onboarding.v3.rail.3.detail": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Try it: press Put back."
+          }
+        }
+      }
+    },
+    "onboarding.v3.local": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No account. Everything runs on this Mac."
+          }
+        }
+      }
+    },
+    "onboarding.v3.exampleOnly": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Example only. Nothing on your Mac has moved."
+          }
+        }
+      }
+    },
+    "onboarding.v3.step3.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Where should Room look first?"
+          }
+        }
+      }
+    },
+    "onboarding.v3.step3.lead": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pick one to start. The others are on Overview whenever you want them."
+          }
+        }
+      }
+    },
+    "onboarding.v3.hint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rooms appear here as Room maps your home folder"
+          }
+        }
+      }
+    },
+    "onboarding.v3.map": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Map my home folder"
+          }
+        }
+      }
+    },
+    "onboarding.v3.map.picker": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Map my home folder…"
+          }
+        }
+      }
+    },
+    "onboarding.v3.map.next": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Next: macOS asks you to choose your home folder."
+          }
+        }
+      }
+    },
+    "onboarding.v3.map.now": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Room starts mapping right away."
+          }
+        }
+      }
+    },
+    "onboarding.v3.map.direct": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pictures and Music stay out. Full Disk Access is optional."
+          }
+        }
+      }
+    },
+    "onboarding.v3.map.store": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pictures and Music stay out. Room reads sizes, never file contents."
+          }
+        }
+      }
+    },
+    "onboarding.v3.or": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Or start with"
+          }
+        }
+      }
+    },
+    "onboarding.v3.caches": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check caches"
+          }
+        }
+      }
+    },
+    "onboarding.v3.caches.store": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check caches…"
+          }
+        }
+      }
+    },
+    "onboarding.v3.menuBar": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Watch memory in the menu bar"
+          }
+        }
+      }
+    },
+    "onboarding.v3.busy": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Room is finishing another task. This is ready in a moment."
+          }
+        }
+      }
+    },
+    "onboarding.v3.a11y.plan": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your Mac: %1$@ free of %2$@. %3$@ not mapped yet."
+          }
+        }
+      }
+    },
+    "onboarding.v3.a11y.plan.hidden": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your Mac. Sizes hidden."
+          }
+        }
+      }
+    },
+    "onboarding.v3.a11y.plan.unavailable": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your Mac. Free space not available yet."
+          }
+        }
+      }
+    },
+    "onboarding.v3.a11y.caption": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free, %1$@. 1 dot is about %2$@."
+          }
+        }
+      }
+    },
+    "onboarding.v3.a11y.caches": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opens Caches and starts a check."
+          }
+        }
+      }
+    },
+    "onboarding.v3.a11y.caches.store": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opens Caches and asks for a folder."
+          }
+        }
+      }
+    },
+    "onboarding.v3.a11y.menuBar": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adds Room to the menu bar."
+          }
+        }
+      }
+    },
+    "onboarding.v3.a11y.example.1": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Example, nothing on your Mac moves. Step 1 of 3: you review first."
+          }
+        }
+      }
+    },
+    "onboarding.v3.a11y.example.2": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Example, nothing on your Mac moves. Step 2 of 3: moved to Trash, receipt kept in History."
+          }
+        }
+      }
+    },
+    "onboarding.v3.a11y.example.3": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Example, nothing on your Mac moves. Step 3 of 3: put back where it was."
           }
         }
       }

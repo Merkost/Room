@@ -32,6 +32,31 @@ struct RoomMapCanvas: View {
     @Environment(\.roomMotion) private var motion
 }
 
+/// Hover: the tile brightens a little and a 1 pt inset ring draws itself around it (120 ms). No scale, no shadow.
+private struct RoomMapHoverRing: View {
+    let outline: Path
+    @Environment(\.roomMotion) private var motion
+    @State private var drawn = false
+
+    var body: some View {
+        let shape = RoomPathShape(path: outline)
+        ZStack {
+            shape.fill(RoomTokens.Surface.hover)
+            shape.trim(from: 0, to: drawn || !motion.isFull ? 1 : 0)
+                .stroke(RoomTokens.Ink.graphite, lineWidth: RoomTokens.Map.hoverRing * 2)
+                .clipShape(shape)
+        }
+        .onAppear {
+            withAnimation(motion.animation(RoomTokens.Motion.quick, fallback: nil)) { drawn = true }
+        }
+    }
+}
+
+private nonisolated struct RoomPathShape: Shape {
+    let path: Path
+    func path(in rect: CGRect) -> Path { path }
+}
+
 private struct RoomMapCanvasSurface: View {
     @Environment(\.roomAccent) private var accent
     @Namespace private var rotor
@@ -63,7 +88,15 @@ private struct RoomMapCanvasSurface: View {
                     .equatable()
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
-                if interactive { interactiveCanvas }
+                if interactive {
+                    if let hovered, let tile = layer.items.first(where: { $0.id == hovered }) {
+                        RoomMapHoverRing(outline: RoomMapArtwork.outline(tile))
+                            .id(hovered)
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                    }
+                    interactiveCanvas
+                }
                 else if selection != nil { highlights }
             }
         }
@@ -79,7 +112,7 @@ private struct RoomMapCanvasSurface: View {
             if tile.id == selection {
                 frame.stroke(shape, RoomTokens.Surface.group, lineWidth: stroke + 2)
             }
-            if tile.id == selection || tile.id == hover {
+            if tile.id == selection {
                 frame.stroke(shape, RoomTokens.Ink.graphite, lineWidth: stroke, clip: shape)
             }
             if tile.id == focus {
@@ -212,7 +245,7 @@ private struct RoomMapCanvasSurface: View {
 
     private func spoken(_ tile: RoomMapItem) -> String {
         RoomMapSpeech.label(tile, parentName: level.name, parentBytes: level.allocatedBytes,
-                            spoken: RoomFormat.bytes, hidden: hidden)
+                            spoken: RoomFormat.gb, hidden: hidden)
     }
 
     private func hit(_ point: CGPoint) {
@@ -277,7 +310,7 @@ private struct RoomMapArtwork: View, Equatable {
         guard tile.label != .none else { return }
         let labelBox = (tile.headerRect ?? tile.drawRect).insetBy(dx: RoomTokens.Map.labelPaddingX, dy: RoomTokens.Map.labelPaddingY)
         guard labelBox.width > 0, labelBox.height > 0 else { return }
-        let size = hidden ? "Hidden" : (tile.isPartial && !isPending ? "≥ " : "") + RoomFormat.bytes(tile.bytes)
+        let size = hidden ? "Hidden" : (tile.isPartial && !isPending ? "≥ " : "") + RoomFormat.gb(tile.bytes)
         let titleFont = tile.drawRect.width >= 140 && tile.drawRect.height >= 70
             ? RoomTokens.Typography.section : RoomTokens.Typography.caption.weight(.semibold)
         let grouped = tile.role == .group

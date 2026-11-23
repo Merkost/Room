@@ -142,7 +142,7 @@ struct RoomDiskMapView: View {
             VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
                 Text("Other").font(RoomTokens.Typography.title)
                 if let other = otherDetails {
-                    Text(hidden ? "Size hidden" : "\(other.itemCount.formatted()) small items · \(other.isPartial ? "≥ " : "")\(RoomFormat.bytes(other.allocatedBytes))")
+                    Text(hidden ? "Size hidden" : "\(other.itemCount.formatted()) small items · \(other.isPartial ? "≥ " : "")\(RoomFormat.gb(other.allocatedBytes))")
                 }
                 Text("These items were measured together. Open a mapped folder to see its retained items.")
                     .foregroundStyle(RoomTokens.Ink.secondary)
@@ -174,10 +174,19 @@ struct RoomDiskMapView: View {
                     step(to: $0, animated: NSApp.currentEvent?.type == .leftMouseUp)
                 }
                 if !hidden {
-                    Text("\(level.isPartial ? "≥ " : "")\(RoomFormat.bytes(level.allocatedBytes)) · hidden files included")
+                    Text("\(RoomFormat.gb(level.allocatedBytes, partial: level.isPartial)) · hidden files included")
                         .font(RoomTokens.Typography.caption)
                         .foregroundStyle(RoomTokens.Ink.secondary)
                         .lineLimit(1)
+                }
+                if insights.canGoBackToHomeMap {
+                    Button { Task { await insights.showHomeMap() } } label: {
+                        Label("Back to home folder", systemImage: "house")
+                            .font(RoomTokens.Typography.caption)
+                    }
+                    .roomSecondary(.small)
+                    .fixedSize()
+                    .accessibilityIdentifier("RoomDiskMapBackHome")
                 }
             }
             .help(model.current.map { "Scanned \($0.scannedAt.formatted(.dateTime.weekday(.abbreviated).month().day().hour().minute()))" } ?? "")
@@ -356,7 +365,7 @@ struct RoomDiskMapView: View {
                                "Map “\(pending.lastPathComponent)” to see what takes up space.",
                            artwork: .map) {
                 Button("Map This Folder") { insights.scanDisk(url: pending) }
-                    .roomScreenPrimary(accent)
+                    .roomScreenPrimary(accent) // one-filled: exclusive start panel, shown only before a map exists
                     .disabled(!insights.canChooseDiskLocation)
                     .accessibilityIdentifier("RoomDiskMapPendingFolder")
                 Button("Choose Another Folder…", action: insights.chooseDiskFolder)
@@ -370,7 +379,7 @@ struct RoomDiskMapView: View {
                 Button(action: insights.chooseDiskFolder) {
                     Label("Choose Folder…", systemImage: "folder")
                 }
-                .roomScreenPrimary(accent)
+                .roomScreenPrimary(accent) // one-filled: exclusive start panel, shown only before a map exists
                 .disabled(!insights.canChooseDiskLocation)
                 .accessibilityIdentifier("RoomDiskChooseFolder")
                 if !insights.accessFolders.isEmpty {
@@ -461,7 +470,7 @@ struct RoomDiskMapView: View {
                         .foregroundStyle(RoomTokens.Ink.secondary)
                 }
                 RoomMapReadout(title: "Measured so far",
-                               detail: hidden ? "Size hidden" : blueprint.counter(files: { $0.formatted() }, bytes: RoomFormat.bytes))
+                               detail: hidden ? "Size hidden" : blueprint.counter(files: { $0.formatted() }, bytes: RoomFormat.gb))
             }
             if isWide && !hidesWideInspector { wideInspector }
         }

@@ -272,7 +272,7 @@ struct RoomCleanupReviewSheet: View {
     }
 
     private func format(_ bytes: Int64) -> String {
-        if mapCleanup != nil { return RoomCachesVisibility.figure(RoomFormat.bytes(bytes), hidden: hidden) }
+        if mapCleanup != nil { return RoomCachesVisibility.figure(RoomFormat.gb(bytes), hidden: hidden) }
         return RoomCachesVisibility.bytes(bytes, hidden: hidden)
     }
 }

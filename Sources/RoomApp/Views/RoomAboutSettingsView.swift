@@ -88,7 +88,7 @@ struct RoomAboutSettingsView: View {
                     Text("History shows what moved to Trash and which items Room can restore.")
                         .font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                    Button("Open Trash") { model.openTrash() }.buttonStyle(.glass)
+                    Button("Open Trash") { model.openTrash() }.buttonStyle(.glass).tint(nil)
                 }
             }
         }

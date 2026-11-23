@@ -24,7 +24,7 @@ struct RoomMenuBarView: View {
             swapBytes: insights.memoryReport.flatMap(RoomMonitorPresentation.measuredSwap), showSwap: showSwap,
             caches: cacheModel.cachesCheckStore.check, room: rooms.state,
             format: RoomMenuBarFormat.live,
-            formatSize: RoomFormat.bytes)
+            formatSize: RoomFormat.gb)
     }
 
     var body: some View {
@@ -55,7 +55,7 @@ struct RoomMenuBarView: View {
                 .buttonStyle(.glassProminent).tint(accent.fill)
                 .accessibilityIdentifier("RoomPopoverOpenRoom")
                 Button(RoomPopoverPresentation.quitTitle) { NSApp.terminate(nil) }
-                    .buttonStyle(.glass).accessibilityIdentifier("RoomPopoverQuit")
+                    .buttonStyle(.glass).tint(nil).accessibilityIdentifier("RoomPopoverQuit")
             }
             .font(RoomTokens.Typography.bodyStrong)
             .padding(.top, RoomTokens.Space.inner - RoomTokens.Space.row)

@@ -23,7 +23,7 @@ struct RoomOverviewPlanTests {
 
     @Test func contextGridExcludedFromDataCount() throws {
         let drawing = try #require(RoomOverviewPlanGeometry.make(plan: normal, size: viewport))
-        let details = RoomOverviewPlanPresentation(plan: normal, hidden: false, format: RoomFormat.overviewBytes)
+        let details = RoomOverviewPlanPresentation(plan: normal, hidden: false, format: RoomFormat.gb)
         let unmeasured = try #require(details.rows.first { $0.id == .notMapped })
         #expect(!drawing.contextGrid.isEmpty)
         #expect(drawing.layout.dots.allSatisfy { $0.room != .notMapped })
@@ -35,7 +35,7 @@ struct RoomOverviewPlanTests {
         // Under 0.5 MB produces no visual rect in the shared rounding code.
         let tiny = RoomOverviewPlanInput(capacityBytes: normal.capacityBytes, freeBytes: 1, goalBytes: nil)
         let drawing = try #require(RoomOverviewPlanGeometry.make(plan: tiny, size: viewport))
-        let details = RoomOverviewPlanPresentation(plan: tiny, hidden: false, format: RoomFormat.overviewBytes)
+        let details = RoomOverviewPlanPresentation(plan: tiny, hidden: false, format: RoomFormat.gb)
         let free = try #require(details.rows.first { $0.id == .free })
         #expect(drawing.free == nil && drawing.rings.isEmpty)
         #expect(free.dots == "under 4 GB")
@@ -78,7 +78,7 @@ struct RoomOverviewPlanTests {
     }
 
     @Test func planArrowsUseDescendingBytesAndStableIDs() {
-        let details = RoomOverviewPlanPresentation(plan: normal, hidden: true, format: RoomFormat.overviewBytes)
+        let details = RoomOverviewPlanPresentation(plan: normal, hidden: true, format: RoomFormat.gb)
         #expect(details.nextFocus(from: nil, step: 1) == .notMapped)
         #expect(details.nextFocus(from: .notMapped, step: 1) == .free)
         #expect(details.nextFocus(from: .free, step: -1) == .notMapped)

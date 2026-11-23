@@ -39,7 +39,7 @@ struct RoomReceiptView: View {
                 } else {
                     let count = receipt.details.filter(\.canRestore).count
                     Text(hidden ? "Items in Trash" : "\(count) \(count == 1 ? "item" : "items") in Trash")
-                    if let restore { Button("Restore", action: restore).buttonStyle(.glass) }
+                    if let restore { Button("Restore", action: restore).buttonStyle(.glass).tint(nil) }
                 }
             }
             .foregroundStyle(RoomTokens.Ink.secondary)
@@ -74,7 +74,7 @@ struct RoomReceiptView: View {
                 .animation(motion.animation(RoomTokens.Motion.receiptLead, fallback: nil), value: printed)
                 .accessibilityHidden(true)
             Text(RoomCachesVisibility.bytes(bytes, hidden: hidden)).monospacedDigit().fixedSize()
-                .accessibilityLabel(hidden ? "Size hidden" : RoomFormat.overviewBytes(bytes))
+                .accessibilityLabel(hidden ? "Size hidden" : RoomFormat.gb(bytes))
         }
         .accessibilityElement(children: .combine)
     }

@@ -598,8 +598,8 @@ final class RoomViewModel {
         let outcome = RoomMoveOutcome(movedCount: receipt.trashedCount, movedBytes: receipt.trashedBytes, failures: reasons,
             withoutRecoveryInfo: receipt.items.filter { $0.status == .trashed && $0.trashIdentity == nil }.count)
         activityCenter?.clear(.caches)
-        activityCenter?.post(outcome.pill(receiptID: receipt.id, format: RoomFormat.overviewBytes), from: .makeRoom)
-        operationAlert = outcome.alert(format: RoomFormat.overviewBytes)
+        activityCenter?.post(outcome.pill(receiptID: receipt.id, format: RoomFormat.gb), from: .makeRoom)
+        operationAlert = outcome.alert(format: RoomFormat.gb)
         if !receipt.issues.isEmpty { errorMessage = receipt.issues.prefix(4).map(\.message).joined(separator: "\n\n") }
         await refreshHistory()
     }

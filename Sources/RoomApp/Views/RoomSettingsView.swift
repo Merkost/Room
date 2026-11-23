@@ -210,7 +210,7 @@ private struct RoomGeneralSettingsView: View {
     #if !ROOM_APP_STORE
     private var weeklyCheckRow: some View {
         let threshold = weeklyCheck.thresholdGB
-        let thresholdLabel = RoomFormat.overviewBytes(Int64(threshold) * 1_000_000_000)
+        let thresholdLabel = RoomFormat.gb(Int64(threshold) * 1_000_000_000)
         let format = String(localized: "settings.general.weekly", defaultValue: "Tell me when caches grow by more than %@ in a week", bundle: RoomCopy.bundle)
         return RoomSettingsFormRow("Weekly check", hint: String(localized: "settings.general.weekly.help",
                 defaultValue: "A notification, never an automatic cleanup.", bundle: RoomCopy.bundle)) {

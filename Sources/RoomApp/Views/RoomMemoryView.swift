@@ -42,10 +42,12 @@ struct RoomMemoryView: View {
             let series = range.series(in: insights.pressureHistory)
             let finding = pressureFinding(series: series, now: now)
             pressureOverview(level: level, finding: finding)
-            RoomPressureTimeline(series: series, now: now, level: level, finding: finding, range: $range)
+            // "In use" first, then the history: the current answer before the record of how it got here.
             if let report = insights.memoryReport, countersAvailable(report) {
                 memorySummary(report, now: now)
+                    .transition(.opacity)
             }
+            RoomPressureTimeline(series: series, now: now, level: level, finding: finding, range: $range)
             #if ROOM_APP_STORE
             if let report = insights.memoryReport {
                 if !report.recommendations.isEmpty { recommendations(report) }
@@ -127,7 +129,7 @@ struct RoomMemoryView: View {
                         HStack(spacing: 16) {
                             Text(process.name).lineLimit(1)
                             Spacer(minLength: 12)
-                            Text(RoomFormat.memoryBytes(process.residentBytes)).monospacedDigit()
+                            Text(RoomFormat.memory(process.residentBytes)).monospacedDigit()
                                 .foregroundStyle(.secondary)
                         }
                         .font(RoomTokens.Typography.body)
@@ -212,7 +214,7 @@ struct RoomMemoryView: View {
                                 HStack(spacing: 12) {
                                     Text(process.name).lineLimit(1)
                                     Spacer()
-                                    Text(RoomFormat.memoryBytes(process.residentBytes)).monospacedDigit().foregroundStyle(.secondary)
+                                    Text(RoomFormat.memory(process.residentBytes)).monospacedDigit().foregroundStyle(.secondary)
                                     Image(systemName: "arrow.up.right").foregroundStyle(.tertiary)
                                 }
                                 .font(RoomTokens.Typography.body).padding(.vertical, 7)
@@ -260,7 +262,7 @@ struct RoomMemoryView: View {
                 HStack(spacing: 10) {
                     RoomPocketScrubber(level: level, size: 34)
                         .animation(motion.isFull ? RoomTokens.Motion.standard : nil, value: level)
-                    Text(level?.word ?? "—").font(RoomTokens.Typography.figure)
+                    Text(level?.word ?? RoomFormat.notMeasured).font(RoomTokens.Typography.figure)
                         .foregroundStyle(RoomPocketScrubber.color(level))
                 }.accessibilityElement(children: .combine)
                 Text(finding)
@@ -303,10 +305,10 @@ struct RoomMemoryView: View {
                     Text(average.map { "In use · \($0.caption)" } ?? "In use")
                         .font(RoomTokens.Typography.title)
                     HStack(spacing: 20) {
-                        memoryCounter("Current", bytes: report.usedBytes, font: RoomTokens.Typography.figure)
+                        memoryCounter("Current", bytes: report.usedBytes, font: RoomTokens.Typography.figure, hero: true)
                         memoryCounter("Average", bytes: average?.bytes, font: RoomTokens.Typography.figure)
                     }
-                    Text("of \(RoomFormat.memoryBytes(report.totalBytes))")
+                    Text("of \(RoomFormat.memory(report.totalBytes))")
                         .font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
                 }.frame(maxWidth: .infinity, alignment: .leading)
                 if let average {
@@ -339,7 +341,7 @@ struct RoomMemoryView: View {
     }
 
     private func usageSegment(_ title: String, _ bytes: Int64, color: Color, scale: Double) -> some View {
-        let label = "\(title) · \(RoomFormat.memoryBytes(bytes))"
+        let label = "\(title) · \(RoomFormat.memory(bytes))"
         return Rectangle().fill(color)
             .frame(width: Double(bytes) * scale)
             .focusable(bytes > 0)
@@ -365,12 +367,13 @@ struct RoomMemoryView: View {
         }
     }
 
-    private func memoryCounter(_ title: String, bytes: Int64?, font: Font = RoomTokens.Typography.counter) -> some View {
+    private func memoryCounter(_ title: String, bytes: Int64?, font: Font = RoomTokens.Typography.counter,
+                               hero: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title).font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
-            Text(bytes.map(RoomFormat.memoryBytes) ?? "—")
-                .font(font).monospacedDigit()
-                .foregroundStyle(RoomTokens.Ink.graphite)
+            Text(bytes.map { RoomFormat.memory($0, hero: hero) } ?? RoomFormat.notMeasured)
+                .font(bytes == nil ? RoomTokens.Typography.body : font).monospacedDigit()
+                .foregroundStyle(bytes == nil ? RoomTokens.Ink.secondary : RoomTokens.Ink.graphite)
                 .lineLimit(1).minimumScaleFactor(0.8)
         }.accessibilityElement(children: .combine)
     }
@@ -412,7 +415,7 @@ private struct MemoryApplicationRow: View {
                 Text(application.name).font(RoomTokens.Typography.body).lineLimit(1)
                 Spacer(minLength: 10)
                 if let resident = application.residentBytes {
-                    Text("≈ \(RoomFormat.memoryBytes(resident))").font(RoomTokens.Typography.body).monospacedDigit().foregroundStyle(.secondary)
+                    Text("≈ \(RoomFormat.memory(resident))").font(RoomTokens.Typography.body).monospacedDigit().foregroundStyle(.secondary)
                     RoomMemoryProcessBar(bytes: resident, maximum: maximumBytes)
                 } else {
                     Text("Not in this sample").font(RoomTokens.Typography.caption).foregroundStyle(.tertiary)
@@ -458,7 +461,7 @@ private struct MemoryQuitReviewSheet: View {
                             Text(application.name).font(RoomTokens.Typography.body)
                             Spacer()
                             if let resident = application.residentBytes {
-                                Text("≈ \(RoomFormat.memoryBytes(resident))").font(RoomTokens.Typography.body).monospacedDigit().foregroundStyle(.secondary)
+                                Text("≈ \(RoomFormat.memory(resident))").font(RoomTokens.Typography.body).monospacedDigit().foregroundStyle(.secondary)
                             }
                         }
                     }
@@ -468,7 +471,7 @@ private struct MemoryQuitReviewSheet: View {
             .frame(maxHeight: 230)
             VStack(alignment: .leading, spacing: 8) {
                 if review.residentBytes > 0 {
-                    Text("About \(RoomFormat.memoryBytes(review.residentBytes)) resident in this sample")
+                    Text("About \(RoomFormat.memory(review.residentBytes)) resident in this sample")
                         .font(RoomTokens.Typography.bodyStrong)
                 }
                 if review.unmeasuredCount > 0 {

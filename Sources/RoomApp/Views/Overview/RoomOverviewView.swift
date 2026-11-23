@@ -12,6 +12,13 @@ private struct RoomOverviewArrivalGroup: ViewModifier {
     }
 }
 
+/// When Overview plays its arrival (answer fades in, the capacity bar fills, the plan settles).
+nonisolated enum RoomOverviewArrival {
+    static func plays(origin: RoomSelectionOrigin, needsWelcome: Bool, hasLeftOverview: Bool) -> Bool {
+        origin != .keyboard && !needsWelcome && !hasLeftOverview
+    }
+}
+
 struct RoomOverviewView: View {
     let insights: RoomInsightsModel
     let rooms: RoomRoomsModel
@@ -77,8 +84,9 @@ struct RoomOverviewView: View {
             }
             if let plan = snapshot.plan {
                 RoomOverviewStoragePanel(volumeName: insights.volumeCapacity?.volumeName,
-                    balance: .init(plan: plan, goal: goalEnabled ? Int64(storedGoal) : nil))
-                    .modifier(arrivalGroup(0))
+                    balance: .init(plan: plan, goal: goalEnabled ? Int64(storedGoal) : nil),
+                    arrives: animatesArrival)
+                    .roomReveal(!animatesArrival || arrived, animation: RoomTokens.Motion.fade)
             }
             if snapshot.action != .usingSpaceOnly || map == nil {
                 nextAction(snapshot)
@@ -208,39 +216,36 @@ struct RoomOverviewView: View {
                      mapActionAvailable: inputs.mapActionAvailable, mapping: inputs.mapping, stoppedMapping: inputs.stoppedMapping)
     }
 
+    /// The next step as one line under the answer (no card): what it is, its state, and the screen's one filled button.
     private func nextAction(_ snapshot: RoomOverviewSnapshot) -> some View {
         let copy = actionCopy(snapshot)
         return ViewThatFits(in: .horizontal) {
-            HStack(alignment: .center, spacing: RoomTokens.Space.breath1) {
-                actionSummary(copy)
+            HStack(alignment: .center, spacing: RoomTokens.Space.group) {
+                actionSummary(copy, wraps: false)
                 Spacer(minLength: 0)
                 actions(snapshot).fixedSize(horizontal: true, vertical: false)
             }
-            VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
-                actionSummary(copy)
+            VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
+                actionSummary(copy, wraps: true)
                 actions(snapshot)
             }
         }
-        .padding(RoomTokens.Space.group)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoomTokens.Surface.group, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.popover))
+        .accessibilityIdentifier("RoomOverviewNextAction")
     }
 
-    private func actionSummary(_ copy: (title: String, detail: String, symbol: String)) -> some View {
-        HStack(alignment: .top, spacing: RoomTokens.Space.inner) {
-            RoomChangingSymbol(name: copy.symbol, color: accent.text)
-                .font(RoomTokens.Typography.lead)
-                .frame(width: RoomTokens.Space.breath2, height: RoomTokens.Space.breath2)
-                .background(accent.wash, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.row))
+    private func actionSummary(_ copy: (title: String, detail: String, symbol: String), wraps: Bool) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: RoomTokens.Space.row) {
+            RoomChangingSymbol(name: copy.symbol, color: RoomTokens.Ink.secondary)
+                .font(RoomTokens.Typography.body)
                 .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(copy.title).font(RoomTokens.Typography.title).accessibilityHeading(.h2)
-                RoomMaskable(copy.detail)
-                    .font(RoomTokens.Typography.body)
-                    .foregroundStyle(RoomTokens.Ink.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.vertical, 2)
+            Text(copy.title).font(RoomTokens.Typography.bodyStrong).accessibilityHeading(.h2)
+                .fixedSize()
+            RoomMaskable(copy.detail)
+                .font(RoomTokens.Typography.body)
+                .foregroundStyle(RoomTokens.Ink.secondary)
+                .lineLimit(wraps ? nil : 1)
+                .fixedSize(horizontal: !wraps, vertical: wraps)
         }
         .layoutPriority(1)
     }
@@ -274,7 +279,7 @@ struct RoomOverviewView: View {
                 Button(insights.isChoosingDiskFolder ? "Choosing a folder…" :
                        snapshot.state == .mappingStopped ? "Map again" : snapshot.actionTitle,
                        action: insights.scanHome)
-                    .roomScreenPrimary(accent)
+                    .roomScreenPrimary(accent) // one-filled: exclusive with the caches action (one action case at a time)
                     .disabled(insights.isChoosingDiskFolder)
             case .stopMapping:
                 Button(snapshot.actionTitle, action: insights.cancelDiskScan).roomSecondary()

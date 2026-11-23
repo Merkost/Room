@@ -18,9 +18,35 @@ extension Color {
 }
 
 extension Color {
-    /// The same light and dark pair as a `RoomDS` swatch. Increase Contrast keeps using the light and dark values (DS-5 adopts the HC ones).
+    /// A `RoomDS` swatch with all four values: light, dark, and their Increase Contrast steps (DS-5). The colour keeps
+    /// its `room.*` name so nothing that caches by name changes.
     static func room(_ swatch: RoomDS.Swatch, name: String) -> Color {
-        room(light: swatch.light.hex, dark: swatch.dark.hex, alphaLight: swatch.light.alpha, alphaDark: swatch.dark.alpha, name: name)
+        Color(nsColor: NSColor(name: NSColor.Name(name)) { appearance in
+            swatch.value(RoomContrast.appearance(of: appearance)).nsColor
+        })
+    }
+}
+
+/// Which of the four token values applies. The window's appearance says light or dark; Increase Contrast comes from the
+/// appearance when AppKit offers the high-contrast names, else from the system setting (BRAND-DS §13 fallback).
+nonisolated enum RoomContrast {
+    static func appearance(of nsAppearance: NSAppearance,
+                           systemIncreasesContrast: Bool = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast)
+        -> RoomDS.Appearance {
+        let fromAppearance = RoomDS.Swatch.appearance(of: nsAppearance)
+        let dark = fromAppearance == .dark || fromAppearance == .darkHC
+        let high = fromAppearance == .lightHC || fromAppearance == .darkHC || systemIncreasesContrast
+        return RoomDS.Swatch.resolve(dark: dark, highContrast: high)
+    }
+
+    /// Plan walls: 1.5 pt, 2 pt under Increase Contrast (spec 15 §4).
+    @MainActor static func planWall(_ contrast: ColorSchemeContrast) -> CGFloat {
+        contrast == .increased ? RoomTokens.OverviewPlan.elevatedWall : RoomTokens.OverviewPlan.wall
+    }
+
+    /// Free-space rings: 80 % ink, solid under Increase Contrast.
+    @MainActor static func ringOpacity(_ contrast: ColorSchemeContrast) -> Double {
+        contrast == .increased ? 1 : RoomTokens.Dots.freeRingOpacity
     }
 }
 
@@ -158,13 +184,48 @@ enum RoomTokens {
         static let plan: CGFloat = 11
     }
 
+    /// Onboarding v3 sheet (ONBOARDING-V3-SPEC §3). The stage sizes live in `RoomOnboardingStage`.
     enum Onboarding {
-        static let width: CGFloat = 620
-        static let height: CGFloat = 540
-        static let planWidth: CGFloat = 300
-        static let planHeight: CGFloat = 262
-        static let supportingWidth: CGFloat = 210
-        static let choicePadding: CGFloat = 14
+        static let width: CGFloat = RoomDS.Layout.onboardingSheet.width
+        static let height: CGFloat = RoomDS.Layout.onboardingSheet.height
+        static let maxHeight: CGFloat = 600
+        static let top: CGFloat = 32
+        static let side: CGFloat = 40
+        static let bottom: CGFloat = 24
+        static let headerGap: CGFloat = 8
+        static let leadReserve: CGFloat = 44
+        static let leadWidth: CGFloat = 560
+        static let leadToStage: CGFloat = 20
+        static let captionGap: CGFloat = 8
+        static let captionHeight: CGFloat = 16
+        static let choiceGap: CGFloat = 20
+        static let alternativesGap: CGFloat = 16
+        /// Skip to Continue, and between the step 3 links.
+        static let linkGap: CGFloat = 20
+        static let contextWidth: CGFloat = 370
+        static let footerHeight: CGFloat = 34
+        static let exampleOrigin = CGPoint(x: 24, y: 46)
+        static let exampleSize = CGSize(width: 336, height: 178)
+        static let chipOrigin = CGPoint(x: 16, y: 14)
+        static let railX: CGFloat = 388
+        static let railWidth: CGFloat = 192
+        static let railItem: CGFloat = 60
+        static let bead: CGFloat = 20
+        static let triptychBead: CGFloat = 18
+        static let triptychTop: CGFloat = 50
+        static let triptychInset: CGFloat = 16
+        static let triptychGap: CGFloat = 12
+        static let demoTick: Duration = .milliseconds(1200)
+        /// 22 pt semibold, tracking -0.2, line 28 (Typography.aboutHeading).
+        static let title = Typography.aboutHeading
+        static let titleTracking: CGFloat = -0.2
+        static let markSize: CGFloat = 44
+        static let markOpacity: Double = 0.55
+        static let notMappedOpacity: Double = 0.6
+        static let labelBackingRadius: CGFloat = 5
+        static let ringGlyphRadius: CGFloat = 3.4
+        static let settleScale: CGFloat = 0.6
+        static let disabledOpacity: Double = 0.55
     }
 
     enum Sidebar {
@@ -288,6 +349,8 @@ enum RoomTokens {
         static let kindBarHeight: CGFloat = 12
         static let kindHoverOpacity = 0.18
         static let focusStroke: CGFloat = 2
+        /// Hover ring inside a tile (the stroke is doubled and clipped, so 1 pt shows inside).
+        static let hoverRing: CGFloat = 1
         static let labelPaddingX: CGFloat = 7
         static let labelPaddingY: CGFloat = 3
         static let hatchStroke: CGFloat = 1.5
@@ -463,8 +526,9 @@ extension View {
     func roomScreenPrimary(_ accent: RoomTokens.Accent) -> some View {
         buttonStyle(RoomScreenPrimaryStyle(accent: accent))
     }
-    /// Secondary actions: ordinary glass.
-    func roomSecondary() -> some View { buttonStyle(.glass).controlSize(.large) }
+    /// Secondary actions: ordinary, untinted glass. The scene root tints everything with the accent, and tinted glass
+    /// reads as a second filled button, so secondary buttons drop the tint (one filled button per screen).
+    func roomSecondary(_ size: ControlSize = .large) -> some View { buttonStyle(.glass).tint(nil).controlSize(size) }
     /// Quiet links ("See what is using space", "Your week ›"): plain, accent text step, 24 pt hit target.
     func roomLink(_ accent: RoomTokens.Accent) -> some View {
         buttonStyle(RoomPressStyle()).foregroundStyle(accent.text).frame(minHeight: 24).contentShape(Rectangle())

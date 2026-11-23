@@ -69,13 +69,14 @@ struct RoomHideRoot: ViewModifier {
     }
 }
 
+/// A figure or name that Hide can mask. Toggling Hide dissolves the digits to bullets in 150 ms (a brief blur and a
+/// cross-fade of the glyphs in place); geometry never moves. Reduce Motion keeps the cross-fade and drops the blur.
 struct RoomMaskable: View {
     let text: String
     let kind: RoomMaskKind
     let spoken: String
     @Environment(\.roomHide) private var hide
     @Environment(\.roomMotion) private var motion
-    @State private var started: Date?
 
     init(_ text: String, kind: RoomMaskKind = .figure, spoken: String? = nil) {
         self.text = text
@@ -83,38 +84,20 @@ struct RoomMaskable: View {
         self.spoken = spoken ?? text
     }
 
-    var body: some View {
-        Group {
-            if let started, motion.isFull, !hide.isPeeking {
-                TimelineView(.animation) { context in
-                    Text(verbatim: animatedText(elapsed: context.date.timeIntervalSince(started) * 1000))
-                }
-            } else {
-                Text(verbatim: RoomHideMask.display(text, kind: kind, hide: hide))
-            }
-        }
-        .monospacedDigit()
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(RoomHideSpeech.value(spoken, hide: hide))
-        .onChange(of: hide.isOn) { _, _ in
-            let duration = RoomHideMask.duration(text, kind: kind, fullMotion: motion.isFull)
-            started = duration > 0 ? Date() : nil
-        }
-        .onChange(of: hide.isPeeking) { _, _ in started = nil }
-        .task(id: started) {
-            guard started != nil else { return }
-            do {
-                let delay = RoomHideMask.duration(text, kind: kind, fullMotion: motion.isFull)
-                try await Task.sleep(for: .milliseconds(Int64(delay)))
-            } catch { return }
-            started = nil
-        }
-    }
+    private enum Dissolve: CaseIterable { case rest, soft, clear }
 
-    private func animatedText(elapsed: Double) -> String {
-        let total = RoomHideMask.maskableCount(text, kind: kind)
-        let visible = RoomHideMask.maskedCharacters(elapsedMS: elapsed, total: total, fullMotion: motion.isFull)
-        return RoomPure.mask(text, first: hide.isOn ? visible : total - visible, lettersToo: kind == .name)
+    var body: some View {
+        Text(verbatim: RoomHideMask.display(text, kind: kind, hide: hide))
+            .monospacedDigit()
+            .contentTransition(.opacity)
+            .animation(hide.isPeeking ? nil : RoomTokens.Motion.fade, value: hide.isOn)
+            .phaseAnimator(Dissolve.allCases, trigger: motion.isFull && !hide.isPeeking ? hide.isOn : nil) { content, phase in
+                content.blur(radius: phase == .soft ? RoomHideMask.dissolveBlur : 0)
+            } animation: { _ in
+                .timingCurve(RoomTokens.Motion.fadeCurve, duration: RoomHideMask.dissolveDuration / 2)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(RoomHideSpeech.value(spoken, hide: hide))
     }
 }
 

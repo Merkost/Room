@@ -132,7 +132,7 @@ struct RoomDeveloperView: View {
             } label: {
                 Text(model.canScan ? "Scan" : "Choose projects folder…")
             }
-            .roomPrimary(accent)
+            .roomPrimary(accent) // one-filled: exclusive intro, shown only before the first scan
             .disabled(model.isScanning || model.isChoosingFolder)
             .accessibilityIdentifier("RoomDeveloperScanButton")
         }

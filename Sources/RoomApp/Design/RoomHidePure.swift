@@ -13,6 +13,9 @@ nonisolated struct RoomHideState: Equatable, Sendable {
 }
 
 nonisolated enum RoomHideMask {
+    /// The dissolve when Hide toggles (REVIEW §4.7): 150 ms, a 1.5 pt blur at its midpoint, no movement.
+    static let dissolveDuration: TimeInterval = RoomTokens.Motion.fadeDuration
+    static let dissolveBlur: CGFloat = 1.5
     static func maskableCount(_ s: String, kind: RoomMaskKind) -> Int {
         s.reduce(0) { $0 + (($1.isNumber || (kind == .name && $1.isLetter)) ? 1 : 0) }
     }

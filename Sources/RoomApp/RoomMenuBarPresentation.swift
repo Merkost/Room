@@ -66,53 +66,19 @@ nonisolated struct RoomMenuBarFormat: Sendable {
 
 extension RoomMenuBarFormat {
     /// What the status item and the popover show. Memory in binary gigabytes like Activity Monitor with one decimal
-    /// ("38.5 GB", "48 GB"; the system formatter gave "38.53 GB"). Free disk in decimal gigabytes like Finder: whole from
-    /// 10 GB up ("312 GB"), one decimal below ("4.2 GB"), terabytes with one decimal ("1.2 TB").
+    /// ("38.5 GB", "48 GB"; the system formatter gave "38.53 GB"). Free disk in decimal gigabytes like Finder, whole
+    /// everywhere ("312 GB", "4 GB"), terabytes with one decimal ("1.2 TB"). Only the number format changed here (DS-7).
     static let live = RoomMenuBarFormat(
         memory: { liveMemory($0) },
         disk: { liveDisk($0) })
 
+    /// Both route through `RoomFormat` so the menu bar, the popover and the window say the same thing for the same value.
     nonisolated static func liveMemory(_ bytes: Int64, locale: Locale = .current) -> String {
-        if bytes <= 0 { return "0 KB" }
-        let mib = (Double(bytes) / 1_048_576).rounded()
-        // Pick the unit after rounding: 1,023.6 MiB is "1 GB", not "1,024 MB".
-        if mib < 1_024 { return whole(max(mib, 1), locale: locale) + " MB" }
-        return trimmed(Double(bytes) / 1_073_741_824, decimals: 1, locale: locale) + " GB"
+        RoomFormat.memory(bytes, hero: true, locale: locale)
     }
 
     nonisolated static func liveDisk(_ bytes: Int64, locale: Locale = .current) -> String {
-        if bytes <= 0 { return "0 KB" }
-        let value = Double(bytes)
-        if value >= 1e12 || (value / 1e9).rounded() >= 1_000 { return trimmed(value / 1e12, decimals: 1, locale: locale) + " TB" }
-        if value >= 1e10 { return whole((value / 1e9).rounded(), locale: locale) + " GB" }
-        if value >= 1e9 {
-            let tenths = (value / 1e8).rounded() / 10
-            // 9.96 GB rounds to 10.0: show it as a whole figure, like the 10 GB and up rule.
-            return tenths >= 10 ? whole(tenths, locale: locale) + " GB" : trimmed(tenths, decimals: 1, locale: locale) + " GB"
-        }
-        let mb = (value / 1e6).rounded()
-        return mb >= 1_000 ? "1 GB" : whole(max(mb, 1), locale: locale) + " MB"
-    }
-
-    /// A whole number without grouping separators, in the locale's own digits.
-    private nonisolated static func whole(_ value: Double, locale: Locale) -> String {
-        let formatter = NumberFormatter()
-        formatter.locale = locale
-        formatter.numberStyle = .none
-        formatter.usesGroupingSeparator = false
-        formatter.maximumFractionDigits = 0
-        return formatter.string(from: NSNumber(value: value)) ?? String(Int(value))
-    }
-
-    private nonisolated static func trimmed(_ value: Double, decimals: Int, locale: Locale) -> String {
-        let formatter = NumberFormatter()
-        formatter.locale = locale
-        formatter.numberStyle = .decimal
-        formatter.usesGroupingSeparator = false
-        formatter.minimumFractionDigits = 0
-        formatter.maximumFractionDigits = decimals
-        formatter.roundingMode = .halfEven
-        return formatter.string(from: NSNumber(value: value)) ?? String(format: "%.\(decimals)f", value)
+        RoomFormat.gb(bytes, hero: false, locale: locale)
     }
 }
 

@@ -135,7 +135,7 @@ struct RoomSourceSheet: View {
 
             HStack {
                 Button { model.reveal(source: source) } label: { Label("Show in Finder", systemImage: "folder") }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.glass).tint(nil)
                 Spacer()
                 Button("Done") { dismiss() }
                     .buttonStyle(.glassProminent)

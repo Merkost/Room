@@ -105,8 +105,9 @@ struct RoomRootView: View {
         .focusedSceneValue(\.roomScreen, screenActions)
         .toolbar {
             ToolbarItem(placement: .principal) {
+                // The pill carries status on every screen; the free-space figure lives in the hero (Overview) or the sidebar foot.
                 RoomActivityPill(stop: stopActivity, restore: restoreActivity, showHistory: { sheet = .history },
-                                 prefersQuietIdleLabel: destination == .overview)
+                                 prefersQuietIdleLabel: true)
             }
             .sharedBackgroundVisibility(.hidden)
             ToolbarItemGroup(placement: .primaryAction) {
@@ -137,7 +138,10 @@ struct RoomRootView: View {
             case .source(let source): RoomSourceSheet(source: source, model: model)
             case .welcome:
                 RoomOnboardingView(capacity: insights.volumeCapacity, isWorking: isOnboardingBusy(),
-                                   openPrivacySettings: insights.openPrivacySettings, onFinish: finishWelcome)
+                                   needsPicker: !insights.hasRememberedHomeAccess, onFinish: finishWelcome)
+                    .modifier(RoomMotionRoot())
+                    .modifier(RoomAccentRoot())
+                    .preferredColorScheme(colorScheme)
             case .protectedSources: RoomWhatStaysSheet(model: model)
             case .scanIssues: RoomScanIssuesSheet(issues: model.scanIssues)
             case .history: RoomHistorySheet(model: model)
@@ -211,17 +215,13 @@ struct RoomRootView: View {
         }
     }
 
-    private func finishWelcome(_ choice: RoomOnboardingChoice?) {
-        guard choice == nil || !isOnboardingBusy() else { return }
-        #if ROOM_APP_STORE
-        let edition = RoomOnboardingEdition.store
-        #else
-        let edition = RoomOnboardingEdition.direct
-        #endif
-        let effects = choice.map { RoomOnboardingFlow.effects($0, edition: edition) } ?? RoomOnboardingFlow.skipEffects
+    /// The welcome's effects (RoomOnboardingFlow). Skip always closes; a choice waits while work is running.
+    private func finishWelcome(_ effects: [RoomOnboardingEffect]) -> Bool {
+        guard effects == RoomOnboardingFlow.skipEffects || !isOnboardingBusy() else { return false }
         onboardingFollowUp = effects.filter { $0 != .markSeen && $0 != .close }
         if effects.contains(.markSeen) { navigation.dismissWelcome() }
         if effects.contains(.close) { sheet = nil }
+        return true
     }
 
     private func performOnboardingFollowUp() {
@@ -232,7 +232,7 @@ struct RoomRootView: View {
             case .markSeen, .close: break
             case .navigate(let raw):
                 if let destination = RoomDestination(rawValue: raw) { navigation.select(destination) }
-            case .chooseHomeAccess, .chooseDiskFolder: insights.chooseDiskFolder()
+            case .scanHome(let confirmed): insights.scanHome(confirmed: confirmed)
             case .chooseStoreCachesFolder:
                 #if ROOM_APP_STORE
                 model.chooseStoreFolder(scanAfterApproval: true)
@@ -348,10 +348,10 @@ struct RoomRootView: View {
         }
     }
 
+    /// Arrival choreography plays once per launch, never on a revisit, never after keyboard navigation (REVIEW §4.1).
     private var overviewArrival: Bool {
-        guard navigation.selectionOrigin != .keyboard, !navigation.needsWelcome else { return false }
-        guard let leftOverviewAt else { return true }
-        return leftOverviewAt.duration(to: .now) >= .seconds(600)
+        RoomOverviewArrival.plays(origin: navigation.selectionOrigin, needsWelcome: navigation.needsWelcome,
+                                  hasLeftOverview: leftOverviewAt != nil)
     }
 
     private func restoreFromCaches(_ record: RoomActivity) {

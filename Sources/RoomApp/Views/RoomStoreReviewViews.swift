@@ -20,7 +20,7 @@ struct RoomStoreRestoreSheet: View {
                             .font(.system(size: 13)).foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                         Button("Approve original folder") { model.chooseStoreFolder() }
-                            .buttonStyle(.glass).disabled(model.isWorking || model.isScanning)
+                            .buttonStyle(.glass).tint(nil).disabled(model.isWorking || model.isScanning)
                     }
                     if !model.storeTrashPaths.isEmpty {
                         Text("Some saved Trash access is unavailable. Choose only the exact recorded item shown; Room does not ask for the whole Trash folder.")
@@ -37,7 +37,7 @@ struct RoomStoreRestoreSheet: View {
             .frame(maxHeight: 320)
             .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             HStack {
-                Button("Cancel") { dismiss() }.buttonStyle(.glass).keyboardShortcut(.cancelAction)
+                Button("Cancel") { dismiss() }.buttonStyle(.glass).tint(nil).keyboardShortcut(.cancelAction)
                     .disabled(model.isWorking)
                 Spacer()
                 if model.isWorking { ProgressView().controlSize(.small) }
@@ -74,7 +74,7 @@ struct RoomStorePermissionSection: View {
             if model.isPreparingStoreReview {
                 ProgressView("Checking review…").controlSize(.small)
             } else if model.storeReviewLocations.isEmpty {
-                Button("Review again", action: retry).buttonStyle(.glass)
+                Button("Review again", action: retry).buttonStyle(.glass).tint(nil)
                     .disabled(model.isWorking || model.isScanning)
                     .accessibilityIdentifier("RoomStoreReviewAgainButton")
             } else {
@@ -96,7 +96,7 @@ struct RoomStorePermissionSection: View {
                                     if canApprove() { await model.allowStoreReviewLocation(url) }
                                 }
                             }
-                                .buttonStyle(.glass).disabled(model.isWorking || model.isScanning)
+                                .buttonStyle(.glass).tint(nil).disabled(model.isWorking || model.isScanning)
                                 .accessibilityLabel("Allow exactly \(url.path)")
                         }
                     }

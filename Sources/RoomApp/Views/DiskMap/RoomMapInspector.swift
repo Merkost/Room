@@ -13,13 +13,13 @@ struct RoomBlueprintInspector: View {
                 if hidden {
                     Text("Details hidden").foregroundStyle(RoomTokens.Ink.secondary)
                 } else {
-                    Text(blueprint.counter(files: { $0.formatted() }, bytes: RoomFormat.bytes))
+                    Text(blueprint.counter(files: { $0.formatted() }, bytes: RoomFormat.gb))
                         .font(RoomTokens.Typography.caption).foregroundStyle(RoomTokens.Ink.secondary)
                     ForEach(blueprint.drawn.reversed(), id: \.name) { room in
                         HStack {
                             Text(room.name).lineLimit(1).truncationMode(.middle)
                             Spacer(minLength: RoomTokens.Space.tight)
-                            Text((room.isPartial ? "≥ " : "") + RoomFormat.bytes(room.bytes))
+                            Text((room.isPartial ? "≥ " : "") + RoomFormat.gb(room.bytes))
                                 .monospacedDigit().fixedSize()
                         }
                         .font(RoomTokens.Typography.caption)
@@ -65,7 +65,7 @@ struct RoomMapInspector: View {
                     if showSizes {
                         HStack(alignment: .firstTextBaseline, spacing: RoomTokens.Space.tight) {
                             if node.isPartial { Text("≥").font(RoomTokens.Typography.figure) }
-                            RoomByteMetric(bytes: node.allocatedBytes, maximumSize: 26)
+                            RoomByteMetric(bytes: node.allocatedBytes, maximumSize: 26, hero: true)
                         }
                     } else {
                         Text("Size hidden").font(RoomTokens.Typography.caption)
@@ -95,7 +95,7 @@ struct RoomMapInspector: View {
                             insideBar(children, otherBytes: max(0, node.allocatedBytes - children.reduce(0) { $0 + $1.allocatedBytes }))
                             ForEach(children, id: \.relativePath) { child in
                                 fact(showSizes ? child.name : "Name hidden", showSizes ?
-                                     (child.isPartial ? "≥ " : "") + RoomFormat.bytes(child.allocatedBytes) : "Size hidden")
+                                     (child.isPartial ? "≥ " : "") + RoomFormat.gb(child.allocatedBytes) : "Size hidden")
                             }
                         }
                     }
