@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import RoomCore
 @testable import RoomApp
 
 @Suite("Developer layout rules")
