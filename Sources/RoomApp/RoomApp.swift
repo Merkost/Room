@@ -18,6 +18,7 @@ struct RoomApp: App {
     @Environment(\.openSettings) private var openSettings
 
     init() {
+        RoomDisplayFont.register()   // Fraunces before the first frame: the welcome's titles and its one big number
         #if ROOM_APP_STORE
         let home = RoomStoreEnvironment.userHome ?? FileManager.default.homeDirectoryForCurrentUser
         #else
