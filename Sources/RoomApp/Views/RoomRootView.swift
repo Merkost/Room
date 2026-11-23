@@ -137,7 +137,10 @@ struct RoomRootView: View {
             case .source(let source): RoomSourceSheet(source: source, model: model)
             case .welcome:
                 RoomOnboardingView(capacity: insights.volumeCapacity, isWorking: isOnboardingBusy(),
-                                   openPrivacySettings: insights.openPrivacySettings, onFinish: finishWelcome)
+                                   needsPicker: !insights.hasRememberedHomeAccess, onFinish: finishWelcome)
+                    .modifier(RoomMotionRoot())
+                    .modifier(RoomAccentRoot())
+                    .preferredColorScheme(colorScheme)
             case .protectedSources: RoomWhatStaysSheet(model: model)
             case .scanIssues: RoomScanIssuesSheet(issues: model.scanIssues)
             case .history: RoomHistorySheet(model: model)
@@ -211,17 +214,13 @@ struct RoomRootView: View {
         }
     }
 
-    private func finishWelcome(_ choice: RoomOnboardingChoice?) {
-        guard choice == nil || !isOnboardingBusy() else { return }
-        #if ROOM_APP_STORE
-        let edition = RoomOnboardingEdition.store
-        #else
-        let edition = RoomOnboardingEdition.direct
-        #endif
-        let effects = choice.map { RoomOnboardingFlow.effects($0, edition: edition) } ?? RoomOnboardingFlow.skipEffects
+    /// The welcome's effects (RoomOnboardingFlow). Skip always closes; a choice waits while work is running.
+    private func finishWelcome(_ effects: [RoomOnboardingEffect]) -> Bool {
+        guard effects == RoomOnboardingFlow.skipEffects || !isOnboardingBusy() else { return false }
         onboardingFollowUp = effects.filter { $0 != .markSeen && $0 != .close }
         if effects.contains(.markSeen) { navigation.dismissWelcome() }
         if effects.contains(.close) { sheet = nil }
+        return true
     }
 
     private func performOnboardingFollowUp() {
@@ -232,7 +231,7 @@ struct RoomRootView: View {
             case .markSeen, .close: break
             case .navigate(let raw):
                 if let destination = RoomDestination(rawValue: raw) { navigation.select(destination) }
-            case .chooseHomeAccess, .chooseDiskFolder: insights.chooseDiskFolder()
+            case .scanHome(let confirmed): insights.scanHome(confirmed: confirmed)
             case .chooseStoreCachesFolder:
                 #if ROOM_APP_STORE
                 model.chooseStoreFolder(scanAfterApproval: true)

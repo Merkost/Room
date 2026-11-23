@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		0068755AD44B6CD9209293A5 /* RoomSidebarLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19289C3ED3C4A79F6355134F /* RoomSidebarLayout.swift */; };
 		00ABE303B9ED71B181CD7690 /* RoomSettingsForm.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A4CD9F24559808394DA0F4 /* RoomSettingsForm.swift */; };
+		01B1EFC6E02E042EBB6F1C85 /* RoomOnboardingPlanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4294F00D0E5BD049A6D70272 /* RoomOnboardingPlanView.swift */; };
 		029A73E6C2D28964F4A3424B /* Developer.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 4B82C561B701C272DF08A2D1 /* Developer.xcstrings */; };
 		033AF07DF19574CCE3F7B785 /* RoomCleanupOutcome.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D978ED249AFF3CDA4B94D9D /* RoomCleanupOutcome.swift */; };
 		038BAF7CA4B2AD4273EC40E0 /* RoomHistoryButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 791783C51B361B535AED855C /* RoomHistoryButton.swift */; };
@@ -41,6 +42,7 @@
 		30D0FEEFB84EEBC27F9CE287 /* AgentWorkEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34CBD2C88A3706BC27737E47 /* AgentWorkEngine.swift */; };
 		31E87A2B4F7A8C741F642A7D /* RoomDotPlanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A1C68CCD303B442C37799E0 /* RoomDotPlanView.swift */; };
 		3203FC52131DCDCBB7B94537 /* StorageAnalysis.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEAA5DF3AEC90F74DB65EF72 /* StorageAnalysis.swift */; };
+		338E39CA79279EAC316A2C24 /* RoomAppearanceRoot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4438F008400AE3238E0C48C2 /* RoomAppearanceRoot.swift */; };
 		356BED9F88FC74B5500D8EE8 /* RoomBeforeAfterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05F8F40E05565B0DE1024830 /* RoomBeforeAfterView.swift */; };
 		36C0A55BC68ED55D48D902A7 /* RoomRoomsCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13C7291CB608D629BB1FF9A6 /* RoomRoomsCatalog.swift */; };
 		38BB3B3D65B38C0AEA3C16AA /* RoomPopoverPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 581CBE4CBD62EC699090B3B3 /* RoomPopoverPresentation.swift */; };
@@ -100,6 +102,7 @@
 		81F4C972120EC3875337A731 /* RoomScreenScaffold.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43CAB5A260AD9DCCEDD178EE /* RoomScreenScaffold.swift */; };
 		8205DB1CFCA44269F99E7B4E /* RoomDebugTrashSimulator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03EBD077B8EB17D1D325D7B9 /* RoomDebugTrashSimulator.swift */; };
 		8212F750AEC278DC271681EF /* AdditionalCatalogue.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD51756C1E05865212F601F0 /* AdditionalCatalogue.swift */; };
+		82C9D5962DD23081F46A8894 /* RoomOnboardingExample.swift in Sources */ = {isa = PBXBuildFile; fileRef = F703F4CF02E9230EC22AECA3 /* RoomOnboardingExample.swift */; };
 		845B2FB0991A1D6BD5B8C529 /* RoomPopoverModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 844C34EC12EE0AC989BC4759 /* RoomPopoverModel.swift */; };
 		866C939125EE37BC0B91FF02 /* RoomTreeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E3601491C84E525F8D7CCA2 /* RoomTreeStore.swift */; };
 		888B211473D59F25B0BEF5CE /* RoomChapterRooms.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00B1DD3E16C96715888A2BF /* RoomChapterRooms.swift */; };
@@ -252,8 +255,10 @@
 		4017FE4AD892DB03DBE58D94 /* RoomDiskMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomDiskMapView.swift; sourceTree = "<group>"; };
 		41634D135EF4B1BD04451290 /* RoomStatusMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomStatusMonitor.swift; sourceTree = "<group>"; };
 		42933AB630386BC76A15121F /* RoomOverviewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomOverviewModel.swift; sourceTree = "<group>"; };
+		4294F00D0E5BD049A6D70272 /* RoomOnboardingPlanView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomOnboardingPlanView.swift; sourceTree = "<group>"; };
 		43CAB5A260AD9DCCEDD178EE /* RoomScreenScaffold.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomScreenScaffold.swift; sourceTree = "<group>"; };
 		43DD23F0414092FBCB3259D0 /* RoomCompare.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomCompare.swift; sourceTree = "<group>"; };
+		4438F008400AE3238E0C48C2 /* RoomAppearanceRoot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomAppearanceRoot.swift; sourceTree = "<group>"; };
 		447C1DDDEE286B893E6B190E /* Package.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Package.swift; sourceTree = "<group>"; };
 		4497592CFD0CF258FC3D1932 /* RoomViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomViewModel.swift; sourceTree = "<group>"; };
 		4569586C8BA72F4AECE2CC68 /* RoomLoginItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomLoginItem.swift; sourceTree = "<group>"; };
@@ -396,6 +401,7 @@
 		F3AF99D6F5CBB2F6A9D4FB76 /* RoomGoalRuler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomGoalRuler.swift; sourceTree = "<group>"; };
 		F47E2004C0F024387BF1D58A /* RoomInsightsModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomInsightsModel.swift; sourceTree = "<group>"; };
 		F5F76FB06AF0E12C6FCC3A92 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
+		F703F4CF02E9230EC22AECA3 /* RoomOnboardingExample.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomOnboardingExample.swift; sourceTree = "<group>"; };
 		F839C86408C4DE186936A06B /* RoomRoomsModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomRoomsModel.swift; sourceTree = "<group>"; };
 		FD51756C1E05865212F601F0 /* AdditionalCatalogue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdditionalCatalogue.swift; sourceTree = "<group>"; };
 		FD7A8E8EF69AFDA4D85C9889 /* RoomMapLayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomMapLayer.swift; sourceTree = "<group>"; };
@@ -507,6 +513,7 @@
 				3E66B8405DC1C6FD775B89D7 /* Developer */,
 				1F583F5031AFA3F1BF184200 /* DiskMap */,
 				1FB8A464F9E3DB30C0369C48 /* Memory */,
+				63E4014D7AF31C4BD0537330 /* Onboarding */,
 				84055FD8B083669A8EDEF2E9 /* Overview */,
 				BA76210AC20DBD7375621FA2 /* Receipts */,
 				4BA562CAC9417C95B0B53F92 /* Shell */,
@@ -573,6 +580,15 @@
 				2B4319F982DAC5797AFD78B9 /* RoomWhatStaysSheet.swift */,
 			);
 			path = Caches;
+			sourceTree = "<group>";
+		};
+		63E4014D7AF31C4BD0537330 /* Onboarding */ = {
+			isa = PBXGroup;
+			children = (
+				F703F4CF02E9230EC22AECA3 /* RoomOnboardingExample.swift */,
+				4294F00D0E5BD049A6D70272 /* RoomOnboardingPlanView.swift */,
+			);
+			path = Onboarding;
 			sourceTree = "<group>";
 		};
 		65C59C098BC2EBB443FBAFE1 /* Sources */ = {
@@ -671,6 +687,7 @@
 		BB90D84961BA89B1B334CB88 /* Design */ = {
 			isa = PBXGroup;
 			children = (
+				4438F008400AE3238E0C48C2 /* RoomAppearanceRoot.swift */,
 				ADC191D3D797A9F30C15A6CC /* RoomCanvasFrame.swift */,
 				92CD0954B3278F20A3407B3A /* RoomDesignTokens.swift */,
 				508E598BD1A75483E842EA54 /* RoomDisplayFont.swift */,
@@ -949,6 +966,7 @@
 				4D318758AA53F9609F761DC1 /* RoomAgentWorkView.swift in Sources */,
 				A5BB74736E9DB0AA5987C3F4 /* RoomApp.swift in Sources */,
 				F25E647F91A46A81E29BE115 /* RoomAppLinks.swift in Sources */,
+				338E39CA79279EAC316A2C24 /* RoomAppearanceRoot.swift in Sources */,
 				356BED9F88FC74B5500D8EE8 /* RoomBeforeAfterView.swift in Sources */,
 				FE94FD4BD50608885654C4E5 /* RoomBlueprint.swift in Sources */,
 				1F3E25B8F1A88B4A3E343142 /* RoomBlueprintMotion.swift in Sources */,
@@ -1027,7 +1045,9 @@
 				41CFD19563B9B574EF73683E /* RoomModels.swift in Sources */,
 				4AB52C46FAF7B5F28FAE4236 /* RoomMonitorPresentation.swift in Sources */,
 				C6D57754D190A5DFC075394C /* RoomNavigationHistory.swift in Sources */,
+				82C9D5962DD23081F46A8894 /* RoomOnboardingExample.swift in Sources */,
 				2C5817C1FE23B5C9110F3F52 /* RoomOnboardingFlow.swift in Sources */,
+				01B1EFC6E02E042EBB6F1C85 /* RoomOnboardingPlanView.swift in Sources */,
 				58AC16036416BF81CA1D1225 /* RoomOnboardingView.swift in Sources */,
 				5166A1D6FB1F427317315A24 /* RoomOpenOn.swift in Sources */,
 				247149946293BF33BAD59647 /* RoomOverviewHideControl.swift in Sources */,
