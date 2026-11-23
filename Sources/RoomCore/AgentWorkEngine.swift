@@ -14,12 +14,15 @@ public actor AgentWorkEngine {
     private let fixtureTrash: URL?
     private let clock: @Sendable () -> Date
     private let fixtureRemote: Bool
+    private let agentRoots: [(URL, AgentWorkOwner)]
     private var candidates: [String: AgentCandidate] = [:]
     private var operationID: UUID?
     private var isMutating = false
 
-    public init(homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser, activityDirectory: URL? = nil) {
+    public init(homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser, activityDirectory: URL? = nil,
+                environment: [String: String] = ProcessInfo.processInfo.environment) {
         self.home = homeDirectory.roomLexicallyNormalized
+        self.agentRoots = Self.agentWorktreeRoots(home: homeDirectory, environment: environment)
         self.activityDirectory = activityDirectory ?? homeDirectory.appendingPathComponent("Library/Application Support/Room/AgentWork", isDirectory: true)
         self.runner = AgentCommand.run
         self.processReader = AgentProcesses.read
@@ -32,8 +35,10 @@ public actor AgentWorkEngine {
          clock: @escaping @Sendable () -> Date = Date.init,
          runner: @escaping @Sendable (URL, [String], URL?, TimeInterval) async throws -> AgentCommandResult = AgentCommand.run,
          directoryReader: AgentDirectoryReader = AgentDirectoryReader(),
-         processes: @escaping @Sendable () async throws -> AgentProcessSnapshot = { AgentProcessSnapshot(paths: [], complete: true) }) {
+         processes: @escaping @Sendable () async throws -> AgentProcessSnapshot = { AgentProcessSnapshot(paths: [], complete: true) },
+         environment: [String: String] = [:]) {
         self.home = home; self.activityDirectory = activity; self.fixtureTrash = fixtureTrash
+        self.agentRoots = Self.agentWorktreeRoots(home: home, environment: environment)
         self.clock = clock; self.runner = runner; self.processReader = processes; self.fixtureRemote = true
         self.directoryReader = directoryReader
         self.trash = { source in
@@ -50,6 +55,40 @@ public actor AgentWorkEngine {
 
     public nonisolated static func shutdownOwnedCommands() { AgentOwnedCommands.shared.shutdown() }
 
+    /// Agent-owned worktree folders under home. Codex keeps managed worktrees in
+    /// `$CODEX_HOME/worktrees` (default `~/.codex`); Claude Code's default is a
+    /// repository's `.claude/worktrees`, and `~/.claude/worktrees` is kept for
+    /// hook-created worktrees. A documented override counts only when it is an
+    /// absolute, normalized path strictly inside home; anything else is ignored.
+    nonisolated static func agentWorktreeRoots(home: URL, environment: [String: String]) -> [(URL, AgentWorkOwner)] {
+        let home = home.roomLexicallyNormalized
+        func inside(_ value: String?) -> URL? {
+            guard let value, value.hasPrefix(home.path + "/"), !value.contains("\0"),
+                  !value.split(separator: "/").contains(where: { $0 == "." || $0 == ".." }) else { return nil }
+            return URL(fileURLWithPath: value, isDirectory: true).roomLexicallyNormalized
+        }
+        var result: [(URL, AgentWorkOwner)] = [
+            (home.appendingPathComponent(".codex/worktrees", isDirectory: true), .codex),
+            (home.appendingPathComponent(".claude/worktrees", isDirectory: true), .claude)
+        ]
+        if let codex = inside(environment["CODEX_HOME"]) {
+            result.append((codex.appendingPathComponent("worktrees", isDirectory: true), .codex))
+        }
+        if let claude = inside(environment["CLAUDE_CONFIG_DIR"]) {
+            result.append((claude.appendingPathComponent("worktrees", isDirectory: true), .claude))
+        }
+        var seen: Set<String> = []
+        return result.filter { seen.insert($0.0.path).inserted }
+    }
+
+    /// Who made a worktree listed by an approved repository. Paths inside a
+    /// known agent folder, or any `.claude/worktrees` folder (Claude Code's
+    /// default under each repository root), belong to that agent.
+    nonisolated static func owner(of path: String, roots: [(URL, AgentWorkOwner)]) -> AgentWorkOwner {
+        if let match = roots.first(where: { path.hasPrefix($0.0.path + "/") }) { return match.1 }
+        return path.contains("/.claude/worktrees/") ? .claude : .project
+    }
+
     public func scan(approvedProjectRoots: [URL] = [], progress: (@Sendable (AgentWorkProgress) -> Void)? = nil) async -> AgentWorkReport {
         let operation = UUID()
         guard !isMutating else { return AgentWorkReport(id: operation, scannedAt: clock(), items: [], processAssociations: [],
@@ -57,23 +96,16 @@ public actor AgentWorkEngine {
         operationID = operation; candidates.removeAll()
         var pending: [String: AgentCandidate] = [:]
         var discovered: [(URL, AgentWorkOwner)] = [], issues: [ScanIssue] = [], associations: [AgentWorkProcessAssociation] = []
-        for (path, owner) in [(".codex/worktrees", AgentWorkOwner.codex), (".claude/worktrees", .claude)] {
-            do { discovered += try AgentFilesystem.discover(home.appendingPathComponent(path, isDirectory: true), owner: owner,
-                directoryReader: directoryReader) }
-            catch { issues.append(ScanIssue(url: home.appendingPathComponent(path), message: error.localizedDescription)) }
+        for (url, owner) in agentRoots {
+            do { discovered += try AgentFilesystem.discover(url, owner: owner, directoryReader: directoryReader) }
+            catch { issues.append(ScanIssue(url: url, message: error.localizedDescription)) }
         }
         for root in approvedProjectRoots.prefix(32) {
             do {
                 _ = try AgentFilesystem.identity(root, directory: true)
                 let output = try await git(["worktree", "list", "--porcelain", "-z"], at: root)
                 discovered += try AgentGit.parseWorktrees(output).map { record in
-                    let path = record.url.path
-                    let owner: AgentWorkOwner
-                    if path.hasPrefix(home.appendingPathComponent(".codex/worktrees").path + "/") { owner = .codex }
-                    else if path.hasPrefix(home.appendingPathComponent(".claude/worktrees").path + "/")
-                        || path.hasPrefix(root.appendingPathComponent(".claude/worktrees").path + "/") { owner = .claude }
-                    else { owner = .project }
-                    return (record.url, owner)
+                    (record.url, Self.owner(of: record.url.path, roots: agentRoots))
                 }
             } catch { issues.append(ScanIssue(url: root, message: "The approved repository's worktrees could not be inspected safely.")) }
         }
