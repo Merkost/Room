@@ -80,7 +80,7 @@ struct RoomMapViewport: View {
                     RoomMapCanvas(level: current ? level : step?.previous ?? level,
                                   selection: current ? selection : step?.selection,
                                   hidden: hidden, placedLayer: current ? currentLayer : outgoing,
-                                  interactive: current, suppressLabels: transforms != nil,
+                                  interactive: current,
                                   onHoverItem: onHoverItem,
                                   activate: activate, preview: preview, reveal: reveal)
                         .modifier(RoomMapLayerEffect(transform: current ? .identity : transforms?.outgoing ?? .identity))
