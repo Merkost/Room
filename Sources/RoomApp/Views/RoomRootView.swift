@@ -19,7 +19,12 @@ struct RoomRootView: View {
     @Environment(\.roomHide) private var hide
     @Environment(\.openSettings) private var openSettings
     @Environment(\.roomMotion) private var motion
+    #if DEBUG
+    @State private var developer = RoomDeveloperModel.debugFixture()
+        ?? RoomDeveloperModel(unreferencedStore: .init(writer: .shared), activityCenter: .shared)
+    #else
     @State private var developer = RoomDeveloperModel(unreferencedStore: .init(writer: .shared), activityCenter: .shared)
+    #endif
     @State private var sheet: RoomSheet?
     @State private var showingCustomise = false
     @State private var editingRoom: UUID?

@@ -20,7 +20,23 @@ enum RoomDeveloperSection: String, CaseIterable {
         #endif
         }
     }
+
+    /// What the quiet links on the start page call the view.
+    var startLink: String {
+        switch self {
+        case .rooms: "Project tools"
+        case .matrix: "Version matrix"
+        case .devices: "Virtual devices"
+        case .storage: "Tool storage"
+        case .aiTools: "AI tool storage"
+        #if !ROOM_APP_STORE
+        case .worktrees: "Agent worktrees"
+        #endif
+        }
+    }
 }
+
+private enum RoomDeveloperLayoutState: Equatable { case intro, firstScan, workspace }
 
 struct RoomDeveloperView: View {
     @Bindable var model: RoomDeveloperModel
@@ -30,16 +46,36 @@ struct RoomDeveloperView: View {
     #endif
     @Environment(\.roomHide) private var hide
     @Environment(\.roomAccent) private var accent
+    @Environment(\.roomMotion) private var motion
     private var section: RoomDeveloperSection { model.section }
     @State private var showingFolders = false
     @State private var showingNotes = false
     private let confirmationPrefix = "developer/remove/"
 
+    private var availability: RoomDeveloperAvailability {
+        var result = model.availability
+        #if !ROOM_APP_STORE
+        result.worktrees = agentWork.report != nil
+        #endif
+        return result
+    }
+
+    private var visibleSections: [RoomDeveloperSection] { RoomDeveloperTabRules.visible(availability, current: section) }
+
+    private var layoutState: RoomDeveloperLayoutState {
+        if !visibleSections.isEmpty { return .workspace }
+        return model.isScanning ? .firstScan : .intro
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: RoomTokens.Space.breath1) {
-            controls
-            sectionContent.roomPanelChange(section)
+        Group {
+            switch layoutState {
+            case .intro: intro.transition(.opacity)
+            case .firstScan: firstScan.transition(.opacity)
+            case .workspace: workspace.transition(.opacity)
+            }
         }
+        .animation(motion.animation(RoomTokens.Motion.fade), value: layoutState)
         .alert("Couldn’t add that folder", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) {
             Button("OK") { model.errorMessage = nil }
         } message: { Text(hide.masksNow ? "Choose the folder again." : model.errorMessage ?? "") }
@@ -67,64 +103,121 @@ struct RoomDeveloperView: View {
         #endif
     }
 
-    private var controls: some View {
+    // MARK: Before the first scan
+
+    private var intro: some View {
         VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: RoomTokens.Space.group) {
-                    workspaceHeading
-                    Spacer(minLength: 0)
-                    if showsResourceActions { scanControls.fixedSize() }
-                }
-                VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
-                    workspaceHeading
-                    if showsResourceActions { scanControls }
+            startPrompt
+            Text("Room only reads sizes and version files. Nothing is moved or deleted.")
+                .font(RoomTokens.Typography.caption)
+                .foregroundStyle(RoomTokens.Ink.secondary)
+            folderControls(quiet: true)
+            otherViews
+        }
+        .frame(maxWidth: RoomTokens.Space.measure, alignment: .leading)
+        .padding(.top, RoomTokens.Space.breath2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var startPrompt: some View {
+        VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
+            Text("See which build tools are taking your disk.")
+                .font(RoomTokens.Typography.figure)
+                .accessibilityHeading(.h2)
+            Text("Room finds the Gradle, Xcode and Android versions your projects use, and the ones nothing points to.")
+                .font(RoomTokens.Typography.lead)
+                .foregroundStyle(RoomTokens.Ink.secondary)
+            Button {
+                if model.canScan { model.scan() } else { model.addFolder(role: .project) }
+            } label: {
+                Text(model.canScan ? "Scan" : "Choose projects folder…")
+            }
+            .roomPrimary(accent)
+            .disabled(model.isScanning || model.isChoosingFolder)
+            .accessibilityIdentifier("RoomDeveloperScanButton")
+        }
+    }
+
+    private var otherViews: some View {
+        HStack(spacing: RoomTokens.Space.group) {
+            Text("Or look at")
+                .font(RoomTokens.Typography.caption)
+                .foregroundStyle(RoomTokens.Ink.secondary)
+            ForEach(RoomDeveloperSection.allCases.filter { $0 != .rooms && $0 != .matrix }, id: \.self) { other in
+                Button(other.startLink) { model.section = other }
+                    .roomLink(accent)
+                    .font(RoomTokens.Typography.caption)
+            }
+        }
+    }
+
+    private var firstScan: some View {
+        VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
+            Text("Reading your folders…")
+                .font(RoomTokens.Typography.figure)
+                .accessibilityHeading(.h2)
+            scanningRow
+            Button("Stop") { model.stop() }
+                .roomSecondary()
+                .accessibilityIdentifier("RoomDeveloperScanButton")
+        }
+        .frame(maxWidth: RoomTokens.Space.measure, alignment: .leading)
+        .padding(.top, RoomTokens.Space.breath2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var scanningRow: some View {
+        HStack(spacing: RoomTokens.Space.row) {
+            ProgressView().controlSize(.small)
+            Text(model.progress)
+                .font(RoomTokens.Typography.body)
+                .foregroundStyle(RoomTokens.Ink.secondary)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    // MARK: After the first scan
+
+    private var workspace: some View {
+        VStack(alignment: .leading, spacing: RoomTokens.Space.breath1) {
+            if showsResourceActions {
+                if model.headline.hasAnyData {
+                    RoomDeveloperHeader(headline: model.headline) { scanControls }
+                } else {
+                    HStack { Spacer(minLength: 0); scanControls }
                 }
             }
+            tabs
+            sectionContent.roomPanelChange(section)
+        }
+    }
+
+    private var tabs: some View {
+        HStack(spacing: RoomTokens.Space.group) {
             Picker("Developer view", selection: $model.section) {
-                ForEach(RoomDeveloperSection.allCases, id: \.self) { tab in
+                ForEach(visibleSections, id: \.self) { tab in
                     Label(tab.rawValue, systemImage: tab.symbol).tag(tab)
                 }
             }
             .pickerStyle(.segmented)
             .labelsHidden()
+            .fixedSize()
             .accessibilityIdentifier("RoomDeveloperSectionPicker")
-        }
-        .padding(RoomTokens.Space.breath1)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoomTokens.Surface.group, in: .rect(cornerRadius: RoomTokens.Radius.popover))
-    }
-
-    private var workspaceHeading: some View {
-        let title: LocalizedStringKey = switch section {
-        case .devices: "Virtual devices"
-        case .aiTools: "AI tool storage"
-        default: "Project tools"
-        }
-        return HStack(spacing: RoomTokens.Space.inner) {
-            Image(systemName: [.devices, .aiTools].contains(section) ? section.symbol : "hammer")
-                .foregroundStyle(accent.text)
-                .frame(width: 40, height: 40)
-                .background(accent.wash, in: .rect(cornerRadius: RoomTokens.Radius.card))
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
-                Text(title)
-                    .font(RoomTokens.Typography.title)
-                    .accessibilityHeading(.h2)
-                if ![.devices, .storage, .aiTools].contains(section), let root = model.projectRootLabel {
-                    HStack(spacing: 4) {
-                        if let report = model.report {
-                            RoomMaskable(report.projects.count.formatted())
-                            Text(report.projects.count == 1 ? "project in" : "projects in")
-                        }
-                        RoomMaskable(root, kind: .name)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
+            let hidden = RoomDeveloperTabRules.hidden(availability, current: section)
+            if !hidden.isEmpty {
+                Menu("More views") {
+                    ForEach(hidden, id: \.self) { other in
+                        Button { model.section = other } label: { Label(other.startLink, systemImage: other.symbol) }
                     }
-                    .font(RoomTokens.Typography.caption)
-                    .foregroundStyle(RoomTokens.Ink.secondary)
                 }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .font(RoomTokens.Typography.caption)
             }
+            Spacer(minLength: 0)
         }
+        .transition(.opacity)
+        .animation(motion.animation(RoomTokens.Motion.fade), value: visibleSections)
     }
 
     private var scanControls: some View {
@@ -150,24 +243,29 @@ struct RoomDeveloperView: View {
                 .accessibilityIdentifier("RoomDeveloperAddFolder")
             }
 
-            Button {
-                if model.isScanning { model.stop() } else { model.scan() }
-            } label: {
-                Label(model.isScanning ? "Stop" : sectionReport == nil ? "Scan" : "Rescan",
-                      systemImage: model.isScanning ? "stop.fill" : "arrow.clockwise")
-            }
-            .roomSecondary()
-            .disabled(!model.isScanning && !model.canScan)
-            .accessibilityIdentifier("RoomDeveloperScanButton")
+            scanButton
         }
+    }
+
+    @ViewBuilder private var scanButton: some View {
+        let first = !model.isScanning && sectionReport == nil
+        let button = Button {
+            if model.isScanning { model.stop() } else { model.scan() }
+        } label: {
+            Label(model.isScanning ? "Stop" : sectionReport == nil ? "Scan" : "Rescan",
+                  systemImage: model.isScanning ? "stop.fill" : "arrow.clockwise")
+        }
+        .disabled(!model.isScanning && !model.canScan)
+        .accessibilityIdentifier("RoomDeveloperScanButton")
+        if first { button.roomPrimary(accent) } else { button.roomSecondary() }
     }
 
     @ViewBuilder private var sectionContent: some View {
         switch section {
         case .rooms, .matrix, .devices, .storage, .aiTools:
             VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
-                if section != .aiTools || !model.sectionLocations.isEmpty { folderControls }
                 review
+                if section != .aiTools || !model.sectionLocations.isEmpty { folderControls(quiet: false) }
             }
         #if !ROOM_APP_STORE
         case .worktrees:
@@ -176,7 +274,7 @@ struct RoomDeveloperView: View {
         }
     }
 
-    private var folderControls: some View {
+    private func folderControls(quiet: Bool) -> some View {
         VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
             DisclosureGroup(isExpanded: $showingFolders) {
                 VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
@@ -203,7 +301,7 @@ struct RoomDeveloperView: View {
                 .padding(.top, RoomTokens.Space.inner)
             } label: {
                 HStack(spacing: RoomTokens.Space.row) {
-                    Label("Scan folders", systemImage: "folder")
+                    Label("Folders Room reads", systemImage: "folder")
                         .font(RoomTokens.Typography.section)
                     if !model.sectionLocations.isEmpty {
                         RoomMaskable(model.sectionLocations.count.formatted())
@@ -215,8 +313,9 @@ struct RoomDeveloperView: View {
             RoomInlineUndoRows(prefix: confirmationPrefix)
         }
         .font(RoomTokens.Typography.body)
-        .padding(RoomTokens.Space.group)
-        .background(RoomTokens.Surface.group, in: .rect(cornerRadius: RoomTokens.Radius.group))
+        .padding(quiet ? 0 : RoomTokens.Space.group)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(quiet ? Color.clear : RoomTokens.Surface.group, in: .rect(cornerRadius: RoomTokens.Radius.group))
     }
 
     private func folderRow(_ location: RoomDeveloperLocation) -> some View {
@@ -233,24 +332,16 @@ struct RoomDeveloperView: View {
                     .help(hide.masksNow ? "Folder name hidden" : location.folder.url.path)
             }
             Spacer(minLength: 0)
-            RoomInlineConfirmButton(id: confirmationPrefix + location.id, title: "Remove…",
-                confirmTitle: "Remove from Developer?", doneLine: "Folder removed from Developer",
+            RoomInlineConfirmButton(id: confirmationPrefix + location.id, title: "Stop reading…",
+                confirmTitle: "Stop reading this folder?", doneLine: "Room no longer reads this folder. Its files are untouched.",
                 isAllowed: !model.isScanning, stage: { model.stageRemoval(location) },
                 commit: { model.commitRemoval(location) }, undo: { model.undoRemoval(location) })
-                .help("Folder access is managed in Settings.")
+                .help("Room stops reading this folder. Nothing in it is changed or deleted. Folder access is managed in Settings.")
         }
     }
 
     @ViewBuilder private var review: some View {
-        if model.isScanning {
-            HStack(spacing: RoomTokens.Space.row) {
-                ProgressView().controlSize(.small)
-                Text(model.progress)
-                    .font(RoomTokens.Typography.body)
-                    .foregroundStyle(RoomTokens.Ink.secondary)
-            }
-            .padding(RoomTokens.Space.inner)
-        }
+        if model.isScanning { scanningRow.padding(.horizontal, RoomTokens.Space.inner) }
         if section == .storage {
             toolStorage
         } else if section == .aiTools {
@@ -258,7 +349,7 @@ struct RoomDeveloperView: View {
         } else if section == .devices {
             deviceInventory
         } else if model.report == nil {
-            if !model.isScanning { emptyReview }
+            if !model.isScanning { startPrompt }
         } else {
             switch section {
             case .rooms:
@@ -280,7 +371,8 @@ struct RoomDeveloperView: View {
         if let report = sectionReport, report.isPartial || !report.issues.isEmpty {
             HStack(spacing: RoomTokens.Space.row) {
                 if report.isPartial {
-                    Label(report.cancelled ? "Stopped · partial results" : "Partial results", systemImage: "info.circle")
+                    Label(report.cancelled ? "Stopped · partial results" : "Partial results. Sizes marked ≥ are lower bounds.",
+                          systemImage: "info.circle")
                 }
                 Spacer(minLength: 0)
                 if !report.issues.isEmpty {
@@ -304,24 +396,20 @@ struct RoomDeveloperView: View {
                 RoomDeveloperSimulatorDevices(devices: report.simulatorDevices)
             }
         } else if !model.isScanning {
-            Text(model.sectionLocations.isEmpty
-                ? "Choose an Android virtual device folder or a Simulator Devices folder."
-                : "Scan your chosen folders to see their virtual devices.")
-                .font(RoomTokens.Typography.body)
-                .foregroundStyle(RoomTokens.Ink.secondary)
-                .padding(RoomTokens.Space.group)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoomTokens.Surface.group, in: .rect(cornerRadius: RoomTokens.Radius.group))
+            RoomDeveloperGroup(title: "Virtual devices") {
+                Text(model.sectionLocations.isEmpty
+                    ? "Choose an Android virtual device folder or a Simulator Devices folder."
+                    : "Scan your chosen folders to see their virtual devices.")
+                    .font(RoomTokens.Typography.body)
+                    .foregroundStyle(RoomTokens.Ink.secondary)
+            }
         }
     }
 
     private var toolStorage: some View {
-        VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
-            HStack {
-                Label("Tool storage", systemImage: "internaldrive")
-                    .font(RoomTokens.Typography.title)
-                    .accessibilityHeading(.h2)
-                Spacer(minLength: 0)
+        RoomDeveloperGroup(title: "Tool storage", caption: model.sectionLocations.contains(where: { $0.role == .simulatorRuntimes })
+            ? "Runtime sizes include standalone bundles and backing images, including Xcode exports. Manage installed runtimes in Xcode Settings → Components." : nil,
+            trailing: {
                 Menu {
                     ForEach(RoomDeveloperFolderRole.storageRoles) { role in
                         Button { model.addFolder(role: role) } label: {
@@ -332,14 +420,11 @@ struct RoomDeveloperView: View {
                     Label("Choose Folder…", systemImage: "folder.badge.plus")
                 }
                 .disabled(model.isScanning || model.isChoosingFolder)
-            }
-            if model.sectionLocations.contains(where: { $0.role == .simulatorRuntimes }) {
-                Text("Runtime sizes include standalone bundles and backing images, including Xcode exports. Manage installed runtimes in Xcode Settings → Components.")
-                    .font(RoomTokens.Typography.caption)
-                    .foregroundStyle(RoomTokens.Ink.secondary)
-            }
+                .fixedSize()
+            }, content: {
             if let report = model.storageReport, !report.storageResources.isEmpty {
-                ForEach(report.storageResources) { resource in
+                RoomDeveloperRowList(items: RoomDeveloperList.bySize(report.storageResources,
+                    bytes: \.allocatedBytes, name: { $0.runtime?.name ?? $0.kind.title })) { resource in
                     toolStorageRow(resource)
                 }
             } else if !model.isScanning {
@@ -349,70 +434,16 @@ struct RoomDeveloperView: View {
                     .font(RoomTokens.Typography.body)
                     .foregroundStyle(RoomTokens.Ink.secondary)
             }
-        }
-        .padding(RoomTokens.Space.group)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoomTokens.Surface.group, in: .rect(cornerRadius: RoomTokens.Radius.group))
+        })
     }
 
     private func toolStorageRow(_ resource: DeveloperStorageResource) -> some View {
-        HStack(spacing: RoomTokens.Space.inner) {
-            Image(systemName: resource.kind.symbol)
-                .font(RoomTokens.Typography.section)
-                .foregroundStyle(accent.text)
-                .frame(width: 32, height: 32)
-                .background(accent.wash, in: .rect(cornerRadius: RoomTokens.Radius.row))
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
-                if let runtime = resource.runtime {
-                    RoomMaskable(runtime.name, kind: .name)
-                        .font(RoomTokens.Typography.section)
-                        .foregroundStyle(RoomTokens.Ink.graphite)
-                    Text(runtime.build.map { "\(resource.kind.title) · \($0)" } ?? resource.kind.title)
-                        .font(RoomTokens.Typography.caption)
-                        .foregroundStyle(RoomTokens.Ink.secondary)
-                        .help(resource.kind.detail)
-                } else {
-                    Text(resource.kind.title)
-                        .font(RoomTokens.Typography.section)
-                        .foregroundStyle(RoomTokens.Ink.graphite)
-                        .help(resource.kind.detail)
-                }
-                RoomMaskable(resource.url.path, kind: .name)
-                    .font(RoomTokens.Typography.caption)
-                    .foregroundStyle(RoomTokens.Ink.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .help(hide.masksNow ? "Folder path hidden" : resource.url.path)
-            }
-            Spacer(minLength: 0)
-            RoomMaskable((resource.isPartial ? "≥ " : "") + RoomFormat.bytes(resource.allocatedBytes))
-                .font(RoomTokens.Typography.figure)
-                .help(resource.isPartial ? "Measured size is a lower bound" : "Allocated disk space")
-        }
-        .padding(RoomTokens.Space.inner)
-        .background(RoomTokens.Surface.hover, in: .rect(cornerRadius: RoomTokens.Radius.row))
-    }
-
-    private var emptyReview: some View {
-        HStack(alignment: .top, spacing: RoomTokens.Space.inner) {
-            Image(systemName: section.symbol)
-                .font(RoomTokens.Typography.figure)
-                .foregroundStyle(accent.text)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
-                Text(model.locations.isEmpty ? "Choose what to scan" : "Ready to scan")
-                    .font(RoomTokens.Typography.section)
-                Text(model.locations.isEmpty
-                    ? "Add a projects or toolchain folder."
-                    : "Scan your chosen folders.")
-                    .font(RoomTokens.Typography.body)
-                    .foregroundStyle(RoomTokens.Ink.secondary)
-            }
-        }
-        .padding(RoomTokens.Space.breath1)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoomTokens.Surface.group, in: .rect(cornerRadius: RoomTokens.Radius.group))
+        let title = resource.runtime?.name ?? resource.kind.title
+        let kindLine = resource.runtime?.build.map { "\(resource.kind.title) · \($0)" }
+        return RoomDeveloperRow(title: title, masksTitle: resource.runtime != nil, subtitle: kindLine ?? resource.url.path,
+                                subtitleKind: kindLine == nil ? .name : .figure,
+                                bytes: resource.allocatedBytes, partial: resource.isPartial,
+                                finderURL: resource.url, help: resource.kind.detail)
     }
 
     static var suggestionAction: String {
@@ -470,10 +501,7 @@ private struct RoomDeveloperDevicesTable: View {
     @State private var selected: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
-            Label("Android devices", systemImage: "iphone.gen3")
-                .font(RoomTokens.Typography.title)
-                .accessibilityHeading(.h2)
+        RoomDeveloperGroup(title: "Android devices") {
             if devices.isEmpty {
                 Text("No Android devices found in the chosen folders.")
                     .font(RoomTokens.Typography.body)
@@ -487,17 +515,14 @@ private struct RoomDeveloperDevicesTable: View {
                 }.roomPanelChange(selected)
             }
         }
-        .padding(RoomTokens.Space.group)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoomTokens.Surface.group, in: .rect(cornerRadius: RoomTokens.Radius.group))
     }
 
     private var deviceTable: some View {
-        Table(devices, selection: $selected) {
+        Table(RoomDeveloperList.bySize(devices, bytes: \.allocatedBytes, name: \.displayName), selection: $selected) {
             TableColumn("Name") { RoomMaskable($0.displayName, kind: .name) }.width(min: 110, ideal: 150)
             TableColumn("API") { RoomMaskable($0.apiLevel ?? "—") }.width(min: 36, ideal: 42)
             TableColumn("ABI") { Text($0.abi ?? "—") }.width(min: 50, ideal: 65)
-            TableColumn("Size") { RoomMaskable(($0.isPartial ? "≥ " : "") + RoomFormat.bytes($0.allocatedBytes)) }
+            TableColumn("Size") { RoomMaskable(RoomDeveloperFormat.whole($0.allocatedBytes, partial: $0.isPartial)).monospacedDigit() }
             TableColumn("Last used") { device in
                 Text(device.lastUsedAt?.formatted(date: .abbreviated, time: .omitted) ?? "—").help(device.lastUseNote)
             }
@@ -538,45 +563,13 @@ private struct RoomDeveloperSimulatorDevices: View {
     @Environment(\.roomHide) private var hide
 
     var body: some View {
-        VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
-            Label("Apple simulators", systemImage: "iphone.gen3")
-                .font(RoomTokens.Typography.title)
-                .accessibilityHeading(.h2)
-            Text(devices.isEmpty ? "No Apple simulators found in the chosen folders."
-                : "Sizes cover each device’s apps and data. Xcode manages shared simulator runtimes separately.")
-                .font(RoomTokens.Typography.caption)
-                .foregroundStyle(RoomTokens.Ink.secondary)
-            LazyVStack(alignment: .leading, spacing: RoomTokens.Space.row) {
-                ForEach(devices) { device in
-                    HStack(spacing: RoomTokens.Space.inner) {
-                        VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
-                            RoomMaskable(device.displayName, kind: .name)
-                                .font(RoomTokens.Typography.body.weight(.semibold))
-                            Text(Self.runtimeLabel(device.runtimeIdentifier))
-                                .font(RoomTokens.Typography.caption)
-                                .foregroundStyle(RoomTokens.Ink.secondary)
-                        }
-                        Spacer(minLength: 0)
-                        RoomMaskable((device.isPartial ? "≥ " : "") + RoomFormat.bytes(device.allocatedBytes))
-                            .monospacedDigit()
-                        if !hide.masksNow {
-                            Button {
-                                NSWorkspace.shared.activateFileViewerSelecting([device.url])
-                            } label: {
-                                Label("Show in Finder", systemImage: "arrow.up.forward.app").labelStyle(.iconOnly)
-                            }
-                            .roomLink(accent)
-                            .help("Show device data in Finder")
-                        }
-                    }
-                    .padding(RoomTokens.Space.row)
-                    .background(RoomTokens.Surface.hover, in: .rect(cornerRadius: RoomTokens.Radius.row))
-                }
+        RoomDeveloperGroup(title: "Apple simulators", caption: devices.isEmpty ? "No Apple simulators found in the chosen folders."
+            : "Sizes cover each device’s apps and data. Xcode manages shared simulator runtimes separately.") {
+            RoomDeveloperRowList(items: RoomDeveloperList.bySize(devices, bytes: \.allocatedBytes, name: \.displayName)) { device in
+                RoomDeveloperRow(title: device.displayName, subtitle: Self.runtimeLabel(device.runtimeIdentifier), subtitleKind: .figure,
+                                 bytes: device.allocatedBytes, partial: device.isPartial, finderURL: device.url)
             }
         }
-        .padding(RoomTokens.Space.group)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoomTokens.Surface.group, in: .rect(cornerRadius: RoomTokens.Radius.group))
     }
 
     private static func runtimeLabel(_ identifier: String?) -> String {

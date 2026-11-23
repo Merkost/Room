@@ -14,12 +14,12 @@ struct RoomDeveloperRoomsView: View {
     @State private var showingExplanation = false
     @State private var highlightedKind: RoomDevPinKind?
     @State private var selectedSegment: String?
+    @State private var hoveredProject: String?
 
     private enum Sort: String, CaseIterable { case size = "Size", name = "Name" }
 
     var body: some View {
         VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
-            overviewFigures
             resultControls
             Group {
                 if !onlyOrphans { projects }
@@ -27,21 +27,6 @@ struct RoomDeveloperRoomsView: View {
             .roomPanelChange(onlyOrphans)
             orphans
         }
-    }
-
-    private var overviewFigures: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: RoomTokens.Space.row) { figures }
-            VStack(spacing: RoomTokens.Space.row) { figures }
-        }
-    }
-
-    @ViewBuilder private var figures: some View {
-        figure("Pinned tools", symbol: "pin", bytes: summary.pinnedBytes,
-               projectCount: summary.pinnedProjectCount)
-        figure("Not in any room", symbol: "square.dashed", bytes: summary.orphanBytes)
-        figure("Shared across projects", symbol: "square.on.square", bytes: summary.sharedBytes,
-               note: "Counted once")
     }
 
     private var resultControls: some View {
@@ -72,27 +57,23 @@ struct RoomDeveloperRoomsView: View {
     }
 
     private var projects: some View {
-        VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
-            VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
-                Text("What each project pins")
-                    .font(RoomTokens.Typography.title)
-                    .accessibilityHeading(.h2)
-                Text("Read from Gradle wrappers, version catalogs, and Xcode schemes.")
-                    .font(RoomTokens.Typography.caption)
-                    .foregroundStyle(RoomTokens.Ink.secondary)
-            }
+        RoomDeveloperGroup(title: "What each project pins",
+                           caption: "Read from Gradle wrappers, version catalogs, and Xcode schemes.") {
             if summary.rows.isEmpty {
-                Text("No supported projects found in the chosen folders.")
+                Text("No supported projects found in the chosen folders. Check that you chose the folder that holds your projects.")
                     .font(RoomTokens.Typography.body)
                     .foregroundStyle(RoomTokens.Ink.secondary)
             } else {
                 let largest = summary.rows.map(\.totalBytes).max() ?? 0
                 let kinds = Set(summary.rows.flatMap(\.segments).map(\.kind))
                 if !kinds.isEmpty { legend(kinds) }
-                VStack(spacing: RoomTokens.Space.inner) {
-                    ForEach(rows, id: \.project.id) { row in
-                        projectRow(row, largest: largest)
-                    }
+                RoomDeveloperRowList(items: rows.map { IdentifiedProject(row: $0) }) { item in
+                    projectRow(item.row, largest: largest)
+                }
+                if summary.sharedBytes > 0 {
+                    RoomMaskable("Shared across projects: \(RoomDeveloperFormat.whole(summary.sharedBytes, partial: summary.partial)), counted once.")
+                        .font(RoomTokens.Typography.caption)
+                        .foregroundStyle(RoomTokens.Ink.secondary)
                 }
                 if !kinds.isEmpty {
                     Text("AGP versions live in the shared Gradle cache.")
@@ -101,9 +82,17 @@ struct RoomDeveloperRoomsView: View {
                 }
             }
         }
-        .padding(RoomTokens.Space.group)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoomTokens.Surface.group, in: .rect(cornerRadius: RoomTokens.Radius.group))
+    }
+
+    private struct IdentifiedProject: Identifiable {
+        let row: RoomDevProjectRow
+        var id: String { row.project.id }
+    }
+
+    private struct IdentifiedOrphan: Identifiable {
+        let artifact: DeveloperToolchainResource
+        let reason: RoomDevOrphanReason
+        var id: String { artifact.id }
     }
 
     private func legend(_ kinds: Set<RoomDevPinKind>) -> some View {
@@ -134,7 +123,7 @@ struct RoomDeveloperRoomsView: View {
     private func projectRow(_ row: RoomDevProjectRow, largest: Int64) -> some View {
         VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
             HStack(alignment: .top, spacing: RoomTokens.Space.inner) {
-                VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
+                VStack(alignment: .leading, spacing: RoomTokens.Space.tight / 2) {
                     RoomMaskable(row.project.name, kind: .name)
                         .font(RoomTokens.Typography.section)
                         .lineLimit(1)
@@ -146,14 +135,18 @@ struct RoomDeveloperRoomsView: View {
                     }
                 }
                 Spacer(minLength: 0)
-                RoomMaskable(row.totalBytes > 0 ? measured(row.totalBytes, partial: row.partial || summary.partial) : "—")
-                    .font(RoomTokens.Typography.bodyStrong)
+                RoomMaskable(row.totalBytes > 0 ? RoomDeveloperFormat.whole(row.totalBytes, partial: row.partial || summary.partial) : "—")
+                    .font(RoomTokens.Typography.numeric)
                     .fixedSize()
             }
             if !row.segments.isEmpty { toolchainBar(row, largest: largest) }
         }
-        .padding(RoomTokens.Space.inner)
-        .background(RoomTokens.Surface.canvas, in: .rect(cornerRadius: RoomTokens.Radius.row))
+        .padding(.horizontal, RoomTokens.Space.inner)
+        .padding(.vertical, RoomTokens.Space.row)
+        .frame(minHeight: RoomTokens.Developer.rowMinHeight)
+        .background(RoomTokens.Surface.hover.opacity(hoveredProject == row.project.id ? 1 : 0), in: .rect(cornerRadius: RoomTokens.Radius.row))
+        .animation(motion.animation(RoomTokens.Motion.quick, fallback: nil), value: hoveredProject)
+        .onHover { hoveredProject = $0 ? row.project.id : (hoveredProject == row.project.id ? nil : hoveredProject) }
     }
 
     private func toolchainBar(_ row: RoomDevProjectRow, largest: Int64) -> some View {
@@ -172,30 +165,37 @@ struct RoomDeveloperRoomsView: View {
     }
 
     private var orphans: some View {
-        let largest = summary.orphans.map { $0.artifact.bytes }.max() ?? 1
-        return VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
-            HStack(alignment: .firstTextBaseline, spacing: RoomTokens.Space.row) {
-                Text("Not in any room")
-                    .font(RoomTokens.Typography.title)
-                    .accessibilityHeading(.h2)
-                Spacer(minLength: 0)
-                if !summary.orphans.isEmpty { referenceExplanation.fixedSize() }
-            }
+        RoomDeveloperGroup(title: "Not in any room",
+                           caption: summary.orphans.isEmpty ? nil : "No reference does not mean unused. Room never removes these for you.",
+                           trailing: { if !summary.orphans.isEmpty { referenceExplanation.fixedSize() } }) {
             if summary.orphans.isEmpty {
                 Text("No unreferenced toolchains found in these folders.")
                     .font(RoomTokens.Typography.body)
                     .foregroundStyle(RoomTokens.Ink.secondary)
             } else {
-                VStack(spacing: RoomTokens.Space.row) {
-                    ForEach(orphanRows, id: \.artifact.id) { row in
-                        orphanRow(artifact: row.artifact, reason: row.reason, largest: largest)
+                let groups = RoomDeveloperList.grouped(orphanRows.map { IdentifiedOrphan(artifact: $0.artifact, reason: $0.reason) },
+                    key: { $0.artifact.kind.title }, bytes: { $0.artifact.bytes }, name: { $0.artifact.version })
+                VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
+                    ForEach(sort == .name ? [RoomDeveloperList.Group(key: "", bytes: 0, items: orphanRows.map { IdentifiedOrphan(artifact: $0.artifact, reason: $0.reason) })] : groups, id: \.key) { group in
+                        VStack(alignment: .leading, spacing: RoomTokens.Space.tight / 2) {
+                            if groups.count > 1, sort == .size {
+                                HStack {
+                                    Text(group.key).font(RoomTokens.Typography.caption).foregroundStyle(RoomTokens.Ink.secondary)
+                                        .accessibilityAddTraits(.isHeader)
+                                    Spacer(minLength: 0)
+                                    RoomMaskable(RoomDeveloperFormat.whole(group.bytes, partial: summary.partial))
+                                        .font(RoomTokens.Typography.captionNumeric).foregroundStyle(RoomTokens.Ink.secondary)
+                                }
+                                .padding(.horizontal, RoomTokens.Space.inner)
+                            }
+                            RoomDeveloperRowList(items: group.items, limit: 5) { item in
+                                orphanRow(artifact: item.artifact, reason: item.reason)
+                            }
+                        }
                     }
                 }
             }
         }
-        .padding(RoomTokens.Space.group)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoomTokens.Surface.group, in: .rect(cornerRadius: RoomTokens.Radius.group))
     }
 
     private var referenceExplanation: some View {
@@ -219,45 +219,13 @@ struct RoomDeveloperRoomsView: View {
         }
     }
 
-    private func orphanRow(artifact: DeveloperToolchainResource, reason: RoomDevOrphanReason, largest: Int64) -> some View {
-        VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
-            HStack(spacing: RoomTokens.Space.inner) {
-                VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
-                    RoomMaskable(artifact.version, kind: artifact.kind == .derivedData ? .name : .figure)
-                        .font(RoomTokens.Typography.section)
-                        .lineLimit(1)
-                    Text(artifact.kind.title)
-                        .font(RoomTokens.Typography.caption)
-                        .foregroundStyle(RoomTokens.Ink.secondary)
-                }
-                Spacer(minLength: 0)
-                RoomMaskable(measured(artifact.bytes, partial: artifact.partial || summary.partial))
-                    .font(RoomTokens.Typography.bodyStrong)
-                    .fixedSize()
-                Button {
-                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: artifact.path)])
-                } label: {
-                    Image(systemName: "arrow.up.forward.app").frame(width: 28, height: 28)
-                }
-                .buttonStyle(RoomHoverButtonStyle())
-                .help("Show in Finder")
-                .accessibilityLabel("Show \(hide.masksNow ? "version" : artifact.version) in Finder")
-            }
-            Text(reason.text).foregroundStyle(RoomTokens.Ink.secondary)
-            if let caption = RoomDevUnreferenced.caption(since: unreferenced.since[artifact.key],
-                                                         now: Date(), thresholdDays: threshold) {
-                RoomMaskable(caption).foregroundStyle(RoomTokens.Ink.secondary)
-            }
-            GeometryReader { geometry in
-                Capsule().fill(color(artifact.kind))
-                    .frame(width: geometry.size.width * Double(artifact.bytes) / Double(max(1, largest)))
-            }
-            .frame(height: 3)
-            .accessibilityHidden(true)
-        }
-        .font(RoomTokens.Typography.caption)
-        .padding(RoomTokens.Space.inner)
-        .background(RoomTokens.Surface.canvas, in: .rect(cornerRadius: RoomTokens.Radius.row))
+    private func orphanRow(artifact: DeveloperToolchainResource, reason: RoomDevOrphanReason) -> some View {
+        let age = RoomDevUnreferenced.caption(since: unreferenced.since[artifact.key], now: Date(), thresholdDays: threshold)
+        return RoomDeveloperRow(title: artifact.version, titleKind: artifact.kind == .derivedData ? .name : .figure,
+                                subtitle: artifact.kind.title + " · " + reason.text, subtitleKind: .figure,
+                                note: age,
+                                bytes: artifact.bytes, partial: artifact.partial || summary.partial,
+                                finderURL: URL(fileURLWithPath: artifact.path))
     }
 
     private var rows: [RoomDevProjectRow] {
@@ -338,31 +306,6 @@ struct RoomDeveloperRoomsView: View {
         case .kotlinNative: RoomTokens.Ink.secondary
         case .gradle: RoomTokens.Surface.line2
         }
-    }
-
-    private func figure(_ label: String, symbol: String, bytes: Int64, projectCount: Int? = nil,
-                        note: String? = nil) -> some View {
-        VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
-            Label(label, systemImage: symbol)
-                .font(RoomTokens.Typography.caption)
-                .foregroundStyle(RoomTokens.Ink.secondary)
-            RoomMaskable(measured(bytes, partial: summary.partial))
-                .font(RoomTokens.Typography.figure)
-                .fixedSize()
-            if let projectCount {
-                RoomMaskable("\(projectCount) \(projectCount == 1 ? "project" : "projects")")
-                    .font(RoomTokens.Typography.micro)
-                    .foregroundStyle(RoomTokens.Ink.secondary)
-            } else if let note {
-                Text(note)
-                    .font(RoomTokens.Typography.micro)
-                    .foregroundStyle(RoomTokens.Ink.secondary)
-            }
-        }
-        .padding(RoomTokens.Space.group)
-        .frame(minWidth: 128, maxWidth: .infinity, minHeight: 96, alignment: .topLeading)
-        .background(RoomTokens.Surface.group, in: .rect(cornerRadius: RoomTokens.Radius.group))
-        .accessibilityElement(children: .combine)
     }
 
     private func measured(_ bytes: Int64, partial: Bool) -> String {

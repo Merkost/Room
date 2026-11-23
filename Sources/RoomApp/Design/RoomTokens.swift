@@ -257,6 +257,14 @@ enum RoomTokens {
         static let tileInk2 = Color.room(light: 0x3E4448, dark: 0xC5CCD0, name: "room.tile.ink2")
     }
 
+    enum Developer {
+        static let rowMinHeight: CGFloat = 44
+        static let breakdownHeight: CGFloat = 8
+        static let breakdownGap: CGFloat = 2
+        static let breakdownSteps: [Double] = [1, 0.72, 0.5, 0.34, 0.22]
+        static let actionSize: CGFloat = 28
+    }
+
     enum Map {
         static let inspectorWidth: CGFloat = 260
         static let inspectorBreakpoint: CGFloat = 688

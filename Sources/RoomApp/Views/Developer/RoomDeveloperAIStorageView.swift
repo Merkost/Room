@@ -4,7 +4,6 @@ import SwiftUI
 struct RoomDeveloperAIStorageView: View {
     let report: DeveloperResourcesReport?
     let hasFolders: Bool
-    @Environment(\.roomAccent) private var accent
     @State private var selected: DeveloperAITool?
 
     var body: some View {
@@ -15,7 +14,7 @@ struct RoomDeveloperAIStorageView: View {
             } else {
                 if groups.count > 1 { tools(groups) }
                 VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
-                    ForEach(RoomDeveloperFolderRole.aiRoles) { role in
+                    ForEach(RoomDeveloperFolderRole.aiRoles.sorted { total($0, groups) > total($1, groups) }) { role in
                         if let tool = role.aiTool, let resources = groups[tool], selected == nil || selected == tool {
                             group(role, resources: resources)
                         }
@@ -30,24 +29,17 @@ struct RoomDeveloperAIStorageView: View {
     }
 
     private var emptyState: some View {
-        HStack(spacing: RoomTokens.Space.inner) {
-            Image(systemName: "sparkles")
-                .font(RoomTokens.Typography.title)
-                .foregroundStyle(accent.text)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
-                Text(report == nil ? "Review AI tool storage" : "No recognised storage found")
-                    .font(RoomTokens.Typography.section)
-                Text(report != nil ? "Check that you chose the tool’s data folder."
-                    : hasFolders ? "Scan to see caches, history, and local models."
-                    : "Choose a tool folder to see what occupies disk space.")
-                    .font(RoomTokens.Typography.caption)
-                    .foregroundStyle(RoomTokens.Ink.secondary)
-            }
+        RoomDeveloperGroup(title: report == nil ? "AI tool storage" : "No recognised storage found") {
+            Text(report != nil ? "Check that you chose the tool’s data folder."
+                : hasFolders ? "Scan to see caches, history, and local models."
+                : "Choose a tool folder to see what occupies disk space.")
+                .font(RoomTokens.Typography.body)
+                .foregroundStyle(RoomTokens.Ink.secondary)
         }
-        .padding(RoomTokens.Space.group)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoomTokens.Surface.group, in: .rect(cornerRadius: RoomTokens.Radius.group))
+    }
+
+    private func total(_ role: RoomDeveloperFolderRole, _ groups: [DeveloperAITool: [DeveloperAIStorageResource]]) -> Int64 {
+        role.aiTool.flatMap { groups[$0] }.map { RoomDeveloperPresentation.sum($0.map(\.allocatedBytes)) } ?? 0
     }
 
     private func tools(_ groups: [DeveloperAITool: [DeveloperAIStorageResource]]) -> some View {
@@ -64,48 +56,13 @@ struct RoomDeveloperAIStorageView: View {
     }
 
     private func group(_ role: RoomDeveloperFolderRole, resources: [DeveloperAIStorageResource]) -> some View {
-        VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
-            Label(role.title, systemImage: role.symbol)
-                .font(RoomTokens.Typography.section)
-                .accessibilityHeading(.h2)
-            ForEach(resources) { resource in
-                row(resource)
+        RoomDeveloperGroup(title: role.title) {
+            RoomDeveloperRowList(items: RoomDeveloperList.bySize(resources, bytes: \.allocatedBytes, name: \.title)) { resource in
+                RoomDeveloperRow(title: resource.title, masksTitle: false, subtitle: resource.url.path,
+                                 note: presentation(resource.category).title,
+                                 bytes: resource.allocatedBytes, partial: resource.isPartial, finderURL: resource.url)
             }
         }
-        .padding(RoomTokens.Space.group)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoomTokens.Surface.group, in: .rect(cornerRadius: RoomTokens.Radius.group))
-    }
-
-    private func row(_ resource: DeveloperAIStorageResource) -> some View {
-        let category = presentation(resource.category)
-        return HStack(spacing: RoomTokens.Space.inner) {
-            Image(systemName: category.symbol)
-                .foregroundStyle(accent.text)
-                .frame(width: RoomTokens.Space.group, height: RoomTokens.Space.group)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
-                Text(resource.title)
-                    .font(RoomTokens.Typography.body.weight(.semibold))
-                RoomMaskable(resource.url.path, kind: .name)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .font(RoomTokens.Typography.caption)
-                    .foregroundStyle(RoomTokens.Ink.secondary)
-            }
-            Spacer(minLength: 0)
-            VStack(alignment: .trailing, spacing: RoomTokens.Space.tight) {
-                RoomMaskable((resource.isPartial ? "≥ " : "") + RoomFormat.bytes(resource.allocatedBytes))
-                    .font(RoomTokens.Typography.figure)
-                    .monospacedDigit()
-                Text(category.title)
-                    .font(RoomTokens.Typography.caption)
-                    .foregroundStyle(RoomTokens.Ink.secondary)
-            }
-        }
-        .padding(RoomTokens.Space.row)
-        .background(RoomTokens.Surface.canvas, in: .rect(cornerRadius: RoomTokens.Radius.row))
-        .accessibilityElement(children: .combine)
     }
 
     private func presentation(_ category: DeveloperAIStorageCategory) -> (title: String, symbol: String) {
