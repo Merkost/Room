@@ -10,12 +10,11 @@ struct RoomCustomisePopover: View {
     @AppStorage(RoomOverviewPreferences.densityKey) private var density = RoomTokens.Density.calm
     @AppStorage(RoomOverviewPreferences.recentReceiptKey) private var showRecent = true
     @AppStorage(RoomOverviewStyle.preferenceKey) private var style = RoomOverviewStyle.dots
-    @AppStorage(RoomOverviewPreferences.greetingKey) private var greeting = true
     @AppStorage(RoomOverviewPreferences.roomsChapterKey) private var showRooms = true
     @AppStorage(RoomMenuBarSettings.goalBytesKey) private var goal = Int(RoomMenuBarSettings.defaultGoalBytes)
     @AppStorage("RoomGoalEnabled") private var useGoal = true
     @AppStorage("RoomAccent") private var accent = RoomTokens.Accent.teal
-    @State private var resetBackup: (greeting: Bool, rooms: Bool, accent: RoomTokens.Accent)?
+    @State private var resetBackup: (rooms: Bool, accent: RoomTokens.Accent)?
     private let resetID = "overview/reset"
 
     private var room: RoomPinnedRoom? {
@@ -26,8 +25,6 @@ struct RoomCustomisePopover: View {
         ScrollView {
             VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
                 Text("Customise Overview").font(RoomTokens.Typography.title).accessibilityAddTraits(.isHeader)
-                RoomSettingsSwitch(title: "Greet me by name", isOn: $greeting)
-                    .help("Uses your macOS full name. It stays on this Mac.")
                 VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
                     Text("Free-space goal").font(RoomTokens.Typography.section)
                     RoomSettingsSwitch(title: "Use a goal", isOn: $useGoal)
@@ -67,15 +64,13 @@ struct RoomCustomisePopover: View {
                 RoomInlineUndoRows(prefix: "room/unpin/")
                 RoomInlineConfirmButton(id: resetID, title: "Reset Overview", confirmTitle: "Reset preferences?",
                     doneLine: "Overview preferences reset", stage: {
-                        resetBackup = (greeting, showRooms, accent)
-                        greeting = true
+                        resetBackup = (showRooms, accent)
                         showRooms = true
                         accent = .teal
                     }, commit: {
                         resetBackup = nil
                     }, undo: {
                         guard let resetBackup else { return }
-                        greeting = resetBackup.greeting
                         showRooms = resetBackup.rooms
                         accent = resetBackup.accent
                         self.resetBackup = nil

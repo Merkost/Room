@@ -11,20 +11,14 @@ struct RoomCustomiseTests {
         func date(_ year: Int, _ month: Int, _ day: Int, _ hour: Int, _ minute: Int = 0) -> Date {
             cal.date(from: DateComponents(year: year, month: month, day: day, hour: hour, minute: minute)) ?? .distantPast
         }
-        check("DMR-C50_GivenNameUsed", RoomGreetingName.resolve(fullName: "Konstantin Merenkov", loginName: "kostakttipay", givenName: { _ in "Konstantin" }) == "Konstantin")
-        check("DMR-C51_FallbackFirstWord", RoomGreetingName.resolve(fullName: "Kostya M", loginName: "k", givenName: { _ in nil }) == "Kostya")
-        check("DMR-C52_LoginNameIsNoName", RoomGreetingName.resolve(fullName: "kostakttipay", loginName: "kostakttipay", givenName: { _ in nil }) == nil)
-        check("DMR-C53_EmptyNameNoName", RoomGreetingName.resolve(fullName: "  ", loginName: "x", givenName: { _ in "x" }) == nil)
-        check("DMR-C54_GreetingBoundaries", RoomGreetingName.line(hour: 4, enabled: true, name: "K", hidden: false) == "Good evening, K"
-              && RoomGreetingName.line(hour: 5, enabled: true, name: "K", hidden: false) == "Good morning, K"
-              && RoomGreetingName.line(hour: 12, enabled: true, name: "K", hidden: false) == "Good afternoon, K"
-              && RoomGreetingName.line(hour: 18, enabled: true, name: "K", hidden: false) == "Good evening, K")
-        check("DMR-C55_HideDropsName", RoomGreetingName.line(hour: 9, enabled: true, name: "K", hidden: true) == "Good morning.")
-        check("DMR-C56_SwitchOffRemovesLine", RoomGreetingName.line(hour: 9, enabled: false, name: "K", hidden: false) == nil)
+        check("DMR-C54_GreetingBoundaries", RoomGreetingName.line(hour: 4) == "Good evening."
+              && RoomGreetingName.line(hour: 5) == "Good morning."
+              && RoomGreetingName.line(hour: 12) == "Good afternoon."
+              && RoomGreetingName.line(hour: 18) == "Good evening.")
         check("DMR-C57_NextBoundaryNoPolling", RoomGreetingName.nextBoundary(after: date(2026, 11, 19, 11, 59), calendar: cal) == date(2026, 11, 19, 12)
               && RoomGreetingName.nextBoundary(after: date(2026, 11, 19, 18), calendar: cal) == date(2026, 11, 20, 5))
-        let prefs = RoomOverviewPreferences.read(["RoomGreetingEnabled": "yes"])
-        check("DMR-C58_BadPreferenceReadsDefault", prefs.greetingEnabled && prefs.roomsChapterShown)
+        let prefs = RoomOverviewPreferences.read(["RoomChapterRoomsShown": "yes"])
+        check("DMR-C58_BadPreferenceReadsDefault", prefs.roomsChapterShown)
         check("DMR-C59_ResetNeverForgetsRecords", !RoomOverviewPreferences.resetKeys.contains { $0.contains("Room") && $0.contains("Bytes") } && !RoomOverviewPreferences.resetKeys.contains("RoomGoalBytes"))
         check("DMR-C60_EmptyChapterUsesOverviewContext", !RoomOverviewPreferences().showsRoomsChapter(roomCount: 0, allowsEmptyChapter: false)
               && RoomOverviewPreferences().showsRoomsChapter(roomCount: 0, allowsEmptyChapter: true)
@@ -61,19 +55,11 @@ struct RoomCustomiseTests {
 
     }
 
-    @Test @MainActor func greetingReadsNameOnlyOnActivationAndChangesLive() {
-        var reads = 0
-        let model = RoomOverviewModel(fullName: { reads += 1; return "Casey Example" },
-                                      loginName: { "caseyexample" }, givenName: { _ in "Casey" })
-        #expect(reads == 0)
-        model.updateGreeting(enabled: true, hidden: false, refreshName: true)
-        #expect(model.greeting?.contains("Casey") == true)
-        #expect(reads == 1)
-        model.updateGreeting(enabled: true, hidden: true)
-        #expect(model.greeting?.contains("Casey") == false)
-        model.updateGreeting(enabled: false, hidden: false)
-        #expect(model.greeting == nil && model.nextGreetingUpdateAt == nil)
-        #expect(reads == 1)
+    @Test @MainActor func greetingIsGenericAndSchedulesNextBoundary() {
+        let model = RoomOverviewModel()
+        model.updateGreeting()
+        #expect(model.greeting?.hasPrefix("Good ") == true && model.greeting?.contains(",") == false)
+        #expect(model.nextGreetingUpdateAt != nil)
     }
 
     @Test func customiseOnlyWithOverview() {

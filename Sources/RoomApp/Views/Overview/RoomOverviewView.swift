@@ -37,8 +37,6 @@ struct RoomOverviewView: View {
 
     @AppStorage(RoomMenuBarSettings.goalBytesKey) private var storedGoal = Int(RoomMenuBarSettings.defaultGoalBytes)
     @AppStorage(RoomOverviewPreferences.roomsChapterKey) private var showRooms = true
-    @AppStorage(RoomOverviewPreferences.greetingKey) private var greetByName = true
-    @Environment(\.controlActiveState) private var controlActiveState
     @AppStorage("RoomGoalEnabled") private var goalEnabled = true
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.roomMotion) private var motion
@@ -133,21 +131,12 @@ struct RoomOverviewView: View {
                 AccessibilityNotification.Announcement(presentedSnapshot.accessibilityAnswer).post()
             }
         }
-        .onChange(of: controlActiveState, initial: true) { _, state in
-            model.updateGreeting(enabled: greetByName, hidden: hidden, refreshName: state == .key)
-        }
-        .onChange(of: greetByName) { _, _ in
-            model.updateGreeting(enabled: greetByName, hidden: hidden, refreshName: true)
-        }
-        .onChange(of: hidden) { _, _ in
-            model.updateGreeting(enabled: greetByName, hidden: hidden, refreshName: true)
-        }
         .task(id: scenePhase == .active ? model.nextGreetingUpdateAt : nil) {
             guard scenePhase == .active, let deadline = model.nextGreetingUpdateAt else { return }
             do {
                 try await Task.sleep(for: .seconds(max(0, deadline.timeIntervalSinceNow)))
                 guard !Task.isCancelled else { return }
-                model.updateGreeting(enabled: greetByName, hidden: hidden)
+                model.updateGreeting()
             } catch {}
         }
         .onAppear { updateCapacityMonitoring() }
@@ -159,7 +148,7 @@ struct RoomOverviewView: View {
             updateCapacityMonitoring()
             if isActive {
                 updateSnapshot(inputs)
-                model.updateGreeting(enabled: greetByName, hidden: hidden)
+                model.updateGreeting()
             }
         }
         .task(id: isActive ? model.nextCacheUpdateAt : nil) {
