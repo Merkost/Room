@@ -19,6 +19,9 @@ fi
 for localization in "$resources"/*.lproj(N/); do
     cp -R "$localization" "$staged_app/Contents/Resources/"
 done
+for asset in "$resources"/*.ttf(N) "$resources"/OFL-*.txt(N); do
+    cp "$asset" "$staged_app/Contents/Resources/"
+done
 cp "$source_dir/Resources/Info.plist" "$staged_app/Contents/Info.plist"
 if [[ -f "$source_dir/Resources/Room.icns" ]]; then
     cp "$source_dir/Resources/Room.icns" "$staged_app/Contents/Resources/Room.icns"
