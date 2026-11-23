@@ -8,6 +8,11 @@ nonisolated struct RoomSidebarFoot: Equatable, Sendable {
     let belowGoal: Bool
     let accessibilityLabel: String
 
+    /// The foot repeats the free space; on Overview the answer already says it, so the foot steps aside there.
+    static func isShown(route: RoomRoute, labelled: Bool) -> Bool {
+        labelled && route != .screen(.overview)
+    }
+
     static func make(capacityBytes: Int64?, freeBytes: Int64?, goalBytes: Int64?, volumeName: String?,
                      hidden: Bool, format: (Int64) -> String) -> RoomSidebarFoot {
         guard let capacity = capacityBytes, let free = freeBytes, capacity > 0, free >= 0, free <= capacity else {

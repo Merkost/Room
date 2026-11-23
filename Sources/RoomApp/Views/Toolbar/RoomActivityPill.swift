@@ -172,6 +172,9 @@ struct RoomActivityPill: View {
     }
 
     private func spoken(_ state: RoomActivityPillState) -> String {
+        if !hidden, prefersQuietIdleLabel, case .idle(.some) = state {
+            return String(localized: "Up to date") + ". " + rawLabel(state)
+        }
         guard hidden else { return rawLabel(state) }
         switch state {
         case .idle: return "Free space hidden"

@@ -105,8 +105,9 @@ struct RoomRootView: View {
         .focusedSceneValue(\.roomScreen, screenActions)
         .toolbar {
             ToolbarItem(placement: .principal) {
+                // The pill carries status on every screen; the free-space figure lives in the hero (Overview) or the sidebar foot.
                 RoomActivityPill(stop: stopActivity, restore: restoreActivity, showHistory: { sheet = .history },
-                                 prefersQuietIdleLabel: destination == .overview)
+                                 prefersQuietIdleLabel: true)
             }
             .sharedBackgroundVisibility(.hidden)
             ToolbarItemGroup(placement: .primaryAction) {

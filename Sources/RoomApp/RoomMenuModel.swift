@@ -200,8 +200,8 @@ nonisolated enum RoomMenuModel {
             switch self {
             case .overview: "house"
             case .disk: "square.grid.2x2"
-            case .clean: "sparkles"
-            case .developer: "shippingbox"
+            case .clean: "archivebox"      // DS-13 (BRAND-DS §7.2)
+            case .developer: "hammer"
             case .memory: "memorychip"
             }
         }
