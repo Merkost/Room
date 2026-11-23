@@ -20,19 +20,19 @@ struct RoomMemoryView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            HStack(alignment: .center, spacing: 16) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Memory").font(RoomType.heading(24))
-                    Text(memoryIntroduction)
-                        .font(RoomTokens.Typography.body).foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 12)
+        VStack(alignment: .leading, spacing: RoomTokens.Space.breath1) {
+            HStack(spacing: RoomTokens.Space.group) {
+                Text("Memory pressure, compression, and swap on your Mac.")
+                    .font(RoomTokens.Typography.body)
+                    .foregroundStyle(RoomTokens.Ink.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 Button { insights.scanMemory() } label: {
                     Label(insights.isScanningMemory ? "Reading…" : insights.memoryReport == nil ? "Scan memory" : "Refresh",
                           systemImage: "arrow.clockwise")
                 }
-                .buttonStyle(.glass).controlSize(.large)
+                .roomSecondary()
+                .fixedSize()
                 .disabled(insights.isScanningMemory)
                 .accessibilityIdentifier("RoomMemoryRefreshButton")
             }
@@ -116,14 +116,6 @@ struct RoomMemoryView: View {
         let primary = window ?? NSApp?.windows.first { $0.identifier == RoomApplicationDelegate.primaryWindowID }
         let visible = primary?.occlusionState.contains(.visible) ?? true
         insights.setMemoryActive(scenePhase == .active && visible)
-    }
-
-    private var memoryIntroduction: String {
-        #if ROOM_APP_STORE
-        "Memory pressure, compression, and swap on your Mac."
-        #else
-        "Memory pressure, compression, and swap on your Mac."
-        #endif
     }
 
     #if ROOM_APP_STORE

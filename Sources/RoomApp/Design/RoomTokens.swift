@@ -64,8 +64,12 @@ enum RoomTokens {
         static func tracking(for size: CGFloat) -> CGFloat { size >= 30 ? -0.5 : size >= 20 ? -0.2 : 0 }
     }
 
+    enum Screen {
+        static let compactBreakpoint: CGFloat = 700
+        static let maximumColumnWidth: CGFloat = 1_120
+    }
+
     enum Overview {
-        static let contentWidth: CGFloat = 920
         static let greetingLineHeight: CGFloat = 20
         static let answerLineHeight: CGFloat = 44
         static let goalLineHeight: CGFloat = 22

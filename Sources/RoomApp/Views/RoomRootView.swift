@@ -14,7 +14,6 @@ struct RoomRootView: View {
     var enableOnboardingMonitor: () -> Void = {}
     var showOnboardingMonitor: () -> Void = {}
     @State private var onboardingFollowUp: [RoomOnboardingEffect] = []
-    @AppStorage(RoomOverviewPreferences.densityKey) private var overviewDensity = RoomTokens.Density.calm
     @AppStorage("RoomAppearance") private var appearance = "dark"
     @Environment(\.roomHide) private var hide
     @Environment(\.openSettings) private var openSettings
@@ -93,8 +92,7 @@ struct RoomRootView: View {
     var body: some View {
         RoomShellView(navigation: navigation, rooms: rooms, insights: insights, selectRoom: openPinnedRoom,
                       savedViews: savedViews, selectSavedView: openSavedView) {
-            RoomScreenScaffold(title: screenActions.title, subtitle: screenSubtitle, scrolls: destination != .disk,
-                               requestedDensity: destination == .overview ? overviewDensity : nil) {
+            RoomScreenScaffold(title: screenActions.title, subtitle: screenSubtitle, scrolls: destination != .disk) {
                 screenContent
             }
         }
