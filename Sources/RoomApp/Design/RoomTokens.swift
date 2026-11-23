@@ -288,6 +288,8 @@ enum RoomTokens {
         static let kindBarHeight: CGFloat = 12
         static let kindHoverOpacity = 0.18
         static let focusStroke: CGFloat = 2
+        /// Hover ring inside a tile (the stroke is doubled and clipped, so 1 pt shows inside).
+        static let hoverRing: CGFloat = 1
         static let labelPaddingX: CGFloat = 7
         static let labelPaddingY: CGFloat = 3
         static let hatchStroke: CGFloat = 1.5

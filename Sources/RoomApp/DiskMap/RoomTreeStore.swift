@@ -14,6 +14,15 @@ nonisolated struct RoomTreeLocation: Codable, Equatable, Sendable {
     }
 }
 
+/// The launch rule for Disk Map, pure so it can be tested.
+nonisolated enum RoomDiskMapLaunch {
+    static let keepWindow: TimeInterval = 24 * 60 * 60
+
+    static func keepsLastOpened(isHome: Bool, lastUsed: Date, now: Date) -> Bool {
+        isHome || now.timeIntervalSince(lastUsed) < keepWindow
+    }
+}
+
 actor RoomTreeStore {
     static let shared = RoomTreeStore()
 
@@ -75,6 +84,25 @@ actor RoomTreeStore {
     func lastOpened() async -> (current: RoomStoredTree, previous: RoomStoredTree?, root: Root)? {
         await prepare()
         guard let id = index.lastOpened, let root = index.roots[id], let value = await payload(id) else { return nil }
+        return (value.current, value.previous, root)
+    }
+
+    /// What Disk Map shows on launch: the home map, unless the person opened another folder less than a day ago
+    /// (a deep folder restored days later reads as an error; REVIEW §3 Disk Map).
+    func launchMap(now: Date = .now) async -> (current: RoomStoredTree, previous: RoomStoredTree?, root: Root)? {
+        await prepare()
+        let homeID = index.homeRootID
+        if let id = index.lastOpened, let root = index.roots[id],
+           RoomDiskMapLaunch.keepsLastOpened(isHome: id == homeID, lastUsed: root.lastUsed, now: now) {
+            return await lastOpened()
+        }
+        guard let homeID, let root = index.roots[homeID], let value = await payload(homeID) else { return await lastOpened() }
+        return (value.current, value.previous, root)
+    }
+
+    func homeEntry() async -> (current: RoomStoredTree, previous: RoomStoredTree?, root: Root)? {
+        await prepare()
+        guard let homeID = index.homeRootID, let root = index.roots[homeID], let value = await payload(homeID) else { return nil }
         return (value.current, value.previous, root)
     }
 

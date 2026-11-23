@@ -862,9 +862,27 @@ final class RoomInsightsModel {
         restoredDiskMap = true
         let generation = diskOpenGeneration
         await updateTreeApprovals()
-        guard let saved = await treeStore.lastOpened(), diskOpenGeneration == generation,
+        guard let saved = await treeStore.launchMap(), diskOpenGeneration == generation,
               diskURL == nil, canChooseDiskLocation else { return }
         showStored(saved.current, previous: saved.previous, root: saved.root)
+    }
+
+    /// True when Disk Map shows something other than the top of the home map, and a home map exists to go back to.
+    var canGoBackToHomeMap: Bool {
+        guard let home = diskMap.catalog.homeRootID, !isScanningDisk else { return false }
+        return diskMap.current?.rootID != home || !diskMap.levelPath.isEmpty
+    }
+
+    /// "Back to home folder": the top of the saved home map. Reads nothing new.
+    func showHomeMap() async {
+        if let home = diskMap.catalog.homeRootID, diskMap.current?.rootID == home {
+            diskMap.go(to: "")
+            return
+        }
+        let generation = diskOpenGeneration
+        guard let saved = await treeStore.homeEntry(), diskOpenGeneration == generation, !isScanningDisk else { return }
+        showStored(saved.current, previous: saved.previous, root: saved.root)
+        await treeStore.open(saved.current.rootID)
     }
 
     func observeTreeChanges() async {

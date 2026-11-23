@@ -174,10 +174,19 @@ struct RoomDiskMapView: View {
                     step(to: $0, animated: NSApp.currentEvent?.type == .leftMouseUp)
                 }
                 if !hidden {
-                    Text("\(level.isPartial ? "≥ " : "")\(RoomFormat.gb(level.allocatedBytes)) · hidden files included")
+                    Text("\(RoomFormat.gb(level.allocatedBytes, partial: level.isPartial)) · hidden files included")
                         .font(RoomTokens.Typography.caption)
                         .foregroundStyle(RoomTokens.Ink.secondary)
                         .lineLimit(1)
+                }
+                if insights.canGoBackToHomeMap {
+                    Button { Task { await insights.showHomeMap() } } label: {
+                        Label("Back to home folder", systemImage: "house")
+                            .font(RoomTokens.Typography.caption)
+                    }
+                    .roomSecondary(.small)
+                    .fixedSize()
+                    .accessibilityIdentifier("RoomDiskMapBackHome")
                 }
             }
             .help(model.current.map { "Scanned \($0.scannedAt.formatted(.dateTime.weekday(.abbreviated).month().day().hour().minute()))" } ?? "")
