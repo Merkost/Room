@@ -42,10 +42,12 @@ struct RoomMemoryView: View {
             let series = range.series(in: insights.pressureHistory)
             let finding = pressureFinding(series: series, now: now)
             pressureOverview(level: level, finding: finding)
-            RoomPressureTimeline(series: series, now: now, level: level, finding: finding, range: $range)
+            // "In use" first, then the history: the current answer before the record of how it got here.
             if let report = insights.memoryReport, countersAvailable(report) {
                 memorySummary(report, now: now)
+                    .transition(.opacity)
             }
+            RoomPressureTimeline(series: series, now: now, level: level, finding: finding, range: $range)
             #if ROOM_APP_STORE
             if let report = insights.memoryReport {
                 if !report.recommendations.isEmpty { recommendations(report) }
@@ -370,8 +372,8 @@ struct RoomMemoryView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title).font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
             Text(bytes.map { RoomFormat.memory($0, hero: hero) } ?? RoomFormat.notMeasured)
-                .font(font).monospacedDigit()
-                .foregroundStyle(RoomTokens.Ink.graphite)
+                .font(bytes == nil ? RoomTokens.Typography.body : font).monospacedDigit()
+                .foregroundStyle(bytes == nil ? RoomTokens.Ink.secondary : RoomTokens.Ink.graphite)
                 .lineLimit(1).minimumScaleFactor(0.8)
         }.accessibilityElement(children: .combine)
     }

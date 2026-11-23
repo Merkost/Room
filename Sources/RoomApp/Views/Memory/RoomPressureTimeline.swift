@@ -14,6 +14,25 @@ enum RoomMemoryRange: String, CaseIterable {
     }
 }
 
+/// How the pressure history is laid out (REVIEW §3 Memory): one quiet strip while the whole range is Normal,
+/// the three lanes only when the range holds Elevated or Critical, or while the person hovers or opens it.
+nonisolated enum RoomPressureLayout {
+    static func showsLanes(_ columns: [RoomPressureBucket?], hovering: Bool, pinnedOpen: Bool) -> Bool {
+        hovering || pinnedOpen || columns.contains { ($0?.worst ?? .normal) != .normal }
+    }
+
+    /// Changes once per new sample, so the now-dot pulses once per sample and never at rest.
+    static func sampleKey(_ columns: [RoomPressureBucket?]) -> Int64? {
+        guard let last = columns.last(where: { $0 != nil }) ?? nil else { return nil }
+        return last.index &* 10_000 &+ Int64(last.count)
+    }
+}
+
+/// The line draws on once per launch, the first time the Memory screen opens.
+@MainActor enum RoomPressureDrawOn {
+    static var played = false
+}
+
 struct RoomPressureTimeline: View {
     let series: RoomPressureSeries
     let now: Date
@@ -21,8 +40,12 @@ struct RoomPressureTimeline: View {
     let finding: String
     @Binding var range: RoomMemoryRange
     @Environment(\.roomMotion) private var motion
+    @Environment(\.roomAccent) private var accent
     @State private var selection: Date?
     @State private var keyboardSelection = false
+    @State private var hovering = false
+    @State private var pinnedOpen = false
+    @State private var drawn = RoomPressureDrawOn.played
 
     private var columns: [RoomPressureBucket?] { series.columns(now: now) }
     private var firstIndex: Int64 { series.bucketIndex(now) - Int64(series.capacity) + 1 }
@@ -37,15 +60,82 @@ struct RoomPressureTimeline: View {
     private var endDate: Date { series.start(of: firstIndex + Int64(series.capacity)) }
 
     var body: some View {
+        let lanes = RoomPressureLayout.showsLanes(columns, hovering: hovering, pinnedOpen: pinnedOpen)
+        let calm = !RoomPressureLayout.showsLanes(columns, hovering: false, pinnedOpen: false)
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Pressure").font(RoomTokens.Typography.title)
+                Text("Pressure").font(RoomTokens.Typography.title).accessibilityHeading(.h2)
                 Text(range.intervalTitle).font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
                 Spacer()
+                if calm {
+                    Button(pinnedOpen ? "Show less" : "Show lanes") { pinnedOpen.toggle() }
+                        .roomLink(accent)
+                        .font(RoomTokens.Typography.caption)
+                        .accessibilityHint("Shows the Normal, Elevated and Critical lanes")
+                }
                 Picker("Pressure history range", selection: $range) {
                     ForEach(RoomMemoryRange.allCases, id: \.self) { Text($0.title).tag($0) }
                 }.pickerStyle(.segmented).labelsHidden().fixedSize()
             }
+            Group {
+                if lanes {
+                    lanesChart.transition(.opacity)
+                } else {
+                    strip.transition(.opacity)
+                }
+            }
+            .onHover { inside in
+                withAnimation(motion.animation(RoomTokens.Motion.standard, fallback: RoomTokens.Motion.fade)) { hovering = inside }
+            }
+            .onAppear {
+                guard !drawn else { return }
+                RoomPressureDrawOn.played = true
+                withAnimation(motion.animation(RoomDS.Motion.timed(.slow), fallback: nil)) { drawn = true }
+            }
+            HStack(spacing: 8) {
+                RoomPocketScrubber(level: selectedLevel, size: 26)
+                    .animation(motion.isFull && !keyboardSelection ? RoomTokens.Motion.standard : nil, value: selectedLevel)
+                Text(readout).font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
+            }.accessibilityHidden(true)
+        }
+        .onChange(of: range) { _, _ in selection = nil }
+    }
+
+    /// One line while the range is all Normal: measured time in the Normal tint, the honest hatch where Room wasn't running.
+    private var strip: some View {
+        HStack(spacing: RoomTokens.Space.row) {
+            Text(RoomPressureLevel.normal.word).font(RoomTokens.Typography.micro).foregroundStyle(.secondary)
+            Canvas { context, size in
+                let width = size.width / Double(series.capacity)
+                var measured = Path()
+                var gaps = Path()
+                for (index, bucket) in columns.enumerated() {
+                    let rect = CGRect(x: Double(index) * width, y: 0, width: width, height: size.height)
+                    if bucket == nil {
+                        for y in stride(from: -width, to: size.height, by: 6) {
+                            gaps.move(to: CGPoint(x: rect.minX, y: y + width))
+                            gaps.addLine(to: CGPoint(x: rect.maxX, y: y))
+                        }
+                    } else {
+                        measured.addRect(rect)
+                    }
+                }
+                let reveal = CGRect(x: 0, y: 0, width: size.width * (drawn ? 1 : 0), height: size.height)
+                context.clip(to: Path(reveal))
+                context.fill(measured, with: .color(RoomTokens.Status.normal.opacity(RoomTokens.Status.pressureLaneOpacity * 3)))
+                context.stroke(gaps, with: .color(RoomTokens.Surface.hatch), lineWidth: 1)
+            }
+            .clipShape(Capsule())
+            .frame(height: RoomTokens.Map.kindBarHeight)
+            .help("Room wasn’t running in the gaps")
+        }
+        .frame(height: RoomTokens.Map.readoutHeight)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(finding)
+        .accessibilityHint("Pressure stayed Normal. Use Show lanes to see the full chart.")
+    }
+
+    private var lanesChart: some View {
             chart
                 .frame(height: 210)
                 .animation(motion.animation(RoomTokens.Motion.fade, fallback: nil), value: range)
@@ -73,13 +163,6 @@ struct RoomPressureTimeline: View {
                     selection = nil
                     return .handled
                 }
-            HStack(spacing: 8) {
-                RoomPocketScrubber(level: selectedLevel, size: 26)
-                    .animation(motion.isFull && !keyboardSelection ? RoomTokens.Motion.standard : nil, value: selectedLevel)
-                Text(readout).font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
-            }.accessibilityHidden(true)
-        }
-        .onChange(of: range) { _, _ in selection = nil }
     }
 
     private var chart: some View {
@@ -124,8 +207,17 @@ struct RoomPressureTimeline: View {
                 }
             }
         }
+        .chartOverlay { proxy in
+            nowDot(proxy)
+        }
         .chartPlotStyle { plot in
-            plot.background {
+            plot.mask(alignment: .leading) {
+                // Draw-on, left to right, once per launch (Reduce Motion: already drawn).
+                GeometryReader { geometry in
+                    Rectangle().frame(width: geometry.size.width * (drawn ? 1 : 0))
+                }
+            }
+            .background {
                 Canvas { context, size in
                     let width = size.width / Double(series.capacity)
                     var lines = Path()
@@ -148,6 +240,21 @@ struct RoomPressureTimeline: View {
             if $0 == nil && selection != nil { AccessibilityNotification.Announcement(readout).post() }
             selection = $0
         }))
+    }
+
+    /// The "now" dot: one pulse per new sample, still at rest.
+    private func nowDot(_ proxy: ChartProxy) -> some View {
+        GeometryReader { geometry in
+            if let level, let plot = proxy.plotFrame, let x = proxy.position(forX: now),
+               let y = proxy.position(forY: Double(level.rawValue)) {
+                let origin = geometry[plot].origin
+                RoomNowDot(color: RoomPocketScrubber.color(level),
+                           trigger: motion.isFull ? RoomPressureLayout.sampleKey(columns) : nil)
+                    .position(x: origin.x + x, y: origin.y + y)
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 
     private var readout: String {
@@ -185,6 +292,27 @@ struct RoomPressureTimeline: View {
             }
         }
         return result
+    }
+}
+
+/// One ring leaves the dot when a new sample lands (trigger changes), then nothing moves until the next one.
+private struct RoomNowDot: View {
+    let color: Color
+    let trigger: Int64?
+
+    private enum Pulse: CaseIterable { case rest, start, end }
+
+    var body: some View {
+        ZStack {
+            Circle().stroke(color, lineWidth: 1.5)
+                .frame(width: 8, height: 8)
+                .phaseAnimator(Pulse.allCases, trigger: trigger) { ring, phase in
+                    ring.scaleEffect(phase == .end ? 2.4 : 1).opacity(phase == .start ? 0.8 : 0)
+                } animation: { phase in
+                    phase == .end ? RoomDS.Motion.timed(.slow) : RoomTokens.Motion.quick
+                }
+            Circle().fill(color).frame(width: 6, height: 6)
+        }
     }
 }
 
