@@ -185,6 +185,7 @@ final class RoomApplicationDelegate: NSObject, NSApplicationDelegate {
 
     weak var model: RoomViewModel?
     weak var insights: RoomInsightsModel?
+    private let appearanceRoot = RoomAppearanceRoot()
     private var waitingForStateWrites = false
     #if !ROOM_APP_STORE
     weak var agentWork: AgentWorkModel?
@@ -217,6 +218,7 @@ final class RoomApplicationDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
+        appearanceRoot.install()
         if let iconURL = Bundle.main.url(forResource: "Room", withExtension: "icns"),
            let icon = NSImage(contentsOf: iconURL) {
             NSApp.applicationIconImage = icon
