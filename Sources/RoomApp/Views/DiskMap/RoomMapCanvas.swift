@@ -1,3 +1,4 @@
+import AppKit
 import RoomCore
 import SwiftUI
 
@@ -8,7 +9,6 @@ struct RoomMapCanvas: View {
     var blueprint: RoomBlueprint?
     var placedLayer: RoomMapLayer?
     var interactive = true
-    var suppressLabels = false
     var onHoverItem: (RoomMapItem?) -> Void = { _ in }
     var activate: (String, Bool, Bool) -> Void = { _, _, _ in }
     var preview: (String) -> Bool = { _ in false }
@@ -22,7 +22,7 @@ struct RoomMapCanvas: View {
                 RoomBlueprintMotion(blueprint: $0, items: layer.items, size: geometry.size, animates: animatedLayouts)
             }
             RoomMapCanvasSurface(layer: layer, level: level, selection: selection, hidden: hidden,
-                scan: scan, interactive: interactive, suppressLabels: suppressLabels,
+                scan: scan, interactive: interactive,
                 onHoverItem: onHoverItem, activate: activate, preview: preview, reveal: reveal)
         }
         .background(RoomTokens.Surface.canvas, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.card))
@@ -38,6 +38,7 @@ private struct RoomMapCanvasSurface: View {
     @FocusState private var hasFocus: Bool
     @State private var hovered: String?
     @State private var keyboardSelection: String?
+    @State private var lastClickedTile: String?
     @State private var settledScan: Date?
     let layer: RoomMapLayer
     let level: RoomTreeNode
@@ -45,7 +46,6 @@ private struct RoomMapCanvasSurface: View {
     let hidden: Bool
     let scan: RoomBlueprintMotion?
     let interactive: Bool
-    let suppressLabels: Bool
     let onHoverItem: (RoomMapItem?) -> Void
     let activate: (String, Bool, Bool) -> Void
     let preview: (String) -> Bool
@@ -57,14 +57,36 @@ private struct RoomMapCanvasSurface: View {
 
     var body: some View {
         if let scan { blueprintArtwork(scan) }
-        else if interactive { interactiveCanvas }
-        else { artwork }
+        else {
+            ZStack {
+                RoomMapArtwork(items: layer.items, hidden: hidden)
+                    .equatable()
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+                if interactive { interactiveCanvas }
+                else if selection != nil { highlights }
+            }
+        }
     }
 
-    private var artwork: some View {
+    private var highlights: some View {
+        let focus = interactive && hasFocus ? keyboardSelection ?? selection ?? ordered.first?.id : nil
+        let hover = interactive ? hovered : nil
         var frame = RoomCanvasFrame()
-        for tile in layer.items { draw(tile, in: &frame) }
-        return Canvas(rendersAsynchronously: true, renderer: frame.renderer)
+        for tile in layer.items where tile.id == selection || tile.id == hover || tile.id == focus {
+            let shape = RoomMapArtwork.outline(tile)
+            let stroke = RoomTokens.Map.focusStroke
+            if tile.id == selection {
+                frame.stroke(shape, RoomTokens.Surface.group, lineWidth: stroke + 2)
+            }
+            if tile.id == selection || tile.id == hover {
+                frame.stroke(shape, RoomTokens.Ink.graphite, lineWidth: stroke, clip: shape)
+            }
+            if tile.id == focus {
+                frame.stroke(shape, accent.fill, lineWidth: stroke)
+            }
+        }
+        return Canvas(renderer: frame.renderer)
     }
 
     private func blueprintArtwork(_ scan: RoomBlueprintMotion) -> some View {
@@ -114,10 +136,10 @@ private struct RoomMapCanvasSurface: View {
             let mixed = item.isOther && !scan.pending.isEmpty
             if reveal.fill < 1, scan.previousPending.contains(item.id), var earlier = scan.previous[item.id] {
                 earlier.drawRect = frame.drawRect
-                draw(earlier, in: &artwork, pending: true, opacity: 1 - reveal.fill)
+                RoomMapArtwork.draw(earlier, in: &artwork, hidden: hidden, pending: true, opacity: 1 - reveal.fill)
             }
-            draw(frame, in: &artwork, pending: scan.pending.contains(item.id) || mixed,
-                 opacity: reveal.fill, hideFigure: mixed)
+            RoomMapArtwork.draw(frame, in: &artwork, hidden: hidden, pending: scan.pending.contains(item.id) || mixed,
+                               opacity: reveal.fill, hideFigure: mixed)
             if reveal.wall > 0 {
                 let shape = Path(roundedRect: frame.drawRect, cornerRadius: RoomTokens.Radius.tile)
                 artwork.stroke(shape.trimmedPath(from: 0, to: reveal.wall), RoomTokens.Ink.secondary,
@@ -128,7 +150,7 @@ private struct RoomMapCanvasSurface: View {
     }
 
     private var interactiveCanvas: some View {
-        artwork
+        highlights
         .contentShape(Rectangle())
         .onContinuousHover { phase in
             let item: RoomMapItem?
@@ -140,9 +162,10 @@ private struct RoomMapCanvasSurface: View {
             hovered = item?.id
             onHoverItem(item)
         }
-        .onTapGesture(count: 2, coordinateSpace: .local) { hit($0, open: true) }
-        .onTapGesture(count: 1, coordinateSpace: .local) { hit($0, open: false) }
+        .onTapGesture(coordinateSpace: .local) { hit($0) }
         .focusable()
+        // AppKit rasterizes the entire transformed focus ring during a zoom.
+        .focusEffectDisabled()
         .focused($hasFocus)
         .onKeyPress(.leftArrow) { move(.left) }
         .onKeyPress(.rightArrow) { move(.right) }
@@ -164,6 +187,7 @@ private struct RoomMapCanvasSurface: View {
         .onChange(of: level) { _, _ in
             hovered = nil
             keyboardSelection = nil
+            lastClickedTile = nil
         }
         .accessibilityLabel("Disk Map")
         .accessibilityChildren {
@@ -180,67 +204,21 @@ private struct RoomMapCanvasSurface: View {
         }
     }
 
-    private func paintName(_ tile: RoomMapItem) -> String {
-        if hidden { return tile.isOther ? "Other" : "Hidden" }
-        if tile.isOther && tile.otherCount > 0 { return "Other · \(tile.otherCount) small items" }
-        return tile.name + (tile.canStepInside && tile.role != .group ? " ›" : "")
-    }
-
     private func spoken(_ tile: RoomMapItem) -> String {
         RoomMapSpeech.label(tile, parentName: level.name, parentBytes: level.allocatedBytes,
                             spoken: RoomFormat.bytes, hidden: hidden)
     }
 
-    private func draw(_ tile: RoomMapItem, in canvas: inout RoomCanvasFrame, pending isPending: Bool = false,
-                      opacity: Double = 1, hideFigure: Bool = false) {
-        guard opacity > 0, tile.drawRect.width > 0, tile.drawRect.height > 0 else { return }
-        let style = tile.kind.flatMap(RoomTokens.Kind.init(rawValue:))
-        let shape = Path(roundedRect: tile.drawRect, cornerRadius: tile.role == .group ? RoomTokens.Radius.field : RoomTokens.Radius.tile)
-        let fill = tile.role == .group ? RoomTokens.Surface.track : style?.fill ?? RoomTokens.Surface.track
-        let alpha = opacity * (isPending
-            ? (tile.role == .group ? RoomTokens.Map.pendingGroupOpacity : RoomTokens.Map.pendingTileOpacity) : 1)
-        canvas.fill(shape, fill, opacity: alpha)
-        if tile.isPartial || isPending {
-            canvas.stroke(hatch(in: tile.drawRect), RoomTokens.Surface.hatch,
-                          lineWidth: RoomTokens.Map.hatchStroke, clip: shape, opacity: alpha)
-        }
-        if tile.id == selection {
-            canvas.stroke(shape, RoomTokens.Surface.group, lineWidth: RoomTokens.Map.focusStroke + 2, opacity: alpha)
-        }
-        if tile.id == selection || tile.id == hovered {
-            canvas.stroke(shape, RoomTokens.Ink.graphite, lineWidth: RoomTokens.Map.focusStroke, clip: shape, opacity: alpha)
-        }
-        if hasFocus, keyboardSelection == tile.id {
-            canvas.stroke(shape, accent.fill, lineWidth: RoomTokens.Map.focusStroke, opacity: alpha)
-        }
-        guard !suppressLabels, tile.label != .none else { return }
-        let labelBox = (tile.headerRect ?? tile.drawRect).insetBy(dx: RoomTokens.Map.labelPaddingX, dy: RoomTokens.Map.labelPaddingY)
-        guard labelBox.width > 0, labelBox.height > 0 else { return }
-        let size = hidden ? "Hidden" : (tile.isPartial && !isPending ? "≥ " : "") + RoomFormat.bytes(tile.bytes)
-        let titleFont = tile.drawRect.width >= 140 && tile.drawRect.height >= 70
-            ? RoomTokens.Typography.section : RoomTokens.Typography.caption.weight(.semibold)
-        let grouped = tile.role == .group
-        let name = RoomCanvasFrame.Line(value: paintName(tile),
-            font: grouped ? RoomTokens.Typography.micro.weight(.semibold) : titleFont, ink: RoomTokens.Kind.tileInk)
-        let figure = RoomCanvasFrame.Line(value: size,
-            font: grouped ? RoomTokens.Typography.micro : RoomTokens.Typography.captionNumeric, ink: RoomTokens.Kind.tileInk2)
-        canvas.lines(name, tile.label == .nameAndSize && !hideFigure ? figure : nil,
-                     in: labelBox, inline: grouped, opacity: alpha)
-    }
-
-    private func hatch(in rect: CGRect) -> Path {
-        Path { path in
-            for x in stride(from: rect.minX - rect.height, to: rect.maxX, by: RoomTokens.Map.hatchPitch) {
-                path.move(to: CGPoint(x: x, y: rect.maxY))
-                path.addLine(to: CGPoint(x: x + rect.height, y: rect.minY))
-            }
-        }
-    }
-
-    private func hit(_ point: CGPoint, open: Bool) {
-        guard let tile = layer.hit(point) else { return }
+    private func hit(_ point: CGPoint) {
+        guard let tile = layer.hit(point) else { lastClickedTile = nil; return }
+        let click = NSApp.currentEvent
+        let count = click?.type == .leftMouseUp ? click?.clickCount ?? 1 : 1
+        let id = tile.item.id
+        // A second click that lands on a newly opened level must not open another folder.
+        guard count == 1 || (count == 2 && lastClickedTile == id) else { return }
+        lastClickedTile = id
         keyboardSelection = nil
-        activate(tile.item.id, open || tile.isHeader, true)
+        activate(id, count == 2 || tile.isHeader, true)
     }
 
     private func move(_ direction: RoomMapDirection) -> KeyPress.Result {
@@ -253,4 +231,65 @@ private struct RoomMapCanvasSurface: View {
         if let keyboardSelection { activate(keyboardSelection, false, false) }
         return .handled
     }
+}
+
+/// Layout changes redraw the artwork. Hover, focus and selection update only the outlines above it.
+private struct RoomMapArtwork: View, Equatable {
+    let items: [RoomMapItem]
+    let hidden: Bool
+
+    var body: some View {
+        var frame = RoomCanvasFrame()
+        for tile in items { Self.draw(tile, in: &frame, hidden: hidden) }
+        return Canvas(rendersAsynchronously: true, renderer: frame.renderer)
+    }
+
+    static func outline(_ tile: RoomMapItem) -> Path {
+        Path(roundedRect: tile.drawRect,
+             cornerRadius: tile.role == .group ? RoomTokens.Radius.field : RoomTokens.Radius.tile)
+    }
+
+    private static func paintName(_ tile: RoomMapItem, hidden: Bool) -> String {
+        if hidden { return tile.isOther ? "Other" : "Hidden" }
+        if tile.isOther && tile.otherCount > 0 { return "Other · \(tile.otherCount) small items" }
+        return tile.name + (tile.canStepInside && tile.role != .group ? " ›" : "")
+    }
+
+    static func draw(_ tile: RoomMapItem, in canvas: inout RoomCanvasFrame, hidden: Bool, pending isPending: Bool = false,
+                     opacity: Double = 1, hideFigure: Bool = false) {
+        guard opacity > 0, tile.drawRect.width > 0, tile.drawRect.height > 0 else { return }
+        let style = tile.kind.flatMap(RoomTokens.Kind.init(rawValue:))
+        let shape = outline(tile)
+        let fill = tile.role == .group ? RoomTokens.Surface.track : style?.fill ?? RoomTokens.Surface.track
+        let alpha = opacity * (isPending
+            ? (tile.role == .group ? RoomTokens.Map.pendingGroupOpacity : RoomTokens.Map.pendingTileOpacity) : 1)
+        canvas.fill(shape, fill, opacity: alpha)
+        if tile.isPartial || isPending {
+            canvas.stroke(hatch(in: tile.drawRect), RoomTokens.Surface.hatch,
+                          lineWidth: RoomTokens.Map.hatchStroke, clip: shape, opacity: alpha)
+        }
+        guard tile.label != .none else { return }
+        let labelBox = (tile.headerRect ?? tile.drawRect).insetBy(dx: RoomTokens.Map.labelPaddingX, dy: RoomTokens.Map.labelPaddingY)
+        guard labelBox.width > 0, labelBox.height > 0 else { return }
+        let size = hidden ? "Hidden" : (tile.isPartial && !isPending ? "≥ " : "") + RoomFormat.bytes(tile.bytes)
+        let titleFont = tile.drawRect.width >= 140 && tile.drawRect.height >= 70
+            ? RoomTokens.Typography.section : RoomTokens.Typography.caption.weight(.semibold)
+        let grouped = tile.role == .group
+        let name = RoomCanvasFrame.Line(value: paintName(tile, hidden: hidden),
+            font: grouped ? RoomTokens.Typography.micro.weight(.semibold) : titleFont, ink: RoomTokens.Kind.tileInk)
+        let figure = RoomCanvasFrame.Line(value: size,
+            font: grouped ? RoomTokens.Typography.micro : RoomTokens.Typography.captionNumeric, ink: RoomTokens.Kind.tileInk2)
+        canvas.lines(name, tile.label == .nameAndSize && !hideFigure ? figure : nil,
+                     in: labelBox, inline: grouped, opacity: alpha)
+    }
+
+    private static func hatch(in rect: CGRect) -> Path {
+        Path { path in
+            for x in stride(from: rect.minX - rect.height, to: rect.maxX, by: RoomTokens.Map.hatchPitch) {
+                path.move(to: CGPoint(x: x, y: rect.maxY))
+                path.addLine(to: CGPoint(x: x + rect.height, y: rect.minY))
+            }
+        }
+    }
+
 }
