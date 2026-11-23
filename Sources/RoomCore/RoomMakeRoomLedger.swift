@@ -147,6 +147,17 @@ package nonisolated enum RoomMakeRoomLedger {
         return entries.map { closing(step($0)) }
     }
 
+    package static let retention: TimeInterval = 90 * 86_400
+
+    /// Drops closed entries last changed over ~90 days ago so `ledger.json` stays under its size cap.
+    /// Open entries and entries whose receipt can still restore are never dropped.
+    package static func pruned(_ entries: [RoomMakeRoomEntry], now: Date,
+                               canRestore: (UUID) -> Bool) -> [RoomMakeRoomEntry] {
+        entries.filter { e in
+            !(e.closed && !e.isObserved && now.timeIntervalSince(e.lastChangedAt) > retention && !canRestore(e.id))
+        }
+    }
+
     /// When the 60 s check runs at all (CA-18): only while something may still be in Trash.
     package static func needsChecks(_ entries: [RoomMakeRoomEntry]) -> Bool {
         entries.contains { $0.isObserved && $0.stage != .unobservable }

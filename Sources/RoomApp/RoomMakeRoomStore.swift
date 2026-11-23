@@ -2,6 +2,7 @@ import AppKit
 import Darwin
 import Foundation
 import Observation
+import OSLog
 import RoomCore
 
 @Observable @MainActor
@@ -20,6 +21,8 @@ final class RoomMakeRoomStore {
     }
     private(set) var hasReadReceipts = false
     private(set) var hadWriteFailure = false
+    /// The last save error while `hadWriteFailure` is set; nil after the next successful save.
+    private(set) var writeFailureMessage: String?
     @ObservationIgnored var didObserveGain: ((RoomMakeRoomEntry) -> Void)?
     @ObservationIgnored private let state: RoomStateStore
     @ObservationIgnored private let home: URL
@@ -69,6 +72,7 @@ final class RoomMakeRoomStore {
         await load()
         for receipt in history { receipts[receipt.id] = receipt }
         receiptRevision &+= 1
+        hasReadReceipts = true
         let known = Set(storedEntries.map(\.id))
         let adopted = history.filter { !known.contains($0.id) }.compactMap {
             RoomMakeRoomEntry.adopted(receiptID: $0.id, movedAt: $0.date, movedBytes: $0.trashedBytes, itemCount: $0.trashedCount)
@@ -139,8 +143,20 @@ final class RoomMakeRoomStore {
 
     private func save() async {
         generation &+= 1
-        do { try await state.write(storedEntries, to: .ledger, generation: generation) }
-        catch { hadWriteFailure = true }
+        if hasReadReceipts {
+            let known = receipts
+            storedEntries = RoomMakeRoomLedger.pruned(storedEntries, now: Date()) { known[$0]?.canRestore ?? false }
+        }
+        do {
+            try await state.write(storedEntries, to: .ledger, generation: generation)
+            hadWriteFailure = false
+            writeFailureMessage = nil
+        } catch {
+            hadWriteFailure = true
+            writeFailureMessage = error.localizedDescription
+            Logger(subsystem: "com.merkost.room", category: "ledger")
+                .error("Could not save ledger.json: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     private func scheduleCheck() {
