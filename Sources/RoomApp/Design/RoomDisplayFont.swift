@@ -24,13 +24,8 @@ enum RoomDisplayFont {
         return false
     }
 
-    private static var candidateBundles: [Bundle] {
-        #if SWIFT_PACKAGE
-        [Bundle.main, Bundle.module]
-        #else
-        [Bundle.main]
-        #endif
-    }
+    /// `RoomCopy.bundle` finds the SwiftPM resource bundle without `Bundle.module`, which traps in a script-built app that never ships it.
+    private static var candidateBundles: [Bundle] { [Bundle.main, RoomCopy.bundle] }
 
     private static func url(licence: Bool, in bundles: [Bundle]) -> URL? {
         let name = licence ? licenceFileName : fileName
