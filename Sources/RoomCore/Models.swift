@@ -138,10 +138,21 @@ public enum ActivityStatus: String, Codable, Sendable {
 
 public enum RoomMoveFailure: String, Codable, Sendable, CaseIterable {
     case changed, inUse, access, staleScan, receiptNotSaved, cancelled, other
+
+    /// A value written by a newer Room decodes as `.other`, so an older Room keeps the whole receipt.
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = Self(rawValue: raw) ?? .other
+    }
 }
 
 public enum RoomRestoreSkip: String, Codable, Sendable, CaseIterable {
     case occupied, missing, changed, access, other
+
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = Self(rawValue: raw) ?? .other
+    }
 }
 
 public struct ActivityItem: Identifiable, Codable, Equatable, Sendable {

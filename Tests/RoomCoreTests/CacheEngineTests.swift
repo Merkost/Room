@@ -50,6 +50,21 @@ struct CacheEngineTests {
         #expect(after?.canRestore == true)
     }
 
+    @Test("A receipt written by a newer Room with unknown failure values still decodes")
+    func unknownFailureValuesDecodeAsOther() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        _ = try fixture.write("cache/archive", "previous")
+        let engine = fixture.engine()
+        let scan = await engine.scan()
+        let receipt = await engine.clean(entryIDs: Set(scan.eligibleEntries.map(\.id)))
+        try fixture.tamper(receipt.id) { items in items[0]["failure"] = "someFutureCase" }
+        let history = await fixture.engine().history()
+        #expect(history.first { $0.id == receipt.id }?.items.first?.failure == .other)
+        #expect(try JSONDecoder().decode(RoomRestoreSkip.self, from: Data("\"future\"".utf8)) == .other)
+        #expect(try JSONDecoder().decode(RoomMoveFailure.self, from: Data("\"inUse\"".utf8)) == .inUse)
+    }
+
     @Test("The production catalogue contains only explicit cache locations")
     func explicitCatalogue() {
         let configuration = CacheConfiguration.standard
