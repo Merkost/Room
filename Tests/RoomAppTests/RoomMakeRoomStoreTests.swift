@@ -42,13 +42,14 @@ import Testing
         URL(fileURLWithPath: "/private/tmp", isDirectory: true).appendingPathComponent("RoomLedger-\(UUID())")
     }
 
-    private static func receipt(bytes: Int64 = 600_000_000, date: Date = Date()) -> ActivityReceipt {
+    private static func receipt(id: UUID = UUID(), bytes: Int64 = 600_000_000, date: Date = Date(),
+                                status: ActivityStatus = .trashed) -> ActivityReceipt {
         let identity = FileIdentity(device: 1, inode: 2, modifiedSeconds: 0, modifiedNanoseconds: 0,
             changedSeconds: 0, changedNanoseconds: 0, byteCount: bytes, mode: 0o100600)
         let item = ActivityItem(id: UUID(), rootID: "r", originalURL: URL(fileURLWithPath: "/tmp/x"), trashURL: nil,
             byteCount: bytes, originalIdentity: identity, rootIdentity: identity, trashIdentity: nil, trashFingerprint: nil,
-            status: .trashed, message: nil, originalParentIdentity: nil)
-        return ActivityReceipt(id: UUID(), date: date, items: [item], issues: [])
+            status: status, message: nil, originalParentIdentity: nil)
+        return ActivityReceipt(id: id, date: date, items: [item], issues: [])
     }
 
     private static func oldClosed(_ receipt: ActivityReceipt, now: Date) -> RoomMakeRoomEntry {
@@ -59,21 +60,73 @@ import Testing
         return entry
     }
 
+    /// Old closed entries and their receipts. A receipt that can still restore keeps its entry, so the first read
+    /// reports them restored (prunable); the second reads the same ids as trashed again, as a reloaded history would.
+    private static func oldPairs(count: Int, now: Date, gain: Int64 = 0) -> (entries: [RoomMakeRoomEntry],
+        restored: [ActivityReceipt], trashed: [ActivityReceipt]) {
+        var entries: [RoomMakeRoomEntry] = [], restored: [ActivityReceipt] = [], trashed: [ActivityReceipt] = []
+        for _ in 0..<count {
+            let id = UUID()
+            let date = now.addingTimeInterval(-200 * 86_400)
+            var entry = RoomMakeRoomEntry.adopted(receiptID: id, movedAt: date, movedBytes: 600_000_000, itemCount: 1)!
+            entry.stage = gain > 0 ? .emptied : .emptiedNoGain
+            entry.observedGain = gain
+            entry.closed = true
+            entries.append(entry)
+            restored.append(Self.receipt(id: id, date: date, status: .restored))
+            trashed.append(Self.receipt(id: id, date: date))
+        }
+        return (entries, restored, trashed)
+    }
+
     @Test func overTheCapLedgerIsPrunedBeforeSavingAndKeepsOpenEntries() async throws {
         let directory = Self.temp()
         defer { try? FileManager.default.removeItem(at: directory) }
         let state = RoomStateStore(directory: directory)
         let now = Date()
-        let template = Self.receipt()
-        let old = (0..<500).map { _ in Self.oldClosed(template, now: now) }
-        try await state.write(old, to: .ledger, generation: 0)
+        let old = Self.oldPairs(count: 500, now: now)
+        try await state.write(old.entries, to: .ledger, generation: 0)
         let fresh = (0..<500).map { _ in Self.receipt(date: now) }
+        let history = old.restored + fresh
         let store = RoomMakeRoomStore(state: state, home: directory, sample: { nil })
-        await store.updateReceipts(fresh)
+        await store.updateReceipts(history)
         #expect(!store.hadWriteFailure, "\(store.writeFailureMessage ?? "")")
         #expect(store.entries.count == 500 && store.entries.allSatisfy { !$0.closed })
+        let madeBefore = store.summary.madeBytes
+        await store.updateReceipts(old.trashed + fresh)
+        #expect(store.entries.count == 500, "pruned entries must not regrow from their receipts")
+        #expect(store.summary.madeBytes == madeBefore)
         let persisted = try #require(await state.load([RoomMakeRoomEntry].self, from: .ledger).value)
         #expect(Set(persisted.map(\.id)) == Set(fresh.map(\.id)))
+    }
+
+    @Test func prunedEntriesAreNotRecreatedFromReceipts() async throws {
+        let directory = Self.temp()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let state = RoomStateStore(directory: directory)
+        let old = Self.oldPairs(count: 5, now: Date())
+        try await state.write(old.entries, to: .ledger, generation: 0)
+        let store = RoomMakeRoomStore(state: state, home: directory, sample: { nil })
+        let fresh = Self.receipt(date: Date())
+        await store.updateReceipts(old.restored + [fresh])
+        #expect(store.entries.map(\.id) == [fresh.id], "a new entry triggers the save that prunes")
+        await store.updateReceipts(old.trashed + [fresh])
+        #expect(store.entries.map(\.id) == [fresh.id])
+        let relaunched = RoomMakeRoomStore(state: state, home: directory, sample: { nil })
+        await relaunched.updateReceipts(old.trashed + [fresh])
+        #expect(relaunched.entries.map(\.id) == [fresh.id], "the pruned ids survive a relaunch")
+    }
+
+    @Test func observedGainEntriesAreNeverPruned() async throws {
+        let directory = Self.temp()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let state = RoomStateStore(directory: directory)
+        let old = Self.oldPairs(count: 3, now: Date(), gain: 500_000_000)
+        try await state.write(old.entries, to: .ledger, generation: 0)
+        let store = RoomMakeRoomStore(state: state, home: directory, sample: { nil })
+        await store.updateReceipts(old.restored + [Self.receipt(date: Date())])
+        #expect(store.entries.count == 4)
+        #expect(store.summary.madeBytes == 1_500_000_000)
     }
 
     @Test func aFailedWriteAfterASuccessfulOneIsSurfacedThenClears() async throws {

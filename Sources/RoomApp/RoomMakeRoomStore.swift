@@ -28,6 +28,8 @@ final class RoomMakeRoomStore {
     @ObservationIgnored private let home: URL
     @ObservationIgnored private let sample: @Sendable () async -> RoomCapacitySample?
     @ObservationIgnored private var receipts: [UUID: ActivityReceipt] = [:]
+    @ObservationIgnored private var prunedIDs: [UUID] = []
+    @ObservationIgnored private static let maxPrunedIDs = 2000
     @ObservationIgnored private var loading: Task<RoomStateLoad<[RoomMakeRoomEntry]>, Never>?
     @ObservationIgnored private var loaded = false
     @ObservationIgnored private var checking = false
@@ -73,7 +75,7 @@ final class RoomMakeRoomStore {
         for receipt in history { receipts[receipt.id] = receipt }
         receiptRevision &+= 1
         hasReadReceipts = true
-        let known = Set(storedEntries.map(\.id))
+        let known = Set(storedEntries.map(\.id)).union(prunedIDs)
         let adopted = history.filter { !known.contains($0.id) }.compactMap {
             RoomMakeRoomEntry.adopted(receiptID: $0.id, movedAt: $0.date, movedBytes: $0.trashedBytes, itemCount: $0.trashedCount)
         }
@@ -130,6 +132,7 @@ final class RoomMakeRoomStore {
         let result = await loading?.value
         guard !loaded else { return }
         if case .loaded(let entries, _) = result { self.storedEntries = entries }
+        if case .loaded(let ids, _) = await state.load([UUID].self, from: .ledgerPruned) { prunedIDs = ids }
         loaded = true
         loading = nil
     }
@@ -145,7 +148,17 @@ final class RoomMakeRoomStore {
         generation &+= 1
         if hasReadReceipts {
             let known = receipts
-            storedEntries = RoomMakeRoomLedger.pruned(storedEntries, now: Date()) { known[$0]?.canRestore ?? false }
+            let kept = RoomMakeRoomLedger.pruned(storedEntries, now: Date()) { known[$0]?.canRestore ?? false }
+            if kept.count != storedEntries.count {
+                let keptIDs = Set(kept.map(\.id))
+                prunedIDs = Array((prunedIDs + storedEntries.map(\.id).filter { !keptIDs.contains($0) }).suffix(Self.maxPrunedIDs))
+                storedEntries = kept
+                do { try await state.write(prunedIDs, to: .ledgerPruned, generation: generation) }
+                catch {
+                    Logger(subsystem: "com.merkost.room", category: "ledger")
+                        .error("Could not save ledger-pruned.json: \(error.localizedDescription, privacy: .public)")
+                }
+            }
         }
         do {
             try await state.write(storedEntries, to: .ledger, generation: generation)
