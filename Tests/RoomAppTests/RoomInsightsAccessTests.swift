@@ -173,6 +173,69 @@ struct RoomInsightsAccessTests {
     }
 }
 
+@Suite("Onboarding: Map my home folder") @MainActor
+struct RoomOnboardingMapHomeTests {
+    private var home: URL {
+        get throws {
+            #if ROOM_APP_STORE
+            try #require(RoomStoreEnvironment.userHome)
+            #else
+            FileManager.default.homeDirectoryForCurrentUser
+            #endif
+        }
+    }
+
+    /// D-ONV-8: the "Map your Home folder?" alert is skipped only when the person chose it in onboarding.
+    @Test func mapHomeSkipsSecondConfirmOnlyFromOnboarding() async throws {
+        let home = try home
+        for confirmed in [false, true] {
+            let suite = "RoomOnboardingMapHome-\(UUID().uuidString)"
+            let defaults = try #require(UserDefaults(suiteName: suite))
+            let state = FileManager.default.temporaryDirectory.appendingPathComponent(suite, isDirectory: true)
+            defer {
+                defaults.removePersistentDomain(forName: suite)
+                try? FileManager.default.removeItem(at: state)
+            }
+            let confirms = DiskPickerCalls()
+            let picks = DiskPickerCalls()
+            let insights = RoomInsightsModel(access: RoomFileAccess(defaults: defaults),
+                treeStore: RoomTreeStore(state: RoomStateStore(directory: state)),
+                folderPicker: { _, _, _, _ in picks.count += 1; return home },
+                confirmHomeMap: { confirms.count += 1; return false })
+
+            insights.scanHome(confirmed: confirmed)
+            #expect(await RoomTestWait.until { !insights.isChoosingDiskFolder })
+            #expect(picks.count == 1)
+            #expect(confirms.count == (confirmed ? 0 : 1))
+            #expect(insights.isScanningDisk == confirmed)
+            #expect(insights.isMappingHome == confirmed)
+            #expect(insights.requestedDestination == nil)
+            insights.cancelDiskScan()
+            #expect(await RoomTestWait.until(timeout: .seconds(10)) { !insights.isScanningDisk })
+            await insights.treeStore.flush()
+        }
+    }
+
+    @Test func cancelledPickerStartsNothing() async throws {
+        let suite = "RoomOnboardingMapHomeCancel-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let access = RoomFileAccess(defaults: defaults)
+        let picks = DiskPickerCalls()
+        let insights = RoomInsightsModel(access: access, folderPicker: { title, _, _, initial in
+            picks.count += 1
+            picks.title = initial?.path ?? ""
+            return nil
+        }, confirmHomeMap: { Issue.record("no second confirm"); return false })
+
+        insights.scanHome(confirmed: true)
+        #expect(await RoomTestWait.until { picks.count == 1 && !insights.isChoosingDiskFolder })
+        #expect(picks.title == (try home).path)
+        #expect(access.folders.isEmpty && !insights.isScanningDisk && insights.diskReport == nil)
+        #expect(insights.requestedDestination == nil)
+    }
+}
+
 @MainActor private final class DiskPickerCalls {
     var count = 0
     var title = ""
