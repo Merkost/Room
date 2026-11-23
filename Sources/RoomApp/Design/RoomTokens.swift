@@ -18,9 +18,35 @@ extension Color {
 }
 
 extension Color {
-    /// The same light and dark pair as a `RoomDS` swatch. Increase Contrast keeps using the light and dark values (DS-5 adopts the HC ones).
+    /// A `RoomDS` swatch with all four values: light, dark, and their Increase Contrast steps (DS-5). The colour keeps
+    /// its `room.*` name so nothing that caches by name changes.
     static func room(_ swatch: RoomDS.Swatch, name: String) -> Color {
-        room(light: swatch.light.hex, dark: swatch.dark.hex, alphaLight: swatch.light.alpha, alphaDark: swatch.dark.alpha, name: name)
+        Color(nsColor: NSColor(name: NSColor.Name(name)) { appearance in
+            swatch.value(RoomContrast.appearance(of: appearance)).nsColor
+        })
+    }
+}
+
+/// Which of the four token values applies. The window's appearance says light or dark; Increase Contrast comes from the
+/// appearance when AppKit offers the high-contrast names, else from the system setting (BRAND-DS §13 fallback).
+nonisolated enum RoomContrast {
+    static func appearance(of nsAppearance: NSAppearance,
+                           systemIncreasesContrast: Bool = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast)
+        -> RoomDS.Appearance {
+        let fromAppearance = RoomDS.Swatch.appearance(of: nsAppearance)
+        let dark = fromAppearance == .dark || fromAppearance == .darkHC
+        let high = fromAppearance == .lightHC || fromAppearance == .darkHC || systemIncreasesContrast
+        return RoomDS.Swatch.resolve(dark: dark, highContrast: high)
+    }
+
+    /// Plan walls: 1.5 pt, 2 pt under Increase Contrast (spec 15 §4).
+    @MainActor static func planWall(_ contrast: ColorSchemeContrast) -> CGFloat {
+        contrast == .increased ? RoomTokens.OverviewPlan.elevatedWall : RoomTokens.OverviewPlan.wall
+    }
+
+    /// Free-space rings: 80 % ink, solid under Increase Contrast.
+    @MainActor static func ringOpacity(_ contrast: ColorSchemeContrast) -> Double {
+        contrast == .increased ? 1 : RoomTokens.Dots.freeRingOpacity
     }
 }
 
