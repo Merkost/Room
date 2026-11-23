@@ -17,6 +17,7 @@ struct RoomDiskMapView: View {
     @Environment(\.roomAccent) private var accent
     @Environment(\.roomHide) private var privacy
     @Environment(\.roomMotion) private var motion
+    @Environment(\.roomScreenInsets) private var screenInsets
     private var hidden: Bool { privacy.masksNow }
     @State private var layout: Display = .map
     @State private var filter: String?
@@ -49,7 +50,8 @@ struct RoomDiskMapView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let isWide = geometry.size.width >= RoomTokens.Map.inspectorBreakpoint
+            let contentWidth = geometry.size.width - screenInsets.leading - screenInsets.trailing
+            let isWide = contentWidth >= RoomTokens.Map.inspectorBreakpoint
             VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
                 controls(isWide: isWide)
                 if let blueprint = model.blueprint,
@@ -71,7 +73,7 @@ struct RoomDiskMapView: View {
                     folderStart
                 }
             }
-            .padding([.horizontal, .bottom], RoomTokens.Space.group)
+            .padding(screenInsets)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .onChange(of: insights.diskInspectorRequest) { _, _ in
                 toggleInspector(isWide: isWide)

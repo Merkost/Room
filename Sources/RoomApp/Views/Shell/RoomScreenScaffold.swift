@@ -1,33 +1,37 @@
 import SwiftUI
 
+private struct RoomScreenInsetsKey: EnvironmentKey {
+    static let defaultValue = EdgeInsets()
+}
+
+extension EnvironmentValues {
+    var roomScreenInsets: EdgeInsets {
+        get { self[RoomScreenInsetsKey.self] }
+        set { self[RoomScreenInsetsKey.self] = newValue }
+    }
+}
+
 struct RoomScreenScaffold<Content: View>: View {
     let title: String
     let subtitle: String?
     var scrolls = true
-    var requestedDensity: RoomTokens.Density? = nil
     @ViewBuilder var content: () -> Content
 
     var body: some View {
         GeometryReader { geometry in
-            let alignsTitleWithColumn = requestedDensity != nil
-            let density: RoomTokens.Density = geometry.size.width >= 700 ? requestedDensity ?? .calm : .compact
-            let gutter = alignsTitleWithColumn ? density.gutter : RoomTokens.Space.breath1
-            let columnLimit = alignsTitleWithColumn ? RoomTokens.Overview.contentWidth + 2 * gutter : 1120
-            let centeredInset = alignsTitleWithColumn ? max(0, (geometry.size.width - columnLimit) / 2) : 0
-            let titleInset = (scrolls ? gutter + centeredInset : RoomTokens.Space.group) - 4
+            let width = geometry.size.width
+            let density: RoomTokens.Density = width < RoomTokens.Screen.compactBreakpoint ? .compact : .calm
+            let gutter = density.gutter + max(0, (width - RoomTokens.Screen.maximumColumnWidth) / 2)
+            let insets = EdgeInsets(top: density.topInset, leading: gutter,
+                                    bottom: RoomTokens.Space.breath1, trailing: gutter)
             Group {
                 if scrolls {
                     ScrollView {
-                        content()
-                            .padding(.horizontal, gutter)
-                            .padding(.top, alignsTitleWithColumn ? density.topInset : 4)
-                            .padding(.bottom, RoomTokens.Space.breath1)
-                            .frame(maxWidth: columnLimit, alignment: .topLeading)
-                            .frame(maxWidth: .infinity)
+                        content().frame(maxWidth: .infinity, alignment: .topLeading).padding(insets)
                     }
                     .scrollIndicators(.hidden)
                 } else {
-                    content()
+                    content().environment(\.roomScreenInsets, insets)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -43,9 +47,9 @@ struct RoomScreenScaffold<Content: View>: View {
                         }
                     }
                     .accessibilityElement(children: .combine)
-                    .accessibilityAddTraits(alignsTitleWithColumn ? [] : .isHeader)
+                    .accessibilityAddTraits(.isHeader)
                     // The native toolbar already insets navigation items by 4 points.
-                    .padding(.leading, titleInset)
+                    .padding(.leading, gutter - 4)
                 }
                 .sharedBackgroundVisibility(.hidden)
             }

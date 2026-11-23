@@ -13,7 +13,7 @@ Use native Liquid Glass for navigation, buttons, menus, and transient surfaces. 
 - One system font family: San Francisco through SwiftUI system fonts. Headings use semibold; measurements use regular or medium with tabular digits.
 - Page titles: 22–24 pt. Section titles: 16 pt. Body and row labels: 13–14 pt. Supporting labels: 12 pt; functional text never falls below 11 pt.
 - The primary measured amount is 36–40 pt; sibling amounts are 20–24 pt. Units stay attached to their value and baseline. A missing measurement never displays as a measured zero.
-- Canvas gutters: 24–28 pt. Section gaps: 24 pt. Group padding and content corners: 16 pt. Use proximity and alignment before adding containers.
+- The main canvas uses 40 pt gutters at detail widths of 700 pt and above, and 24 pt below that. Screen titles align with the content column. Section gaps are 24 pt. Group padding and content corners are 16 pt.
 - One primary action per working context, using the system accent and native prominent glass. Secondary actions use ordinary glass or plain controls. Controls in a row share their height and baseline.
 
 ## Working surfaces
