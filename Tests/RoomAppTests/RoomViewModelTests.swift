@@ -125,6 +125,8 @@ struct RoomViewModelTests {
         #expect(FileManager.default.fileExists(atPath: fixture.protected.appendingPathComponent("session").path))
         #expect(model.selectedEntryIDs == retained)
         #expect(model.movedReceipt?.details.map(\.name) == ["old-cache"])
+        #expect(model.mapCleanupAction(at: original) == .empty)
+        #expect(model.mapCleanupAction(at: unselected) == .review)
         #expect(!model.canCleanMapSelection(review, entryIDs: selected))
     }
 
