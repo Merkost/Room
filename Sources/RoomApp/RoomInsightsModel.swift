@@ -70,10 +70,14 @@ final class RoomInsightsModel {
     @ObservationIgnored private let fileAccess: RoomFileAccess
     @ObservationIgnored private let folderPicker: @MainActor (String, String, String, URL?) async -> URL?
     @ObservationIgnored private let confirmHomeMap: @MainActor () async -> Bool
+    @ObservationIgnored private let diskFallbackConfiguration: (@MainActor ([URL], URL) async -> CacheConfiguration)?
     @ObservationIgnored private var memoryTask: Task<Void, Never>?
     @ObservationIgnored private var diskTask: Task<Void, Never>?
+    @ObservationIgnored private var isReviewingCompletedDiskScan = false
     @ObservationIgnored private var diskGeneration = UUID()
     @ObservationIgnored private var diskOpenGeneration = UUID()
+    @ObservationIgnored private var cacheConfiguration: CacheConfiguration?
+    @ObservationIgnored private var cacheConfigurationRevision = UUID()
     @ObservationIgnored private var analysisTask: Task<Void, Never>?
     @ObservationIgnored private var analysisRequest: UUID?
     @ObservationIgnored private var monitorTask: Task<Void, Never>?
@@ -100,7 +104,8 @@ final class RoomInsightsModel {
          readMemory: (@MainActor () async -> MemoryReport)? = nil,
          waitForMemoryTick: @escaping @MainActor () async throws -> Void = {
              try await Task.sleep(for: RoomInsightsModel.monitorInterval)
-         }) {
+         },
+         diskFallbackConfiguration: (@MainActor ([URL], URL) async -> CacheConfiguration)? = nil) {
         self.pressureStore = pressureStore
         self.pressureWriter = pressureWriter
         self.activityCenter = activityCenter
@@ -118,6 +123,7 @@ final class RoomInsightsModel {
                 initialURL: initial, treatsFilePackagesAsDirectories: true)
         }
         self.confirmHomeMap = confirmHomeMap ?? Self.askToMapHome
+        self.diskFallbackConfiguration = diskFallbackConfiguration
         if let pressureWriter {
             pressureLoad = Task { [weak self] in
                 let saved = await pressureWriter.store.load(RoomPressureHistory.self, from: .pressure,
@@ -268,6 +274,7 @@ final class RoomInsightsModel {
             diskTask?.cancel()
             diskGeneration = UUID()
             diskTask = nil
+            isReviewingCompletedDiskScan = false
             isScanningDisk = false
             isMappingHome = false
             activityCenter?.clear(.diskMap)
@@ -459,6 +466,7 @@ final class RoomInsightsModel {
     private func scanAuthorizedDisk(url: URL, scope: URL, spliceAt: String? = nil) {
         guard !savedHistorySuspended else { return }
         diskTask?.cancel()
+        isReviewingCompletedDiskScan = false
         cancelStorageAnalysis()
         analysisReport = nil
         analysisStatus = nil
@@ -483,10 +491,7 @@ final class RoomInsightsModel {
         isScanningDisk = true
         statusMessage = nil
         activityCenter?.reportScanLabel(.diskMap, label: displayPath, files: 0, bytes: 0)
-        #if ROOM_APP_STORE
         let approved = fileAccess.folders.map(\.url)
-        let home = RoomStoreEnvironment.userHome
-        #endif
         let policy = DiskScanPolicy(skipApplicationContainers: true, separatelyMappedFolders: homeMediaFolders)
         diskTask = Task { [weak self, diskEngine] in
             #if ROOM_APP_STORE
@@ -523,6 +528,7 @@ final class RoomInsightsModel {
             }
             self.diskMap.record(mapped, rootID: rootID, displayPath: displayPath, isHome: isHome)
             self.diskReport = result
+            self.isReviewingCompletedDiskScan = !result.cancelled
             if mapsHome {
                 self.homeTree = self.diskMap.current
                 self.isMappingHome = false
@@ -533,62 +539,122 @@ final class RoomInsightsModel {
             #if !ROOM_APP_STORE
             if visibleRoot.standardizedFileURL == self.applicationsFolder { self.applicationsTree = self.diskMap.current }
             #endif
-            if let location, let map = self.diskMap.current {
-                await self.updateTreeApprovals()
-                await self.treeStore.record(map, location: location, isHome: isHome)
-                guard self.diskGeneration == generation else { return }
+            if location != nil, !result.cancelled,
+               let changedAt = self.diskMap.changedAt, changedAt <= result.scannedAt {
                 self.diskMap.updateChangeDate(nil)
             }
-            #if ROOM_APP_STORE
-            let configuration = await Task.detached(priority: .utility) {
-                home.map { CacheConfiguration.store(approvedFolders: approved + [scope], userHome: $0) }
-                    ?? CacheConfiguration(roots: [], homeDirectory: scope)
-            }.value
+            if Task.isCancelled, !result.cancelled { self.cancelDiskScan() }
+            if let location, let map = self.diskMap.current {
+                await self.updateTreeApprovals()
+                guard self.diskGeneration == generation else { return }
+                await self.treeStore.record(map, location: location, isHome: isHome)
+            }
             guard self.diskGeneration == generation else { return }
+            // A stopped walk still publishes measured items. Once a completed
+            // map has been stopped during source review, its UI has settled.
+            guard result.cancelled || self.isReviewingCompletedDiskScan else { return }
+            let configuration = result.cancelled
+                ? self.cacheConfiguration ?? self.baseDiskConfiguration
+                : await self.configurationForDisk(approved: approved + [scope], fallbackRoot: visibleRoot)
+            guard self.diskGeneration == generation,
+                  result.cancelled || (self.isReviewingCompletedDiskScan && !Task.isCancelled) else { return }
             self.analysisReport = StorageAnalyzer.analyze(report: result, configuration: configuration)
-            #else
-            self.analysisReport = StorageAnalyzer.analyze(report: result, configuration: .deep)
-            #endif
-            self.isScanningDisk = false
+            self.finishDiskScan()
             if !Task.isCancelled { self.recordCapacityAfterScan() }
-            self.diskTask = nil
             if result.cancelled { self.statusMessage = "Scan stopped. The map shows only the files measured so far." }
         }
     }
 
-    func cancelDiskScan() { diskTask?.cancel() }
+    func cancelDiskScan() {
+        diskTask?.cancel()
+        guard isReviewingCompletedDiskScan, let diskReport else { return }
+        finishDiskScan()
+        let message = diskReport.isPartial
+            ? "Source review stopped. The map keeps the items measured so far."
+            : "Source review stopped. The map is complete."
+        analysisStatus = message
+        analysisReport = StorageAnalyzer.analyze(report: diskReport,
+            configuration: cacheConfiguration ?? baseDiskConfiguration)
+    }
 
-    func analyzeStorage() {
-        guard canAnalyzeStorage, let map = diskMap.current, let root = diskMap.rootURL else { return }
-        let scanned = diskReport.flatMap { report in
+    private func finishDiskScan() {
+        isReviewingCompletedDiskScan = false
+        isScanningDisk = false
+        diskTask = nil
+    }
+
+    func updateCacheConfiguration(_ configuration: CacheConfiguration?) {
+        cacheConfiguration = configuration
+        cacheConfigurationRevision = UUID()
+        cancelStorageAnalysis()
+        analysisStatus = nil
+        guard let map = diskMap.current, let root = diskMap.rootURL,
+              let measured = measuredDiskReport(for: map, root: root) else {
+            analysisReport = nil
+            return
+        }
+        analysisReport = StorageAnalyzer.analyze(report: measured,
+            configuration: configuration ?? baseDiskConfiguration)
+    }
+
+    private var baseDiskConfiguration: CacheConfiguration {
+        #if ROOM_APP_STORE
+        CacheConfiguration(roots: [], homeDirectory: suggestedHome)
+        #else
+        .standard
+        #endif
+    }
+
+    private func configurationForDisk(approved: [URL], fallbackRoot: URL) async -> CacheConfiguration {
+        if let cacheConfiguration { return cacheConfiguration }
+        let revision = cacheConfigurationRevision
+        let fallback: CacheConfiguration
+        if let diskFallbackConfiguration {
+            fallback = await diskFallbackConfiguration(approved, fallbackRoot)
+        } else {
+            #if ROOM_APP_STORE
+            let home = RoomStoreEnvironment.userHome
+            let lookup = Task.detached(priority: .utility) {
+                home.map { CacheConfiguration.store(approvedFolders: approved, userHome: $0) }
+                    ?? CacheConfiguration(roots: [], homeDirectory: fallbackRoot)
+            }
+            fallback = await withTaskCancellationHandler { await lookup.value } onCancel: { lookup.cancel() }
+            #else
+            // Expanded Direct discovery belongs to the explicit Caches check.
+            fallback = baseDiskConfiguration
+            #endif
+        }
+        if let cacheConfiguration { return cacheConfiguration }
+        return cacheConfigurationRevision == revision ? fallback : baseDiskConfiguration
+    }
+
+    private func measuredDiskReport(for map: RoomStoredTree, root: URL) -> DiskMapReport? {
+        diskReport.flatMap { report in
             report.url.roomLexicallyNormalized.path == root.roomLexicallyNormalized.path && report.scannedAt == map.scannedAt
                 && report.allocatedBytes == map.tree.allocatedBytes && report.fileCount == map.tree.fileCount ? report : nil
         }
+    }
+
+    func analyzeStorage() {
+        guard canAnalyzeStorage, let map = diskMap.current, let root = diskMap.rootURL else { return }
+        let scanned = measuredDiskReport(for: map, root: root)
         let request = UUID()
         let generation = diskGeneration
         analysisRequest = request
         isAnalyzingStorage = true
         analysisStatus = nil
-        #if ROOM_APP_STORE
         let approved = fileAccess.folders.map(\.url)
-        let home = RoomStoreEnvironment.userHome
-        #endif
         analysisTask = Task { [weak self, storageAI] in
             defer { self?.finishStorageAnalysis(request: request) }
             #if ROOM_APP_STORE
             let scopes = approved.map { ($0, $0.startAccessingSecurityScopedResource()) }
             defer { for (url, active) in scopes where active { url.stopAccessingSecurityScopedResource() } }
             #endif
-            let (report, configuration) = await Task.detached(priority: .utility) {
-                let report = scanned ?? map.metadataReport(for: root)
-                #if ROOM_APP_STORE
-                let configuration = home.map { CacheConfiguration.store(approvedFolders: approved, userHome: $0) }
-                    ?? CacheConfiguration(roots: [], homeDirectory: root)
-                #else
-                let configuration = CacheConfiguration.deep
-                #endif
-                return (report, configuration)
-            }.value
+            guard let configuration = await self?.configurationForDisk(approved: approved, fallbackRoot: root),
+                  !Task.isCancelled else { return }
+            let report: DiskMapReport
+            if let scanned { report = scanned }
+            else { report = await Task.detached(priority: .utility) { map.metadataReport(for: root) }.value }
             guard !Task.isCancelled else { return }
             let result = await storageAI.analyze(report: report, configuration: configuration,
                 includesLogicalBytes: scanned != nil)
@@ -647,7 +713,7 @@ final class RoomInsightsModel {
             analysisReport = nil
             self.diskURL = nil
             diskMap.removeCurrent()
-            isScanningDisk = false
+            finishDiskScan()
             isMappingHome = false
             activityCenter?.clear(.diskMap)
         }
@@ -805,12 +871,14 @@ final class RoomInsightsModel {
         let updates = await treeStore.changes
         for await id in updates {
             await refreshHomeMap()
-            guard diskMap.current?.rootID == id, !isScanningDisk else { continue }
+            guard let map = diskMap.current, map.rootID == id,
+                  !isScanningDisk || isReviewingCompletedDiskScan else { continue }
             let root = await treeStore.root(for: id)
-            guard diskMap.current?.rootID == id, !isScanningDisk else { continue }
+            guard diskMap.current?.rootID == id, diskMap.current?.scannedAt == map.scannedAt,
+                  !isScanningDisk || isReviewingCompletedDiskScan else { continue }
             if let root {
                 diskMap.updateChangeDate(root.changedAt)
-            } else {
+            } else if !isReviewingCompletedDiskScan {
                 diskURL = nil
                 diskReport = nil
                 diskMap.removeCurrent()

@@ -8,6 +8,9 @@ nonisolated struct RoomCleanupReview: Equatable, Sendable {
         var consequence: String        // user's words, e.g. "Rebuilt by ./gradlew on next sync"
         var entryIDs: Set<UUID>
         var parentFolders: Set<String> // Store: exact parents from authorizationLocations
+        var pickedBytes: Int64? = nil
+
+        var selectedBytes: Int64 { pickedBytes ?? bytes }
     }
     enum Phase: Equatable, Sendable { case reviewing, preparingAccess, moving, finished }
     enum Commit: Equatable, Sendable {
@@ -25,7 +28,7 @@ nonisolated struct RoomCleanupReview: Equatable, Sendable {
     var phase: Phase = .reviewing
 
     var selectedRows: [Row] { rows.filter { selected.contains($0.id) } }
-    var selectedBytes: Int64 { selectedRows.reduce(0) { $0 + $1.bytes } }
+    var selectedBytes: Int64 { selectedRows.reduce(0) { $0 + $1.selectedBytes } }
     var offeredBytes: Int64 { rows.reduce(0) { $0 + $1.bytes } }
     var selectedEntryIDs: Set<UUID> { selectedRows.reduce(into: Set<UUID>()) { $0.formUnion($1.entryIDs) } }
     var requiredFolders: Set<String> { store ? selectedRows.reduce(into: Set<String>()) { $0.formUnion($1.parentFolders) } : [] }

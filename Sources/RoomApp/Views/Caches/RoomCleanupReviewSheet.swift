@@ -34,7 +34,8 @@ struct RoomCleanupReviewSheet: View {
                 VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
                     ForEach(review.rows) { row in
                         let selected = review.selected.contains(row.id)
-                        Toggle(isOn: Binding(get: { selected }, set: { _ in model.toggleSelection(id: row.id) })) {
+                        let partial = selected && row.selectedBytes < row.bytes
+                        Toggle(isOn: Binding(get: { selected }, set: { model.setSelection(id: row.id, selected: $0) })) {
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(hidden ? "Name hidden" : row.name)
@@ -51,7 +52,8 @@ struct RoomCleanupReviewSheet: View {
                                     Text(row.consequence).foregroundStyle(RoomTokens.Ink.secondary)
                                 }
                                 Spacer()
-                                Text(format(row.bytes)).font(RoomTokens.Typography.section.monospacedDigit())
+                                Text(format(selected ? row.selectedBytes : row.bytes))
+                                    .font(RoomTokens.Typography.section.monospacedDigit())
                                 if ticked.contains(row.id) {
                                     RoomCheckmarkPath()
                                         .stroke(accent.text, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
@@ -64,8 +66,8 @@ struct RoomCleanupReviewSheet: View {
                             }
                         }
                         .toggleStyle(.checkbox)
-                        .disabled(!review.canCancel || model.isWorking)
-                        .accessibilityValue(selected ? "Selected" : "Not selected")
+                        .disabled(!review.canCancel || !model.canEditSelection)
+                        .accessibilityValue(partial ? "Some items selected" : selected ? "Selected" : "Not selected")
                     }
                     VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
                         Text("Before you move").font(RoomTokens.Typography.section)
@@ -80,6 +82,11 @@ struct RoomCleanupReviewSheet: View {
                         RoomStorePermissionSection(model: model) { Task { await model.prepareStoreCleanupReview() } }
                     }
                     #endif
+                    if let message = model.errorMessage {
+                        Text(message)
+                            .foregroundStyle(RoomTokens.Ink.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 4)

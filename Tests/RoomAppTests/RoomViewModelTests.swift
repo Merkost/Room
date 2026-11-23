@@ -5,6 +5,97 @@ import Testing
 
 @Suite @MainActor
 struct RoomViewModelTests {
+    @Test func reviewDeselectsAPartialSourceWhileTheGridCanSelectAll() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        _ = try fixture.addOldCache(named: "second-cache")
+        let model = RoomViewModel(engine: CacheEngine(configuration: fixture.configuration,
+            activityDirectory: fixture.directory.appendingPathComponent("activity")), cachesCheckStore: fixture.cachesCheckStore)
+        model.scan()
+        try await waitForScan(model)
+        let source = try #require(model.sources.first)
+        let items = model.cleanupCandidates(for: source.id)
+        try #require(items.count == 2)
+
+        model.toggleEntrySelection(id: items[1].id, sourceID: source.id)
+        #expect(model.selectedEntryIDs == [items[0].id] && model.partiallySelectedSource(source.id))
+        model.setSelection(id: source.id, selected: false)
+        #expect(model.selection.isEmpty && model.selectedEntryIDs.isEmpty && model.selectedBytes == 0)
+        #expect(!model.canReviewCleanup)
+
+        model.setSelection(id: source.id, selected: true)
+        #expect(model.selectedEntryIDs == Set(items.map(\.id)))
+        model.toggleEntrySelection(id: items[1].id, sourceID: source.id)
+        model.toggleSelection(id: source.id)
+        #expect(model.selectedEntryIDs == Set(items.map(\.id)))
+    }
+
+    @Test func eligibleItemsCanBeSelectedIndividuallyAndCannotSurviveARescan() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let second = try fixture.addOldCache(named: "second-cache")
+        let model = RoomViewModel(engine: CacheEngine(configuration: fixture.configuration,
+            activityDirectory: fixture.directory.appendingPathComponent("activity")), cachesCheckStore: fixture.cachesCheckStore)
+        model.scan()
+        try await waitForScan(model)
+        let source = try #require(model.sources.first)
+        let candidates = model.cleanupCandidates(for: source.id)
+        #expect(Set(candidates.map(\.name)) == ["old-cache", "second-cache"])
+        #expect(model.source(containing: fixture.cache.appendingPathComponent("recent-cache").path)?.id == source.id)
+        #expect(model.source(containing: fixture.cache.path + "-different/file") == nil)
+        let excluded = try #require(candidates.first { $0.url.path == second.path })
+        model.toggleEntrySelection(id: excluded.id, sourceID: source.id)
+        #expect(model.partiallySelectedSource(source.id))
+        #expect(model.selection == [source.id])
+        #expect(model.selectedBytes == source.eligibleBytes - excluded.bytes)
+        #expect(!model.selectedEntryIDs.contains(excluded.id))
+        #expect(model.cleanupRows.first?.entryIDs == model.selectedEntryIDs)
+        #expect(model.cleanupRows.first?.selectedBytes == model.selectedBytes)
+
+        model.scan()
+        #expect(model.cleanupCandidates(for: source.id).isEmpty)
+        #expect(model.selectedEntryIDs.isEmpty)
+        try await waitForScan(model)
+        let picked = model.selectedEntryIDs
+        model.toggleEntrySelection(id: excluded.id, sourceID: source.id)
+        #expect(!picked.isEmpty && model.selectedEntryIDs == picked)
+        #expect(!model.partiallySelectedSource(source.id))
+    }
+
+    #if !ROOM_APP_STORE
+    @Test func onlySelectedItemsMoveAndRestoreDoesNotRescan() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let excluded = try fixture.addOldCache(named: "kept-by-choice")
+        let trash = fixture.directory.appendingPathComponent("fixture-trash", isDirectory: true)
+        try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: false)
+        let engine = CacheEngine(configuration: fixture.configuration,
+            activityDirectory: fixture.directory.appendingPathComponent("activity"), processProvider: { [] },
+            fixtureTrashDirectory: trash, trashProvider: { original in
+                let destination = trash.appendingPathComponent(original.lastPathComponent)
+                try FileManager.default.moveItem(at: original, to: destination)
+                return destination
+            })
+        let model = RoomViewModel(engine: engine, cachesCheckStore: fixture.cachesCheckStore)
+        model.scan()
+        try await waitForScan(model)
+        let source = try #require(model.sources.first)
+        let item = try #require(model.cleanupCandidates(for: source.id).first { $0.url.path == excluded.path })
+        model.toggleEntrySelection(id: item.id, sourceID: source.id)
+        await model.cleanSelected()
+        #expect(!model.isScanning)
+        let retained = fixture.cache.appendingPathComponent("recent-cache")
+        #expect(FileManager.default.fileExists(atPath: excluded.path))
+        #expect(FileManager.default.fileExists(atPath: retained.path))
+        let record = try #require(model.activity.first)
+        #expect(record.itemCount == 1 && record.details.first?.name == "old-cache")
+        await model.restore(record: record)
+        #expect(!model.isScanning && model.selectedEntryIDs.isEmpty)
+        #expect(model.activity.first?.restoredCount == 1)
+        #expect(FileManager.default.fileExists(atPath: fixture.cache.appendingPathComponent("old-cache").path))
+    }
+    #endif
+
     @Test func foundSpaceAndEligibleSelectionStayDistinct() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
@@ -218,6 +309,13 @@ private struct Fixture {
 
     @MainActor var cachesCheckStore: RoomCachesCheckStore {
         RoomCachesCheckStore(defaults: UserDefaults(suiteName: directory.lastPathComponent)!)
+    }
+
+    func addOldCache(named name: String) throws -> URL {
+        let item = cache.appendingPathComponent(name)
+        try Data(repeating: 0x56, count: 32_768).write(to: item)
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(-30 * 86_400)], ofItemAtPath: item.path)
+        return item
     }
 
     func remove() {

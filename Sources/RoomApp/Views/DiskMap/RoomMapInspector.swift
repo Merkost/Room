@@ -49,6 +49,7 @@ struct RoomMapInspector: View {
     let map: () -> Void
     let rescan: () -> Void
     let inspect: () -> Void
+    var inspectCacheSource: (() -> Void)?
     @State private var showsReview = false
 
     var body: some View {
@@ -75,6 +76,7 @@ struct RoomMapInspector: View {
                         Text(path).font(RoomTokens.Typography.path)
                             .lineLimit(2).truncationMode(.middle)
                             .foregroundStyle(RoomTokens.Ink.secondary)
+                            .accessibilityLabel(url.path)
                     }
                     VStack(spacing: RoomTokens.Space.tight) {
                         if let parent, parent.relativePath != node.relativePath, parent.allocatedBytes > 0 {
@@ -115,6 +117,9 @@ struct RoomMapInspector: View {
                             }
                             if node.isDirectory, let pin {
                                 action("Pin as a Room", symbol: "pin") { pin(url) }
+                            }
+                            if let inspectCacheSource {
+                                action("Inspect in Caches", symbol: "shippingbox", perform: inspectCacheSource)
                             }
                         }
                     }

@@ -8,10 +8,18 @@ struct RoomAgentWorkView: View {
     @State private var sheet: AgentWorkSheet?
     @State private var queuedReview: AgentWorkItem?
     @State private var showingAllHistory = false
+    @State private var query = ""
+    @State private var owner: AgentWorkOwner?
+    @State private var reviewStatus = ReviewStatus.all
+
+    private enum ReviewStatus: String, CaseIterable {
+        case all = "All", ready = "Ready", held = "Held"
+    }
 
     private var isReading: Bool { model.isScanning || model.verifyingID != nil }
 
     var body: some View {
+        let items = model.items
         VStack(alignment: .leading, spacing: 18) {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
@@ -58,7 +66,7 @@ struct RoomAgentWorkView: View {
                 .accessibilityElement(children: .combine)
             }
 
-            if model.items.isEmpty {
+            if items.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(model.isScanning ? "Looking for local agent work." : "Bring work into view.")
                         .font(.system(size: 15, weight: .medium))
@@ -68,8 +76,15 @@ struct RoomAgentWorkView: View {
                 }
                 .frame(maxWidth: .infinity, minHeight: 130, alignment: .leading)
             } else {
+                worktreeFilters
+                let visible = matching(items)
+                if visible.isEmpty {
+                    Text("No worktrees match these filters.")
+                        .font(RoomTokens.Typography.body)
+                        .foregroundStyle(RoomTokens.Ink.secondary)
+                }
                 LazyVStack(spacing: 8) {
-                    ForEach(model.items) { item in
+                    ForEach(visible) { item in
                         AgentWorkRow(item: item, verifying: model.verifyingID == item.id,
                                      disabled: model.isWorking || model.isScanning || model.verifyingID != nil,
                                      verificationUnavailableReason: model.verificationUnavailableReason(for: item),
@@ -127,6 +142,54 @@ struct RoomAgentWorkView: View {
             case .restore(let receipt):
                 AgentWorkRestoreSheet(model: model, receipt: receipt)
             }
+        }
+    }
+
+    private var worktreeFilters: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: RoomTokens.Space.inner) { worktreeSearch; worktreePickers }
+            VStack(alignment: .leading, spacing: RoomTokens.Space.row) { worktreeSearch; worktreePickers }
+        }
+    }
+
+    private var worktreeSearch: some View {
+        TextField("Find a worktree", text: $query)
+            .textFieldStyle(.roundedBorder)
+            .frame(minWidth: 120, idealWidth: 220, maxWidth: 280)
+    }
+
+    private var worktreePickers: some View {
+        HStack(spacing: RoomTokens.Space.row) {
+            Picker("Owner", selection: $owner) {
+                Text("All owners").tag(nil as AgentWorkOwner?)
+                ForEach([AgentWorkOwner.codex, .claude, .project], id: \.self) {
+                    Text(ownerTitle($0)).tag(Optional($0))
+                }
+            }
+            .labelsHidden()
+            .fixedSize()
+            Picker("Review status", selection: $reviewStatus) {
+                ForEach(ReviewStatus.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .fixedSize()
+        }
+    }
+
+    private func matching(_ items: [AgentWorkItem]) -> [AgentWorkItem] {
+        let search = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return items.filter { item in
+            guard owner == nil || owner == item.owner else { return false }
+            if !search.isEmpty {
+                guard [item.title, item.url.path, branchTitle(item)].contains(where: {
+                    $0.localizedCaseInsensitiveContains(search)
+                }) else { return false }
+            }
+            guard reviewStatus != .all else { return true }
+            let ready = item.canReviewForCleanup && item.pushVerification.checkedAt != nil
+                && item.pushVerification.head == item.head && model.verificationUnavailableReason(for: item) == nil
+            return ready == (reviewStatus == .ready)
         }
     }
 
