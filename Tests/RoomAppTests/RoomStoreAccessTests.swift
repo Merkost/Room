@@ -7,6 +7,48 @@ import Testing
 
 @Suite("Store native review boundaries") @MainActor
 struct RoomStoreAccessTests {
+    @Test func replacingAnEqualSizeItemNeedsFreshApprovalWhileNarrowingKeepsIt() async throws {
+        let fixture = try StoreAccessFixture()
+        defer { fixture.remove() }
+        for name in ["first", "second"] {
+            try Data(repeating: 0x71, count: 4096).write(to: fixture.cache.appendingPathComponent(name))
+        }
+        let configuration = CacheConfiguration(roots: [
+            CacheRoot(id: "fixture", title: "Fixture", subtitle: "Owned fixture", symbol: "shippingbox",
+                category: "developer", url: fixture.cache, consequence: "Rebuildable", minimumAge: 0),
+        ], homeDirectory: fixture.root)
+        let engine = CacheEngine(configuration: configuration, activityDirectory: fixture.root.appendingPathComponent("activity"))
+        let defaults = try #require(UserDefaults(suiteName: fixture.root.lastPathComponent))
+        defer { defaults.removePersistentDomain(forName: fixture.root.lastPathComponent) }
+        let picker = StorePickerState()
+        let model = RoomViewModel(engine: engine, cachesCheckStore: RoomCachesCheckStore(defaults: defaults),
+            access: RoomFileAccess(defaults: defaults), storePicker: { _, _ in picker.selected })
+        model.scan()
+        await model.scanTask?.value
+        let source = try #require(model.sources.first)
+        let items = model.cleanupCandidates(for: source.id)
+        try #require(items.count == 2 && items[0].bytes == items[1].bytes)
+        let folder = try #require(items.first?.url.deletingLastPathComponent())
+        await model.prepareStoreCleanupReview()
+        picker.selected = fixture.root
+        await model.allowStoreReviewLocation(folder)
+        #expect(model.errorMessage != nil && model.storeGrantedPaths.isEmpty)
+        picker.selected = fixture.cache
+        await model.allowStoreReviewLocation(folder)
+        #expect(model.errorMessage == nil && model.canRunStoreCleanup)
+
+        model.toggleEntrySelection(id: items[1].id, sourceID: source.id)
+        #expect(model.storeGrantedPaths == [folder.path] && model.canRunStoreCleanup)
+        let priorBytes = model.selectedBytes
+        model.toggleEntrySelection(id: items[1].id, sourceID: source.id)
+        model.toggleEntrySelection(id: items[0].id, sourceID: source.id)
+        #expect(model.selectedBytes == priorBytes)
+        #expect(model.selectedEntryIDs == [items[1].id])
+        #expect(model.storeGrantedPaths.isEmpty && !model.canRunStoreCleanup)
+        await model.allowStoreReviewLocation(folder)
+        #expect(model.canRunStoreCleanup)
+    }
+
     @Test func narrowKeepsRemainingGrantsAndEndsDroppedScopes() async throws {
         let fixture = try StoreAccessFixture()
         defer { fixture.remove() }

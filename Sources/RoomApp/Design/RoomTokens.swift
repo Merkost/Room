@@ -64,6 +64,7 @@ enum RoomTokens {
     }
 
     enum Overview {
+        static let contentWidth: CGFloat = 920
         static let greetingLineHeight: CGFloat = 20
         static let answerLineHeight: CGFloat = 44
         static let goalLineHeight: CGFloat = 22

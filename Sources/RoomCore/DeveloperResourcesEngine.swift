@@ -12,13 +12,82 @@ public actor DeveloperResourcesEngine {
         self.beforeResourceValidation = beforeResourceValidation
     }
 
+    /// Shares the bounded same-user process evidence used by worktree review.
+    public static func activitySnapshot() async -> DeveloperActivitySnapshot {
+        #if ROOM_APP_STORE
+        return .unknown
+        #else
+        do {
+            let sampled = try await AgentProcesses.read()
+            let groups = Dictionary(grouping: sampled.paths, by: \.pid)
+            let processes = groups.keys.sorted().prefix(4_096).compactMap { pid -> DeveloperResourceProcess? in
+                guard let paths = groups[pid], let first = paths.first else { return nil }
+                return DeveloperResourceProcess(processID: pid, name: first.name, paths: paths.prefix(256).map(\.url))
+            }
+            return DeveloperActivitySnapshot(processes: processes, isComplete: sampled.complete && groups.count <= 4_096
+                && !groups.values.contains(where: { $0.count > 256 }))
+        } catch { return .unknown }
+        #endif
+    }
+
     public func scan(request: DeveloperResourcesRequest,
                      progress: (@Sendable (DeveloperResourcesProgress) -> Void)? = nil) async -> DeveloperResourcesReport {
+        guard request.scope == .review else { return await scanPhase(request, progress: progress).report }
+        let roleRoots: [KeyPath<DeveloperResourcesRequest, [URL]>] = [
+            \.projectRoots, \.avdRoots, \.gradleHomes, \.derivedDataRoots, \.sdkRoots, \.konanRoots,
+        ]
+        let activeRoles = roleRoots.filter { !request[keyPath: $0].isEmpty }
+        let roleCount = activeRoles.count
+        guard roleCount > 1, request.limits.maximumNodes >= roleCount, request.limits.maximumResources >= roleCount else {
+            return await scanPhase(request, progress: progress).report
+        }
+
+        // Project search runs first for wrapper attribution. Its limit cannot consume another role's share.
+        let limits = DeveloperResourcesLimits(sharing: request.limits, among: roleCount)
+        let scannedAt = Date()
+        var devices: [AndroidVirtualDeviceResource] = []
+        var gradle: [GradleDeveloperResource] = []
+        var wrappers: [GradleProjectWrapper] = []
+        var projects: [DeveloperProject] = []
+        var toolchains: [DeveloperToolchainResource] = []
+        var issues: [ScanIssue] = []
+        var inspected = 0
+        var isPartial = false
+        for role in activeRoles {
+            if Task.isCancelled { break }
+            let phaseRequest = DeveloperResourcesRequest(approvedFolders: request.approvedFolders,
+                avdRoots: role == \.avdRoots ? request.avdRoots : [],
+                gradleHomes: role == \.gradleHomes ? request.gradleHomes : [],
+                projectRoots: role == \.projectRoots ? request.projectRoots : [],
+                sdkRoots: role == \.sdkRoots ? request.sdkRoots : [],
+                derivedDataRoots: role == \.derivedDataRoots ? request.derivedDataRoots : [],
+                konanRoots: role == \.konanRoots ? request.konanRoots : [],
+                activity: request.activity, limits: limits)
+            let previous = inspected
+            let phase = await scanPhase(phaseRequest, knownWrappers: wrappers, progress: { value in
+                progress?(.init(phase: value.phase, inspectedCount: previous + value.inspectedCount, currentPath: value.currentPath))
+            })
+            inspected += min(phase.inspected, limits.maximumNodes)
+            devices.append(contentsOf: phase.report.androidDevices)
+            gradle.append(contentsOf: phase.report.gradleResources)
+            wrappers = phase.report.projectWrappers
+            projects.append(contentsOf: phase.report.projects)
+            toolchains.append(contentsOf: phase.report.toolchains)
+            issues.append(contentsOf: phase.report.issues.prefix(128 - issues.count))
+            isPartial = isPartial || phase.report.isPartial
+        }
+        return DeveloperResourcesReport(id: UUID(), scannedAt: scannedAt, androidDevices: devices,
+            gradleResources: gradle, projectWrappers: wrappers, projects: projects, toolchains: toolchains,
+            issues: issues, cancelled: Task.isCancelled, isPartial: isPartial || Task.isCancelled)
+    }
+
+    private func scanPhase(_ request: DeveloperResourcesRequest, knownWrappers: [GradleProjectWrapper] = [],
+                           progress: (@Sendable (DeveloperResourcesProgress) -> Void)?) async -> (report: DeveloperResourcesReport, inspected: Int) {
         let id = UUID(), date = Date()
         let budget = DRBudget(request.limits)
         var avds: [AndroidVirtualDeviceResource] = [], gradle: [GradleDeveloperResource] = []
         var simulators: [SimulatorDeviceResource] = []
-        var wrappers: [GradleProjectWrapper] = []
+        var wrappers = knownWrappers
         var projects: [String: DeveloperProject] = [:]
         var toolchains: [DeveloperToolchainResource] = []
         var storage: [DeveloperStorageResource] = []
@@ -52,7 +121,11 @@ public actor DeveloperResourcesEngine {
             return url
         }
         func update(_ phase: String, _ url: URL) {
-            progress?(DeveloperResourcesProgress(phase: phase, inspectedCount: budget.nodes, currentPath: url.path))
+            progress?(DeveloperResourcesProgress(phase: phase, inspectedCount: min(budget.nodes, request.limits.maximumNodes), currentPath: url.path))
+        }
+        func beforeReviewValidation(_ url: URL) {
+            update("Verifying resource", url)
+            beforeResourceValidation?(url)
         }
         do {
             let review = request.scope == .review
@@ -86,7 +159,7 @@ public actor DeveloperResourcesEngine {
                 for url in candidates where seenAVDs.insert(url.path).inserted {
                     try budget.resource()
                     update("Android devices", url)
-                    do { avds.append(try androidDevice(url, request: request, budget: budget)) }
+                    do { avds.append(try androidDevice(url, request: request, budget: budget, validate: beforeReviewValidation)) }
                     catch is CancellationError { throw CancellationError() }
                     catch is DRStop { throw DRStop.limit }
                     catch { budget.note(url, "This AVD could not be inspected safely. Linked or inaccessible directories are skipped.") }
@@ -154,7 +227,7 @@ public actor DeveloperResourcesEngine {
                             if kind == .distribution, distribution == nil { continue }
                             let version = kind == .distribution ? distribution?.version : DRVersions.version(url.lastPathComponent)
                             let type = kind == .distribution ? distribution?.type : nil
-                            let measured = try DRFiles.measure(url, budget: budget, beforeFinalValidation: beforeResourceValidation)
+                            let measured = try DRFiles.measure(url, budget: budget, beforeFinalValidation: beforeReviewValidation)
                             let matches = version.map { value in wrappers.filter {
                                 $0.version == value && (kind != .distribution || $0.distributionType == type)
                             } } ?? []
@@ -270,7 +343,7 @@ public actor DeveloperResourcesEngine {
             return DeveloperToolchainResource(path: resource.url.path, kind: .gradle, version: version + "-" + type,
                                               gradleType: type, bytes: resource.allocatedBytes, partial: resource.isPartial)
         })
-        return DeveloperResourcesReport(id: id, scannedAt: date,
+        let report = DeveloperResourcesReport(id: id, scannedAt: date,
             androidDevices: avds.sorted { $0.allocatedBytes > $1.allocatedBytes },
             gradleResources: gradle.sorted { $0.allocatedBytes > $1.allocatedBytes },
             projectWrappers: wrappers.sorted { $0.propertiesURL.path < $1.propertiesURL.path },
@@ -292,6 +365,7 @@ public actor DeveloperResourcesEngine {
                 || gradle.contains(where: \.isPartial) || wrappers.contains(where: \.isPartial)
                 || toolchains.contains(where: \.partial) || storage.contains(where: \.isPartial)
                 || aiStorage.contains(where: \.isPartial) || simulators.contains(where: \.isPartial))
+        return (report, budget.nodes)
     }
 
     private func aiCacheNames(for tool: DeveloperAITool, in root: URL, budget: DRBudget) throws -> Set<String> {
@@ -412,7 +486,8 @@ public actor DeveloperResourcesEngine {
         catch { budget.note(root, "This toolchain location is unavailable or cannot be read safely.") }
     }
 
-    private func androidDevice(_ url: URL, request: DeveloperResourcesRequest, budget: DRBudget) throws -> AndroidVirtualDeviceResource {
+    private func androidDevice(_ url: URL, request: DeveloperResourcesRequest, budget: DRBudget,
+                               validate: @escaping (URL) -> Void) throws -> AndroidVirtualDeviceResource {
         _ = try DRFiles.directory(url)
         var config: [String: String] = [:], configPartial = false
         let configURL = url.appendingPathComponent("config.ini")
@@ -423,7 +498,7 @@ public actor DeveloperResourcesEngine {
         } catch is CancellationError { throw CancellationError() }
         catch is DRStop { throw DRStop.limit }
         catch { configPartial = true; budget.note(configURL, "AVD configuration is missing, malformed, changed or exceeds the bounded read size. Some device details are unknown.") }
-        let measured = try DRFiles.measure(url, budget: budget, beforeFinalValidation: beforeResourceValidation)
+        let measured = try DRFiles.measure(url, budget: budget, beforeFinalValidation: validate)
         let name = String(url.lastPathComponent.dropLast(4))
         let api = DRProperties.androidAPI(config["target"]) ?? DRProperties.androidAPI(config["image.sysdir.1"])
         let hardware = [config["hw.device.manufacturer"], config["hw.device.name"]].compactMap { $0 }.joined(separator: " ")

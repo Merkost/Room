@@ -4,6 +4,7 @@ struct RoomCachesRow: View {
     let source: RoomSource
     let displayedBytes: Int64
     let selected: Bool
+    let partiallySelected: Bool
     let canSelect: Bool
     let focus: FocusState<String?>.Binding
     let format: (Int64) -> String
@@ -22,8 +23,15 @@ struct RoomCachesRow: View {
             Button(action: canSelect ? select : inspect) {
                 HStack(spacing: RoomTokens.Space.row) {
                     if canSelect {
-                        RoomSelectionCheckmark(selected: selected, color: accent.text)
-                            .frame(width: 14)
+                        if partiallySelected {
+                            Image(systemName: "minus.square.fill")
+                                .foregroundStyle(accent.text)
+                                .frame(width: 14)
+                                .accessibilityHidden(true)
+                        } else {
+                            RoomSelectionCheckmark(selected: selected, color: accent.text)
+                                .frame(width: 14)
+                        }
                     } else {
                         Image(systemName: "lock.fill")
                             .font(RoomTokens.Typography.micro)
@@ -63,7 +71,7 @@ struct RoomCachesRow: View {
             .accessibilityLabel(hidden ? "\(source.name), size hidden" :
                 "\(source.name), \(format(displayedBytes)), \(source.cleanupConsequences.first ?? source.blockedReason ?? source.subtitle)")
             .accessibilityAddTraits(selected ? .isSelected : [])
-            .accessibilityValue(canSelect ? (selected ? "Selected" : "Not selected") : "Kept")
+            .accessibilityValue(canSelect ? (partiallySelected ? "Some items selected" : selected ? "Selected" : "Not selected") : "Kept")
             Button(action: inspect) {
                 Image(systemName: "info.circle")
                     .frame(width: 24, height: 24)

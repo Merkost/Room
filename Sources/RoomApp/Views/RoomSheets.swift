@@ -7,6 +7,7 @@ struct RoomSourceSheet: View {
     let source: RoomSource
     @Bindable var model: RoomViewModel
     @Environment(\.dismiss) private var dismiss
+    @State private var itemQuery = ""
 
     private var heldBytes: Int64 { max(0, source.bytes - source.eligibleBytes) }
     private func measured(_ bytes: Int64) -> String {
@@ -44,6 +45,10 @@ struct RoomSourceSheet: View {
                             .font(.system(size: 13))
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    if !model.cleanupCandidates(for: source.id).isEmpty {
+                        candidateSelection
                     }
 
                     if !source.largestEntries.isEmpty {
@@ -140,6 +145,47 @@ struct RoomSourceSheet: View {
         }
         .padding(28)
         .frame(width: 580)
+    }
+
+    private var candidateSelection: some View {
+        let candidates = model.cleanupCandidates(for: source.id)
+        let query = itemQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        let filtered = hidden || query.isEmpty ? candidates : candidates.filter {
+            $0.name.localizedStandardContains(query) || $0.url.path.localizedStandardContains(query)
+        }
+        return VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
+            HStack {
+                Text("Choose clearable items").font(RoomTokens.Typography.section)
+                Spacer()
+                Text("\(RoomCachesVisibility.bytes(model.selectedBytes(for: source.id), hidden: hidden)) selected")
+                    .font(RoomTokens.Typography.caption)
+                    .foregroundStyle(RoomTokens.Ink.secondary)
+            }
+            if !hidden, candidates.count > 6 {
+                TextField("Filter items", text: $itemQuery)
+                    .textFieldStyle(.roundedBorder)
+            }
+            if filtered.isEmpty {
+                Text("No matching items.").foregroundStyle(RoomTokens.Ink.secondary)
+            }
+            LazyVStack(alignment: .leading, spacing: RoomTokens.Space.row) {
+                ForEach(filtered) { item in
+                    Toggle(isOn: Binding(
+                        get: { model.isEntrySelected(item.id, sourceID: source.id) },
+                        set: { _ in model.toggleEntrySelection(id: item.id, sourceID: source.id) }
+                    )) {
+                        HStack {
+                            RoomMaskable(item.name, kind: .name).lineLimit(1).truncationMode(.middle)
+                            Spacer()
+                            Text(RoomCachesVisibility.bytes(item.bytes, hidden: hidden)).monospacedDigit()
+                        }
+                    }
+                    .toggleStyle(.checkbox)
+                    .disabled(!model.canEditSelection)
+                    .help(hidden ? "Location hidden" : item.url.path)
+                }
+            }
+        }
     }
 }
 

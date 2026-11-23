@@ -2,7 +2,7 @@ import SwiftUI
 
 struct RoomBeforeAfterView: View {
     let sources: [RoomSource]
-    let selection: Set<String>
+    let selectedBytes: (String) -> Int64
     let format: (Int64) -> String
 
     @Environment(\.roomHide) private var hide
@@ -15,7 +15,7 @@ struct RoomBeforeAfterView: View {
         VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
             Text("Before and after").font(RoomTokens.Typography.section).accessibilityHeading(.h2)
             ForEach(sources.sorted { $0.bytes > $1.bytes }) { source in
-                let toTrash = selection.contains(source.id) ? min(source.bytes, source.eligibleBytes) : 0
+                let toTrash = min(source.bytes, selectedBytes(source.id))
                 let after = max(0, source.bytes - toTrash)
                 let beforeFraction = CGFloat(source.bytes) / CGFloat(maximum)
                 let afterFraction = CGFloat(after) / CGFloat(maximum)

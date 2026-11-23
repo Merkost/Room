@@ -382,7 +382,7 @@ struct RoomCachesView: View {
     }
 
     private var comparison: some View {
-        RoomBeforeAfterView(sources: model.sources, selection: model.selection, format: format)
+        RoomBeforeAfterView(sources: model.sources, selectedBytes: model.selectedBytes(for:), format: format)
             .frame(minWidth: 264, maxWidth: .infinity, alignment: .topLeading)
             .padding(RoomTokens.Space.group)
             .background(RoomTokens.Surface.group, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.group))
@@ -403,7 +403,8 @@ struct RoomCachesView: View {
             VStack(spacing: RoomTokens.Space.row) {
                 ForEach(Array(rows.enumerated()), id: \.element.id) { index, source in
                     RoomCachesRow(source: source, displayedBytes: displayedBytes(source), selected: model.selection.contains(source.id),
-                        canSelect: model.hasReport && !model.isWorking && !model.isScanning && !source.isPartial && source.isAvailable,
+                        partiallySelected: model.partiallySelectedSource(source.id),
+                        canSelect: model.canEditSelection && source.isAvailable,
                         focus: $focusedSource, format: format, select: { model.toggleSelection(id: source.id) },
                         inspect: { inspect(source) }, reveal: { model.reveal(source: source) },
                         neverSuggest: source.isAvailable && model.ignoreStore != nil ? { neverSuggest(source) } : nil)

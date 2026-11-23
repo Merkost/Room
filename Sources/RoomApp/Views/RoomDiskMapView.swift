@@ -9,6 +9,8 @@ struct RoomDiskMapView: View {
     var savedViews: RoomSavedViewsStore? = nil
     var savedViewDisplay: RoomSavedViewDisplay? = nil
     var openSavedView: (UUID) -> Void = { _ in }
+    var canInspectCacheSource: (URL) -> Bool = { _ in false }
+    var inspectCacheSource: (URL) -> Void = { _ in }
     @Environment(\.openSettings) private var openSettings
     @Environment(\.roomAccent) private var accent
     @Environment(\.roomHide) private var privacy
@@ -448,7 +450,13 @@ struct RoomDiskMapView: View {
 
     private var mapInspector: some View {
         let shown = model.selectedPath.flatMap { model.current?.tree.descendant(at: $0) } ?? model.level
-        return RoomMapInspector(node: shown, url: shown.flatMap { model.url(for: $0.relativePath) },
+        let url = shown.flatMap { model.url(for: $0.relativePath) }
+        let cacheSource = url.flatMap { candidate in
+            insights.analysisReport?.findings.contains {
+                $0.item.url.path == candidate.path && $0.disposition == .cache
+            } == true && canInspectCacheSource(candidate) ? candidate : nil
+        }
+        return RoomMapInspector(node: shown, url: url,
             parent: model.level, pin: rooms.map { $0.pin(url:) }, showSizes: !hidden,
             isScanning: insights.isScanningDisk, analysis: insights.analysisReport, analysisStatus: insights.analysisStatus,
             isAnalyzing: insights.isAnalyzingStorage, canAnalyze: insights.canAnalyzeStorage,
@@ -457,7 +465,8 @@ struct RoomDiskMapView: View {
             },
             map: { if let url = shown.flatMap({ model.url(for: $0.relativePath) }) { insights.scanDisk(url: url) } },
             rescan: { if let shown { insights.rescanMappedFolder(shown.relativePath) } },
-            inspect: insights.analyzeStorage)
+            inspect: insights.analyzeStorage,
+            inspectCacheSource: cacheSource.map { candidate in { inspectCacheSource(candidate) } })
     }
 
     private func activate(_ path: String, _ open: Bool, _ pointer: Bool) {

@@ -17,6 +17,15 @@ public struct DeveloperResourcesLimits: Sendable {
         self.maximumProjectFileBytes = min(262_144, max(64, maximumFileBytes ?? 262_144))
         self.timeLimit = min(60, max(0, timeLimit))
     }
+
+    init(sharing limits: Self, among roles: Int) {
+        maximumNodes = limits.maximumNodes / roles
+        maximumDepth = limits.maximumDepth
+        maximumResources = limits.maximumResources / roles
+        maximumFileBytes = limits.maximumFileBytes
+        maximumProjectFileBytes = limits.maximumProjectFileBytes
+        timeLimit = limits.timeLimit / Double(roles)
+    }
 }
 
 /// Evidence supplied by the caller is observational. An empty or incomplete

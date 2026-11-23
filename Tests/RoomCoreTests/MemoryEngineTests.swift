@@ -56,12 +56,12 @@ struct MemoryEngineTests {
         #expect(processes.allSatisfy { !$0.name.contains("/Applications/") })
     }
 
-    @Test("Only twelve processes are returned, in descending resident size")
+    @Test("Process evidence retains lower-ranked app PIDs within a bounded sample")
     func boundedProcesses() {
-        let output = (1...25).map { "\($0) \($0 * 1024) /usr/bin/process\($0)" }.joined(separator: "\n")
+        let output = (1...4_196).map { "\($0) \($0 * 1024) /usr/bin/process\($0)" }.joined(separator: "\n")
         let processes = MemoryEngine.parseProcesses(output)
-        #expect(processes.count == 12)
-        #expect(processes.map(\.id) == Array((14...25).reversed()).map(Int32.init))
+        #expect(processes.count == 4_096)
+        #expect(processes.map(\.id) == Array((101...4_196).reversed()).map(Int32.init))
         #expect(MemoryEngine.parseProcesses("").isEmpty)
     }
 
@@ -104,7 +104,7 @@ struct MemoryEngineTests {
         #expect(report.usedBytes + report.availableBytes == report.totalBytes, "\(report.issues)")
         #expect(report.compressedBytes >= 0 && report.compressedBytes <= report.usedBytes)
         #expect(report.swapUsedBytes >= 0)
-        #expect(report.processes.count <= 12)
+        #expect(report.processes.count <= 4_096)
         #expect(!report.processes.isEmpty, "\(report.issues)")
         #expect(report.processes.allSatisfy { $0.id > 0 && $0.residentBytes >= 0 })
         #expect(zip(report.processes, report.processes.dropFirst()).allSatisfy { $0.residentBytes >= $1.residentBytes })

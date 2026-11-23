@@ -153,6 +153,9 @@ struct RoomRootView: View {
             developer.clearUnreferencedHistory()
         }
         .onChange(of: developer.accessRevision) { _, _ in developer.accessChanged() }
+        .onChange(of: model.configurationRevision, initial: true) { _, _ in
+            insights.updateCacheConfiguration(model.inspectionConfiguration)
+        }
         #if ROOM_APP_STORE
         .onChange(of: model.storeAccessRevision) { _, _ in model.storeAccessChanged() }
         #endif
@@ -279,7 +282,9 @@ struct RoomRootView: View {
             RoomMemoryView(insights: insights, memoryActions: memoryActions)
         case .disk:
             RoomDiskMapView(insights: insights, rooms: rooms, savedViews: savedViews,
-                savedViewDisplay: savedViewDisplay, openSavedView: openSavedView)
+                savedViewDisplay: savedViewDisplay, openSavedView: openSavedView,
+                canInspectCacheSource: { cacheSource(for: $0) != nil },
+                inspectCacheSource: inspectCacheSource)
         case .developer:
             #if ROOM_APP_STORE
             RoomDeveloperView(model: developer)
@@ -287,6 +292,18 @@ struct RoomRootView: View {
             RoomDeveloperView(model: developer, agentWork: agentWork, memoryReport: insights.memoryReport)
             #endif
         }
+    }
+
+    private func cacheSource(for url: URL) -> RoomSource? {
+        guard !hide.masksNow, model.hasReport, !model.isScanning, !model.isWorking,
+              insights.approvedMapScope(for: url) != nil else { return nil }
+        return model.source(containing: url.path)
+    }
+
+    private func inspectCacheSource(_ url: URL) {
+        guard let source = cacheSource(for: url) else { return }
+        navigation.select(.screen(.clean), origin: .controlActivation)
+        sheet = .source(source)
     }
 
     private func openSavedView(_ id: UUID) {

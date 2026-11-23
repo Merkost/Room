@@ -26,6 +26,11 @@ public actor CacheEngine {
     private var activeCleanup: UUID?
     private var receipts: [ActivityReceipt] = []
 
+    /// Reuses the catalogue already resolved by a cache scan without discovering more paths.
+    public func resolvedInspectionConfiguration() -> CacheConfiguration? {
+        resolvedConfiguration
+    }
+
     public init(configuration: CacheConfiguration = .standard, activityDirectory: URL? = nil) {
         self.resolvedConfiguration = configuration
         self.configurationProvider = nil
