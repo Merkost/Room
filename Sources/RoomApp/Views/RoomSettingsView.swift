@@ -72,7 +72,6 @@ struct RoomSettingsView: View {
 
 @MainActor
 private struct RoomGeneralSettingsView: View {
-    @AppStorage(RoomOverviewPreferences.greetingKey) private var greetByName = true
     @AppStorage(RoomDevUnreferenced.preferenceKey) private var unpinnedFlagDays = RoomDevUnreferenced.defaultThreshold
     let model: RoomViewModel
     let insights: RoomInsightsModel
@@ -115,10 +114,6 @@ private struct RoomGeneralSettingsView: View {
                 }
                 .pickerStyle(.segmented).labelsHidden()
                 .fixedSize(horizontal: true, vertical: false)
-            }
-
-            RoomSettingsFormRow("Overview", hint: "Uses your macOS full name. It stays on this Mac.") {
-                RoomSettingsSwitch(title: "Greet me by name", isOn: $greetByName)
             }
 
             RoomSettingsFormRow("Free-space goal", hint: "Below it, the Overview and the menu-bar icon turn amber.") {
