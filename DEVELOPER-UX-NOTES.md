@@ -15,3 +15,11 @@
 - Hide masks names and sizes on every touched row; row accessibility label reads name, location, size; Show in Finder is an accessibility action.
 - Copy: "Folders Room reads", "Stop reading this folder?", "Room only reads sizes and version files. Nothing is moved or deleted."
 - DEBUG-only fixture hook `ROOM_DEBUG_DEVELOPER_ROOT` (isolated defaults, throwaway folder) for screenshots.
+
+## Polish round 2
+- One filled button per screen: Rescan (or Scan before the first scan) is the only primary; "Projects Folder…" is a plain accent link, the tool/device folder menus are borderless. While scanning, Stop is the quiet glass button.
+- Hero reads "Total Developer storage found" with "X of it is not referenced by the projects you chose" (X carries "≥" when partial). Legend kinds are "Not referenced by your projects" and "Used by your projects", one line each (grid minimum widened, lineLimit 1).
+- Project legend shortens "Xcode DerivedData" to "DerivedData" (`RoomDevPinKind.legendTitle`) and never wraps inside an entry.
+- Per-project bars scale to the largest project via `RoomDeveloperList.barFractions` (largest = full width, others proportional, 3% minimum sliver, zero stays empty).
+- Scan progress stays indeterminate: `DeveloperResourcesProgress` carries only a phase, an inspected-node count and the current path; the engine never knows a total in advance (it walks trees), so a determinate bar would be invented. The row shows the phase and a running item count.
+- Screenshots (sample data in a throwaway folder, `after2-*.png` in shots/developer-ux): results, scanning, empty, partial (an oversize build script forces lower-bound sizes), badfolder (a file chosen as the projects folder: Room accepts it and reports notes, so no error alert could be provoked). The error alert, the DerivedData legend entry and a fully complete (non-partial) result were not captured.
