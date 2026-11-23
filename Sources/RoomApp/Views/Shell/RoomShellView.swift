@@ -14,11 +14,13 @@ struct RoomShellView<Detail: View>: View {
     @AppStorage("RoomGoalEnabled") private var goalEnabled = true
     @State private var sidebarMode = RoomSidebarMode.labelled
     @State private var showsSidebarLabels = true
+    /// The toolbar button (and ⌃⌘S) collapses and restores the sidebar; it used to be pinned open, so the button did nothing.
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     var body: some View {
         GeometryReader { geometry in
             let target = RoomSidebarLayout.mode(windowWidth: geometry.size.width, userPrefersIcons: navigation.prefersSidebarIcons)
-            NavigationSplitView(columnVisibility: .constant(.all)) {
+            NavigationSplitView(columnVisibility: $columnVisibility) {
                 RoomSidebar(navigation: navigation, rooms: rooms,
                             mode: sidebarMode, showsLabels: showsSidebarLabels,
                             foot: foot, canOpenRooms: insights.canChooseDiskLocation, openRoom: selectRoom,
@@ -28,7 +30,6 @@ struct RoomShellView<Detail: View>: View {
                 detail()
             }
             .navigationSplitViewStyle(.balanced)
-            .toolbar(removing: .sidebarToggle)
             .task(id: target) {
                 guard target != sidebarMode || showsSidebarLabels != (target == .labelled) else { return }
                 await changeMode(to: target)
