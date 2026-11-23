@@ -75,6 +75,11 @@ struct RoomDeveloperHeadline: Equatable {
     var hasAnyData: Bool { !parts.isEmpty }
 }
 
+extension RoomDevPinKind {
+    /// Short legend label so an entry never wraps.
+    var legendTitle: String { self == .derivedData ? "DerivedData" : title }
+}
+
 enum RoomDeveloperFormat {
     /// Whole units for rows ("12 GB", "480 MB"). The hero figure alone keeps a decimal.
     static func whole(_ bytes: Int64, partial: Bool = false) -> String {
@@ -128,6 +133,14 @@ enum RoomDeveloperList {
             Group(key: key, bytes: RoomDeveloperPresentation.sum(values.map(bytes)),
                   items: bySize(values, bytes: bytes, name: name))
         }.sorted { $0.bytes == $1.bytes ? $0.key < $1.key : $0.bytes > $1.bytes }
+    }
+
+    /// Bar widths as a share of the full width: the largest item fills it, the rest are proportional, and
+    /// anything with data keeps a visible sliver. Zero or negative sizes stay empty; no item gives no fractions.
+    static func barFractions(_ sizes: [Int64], minimum: Double = 0.03) -> [Double] {
+        let largest = sizes.max() ?? 0
+        guard largest > 0 else { return sizes.map { _ in 0 } }
+        return sizes.map { $0 > 0 ? max(minimum, Double($0) / Double(largest)) : 0 }
     }
 
     /// Rows arrive in order as results appear; the stagger stops growing after `maxStaggered`.

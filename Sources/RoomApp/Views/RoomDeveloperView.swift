@@ -232,13 +232,16 @@ struct RoomDeveloperView: View {
                 } label: {
                     Label(section == .aiTools ? "Choose Tool Folder…" : "Choose Device Folder…", systemImage: "folder.badge.plus")
                 }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .foregroundStyle(accent.text)
                 .disabled(model.isScanning || model.isChoosingFolder)
                 .accessibilityIdentifier(section == .aiTools ? "RoomDeveloperChooseAITool" : "RoomDeveloperChooseDeviceFolder")
             } else if section != .storage {
                 Button { model.addFolder(role: .project) } label: {
                     Label("Projects Folder…", systemImage: "folder.badge.plus")
                 }
-                .roomSecondary()
+                .roomLink(accent)
                 .disabled(model.isScanning || model.isChoosingFolder)
                 .accessibilityIdentifier("RoomDeveloperAddFolder")
             }
@@ -248,7 +251,6 @@ struct RoomDeveloperView: View {
     }
 
     @ViewBuilder private var scanButton: some View {
-        let first = !model.isScanning && sectionReport == nil
         let button = Button {
             if model.isScanning { model.stop() } else { model.scan() }
         } label: {
@@ -257,7 +259,8 @@ struct RoomDeveloperView: View {
         }
         .disabled(!model.isScanning && !model.canScan)
         .accessibilityIdentifier("RoomDeveloperScanButton")
-        if first { button.roomPrimary(accent) } else { button.roomSecondary() }
+        // The one filled button on the screen; while a scan runs, Stop is the quiet one.
+        if model.isScanning { button.roomSecondary() } else { button.roomPrimary(accent) }
     }
 
     @ViewBuilder private var sectionContent: some View {

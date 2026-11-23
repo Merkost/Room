@@ -5,8 +5,8 @@ import SwiftUI
 extension RoomDeveloperHeadline.Kind {
     var title: String {
         switch self {
-        case .inUse: "In use by your projects"
-        case .unreferenced: "Not in any room"
+        case .inUse: "Used by your projects"
+        case .unreferenced: "Not referenced by your projects"
         case .devices: "Virtual devices"
         case .toolStorage: "Tool storage"
         case .aiTools: "AI tools"
@@ -221,7 +221,7 @@ struct RoomDeveloperHeader<Actions: View>: View {
     private var hero: some View {
         let amount = RoomFormat.splitBytes(headline.total)
         return VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
-            Text("Developer storage found")
+            Text("Total Developer storage found")
                 .font(RoomTokens.Typography.caption)
                 .foregroundStyle(RoomTokens.Ink.secondary)
             HStack(alignment: .firstTextBaseline, spacing: RoomTokens.Space.tight) {
@@ -241,7 +241,7 @@ struct RoomDeveloperHeader<Actions: View>: View {
                 : "Developer storage found, \(headline.partial ? "at least " : "")\(RoomFormat.bytes(headline.total))")
             .accessibilityAddTraits(.isHeader)
             if headline.unreferenced > 0 {
-                RoomMaskable("\(RoomDeveloperFormat.whole(headline.unreferenced, partial: headline.partial)) is not referenced by the projects you chose.",
+                RoomMaskable("\(RoomDeveloperFormat.whole(headline.unreferenced, partial: headline.partial)) of it is not referenced by the projects you chose.",
                              kind: .figure)
                     .font(RoomTokens.Typography.body)
                     .foregroundStyle(RoomTokens.Ink.secondary)
@@ -275,7 +275,7 @@ struct RoomDeveloperBreakdown: View {
             }
             .frame(height: RoomTokens.Developer.breakdownHeight)
             .accessibilityHidden(true)
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), alignment: .leading)],
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 270), alignment: .leading)],
                       alignment: .leading, spacing: RoomTokens.Space.tight) {
                 ForEach(Array(headline.parts.enumerated()), id: \.element.id) { index, part in
                     HStack(spacing: RoomTokens.Space.tight) {
@@ -284,6 +284,7 @@ struct RoomDeveloperBreakdown: View {
                             .accessibilityHidden(true)
                         Text(part.kind.title)
                             .foregroundStyle(RoomTokens.Ink.secondary)
+                            .lineLimit(1)
                         RoomMaskable(RoomDeveloperFormat.whole(part.bytes, partial: headline.partial))
                             .font(RoomTokens.Typography.captionNumeric)
                     }

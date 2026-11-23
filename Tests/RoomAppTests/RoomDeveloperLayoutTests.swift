@@ -60,6 +60,22 @@ struct RoomDeveloperLayoutTests {
         #expect(RoomDeveloperList.visible(Array(0..<9), expanded: false).hidden == 0)
     }
 
+    @Test func barFractionsScaleToTheLargest() {
+        #expect(RoomDeveloperList.barFractions([]) == [])
+        #expect(RoomDeveloperList.barFractions([0, 0]) == [0, 0])
+        #expect(RoomDeveloperList.barFractions([5_000_000]) == [1])
+        #expect(RoomDeveloperList.barFractions([7, 7, 7]) == [1, 1, 1])
+        let dominant = RoomDeveloperList.barFractions([1_000_000_000, 500_000_000, 1_000, 0])
+        #expect(dominant[0] == 1 && dominant[1] == 0.5)
+        #expect(dominant[2] == 0.03)
+        #expect(dominant[3] == 0)
+    }
+
+    @Test func legendKeepsDerivedDataShort() {
+        #expect(RoomDevPinKind.derivedData.legendTitle == "DerivedData")
+        #expect(RoomDevPinKind.gradle.legendTitle == "Gradle")
+    }
+
     @Test func staggerIsCapped() {
         #expect(RoomDeveloperList.staggerDelay(index: 0) == 0)
         #expect(RoomDeveloperList.staggerDelay(index: 400) == RoomDeveloperList.staggerDelay(index: 12))

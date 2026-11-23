@@ -64,11 +64,12 @@ struct RoomDeveloperRoomsView: View {
                     .font(RoomTokens.Typography.body)
                     .foregroundStyle(RoomTokens.Ink.secondary)
             } else {
-                let largest = summary.rows.map(\.totalBytes).max() ?? 0
+                let fractions = Dictionary(zip(summary.rows.map(\.project.id),
+                    RoomDeveloperList.barFractions(summary.rows.map(\.totalBytes))), uniquingKeysWith: { first, _ in first })
                 let kinds = Set(summary.rows.flatMap(\.segments).map(\.kind))
                 if !kinds.isEmpty { legend(kinds) }
                 RoomDeveloperRowList(items: rows.map { IdentifiedProject(row: $0) }) { item in
-                    projectRow(item.row, largest: largest)
+                    projectRow(item.row, fractions: fractions)
                 }
                 if summary.sharedBytes > 0 {
                     RoomMaskable("Shared across projects: \(RoomDeveloperFormat.whole(summary.sharedBytes, partial: summary.partial)), counted once.")
@@ -96,7 +97,7 @@ struct RoomDeveloperRoomsView: View {
     }
 
     private func legend(_ kinds: Set<RoomDevPinKind>) -> some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 118), spacing: RoomTokens.Space.row)],
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 132), spacing: RoomTokens.Space.row)],
                   alignment: .leading, spacing: RoomTokens.Space.row) {
             ForEach(RoomDevPinKind.allCases.filter(kinds.contains), id: \.self) { kind in
                 let active = highlightedKind == kind
@@ -106,7 +107,7 @@ struct RoomDeveloperRoomsView: View {
                     HStack(spacing: RoomTokens.Space.tight) {
                         Circle().fill(color(kind)).frame(width: 8, height: 8)
                             .accessibilityHidden(true)
-                        Text(kind.title).lineLimit(2)
+                        Text(kind.legendTitle).lineLimit(1)
                     }
                     .font(RoomTokens.Typography.caption)
                     .padding(.horizontal, RoomTokens.Space.row)
@@ -120,7 +121,7 @@ struct RoomDeveloperRoomsView: View {
         }
     }
 
-    private func projectRow(_ row: RoomDevProjectRow, largest: Int64) -> some View {
+    private func projectRow(_ row: RoomDevProjectRow, fractions: [String: Double]) -> some View {
         VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
             HStack(alignment: .top, spacing: RoomTokens.Space.inner) {
                 VStack(alignment: .leading, spacing: RoomTokens.Space.tight / 2) {
@@ -139,7 +140,7 @@ struct RoomDeveloperRoomsView: View {
                     .font(RoomTokens.Typography.numeric)
                     .fixedSize()
             }
-            if !row.segments.isEmpty { toolchainBar(row, largest: largest) }
+            if !row.segments.isEmpty { toolchainBar(row, fractions: fractions) }
         }
         .padding(.horizontal, RoomTokens.Space.inner)
         .padding(.vertical, RoomTokens.Space.row)
@@ -149,15 +150,17 @@ struct RoomDeveloperRoomsView: View {
         .onHover { hoveredProject = $0 ? row.project.id : (hoveredProject == row.project.id ? nil : hoveredProject) }
     }
 
-    private func toolchainBar(_ row: RoomDevProjectRow, largest: Int64) -> some View {
-        let portions = row.segments.map { max(0.015, Double($0.bytes) / Double(max(1, largest))) }
+    private func toolchainBar(_ row: RoomDevProjectRow, fractions: [String: Double]) -> some View {
+        let fraction = fractions[row.project.id] ?? 1
+        let portions = row.segments.map { max(0.015, Double($0.bytes)) }
         let total = max(1, portions.reduce(0, +))
         return GeometryReader { geometry in
             HStack(spacing: 0) {
                 ForEach(Array(row.segments.enumerated()), id: \.offset) { index, segment in
                     segmentButton(segment, id: "\(row.project.id):\(index)")
-                        .frame(width: geometry.size.width * portions[index] / total)
+                        .frame(width: geometry.size.width * fraction * portions[index] / total)
                 }
+                Spacer(minLength: 0)
             }
             .clipShape(.rect(cornerRadius: RoomTokens.Radius.tile))
         }
