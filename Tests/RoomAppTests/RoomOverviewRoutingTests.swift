@@ -178,13 +178,14 @@ private final class RoutingFixture {
     }
 
     func expectIdle() async throws {
-        #expect(!cache.isScanning && !cache.isWorking && !insights.isScanningDisk)
-        // The picker and the engines can schedule work on the next turn of the main actor.
-        try await Task.sleep(for: .milliseconds(20))
-        #expect(probe.pickerOpens == 0)
-        #expect(cache.lastScanned == nil && !cache.canReviewCleanup)
-        #expect(insights.diskURL == nil && insights.diskReport == nil)
-        #expect(!rooms.isMeasuring)
+        // Work the routing might have started would begin on later turns of the main actor, so the
+        // conditions are re-checked on every turn and the first violation fails the test.
+        let idle = await RoomTestWait.staysTrue(turns: 100) {
+            !cache.isScanning && !cache.isWorking && !insights.isScanningDisk && probe.pickerOpens == 0
+                && cache.lastScanned == nil && !cache.canReviewCleanup
+                && insights.diskURL == nil && insights.diskReport == nil && !rooms.isMeasuring
+        }
+        #expect(idle)
     }
 
     func remove() {
