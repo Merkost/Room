@@ -105,7 +105,9 @@ package nonisolated enum RoomMakeRoomLedger {
         let totalNewly = entries.filter(attributable).reduce(Int64(0)) { $0 + newly($1) }
         func closing(_ entry: RoomMakeRoomEntry) -> RoomMakeRoomEntry {
             var c = entry
-            if !c.closed, !c.isObserved, now.timeIntervalSince(c.lastChangedAt) > closeAfter { c.closed = true }
+            // An entry Room made no successful observation of for 30 days (lastChecked moves only on a real one) stops being checked, so the 60 s loop always ends.
+            if !c.closed, !c.isObserved || observations[c.id] == nil,
+               now.timeIntervalSince(c.lastChecked) > closeAfter { c.closed = true }
             return c
         }
         func step(_ e: RoomMakeRoomEntry) -> RoomMakeRoomEntry {
@@ -143,6 +145,17 @@ package nonisolated enum RoomMakeRoomLedger {
             return next
         }
         return entries.map { closing(step($0)) }
+    }
+
+    package static let retention: TimeInterval = 90 * 86_400
+
+    /// Drops closed entries last changed over ~90 days ago so `ledger.json` stays under its size cap.
+    /// Open entries, entries that carry an observed gain (they feed "Room made N GB") and entries whose receipt can still restore are never dropped.
+    package static func pruned(_ entries: [RoomMakeRoomEntry], now: Date,
+                               canRestore: (UUID) -> Bool) -> [RoomMakeRoomEntry] {
+        entries.filter { e in
+            !(e.closed && !e.isObserved && e.observedGain == 0 && now.timeIntervalSince(e.lastChangedAt) > retention && !canRestore(e.id))
+        }
     }
 
     /// When the 60 s check runs at all (CA-18): only while something may still be in Trash.

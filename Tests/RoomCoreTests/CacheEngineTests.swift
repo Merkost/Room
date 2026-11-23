@@ -29,6 +29,42 @@ struct CacheEngineTests {
         #expect(receipt.trashedCount == 2 && seen.withLock { $0 } == ids)
     }
 
+    @Test("History on another engine never overwrites an in-progress receipt")
+    func historyKeepsInProgressReceiptOnOtherEngine() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        _ = try fixture.write("cache/first", "cached")
+        _ = try fixture.write("cache/second", "cached")
+        let cleaner = fixture.engine(root: fixture.root())
+        let reader = fixture.engine(root: fixture.root())
+        let ids = Set(await cleaner.scan().eligibleEntries.map(\.id))
+        try #require(ids.count == 2)
+        let midRun = Mutex<[ActivityReceipt]>([])
+        let receipt = await cleaner.clean(entryIDs: ids) { _, _ in
+            let seen = await reader.history()
+            midRun.withLock { $0 = seen }
+        }
+        #expect(midRun.withLock { $0.flatMap(\.items).allSatisfy { $0.failure != .other } })
+        let after = await reader.history().first { $0.id == receipt.id }
+        #expect(after?.trashedCount == 2)
+        #expect(after?.canRestore == true)
+    }
+
+    @Test("A receipt written by a newer Room with unknown failure values still decodes")
+    func unknownFailureValuesDecodeAsOther() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        _ = try fixture.write("cache/archive", "previous")
+        let engine = fixture.engine()
+        let scan = await engine.scan()
+        let receipt = await engine.clean(entryIDs: Set(scan.eligibleEntries.map(\.id)))
+        try fixture.tamper(receipt.id) { items in items[0]["failure"] = "someFutureCase" }
+        let history = await fixture.engine().history()
+        #expect(history.first { $0.id == receipt.id }?.items.first?.failure == .other)
+        #expect(try JSONDecoder().decode(RoomRestoreSkip.self, from: Data("\"future\"".utf8)) == .other)
+        #expect(try JSONDecoder().decode(RoomMoveFailure.self, from: Data("\"inUse\"".utf8)) == .inUse)
+    }
+
     @Test("The production catalogue contains only explicit cache locations")
     func explicitCatalogue() {
         let configuration = CacheConfiguration.standard

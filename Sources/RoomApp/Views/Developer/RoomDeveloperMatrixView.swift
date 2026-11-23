@@ -12,10 +12,7 @@ struct RoomDeveloperMatrixView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
-            Text("Toolchain versions")
-                .font(RoomTokens.Typography.title)
-                .accessibilityHeading(.h2)
+        RoomDeveloperGroup(title: "Toolchain versions") {
             ScrollView(.horizontal) {
                 matrix
             }
@@ -29,9 +26,6 @@ struct RoomDeveloperMatrixView: View {
                     .foregroundStyle(RoomTokens.Ink.secondary)
             }
         }
-        .padding(RoomTokens.Space.group)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoomTokens.Surface.group, in: .rect(cornerRadius: RoomTokens.Radius.group))
     }
 
     private var matrix: some View {

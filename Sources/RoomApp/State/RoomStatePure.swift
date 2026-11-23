@@ -23,6 +23,8 @@ nonisolated struct RoomStateFile: Hashable, Sendable {
     static let weeklyCheck = RoomStateFile(name: "weekly-check.json", schema: 1, maxBytes: 4_000, survivesForget: false)
     // Named here so names never collide; schemas are owned by Jobs B, C, D (ASSUMED there).
     static let ledger = RoomStateFile(name: "ledger.json", schema: 1, maxBytes: 256_000, survivesForget: true)
+    /// Receipt ids the ledger pruned, so a receipt file that outlives its entry is not adopted again (bounded, newest last).
+    static let ledgerPruned = RoomStateFile(name: "ledger-pruned.json", schema: 1, maxBytes: 128_000, survivesForget: true)
     static let ignore = RoomStateFile(name: "ignore.json", schema: 1, maxBytes: 128_000, survivesForget: true)
     static let views = RoomStateFile(name: "views.json", schema: 1, maxBytes: 64_000, survivesForget: true)
     static let developerUnreferenced = RoomStateFile(name: "developer-unreferenced.json", schema: 1, maxBytes: 512_000, survivesForget: false)

@@ -254,6 +254,10 @@ final class RoomDeveloperModel {
         }
     }
 
+    #if DEBUG
+    func debugRemember(_ url: URL, role: RoomDeveloperFolderRole) { remember(url, role: role) }
+    #endif
+
     private func remember(_ selected: URL, role: RoomDeveloperFolderRole) {
         do {
             let url = try access.remember(selected)

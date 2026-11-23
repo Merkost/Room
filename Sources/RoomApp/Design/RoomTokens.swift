@@ -17,6 +17,13 @@ extension Color {
     }
 }
 
+extension Color {
+    /// The same light and dark pair as a `RoomDS` swatch. Increase Contrast keeps using the light and dark values (DS-5 adopts the HC ones).
+    static func room(_ swatch: RoomDS.Swatch, name: String) -> Color {
+        room(light: swatch.light.hex, dark: swatch.dark.hex, alphaLight: swatch.light.alpha, alphaDark: swatch.dark.alpha, name: name)
+    }
+}
+
 extension NSColor {
     convenience init(roomHex hex: UInt32, alpha: Double = 1) {
         self.init(srgbRed: CGFloat((hex >> 16) & 0xFF) / 255,
@@ -31,21 +38,21 @@ enum RoomTokens {
     // MARK: Type ladder 40 / 22 / 15 / 13 / 12 / 11
     enum Typography {
         /// Tier 1: the Overview answer and the one hero figure per screen. Regular weight, tabular.
-        static let hero = Font.system(size: 40, weight: .regular).monospacedDigit()
+        static let hero = RoomDS.TypeRole.numberXl.font
         static let heroTracking: CGFloat = -0.8
         /// Sibling figures (Caches found, Kept safe), Memory pressure word next to the pocket.
-        static let figure = Font.system(size: 22, weight: .regular).monospacedDigit()
+        static let figure = RoomDS.TypeRole.number.font
         /// Toolbar titles, chapter headings (semibold) and the quiet greeting / goal sentence (regular).
-        static let title = Font.system(size: 15, weight: .semibold)
-        static let lead = Font.system(size: 15, weight: .regular)
+        static let title = RoomDS.TypeRole.h1.font
+        static let lead = RoomDS.TypeRole.lead.font
         /// Section headings inside a screen.
-        static let section = Font.system(size: 13, weight: .semibold)
-        static let body = Font.system(size: 13, weight: .regular)
+        static let section = RoomDS.TypeRole.h2.font
+        static let body = RoomDS.TypeRole.body.font
         static let bodyStrong = Font.system(size: 13, weight: .medium)
         static let counter = Font.system(size: 17, weight: .regular).monospacedDigit()
         static let roomGlyph = Font.system(size: 10, weight: .medium)
         static let numeric = Font.system(size: 13, weight: .regular).monospacedDigit()
-        static let caption = Font.system(size: 12, weight: .regular)
+        static let caption = RoomDS.TypeRole.small.font
         static let sidebarGroup = Font.system(size: 11, weight: .semibold)
         static let navigationLabel = Font.system(size: 12, weight: .medium)
         static let captionNumeric = Font.system(size: 12, weight: .regular).monospacedDigit()
@@ -56,10 +63,10 @@ enum RoomTokens {
         /// Functional text floor (DESIGN.md): ticks, key caps, plan labels. Never smaller.
         static let micro = Font.system(size: 11, weight: .regular)
         /// SF Mono only for paths and versions.
-        static let path = Font.system(size: 11.5, weight: .regular, design: .monospaced)
+        static let path = RoomDS.TypeRole.mono.font
         static let version = Font.system(size: 12, weight: .regular, design: .monospaced)
         /// Unit attached to a figure, on its baseline: 0.4 x figure size, minimum 14 (RoomByteMetric rule).
-        static func unit(for figureSize: CGFloat) -> Font { .system(size: max(14, figureSize * 0.4), weight: .regular) }
+        static func unit(for figureSize: CGFloat) -> Font { RoomDS.unitFont(for: figureSize) }
         /// Tracking: -0.5 for 40 pt, -0.2 for 22 pt, 0 below.
         static func tracking(for size: CGFloat) -> CGFloat { size >= 30 ? -0.5 : size >= 20 ? -0.2 : 0 }
     }
@@ -112,15 +119,15 @@ enum RoomTokens {
     // MARK: Spacing (pt). Calm is the default density; Compact is v2's spacing.
     enum Space {
         static let tight: CGFloat = 6
-        static let row: CGFloat = 8
-        static let inner: CGFloat = 12
-        static let group: CGFloat = 16
+        static let row: CGFloat = RoomDS.Space.row
+        static let inner: CGFloat = RoomDS.Space.inner
+        static let group: CGFloat = RoomDS.Space.group
         /// Breath tokens (board decision 25).
-        static let breath1: CGFloat = 24   // inside a chapter
-        static let breath2: CGFloat = 40   // between groups; Calm gutter
-        static let breath3: CGFloat = 64   // reserved: Settings, onboarding
-        static let breath4: CGFloat = 96   // between chapters
-        static let measure: CGFloat = 560  // text measure and plan width (Calm)
+        static let breath1: CGFloat = RoomDS.Space.breath1   // inside a chapter
+        static let breath2: CGFloat = RoomDS.Space.breath2   // between groups; Calm gutter
+        static let breath3: CGFloat = RoomDS.Space.breath3   // reserved: Settings, onboarding
+        static let breath4: CGFloat = RoomDS.Space.breath4   // between chapters
+        static let measure: CGFloat = RoomDS.Space.measure  // text measure and plan width (Calm)
     }
 
     enum Density: String, CaseIterable, Codable, Sendable {
@@ -140,14 +147,14 @@ enum RoomTokens {
     enum Radius {
         static let budgetOverrun: CGFloat = 1
         static let budgetFill: CGFloat = 2
-        static let tile: CGFloat = 5
-        static let field: CGFloat = 6
-        static let row: CGFloat = 8
-        static let card: CGFloat = 10
-        static let group: CGFloat = 12
-        static let popover: CGFloat = 16
-        static let sheet: CGFloat = 20
-        static let planRoom: CGFloat = 3
+        static let tile: CGFloat = RoomDS.Radius.tile
+        static let field: CGFloat = RoomDS.Radius.field
+        static let row: CGFloat = RoomDS.Radius.row
+        static let card: CGFloat = RoomDS.Radius.card
+        static let group: CGFloat = RoomDS.Radius.group
+        static let popover: CGFloat = RoomDS.Radius.popover
+        static let sheet: CGFloat = RoomDS.Radius.sheet
+        static let planRoom: CGFloat = RoomDS.Radius.planRoom
         static let plan: CGFloat = 11
     }
 
@@ -177,21 +184,21 @@ enum RoomTokens {
     }
 
     enum Ink {
-        static let graphite = Color.room(light: 0x222527, dark: 0xF3F5F6, name: "room.ink")
-        static let secondary = Color.room(light: 0x5B6266, dark: 0xA3A9AC, name: "room.ink2")
-        static let iconGraphite = Color(nsColor: NSColor(roomHex: 0x222527))  // icon tile, both modes
+        static let graphite = Color.room(RoomDS.Product.ink, name: "room.ink")
+        static let secondary = Color.room(RoomDS.Product.ink2, name: "room.ink2")
+        static let iconGraphite = Color(nsColor: NSColor(roomHex: RoomDS.Product.iconTile.light.hex))  // icon tile, both modes
     }
 
     enum Surface {
-        static let canvas = Color.room(light: 0xF3F5F6, dark: 0x17191A, name: "room.canvas")
-        static let group = Color.room(light: 0xFFFFFF, dark: 0x202325, name: "room.group")
-        static let track = Color.room(light: 0xE3E7E9, dark: 0x2C3033, name: "room.track")
-        static let used = Color.room(light: 0x4A5257, dark: 0x9AA3A8, name: "room.used")
-        static let hover = Color.room(light: 0x222527, dark: 0xF3F5F6, alphaLight: 0.045, alphaDark: 0.05, name: "room.hover")
-        static let press = Color.room(light: 0x222527, dark: 0xF3F5F6, alphaLight: 0.09, alphaDark: 0.10, name: "room.press")
-        static let line = Color.room(light: 0x222527, dark: 0xF3F5F6, alphaLight: 0.10, alphaDark: 0.09, name: "room.line")
-        static let line2 = Color.room(light: 0x222527, dark: 0xF3F5F6, alphaLight: 0.16, alphaDark: 0.16, name: "room.line2")
-        static let hatch = Color.room(light: 0x222527, dark: 0xF3F5F6, alphaLight: 0.16, alphaDark: 0.16, name: "room.hatch")
+        static let canvas = Color.room(RoomDS.Product.canvas, name: "room.canvas")
+        static let group = Color.room(RoomDS.Product.group, name: "room.group")
+        static let track = Color.room(RoomDS.Product.track, name: "room.track")
+        static let used = Color.room(RoomDS.Product.used, name: "room.used")
+        static let hover = Color.room(RoomDS.Product.hover, name: "room.hover")
+        static let press = Color.room(RoomDS.Product.press, name: "room.press")
+        static let line = Color.room(RoomDS.Product.line, name: "room.line")
+        static let line2 = Color.room(RoomDS.Product.line2, name: "room.line2")
+        static let hatch = Color.room(RoomDS.Product.hatch, name: "room.hatch")
     }
 
     // MARK: Accent (Customise: four options). fill = filled button and data; text = links and selected text.
@@ -200,7 +207,7 @@ enum RoomTokens {
         var title: String { rawValue.capitalized }
         var fill: Color {
             switch self {
-            case .teal: .room(light: 0x3D7482, dark: 0x37717F, name: "room.accent.teal.fill")
+            case .teal: .room(RoomDS.Accent.fill, name: "room.accent.teal.fill")
             case .graphite: .room(light: 0x3A4146, dark: 0x596167, name: "room.accent.graphite.fill")
             case .harbour: .room(light: 0x3A6491, dark: 0x3A6289, name: "room.accent.harbour.fill")
             case .berry: .room(light: 0x8A4766, dark: 0x84476A, name: "room.accent.berry.fill")
@@ -208,7 +215,7 @@ enum RoomTokens {
         }
         var text: Color {
             switch self {
-            case .teal: .room(light: 0x3D7482, dark: 0x7FB5C3, name: "room.accent.teal.text")
+            case .teal: .room(RoomDS.Accent.text, name: "room.accent.teal.text")
             case .graphite: .room(light: 0x3A4146, dark: 0xD2D8DB, name: "room.accent.graphite.text")
             case .harbour: .room(light: 0x3A6491, dark: 0x8DB4DD, name: "room.accent.harbour.text")
             case .berry: .room(light: 0x8A4766, dark: 0xDDA6C0, name: "room.accent.berry.text")
@@ -217,7 +224,7 @@ enum RoomTokens {
         /// 10 % (light) / 14 % (dark) wash of the text step: selection, lamp, hover on accent rows.
         var wash: Color {
             switch self {
-            case .teal: .room(light: 0x3D7482, dark: 0x7FB5C3, alphaLight: 0.10, alphaDark: 0.14, name: "room.accent.teal.wash")
+            case .teal: .room(RoomDS.Accent.wash, name: "room.accent.teal.wash")
             case .graphite: .room(light: 0x3A4146, dark: 0xD2D8DB, alphaLight: 0.10, alphaDark: 0.14, name: "room.accent.graphite.wash")
             case .harbour: .room(light: 0x3A6491, dark: 0x8DB4DD, alphaLight: 0.10, alphaDark: 0.14, name: "room.accent.harbour.wash")
             case .berry: .room(light: 0x8A4766, dark: 0xDDA6C0, alphaLight: 0.10, alphaDark: 0.14, name: "room.accent.berry.wash")
@@ -228,10 +235,10 @@ enum RoomTokens {
     // MARK: Status: memory pressure and the free-space goal only. Never used for data series.
     enum Status {
         static let pressureLaneOpacity = 0.08
-        static let normal = Color.room(light: 0x2E7D4F, dark: 0x5CC08A, name: "room.status.normal")
-        static let elevated = Color.room(light: 0xA3590A, dark: 0xF0A040, name: "room.status.elevated")
-        static let critical = Color.room(light: 0xC4242A, dark: 0xFF6B66, name: "room.status.critical")
-        static let elevatedWash = Color.room(light: 0xA3590A, dark: 0xF0A040, alphaLight: 0.09, alphaDark: 0.12, name: "room.status.elevated.wash")
+        static let normal = Color.room(RoomDS.Status.normal, name: "room.status.normal")
+        static let elevated = Color.room(RoomDS.Status.elevated, name: "room.status.elevated")
+        static let critical = Color.room(RoomDS.Status.critical, name: "room.status.critical")
+        static let elevatedWash = Color.room(RoomDS.Status.elevatedWash, name: "room.status.elevated.wash")
     }
 
     // MARK: Data: the seven kinds. fill = tiles and plan rooms (labels sit on them); mark = dots, thin bars, sparklines.
@@ -239,13 +246,13 @@ enum RoomTokens {
         case developer, media, documents, apps, archives, system, hidden
         var fill: Color {
             switch self {
-            case .developer: .room(light: 0xA9CBD4, dark: 0x2E5560, name: "room.kind.dev.fill")
-            case .media: .room(light: 0xBACFB2, dark: 0x3C5236, name: "room.kind.media.fill")
-            case .documents: .room(light: 0xB9C4DA, dark: 0x38455E, name: "room.kind.docs.fill")
-            case .apps: .room(light: 0xDCCDA6, dark: 0x58492C, name: "room.kind.apps.fill")
-            case .archives: .room(light: 0xDDBBA9, dark: 0x5C3F33, name: "room.kind.arch.fill")
-            case .system: .room(light: 0xCBD0D3, dark: 0x3A3F43, name: "room.kind.sys.fill")
-            case .hidden: .room(light: 0xCCBCD3, dark: 0x4A3C52, name: "room.kind.hid.fill")
+            case .developer: .room(RoomDS.Kind.developer.fill, name: "room.kind.dev.fill")
+            case .media: .room(RoomDS.Kind.media.fill, name: "room.kind.media.fill")
+            case .documents: .room(RoomDS.Kind.documents.fill, name: "room.kind.docs.fill")
+            case .apps: .room(RoomDS.Kind.apps.fill, name: "room.kind.apps.fill")
+            case .archives: .room(RoomDS.Kind.archives.fill, name: "room.kind.arch.fill")
+            case .system: .room(RoomDS.Kind.system.fill, name: "room.kind.sys.fill")
+            case .hidden: .room(RoomDS.Kind.hidden.fill, name: "room.kind.hid.fill")
             }
         }
         var mark: Color {
@@ -259,8 +266,16 @@ enum RoomTokens {
             case .hidden: .room(light: 0x9670AE, dark: 0xB28DCB, name: "room.kind.hid.mark")
             }
         }
-        static let tileInk = Color.room(light: 0x222527, dark: 0xF3F5F6, name: "room.tile.ink")
-        static let tileInk2 = Color.room(light: 0x3E4448, dark: 0xC5CCD0, name: "room.tile.ink2")
+        static let tileInk = Color.room(RoomDS.Product.tileInk, name: "room.tile.ink")
+        static let tileInk2 = Color.room(RoomDS.Product.tileInk2, name: "room.tile.ink2")
+    }
+
+    enum Developer {
+        static let rowMinHeight: CGFloat = 44
+        static let breakdownHeight: CGFloat = 8
+        static let breakdownGap: CGFloat = 2
+        static let breakdownSteps: [Double] = [1, 0.72, 0.5, 0.34, 0.22]
+        static let actionSize: CGFloat = 28
     }
 
     enum Map {
@@ -286,26 +301,26 @@ enum RoomTokens {
 
     // MARK: Motion values (the environment value in RoomMotion folds in Gentle motion + Reduce Motion)
     enum Motion {
-        static let quick = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.12)
-        static let standard = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.20)
-        static let exit = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.12)
-        static let pageResponse = 0.32
-        static let page = Animation.spring(response: pageResponse, dampingFraction: 1)
+        static let quick = RoomDS.Motion.timed(.quick)
+        static let standard = RoomDS.Motion.timed(.standard)
+        static let exit = RoomDS.Motion.timed(.quick)
+        static let pageResponse = RoomDS.Motion.Spring.page.spec.response
+        static let page = RoomDS.Motion.Spring.page.spec.animation
         static let compareGlide = Animation.spring(response: 0.36, dampingFraction: 1)
         static let receiptLead = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.28)
         static let onboardingText = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.24).delay(0.07)
         static let settle = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.24)
-        static let success = Animation.spring(response: 0.28, dampingFraction: 0.7)  // the only overshoot
+        static let success = RoomDS.Motion.Spring.success.spec.animation  // the only overshoot
         nonisolated static let fadeDuration: TimeInterval = 0.15                                // Reduce Motion fallback
         nonisolated static let fadeCurve = UnitCurve.easeOut
         static let fade = Animation.timingCurve(fadeCurve, duration: fadeDuration)
-        static let count: TimeInterval = 0.32
+        static let count: TimeInterval = RoomDS.Motion.Duration.page.seconds
         static let countAnimation = Animation.easeOut(duration: count)
-        nonisolated static let stagger: TimeInterval = 0.03
+        nonisolated static let stagger: TimeInterval = RoomDS.Motion.staggerItem
         static let settleStagger: TimeInterval = 0.07
-        static let maxStaggered = 12
-        static let tooltipDelay: TimeInterval = 0.5
-        static let pressScale: CGFloat = 0.96
+        static let maxStaggered = RoomDS.Motion.staggerCap
+        static let tooltipDelay: TimeInterval = RoomDS.Motion.tooltipDelay
+        static let pressScale: CGFloat = RoomDS.Motion.pressScale
 
         // Board v4 tokens (room-design-v4/src/10-body.html:243-248). Values shared with RoomPure.
         /// Motion.roll: label in 180 ms, out 140 ms, ease-out, 100 % travel; odometer 260 ms per column.

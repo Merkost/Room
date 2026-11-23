@@ -1,9 +1,14 @@
 import Darwin
 import Foundation
+import Synchronization
 
 /// Serializes scan, Trash and restore work away from the UI actor.
 /// Cleanup accepts only IDs minted by the latest completed scan.
 public actor CacheEngine {
+    /// Receipt ids being written by any engine in this process. Direct builds make a fresh engine
+    /// per scan and recovery uses another, so one engine's `activeCleanup` cannot protect a receipt
+    /// that another engine is still writing; `history()` consults this set instead.
+    private static let inProgressReceipts = Mutex<Set<UUID>>([])
     private var resolvedConfiguration: CacheConfiguration?
     private let configurationProvider: (@Sendable () -> CacheConfiguration)?
     private var configuration: CacheConfiguration {
@@ -358,7 +363,12 @@ public actor CacheEngine {
             return receipt
         }
         activeCleanup = receipt.id
-        defer { activeCleanup = nil }
+        let receiptID = receipt.id
+        Self.inProgressReceipts.withLock { _ = $0.insert(receiptID) }
+        defer {
+            activeCleanup = nil
+            Self.inProgressReceipts.withLock { _ = $0.remove(receiptID) }
+        }
         let contentBudget = NPMContentBudget(npmContentLimits)
         for id in entryIDs.sorted(by: { $0.uuidString < $1.uuidString }) {
             guard let candidate = candidates[id] else {
@@ -484,7 +494,8 @@ public actor CacheEngine {
                       let data = try? Data(contentsOf: file),
                       var receipt = try? JSONDecoder().decode(ActivityReceipt.self, from: data),
                       file.lastPathComponent == "\(receipt.id.uuidString).json",
-                      receipt.id != activeCleanup else { continue }
+                      receipt.id != activeCleanup,
+                      !Self.inProgressReceipts.withLock({ $0.contains(receipt.id) }) else { continue }
                 for index in receipt.items.indices where receipt.items[index].status == .pending {
                     receipt.items[index].status = .failed
                     receipt.items[index].failure = .other
