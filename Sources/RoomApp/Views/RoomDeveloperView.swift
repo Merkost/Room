@@ -334,7 +334,7 @@ struct RoomDeveloperView: View {
                 .disabled(model.isScanning || model.isChoosingFolder)
             }
             if model.sectionLocations.contains(where: { $0.role == .simulatorRuntimes }) {
-                Text("Runtime sizes cover stored bundles and backing images. Manage installed runtimes in Xcode Settings → Components.")
+                Text("Runtime sizes include standalone bundles and backing images, including Xcode exports. Manage installed runtimes in Xcode Settings → Components.")
                     .font(RoomTokens.Typography.caption)
                     .foregroundStyle(RoomTokens.Ink.secondary)
             }

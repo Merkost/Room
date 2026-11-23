@@ -626,7 +626,7 @@ private enum DRSimulatorRuntimes {
                      beforeFinalValidation: ((URL) -> Void)?, results: inout [DeveloperStorageResource]) throws {
         do {
             let volume = try DRFiles.directory(root, ownership: .readable).st_dev
-            let directPackage = ["simruntime", "asset"].contains(root.pathExtension.lowercased())
+            let directPackage = ["simruntime", "asset", "exportedbundle"].contains(root.pathExtension.lowercased())
             let candidates = directPackage ? [root]
                 : try DRFiles.children(root, budget: budget, ownership: .readable, volume: volume)
             let catalogue = candidates.contains(where: { $0.pathExtension.lowercased() == "dmg" })
@@ -639,9 +639,9 @@ private enum DRSimulatorRuntimes {
                         guard !results.contains(where: { $0.url.path == url.path }) else { continue }
                         let item = try bundle(url, volume: volume, budget: budget, beforeFinalValidation: beforeFinalValidation)
                         results.append(item)
-                    case "asset":
-                        try assetImages(in: url, volume: volume, budget: budget, files: files,
-                                        beforeFinalValidation: beforeFinalValidation, results: &results)
+                    case "asset", "exportedbundle":
+                        try packagedImages(in: url, volume: volume, budget: budget, files: files,
+                                           beforeFinalValidation: beforeFinalValidation, results: &results)
                     case "dmg":
                         let declared = catalogue[url.path]
                         guard let metadata = declared ?? looseImageMetadata(url) else { continue }
@@ -682,19 +682,23 @@ private enum DRSimulatorRuntimes {
                      isPartial: measurement.partial, runtime: metadata)
     }
 
-    private static func assetImages(in asset: URL, volume: dev_t, budget: DRBudget, files: DRMeasuredFiles,
-                                    beforeFinalValidation: ((URL) -> Void)?, results: inout [DeveloperStorageResource]) throws {
-        guard try DRFiles.directory(asset, ownership: .readable).st_dev == volume else { throw DRReadError.invalidRoot }
-        let fields = try plist(asset.appendingPathComponent("Info.plist"), volume: volume, budget: budget)
+    private static func packagedImages(in package: URL, volume: dev_t, budget: DRBudget, files: DRMeasuredFiles,
+                                       beforeFinalValidation: ((URL) -> Void)?, results: inout [DeveloperStorageResource]) throws {
+        guard try DRFiles.directory(package, ownership: .readable).st_dev == volume else { throw DRReadError.invalidRoot }
+        let isExport = package.pathExtension.lowercased() == "exportedbundle"
+        let metadataFile = isExport ? "ExportedMetadata.plist" : "Info.plist"
+        let fields = try plist(package.appendingPathComponent(metadataFile), volume: volume, budget: budget)
         guard let identifier = string(fields["CFBundleIdentifier"]), identifier.hasPrefix(assetPrefix),
               identifier.hasSuffix(assetSuffix), let platform = platformName(String(identifier.dropFirst(assetPrefix.count).dropLast(assetSuffix.count)))
         else { return }
         let properties = fields["MobileAssetProperties"] as? [String: Any] ?? [:]
         let name = string(properties["SimulatorVersion"]).map { "\(platform) \($0)" } ?? "\(platform) Simulator Runtime"
         let metadata = SimulatorRuntimeMetadata(name: name, build: string(properties["Build"]))
-        let payloads = asset.appendingPathComponent("AssetData/Restore", isDirectory: true)
-        for image in try DRFiles.children(payloads, budget: budget, ownership: .readable, volume: volume)
-        where image.pathExtension.lowercased() == "dmg" {
+        let payloads = package.appendingPathComponent(isExport ? "Restore" : "AssetData/Restore", isDirectory: true)
+        let images = try DRFiles.children(payloads, budget: budget, ownership: .readable, volume: volume)
+            .filter { $0.pathExtension.lowercased() == "dmg" }
+        if isExport, images.isEmpty { throw DRReadError.missing }
+        for image in images {
             do {
                 try appendImage(image, metadata: metadata, checkTrailer: false, volume: volume,
                                 budget: budget, files: files, beforeFinalValidation: beforeFinalValidation, results: &results)
