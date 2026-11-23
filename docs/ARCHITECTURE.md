@@ -25,3 +25,5 @@ An explicit scan runs on its engine actor and reports partial progress to the ma
 Disk mapping reads metadata rather than file contents. Analysis is advisory and cannot bypass cleanup protections. Memory measurements are observations; occupancy and residual swap alone do not establish pressure.
 
 Recovery receipts remain local. Restore validates the original receipt, current item identity, and destination state. A changed or regenerated destination is left in place.
+
+`Sources/RoomApp/Design/RoomDesignTokens.swift` is generated from the design system source (`design/brand-ds` in the room-site repository, `tokens/room.tokens.json`): run `node build/all.mjs` there and copy `dist/RoomDesignTokens.swift` here unchanged. Never edit it by hand; `RoomDesignTokensTests` fails if it drifts from the JSON copy in the test resources.
