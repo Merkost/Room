@@ -273,6 +273,11 @@ struct RoomDotPlanView: View {
             paint.stroke(Path(roundedRect: goal, cornerRadius: RoomTokens.Radius.planRoom), outline, style: Tokens.dashedWall)
             if let text = presentation.goalLabel, goal.width >= Tokens.goalLabelSize.width,
                goal.height >= Tokens.goalLabelSize.height {
+                // The label sits over free rings: a canvas-coloured plate keeps the rings from running through the text.
+                let plateWidth = min(goal.width - 2 * Tokens.goalInset + 8, CGFloat(text.count) * 6.4 + 12)
+                let plate = CGRect(x: goal.minX + Tokens.goalInset - 4, y: goal.midY - Tokens.goalLabelSize.height / 2,
+                                   width: plateWidth, height: Tokens.goalLabelSize.height)
+                paint.fill(Path(roundedRect: plate, cornerRadius: RoomTokens.Radius.planRoom / 2), RoomTokens.Surface.canvas)
                 paint.label(text, in: goal.insetBy(dx: Tokens.goalInset, dy: 0), font: RoomTokens.Typography.micro,
                             ink: RoomTokens.Ink.secondary, centeredVertically: true)
             }
