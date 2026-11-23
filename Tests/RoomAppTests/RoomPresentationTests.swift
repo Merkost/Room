@@ -100,19 +100,14 @@ struct RoomPresentationTests {
         })
         model.attach(role: .project, to: approved.id)
         model.scan()
-        for _ in 0..<1_000 {
-            if await gate.started { break }
-            await Task.yield()
-        }
-        #expect(await gate.started)
+        #expect(await RoomTestWait.until { await gate.started })
         access.forget(id: approved.id)
         model.accessChanged() // persistent root observes shared bookmark revisions on every tab
         #expect(!model.isScanning)
         #expect(!model.canScan)
         await gate.complete()
-        for _ in 0..<30 { await Task.yield() }
-        #expect(model.report == nil)
-        #expect(model.progress.isEmpty)
+        #expect(await RoomTestWait.until { await gate.delivered })
+        #expect(await RoomTestWait.staysTrue { model.report == nil && model.progress.isEmpty })
     }
 
 }
@@ -121,9 +116,12 @@ struct RoomPresentationTests {
 private actor DeferredDeveloperScan {
     private var continuation: CheckedContinuation<DeveloperResourcesReport, Never>?
     private(set) var started = false
+    private(set) var delivered = false
     func scan(_ request: DeveloperResourcesRequest) async -> DeveloperResourcesReport {
         started = true
-        return await withCheckedContinuation { continuation = $0 }
+        let report = await withCheckedContinuation { continuation = $0 }
+        delivered = true
+        return report
     }
     func complete() {
         continuation?.resume(returning: DeveloperResourcesReport(id: UUID(), scannedAt: Date(), androidDevices: [],

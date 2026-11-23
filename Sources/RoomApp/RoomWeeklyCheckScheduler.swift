@@ -113,6 +113,15 @@ final class RoomWeeklyCheckScheduler {
         }
     }
 
+    /// With Hide on the notification says that caches grew, never by how much.
+    static func title(growth: Int64, hideSizes: Bool) -> String {
+        if hideSizes {
+            return String(localized: "weekly.title.hidden", defaultValue: "Caches grew this week.", bundle: RoomCopy.bundle)
+        }
+        let template = String(localized: "weekly.title", defaultValue: "Caches grew %@ this week.", bundle: RoomCopy.bundle)
+        return String.localizedStringWithFormat(template, RoomFormat.overviewBytes(growth))
+    }
+
     private func run() async {
         guard enabled, !running else { return }
         running = true
@@ -123,9 +132,8 @@ final class RoomWeeklyCheckScheduler {
         writer.submit(current, to: .weeklyCheck)
         guard let growth = RoomWeeklyCheck.growthToReport(previous: previous.value, current: current,
                                     thresholdBytes: Int64(thresholdGB) * 1_000_000_000) else { return }
-        let template = String(localized: "weekly.title", defaultValue: "Caches grew %@ this week.", bundle: RoomCopy.bundle)
         let content = UNMutableNotificationContent()
-        content.title = String.localizedStringWithFormat(template, RoomFormat.overviewBytes(growth))
+        content.title = Self.title(growth: growth, hideSizes: defaults.bool(forKey: RoomHideControl.preferenceKey))
         content.body = String(localized: "weekly.body", defaultValue: "Review in Room.", bundle: RoomCopy.bundle)
         let request = UNNotificationRequest(identifier: RoomWeeklyNotificationRouter.identifier, content: content, trigger: nil)
         do { try await UNUserNotificationCenter.current().add(request) }
