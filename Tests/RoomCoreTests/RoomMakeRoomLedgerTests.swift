@@ -57,6 +57,18 @@ struct RoomMakeRoomLedgerTests {
         #expect(early.first?.closed == false)
     }
 
+    @Test func theThirtyDayCloseCountsFromTheLastSuccessfulObservation() throws {
+        var recent = try stageOne(bytes: 600_000_000)
+        recent.lastChangedAt = now.addingTimeInterval(-40 * 86_400)
+        recent.lastChecked = now.addingTimeInterval(-3600)
+        var stale = recent
+        stale.lastChecked = now.addingTimeInterval(-31 * 86_400)
+        let reading = RoomCapacitySample(freeBytes: free, device: device, at: now)
+        let unknown = RoomMakeRoomLedger.advance([recent, stale], observations: [:], sample: reading, now: now)
+        #expect(unknown[0].closed == false, "unchanged for 40 days but observed an hour ago stays open")
+        #expect(unknown[1].closed == true, "no successful observation for 31 days closes")
+    }
+
     @Test func backwardsClockLeavesEvidenceUnchanged() throws {
         let entry = try stageOne(bytes: 600_000_000)
         let rolledBack = try after(entry, freeGain: 600_000_000, afterSeconds: -1)

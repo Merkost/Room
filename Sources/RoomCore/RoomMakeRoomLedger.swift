@@ -105,9 +105,9 @@ package nonisolated enum RoomMakeRoomLedger {
         let totalNewly = entries.filter(attributable).reduce(Int64(0)) { $0 + newly($1) }
         func closing(_ entry: RoomMakeRoomEntry) -> RoomMakeRoomEntry {
             var c = entry
-            // An entry Room could not observe for 30 days stops being checked, so the 60 s loop always ends.
+            // An entry Room made no successful observation of for 30 days (lastChecked moves only on a real one) stops being checked, so the 60 s loop always ends.
             if !c.closed, !c.isObserved || observations[c.id] == nil,
-               now.timeIntervalSince(c.lastChangedAt) > closeAfter { c.closed = true }
+               now.timeIntervalSince(c.lastChecked) > closeAfter { c.closed = true }
             return c
         }
         func step(_ e: RoomMakeRoomEntry) -> RoomMakeRoomEntry {
@@ -150,11 +150,11 @@ package nonisolated enum RoomMakeRoomLedger {
     package static let retention: TimeInterval = 90 * 86_400
 
     /// Drops closed entries last changed over ~90 days ago so `ledger.json` stays under its size cap.
-    /// Open entries and entries whose receipt can still restore are never dropped.
+    /// Open entries, entries that carry an observed gain (they feed "Room made N GB") and entries whose receipt can still restore are never dropped.
     package static func pruned(_ entries: [RoomMakeRoomEntry], now: Date,
                                canRestore: (UUID) -> Bool) -> [RoomMakeRoomEntry] {
         entries.filter { e in
-            !(e.closed && !e.isObserved && now.timeIntervalSince(e.lastChangedAt) > retention && !canRestore(e.id))
+            !(e.closed && !e.isObserved && e.observedGain == 0 && now.timeIntervalSince(e.lastChangedAt) > retention && !canRestore(e.id))
         }
     }
 
