@@ -341,7 +341,7 @@ struct RoomCachesView: View {
                 VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
                     Text(hero.heroLabel).font(RoomTokens.Typography.caption).foregroundStyle(RoomTokens.Ink.secondary)
                     metric(format(bytes, hero: true), number: RoomTokens.Typography.hero, unit: RoomTokens.Typography.counter)
-                        .roomNumericTransition(format(bytes, hero: true), enabled: !model.isScanning)
+                        .roomNumericTransition(format(bytes, hero: true)) // counts up as sources report
                 }
             } else if !hero.lowerBound {
                 Text(hero.heroLabel).font(RoomTokens.Typography.lead)
