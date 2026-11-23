@@ -62,7 +62,7 @@ struct RoomChapterRooms: View {
                 ForEach(pinned) { room in
                     let needsAccess = unavailable.contains(room.id)
                     let row = RoomRoomsChapter.row(room, log: rooms.log(for: room.id), unavailable: needsAccess,
-                                                  now: now, calendar: calendar, hidden: false, format: RoomFormat.bytes)
+                                                  now: now, calendar: calendar, hidden: false, format: RoomFormat.gb)
                     RoomChapterRow(room: room, row: row) {
                         if !needsAccess, let url = rooms.url(for: room.id) { openRoom(url) }
                         else { rooms.chooseFolder(replacingApprovalFor: room.id) }

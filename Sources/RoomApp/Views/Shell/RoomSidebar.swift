@@ -165,11 +165,11 @@ struct RoomSidebar: View {
                 pinned(room, size: String(localized: "nav.room.needsAccess", defaultValue: "Needs access", bundle: RoomCopy.bundle),
                        spokenSize: nil, needsAccess: true)
             } else if let sample = rooms.log(for: room.id)?.latest {
-                let size = RoomFormat.bytes(sample.bytes)
+                let size = RoomFormat.gb(sample.bytes)
                 pinned(room, size: sample.partial ? "≥ \(size)" : size,
                        spokenSize: sample.partial ? "at least \(size)" : size)
             } else {
-                pinned(room, size: "—", spokenSize: String(localized: "nav.room.notMeasured",
+                pinned(room, size: RoomFormat.notMeasured, spokenSize: String(localized: "nav.room.notMeasured",
                        defaultValue: "Not measured yet", bundle: RoomCopy.bundle))
             }
         }

@@ -59,7 +59,7 @@ final class RoomOverviewModel {
         RoomOverviewSnapshot.make(.init(capacityBytes: capacity?.capacityBytes, freeBytes: capacity?.freeBytes,
             goalBytes: goalBytes.map(RoomMenuBarSettings.clampGoalBytes), caches: caches, cachesInvalidatedAt: invalidatedAt,
             now: now, hidden: false, homeKinds: homeKinds, mapActionAvailable: mapActionAvailable,
-            mapping: mapping, stoppedMapping: stoppedMapping), format: RoomFormat.overviewBytes)
+            mapping: mapping, stoppedMapping: stoppedMapping), format: RoomFormat.gb)
     }
 
     func updateGreeting(enabled: Bool, hidden: Bool, refreshName: Bool = false) {

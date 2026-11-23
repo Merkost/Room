@@ -14,7 +14,7 @@ struct RoomRecentOverviewLine: View {
                 Text(String(localized: "recent.title", defaultValue: "Recent", table: "Overview", bundle: RoomCopy.bundle)).font(RoomTokens.Typography.title).accessibilityHeading(.h2)
             }
             if let entry {
-                RoomMaskable(RoomMakeRoomCopy.headline(entry, format: RoomFormat.overviewBytes))
+                RoomMaskable(RoomMakeRoomCopy.headline(entry, format: RoomFormat.gb))
                     .font(RoomTokens.Typography.section)
                 HStack(spacing: RoomTokens.Space.row) {
                     if entry.stage == .emptied && entry.observedGain > 0 {

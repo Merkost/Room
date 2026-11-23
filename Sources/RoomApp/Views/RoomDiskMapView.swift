@@ -142,7 +142,7 @@ struct RoomDiskMapView: View {
             VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
                 Text("Other").font(RoomTokens.Typography.title)
                 if let other = otherDetails {
-                    Text(hidden ? "Size hidden" : "\(other.itemCount.formatted()) small items · \(other.isPartial ? "≥ " : "")\(RoomFormat.bytes(other.allocatedBytes))")
+                    Text(hidden ? "Size hidden" : "\(other.itemCount.formatted()) small items · \(other.isPartial ? "≥ " : "")\(RoomFormat.gb(other.allocatedBytes))")
                 }
                 Text("These items were measured together. Open a mapped folder to see its retained items.")
                     .foregroundStyle(RoomTokens.Ink.secondary)
@@ -174,7 +174,7 @@ struct RoomDiskMapView: View {
                     step(to: $0, animated: NSApp.currentEvent?.type == .leftMouseUp)
                 }
                 if !hidden {
-                    Text("\(level.isPartial ? "≥ " : "")\(RoomFormat.bytes(level.allocatedBytes)) · hidden files included")
+                    Text("\(level.isPartial ? "≥ " : "")\(RoomFormat.gb(level.allocatedBytes)) · hidden files included")
                         .font(RoomTokens.Typography.caption)
                         .foregroundStyle(RoomTokens.Ink.secondary)
                         .lineLimit(1)
@@ -461,7 +461,7 @@ struct RoomDiskMapView: View {
                         .foregroundStyle(RoomTokens.Ink.secondary)
                 }
                 RoomMapReadout(title: "Measured so far",
-                               detail: hidden ? "Size hidden" : blueprint.counter(files: { $0.formatted() }, bytes: RoomFormat.bytes))
+                               detail: hidden ? "Size hidden" : blueprint.counter(files: { $0.formatted() }, bytes: RoomFormat.gb))
             }
             if isWide && !hidesWideInspector { wideInspector }
         }

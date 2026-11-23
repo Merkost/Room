@@ -10,6 +10,6 @@ nonisolated enum RoomCachesVisibility {
     }
 
     @MainActor static func bytes(_ bytes: Int64, hidden: Bool) -> String {
-        figure(RoomFormat.overviewBytes(bytes), hidden: hidden)
+        figure(RoomFormat.gb(bytes), hidden: hidden)
     }
 }

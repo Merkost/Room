@@ -52,9 +52,9 @@ struct RoomOverviewStoragePanel: View {
             Text("Available")
                 .font(RoomTokens.Typography.caption)
                 .foregroundStyle(RoomTokens.Ink.secondary)
-            RoomByteMetric(bytes: balance.plan.freeBytes, maximumSize: 58, animatesChanges: true)
+            RoomByteMetric(bytes: balance.plan.freeBytes, maximumSize: 58, hero: true, animatesChanges: true)
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel(hidden ? "Available space hidden" : "\(RoomFormat.bytes(balance.plan.freeBytes)) available")
+                .accessibilityLabel(hidden ? "Available space hidden" : "\(RoomFormat.gb(balance.plan.freeBytes, hero: true)) available")
             if let difference = balance.goalDifference {
                 HStack(spacing: RoomTokens.Space.tight) {
                     Image(systemName: difference < 0 ? "arrow.down.right" : "checkmark")
@@ -99,7 +99,7 @@ struct RoomOverviewStoragePanel: View {
                 key("Used", color: RoomTokens.Surface.used.opacity(0.48))
                 key("Available", color: accent.fill)
                 if let goal = balance.goal {
-                    RoomMaskable("\(RoomFormat.overviewBytes(goal)) goal")
+                    RoomMaskable("\(RoomFormat.gb(goal)) goal")
                         .font(RoomTokens.Typography.micro)
                         .foregroundStyle(RoomTokens.Ink.secondary)
                         .lineLimit(1)
@@ -109,15 +109,15 @@ struct RoomOverviewStoragePanel: View {
     }
 
     private func goalStatus(_ difference: Int64) -> String {
-        if difference < 0 { return "\(RoomFormat.overviewBytes(-difference)) below goal" }
-        if difference > 0 { return "\(RoomFormat.overviewBytes(difference)) above goal" }
+        if difference < 0 { return "\(RoomFormat.gb(-difference)) below goal" }
+        if difference > 0 { return "\(RoomFormat.gb(difference)) above goal" }
         return "At your storage goal"
     }
 
     private func figure(_ title: String, bytes: Int64) -> some View {
         VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
             Text(title).font(RoomTokens.Typography.caption).foregroundStyle(RoomTokens.Ink.secondary)
-            RoomMaskable(RoomFormat.bytes(bytes))
+            RoomMaskable(RoomFormat.gb(bytes))
                 .font(RoomTokens.Typography.figure)
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
@@ -157,7 +157,7 @@ struct RoomOverviewStorageMap: View {
 
     var body: some View {
         let rows = RoomOverviewPlanPresentation(plan: plan, hidden: hidden,
-            solidKinds: solidKinds && !plan.kindValues.isEmpty, format: RoomFormat.overviewBytes).rows
+            solidKinds: solidKinds && !plan.kindValues.isEmpty, format: RoomFormat.gb).rows
         VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: RoomTokens.Space.group) {

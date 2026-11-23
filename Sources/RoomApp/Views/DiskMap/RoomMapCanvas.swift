@@ -212,7 +212,7 @@ private struct RoomMapCanvasSurface: View {
 
     private func spoken(_ tile: RoomMapItem) -> String {
         RoomMapSpeech.label(tile, parentName: level.name, parentBytes: level.allocatedBytes,
-                            spoken: RoomFormat.bytes, hidden: hidden)
+                            spoken: RoomFormat.gb, hidden: hidden)
     }
 
     private func hit(_ point: CGPoint) {
@@ -277,7 +277,7 @@ private struct RoomMapArtwork: View, Equatable {
         guard tile.label != .none else { return }
         let labelBox = (tile.headerRect ?? tile.drawRect).insetBy(dx: RoomTokens.Map.labelPaddingX, dy: RoomTokens.Map.labelPaddingY)
         guard labelBox.width > 0, labelBox.height > 0 else { return }
-        let size = hidden ? "Hidden" : (tile.isPartial && !isPending ? "≥ " : "") + RoomFormat.bytes(tile.bytes)
+        let size = hidden ? "Hidden" : (tile.isPartial && !isPending ? "≥ " : "") + RoomFormat.gb(tile.bytes)
         let titleFont = tile.drawRect.width >= 140 && tile.drawRect.height >= 70
             ? RoomTokens.Typography.section : RoomTokens.Typography.caption.weight(.semibold)
         let grouped = tile.role == .group

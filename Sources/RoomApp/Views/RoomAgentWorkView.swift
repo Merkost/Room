@@ -267,7 +267,7 @@ private struct AgentWorkRow: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     VStack(alignment: .trailing, spacing: 4) {
-                        Text("\(item.isPartial ? "≥ " : "")\(RoomFormat.bytes(item.allocatedBytes))")
+                        Text("\(item.isPartial ? "≥ " : "")\(RoomFormat.gb(item.allocatedBytes))")
                             .font(.system(size: 14, weight: .medium)).monospacedDigit()
                         Text("\(item.processIDs.count) linked \(item.processIDs.count == 1 ? "PID" : "PIDs")")
                             .font(.system(size: 12)).foregroundStyle(.secondary)
@@ -280,7 +280,7 @@ private struct AgentWorkRow: View {
             }
             .buttonStyle(.plain)
             .help(item.url.path)
-            .accessibilityLabel("Inspect worktree \(item.title), \(RoomFormat.bytes(item.allocatedBytes)), \(item.processIDs.count) linked \(item.processIDs.count == 1 ? "process" : "processes")")
+            .accessibilityLabel("Inspect worktree \(item.title), \(RoomFormat.gb(item.allocatedBytes)), \(item.processIDs.count) linked \(item.processIDs.count == 1 ? "process" : "processes")")
 
             HStack(spacing: 10) {
                 if verifying { ProgressView().controlSize(.mini) }
@@ -331,7 +331,7 @@ private struct AgentWorkDetailSheet: View {
         VStack(alignment: .leading, spacing: 20) {
             RoomSheetHeading(title: item.title, subtitle: "\(ownerTitle(item.owner)) · \(branchTitle(item))")
             HStack(alignment: .firstTextBaseline, spacing: 18) {
-                Text("\(item.isPartial ? "≥ " : "")\(RoomFormat.bytes(item.allocatedBytes))")
+                Text("\(item.isPartial ? "≥ " : "")\(RoomFormat.gb(item.allocatedBytes))")
                     .font(RoomType.figure(34))
                 Text("allocated on disk").font(.system(size: 12)).foregroundStyle(.secondary)
                 Spacer()
@@ -472,7 +472,7 @@ private struct AgentWorkCleanupSheet: View {
         VStack(alignment: .leading, spacing: 20) {
             RoomSheetHeading(title: "Review one worktree.", subtitle: item.title)
             HStack(alignment: .firstTextBaseline, spacing: 12) {
-                Text(RoomFormat.bytes(item.allocatedBytes)).font(RoomType.figure(34))
+                Text(RoomFormat.gb(item.allocatedBytes)).font(RoomType.figure(34))
                 Text("to move to Trash").font(.system(size: 12)).foregroundStyle(.secondary)
             }
             ScrollView {

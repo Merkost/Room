@@ -240,10 +240,11 @@ struct RoomMenuBarLiveFormatTests {
         #expect(RoomMenuBarFormat.liveMemory(0, locale: us) == "0 KB")
     }
 
-    @Test func diskIsWholeGigabytesFromTenUpAndOneDecimalBelow() {
+    @Test func diskIsWholeGigabytesEverywhere() {
         #expect(RoomMenuBarFormat.liveDisk(312_400_000_000, locale: us) == "312 GB")
         #expect(RoomMenuBarFormat.liveDisk(41_600_000_000, locale: us) == "42 GB")
-        #expect(RoomMenuBarFormat.liveDisk(9_940_000_000, locale: us) == "9.9 GB")
+        #expect(RoomMenuBarFormat.liveDisk(9_940_000_000, locale: us) == "10 GB")
+        #expect(RoomMenuBarFormat.liveDisk(4_240_000_000, locale: us) == "4 GB")
         #expect(RoomMenuBarFormat.liveDisk(9_960_000_000, locale: us) == "10 GB")
         #expect(RoomMenuBarFormat.liveDisk(4_000_000_000, locale: us) == "4 GB")
         #expect(RoomMenuBarFormat.liveDisk(1_240_000_000_000, locale: us) == "1.2 TB")

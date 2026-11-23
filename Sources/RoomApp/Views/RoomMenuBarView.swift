@@ -24,7 +24,7 @@ struct RoomMenuBarView: View {
             swapBytes: insights.memoryReport.flatMap(RoomMonitorPresentation.measuredSwap), showSwap: showSwap,
             caches: cacheModel.cachesCheckStore.check, room: rooms.state,
             format: RoomMenuBarFormat.live,
-            formatSize: RoomFormat.bytes)
+            formatSize: RoomFormat.gb)
     }
 
     var body: some View {

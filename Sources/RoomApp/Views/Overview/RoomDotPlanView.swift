@@ -107,7 +107,7 @@ struct RoomDotPlanView: View {
     }
 
     var body: some View {
-        let presentation = RoomOverviewPlanPresentation(plan: plan, hidden: hidden, solidKinds: usesSolidKinds, format: RoomFormat.overviewBytes)
+        let presentation = RoomOverviewPlanPresentation(plan: plan, hidden: hidden, solidKinds: usesSolidKinds, format: RoomFormat.gb)
         GeometryReader { proxy in
             let inputs = Inputs(plan: plan, size: proxy.size)
             ZStack(alignment: .bottomLeading) {

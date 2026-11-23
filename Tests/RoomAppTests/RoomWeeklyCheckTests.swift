@@ -14,7 +14,7 @@ struct RoomWeeklyCheckTests {
     @MainActor @Test func hideOmitsTheSizeFromTheNotificationTitle() {
         let shown = RoomWeeklyCheckScheduler.title(growth: 7_000_000_000, hideSizes: false)
         let hidden = RoomWeeklyCheckScheduler.title(growth: 7_000_000_000, hideSizes: true)
-        #expect(shown.contains(RoomFormat.overviewBytes(7_000_000_000)))
+        #expect(shown.contains(RoomFormat.gb(7_000_000_000)))
         #expect(!hidden.contains(where: \.isNumber) && !hidden.contains("GB"))
     }
 

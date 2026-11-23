@@ -32,17 +32,17 @@ struct RoomMonitorPresentation: Equatable {
             return Self(metric: .memory, value: "—", detail: "Memory measurement unavailable", tone: .neutral, fraction: nil)
         }
         let measured = max(0, min(total, used))
-        var details = ["\(RoomFormat.memoryBytes(measured)) used of \(RoomFormat.memoryBytes(total))"]
+        var details = ["\(RoomFormat.memory(measured)) used of \(RoomFormat.memory(total))"]
         if showPressure { details.append(pressureTitle(pressure)) }
-        if showSwap { details.append(swap.map { "\(RoomFormat.memoryBytes(max(0, $0))) swap" } ?? "Swap unavailable") }
-        return Self(metric: .memory, value: RoomFormat.memoryBytes(measured), detail: details.joined(separator: " · "),
+        if showSwap { details.append(swap.map { "\(RoomFormat.memory(max(0, $0))) swap" } ?? "Swap unavailable") }
+        return Self(metric: .memory, value: RoomFormat.memory(measured), detail: details.joined(separator: " · "),
             tone: showPressure ? RoomPressureTone(pressure) : .neutral, fraction: Double(measured) / Double(total))
     }
 
     static func storage(total: Int64, available: Int64) -> Self {
         guard total > 0 else { return Self(metric: .storage, value: "—", detail: "Free space unavailable", tone: .neutral, fraction: nil) }
         let free = max(0, min(total, available))
-        return Self(metric: .storage, value: RoomFormat.bytes(free), detail: "\(RoomFormat.bytes(free)) available on startup disk", tone: .neutral,
+        return Self(metric: .storage, value: RoomFormat.gb(free), detail: "\(RoomFormat.gb(free)) available on startup disk", tone: .neutral,
                     fraction: Double(free) / Double(total))
     }
 

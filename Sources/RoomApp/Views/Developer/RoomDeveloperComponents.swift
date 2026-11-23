@@ -87,7 +87,7 @@ struct RoomDeveloperRow: View {
     @Environment(\.roomMotion) private var motion
     @State private var hovering = false
 
-    private var sizeText: String { bytes.map { RoomDeveloperFormat.whole($0, partial: partial) } ?? "—" }
+    private var sizeText: String { bytes.map { RoomDeveloperFormat.whole($0, partial: partial) } ?? RoomFormat.notMeasured }
 
     var body: some View {
         HStack(spacing: RoomTokens.Space.inner) {
@@ -219,7 +219,7 @@ struct RoomDeveloperHeader<Actions: View>: View {
     }
 
     private var hero: some View {
-        let amount = RoomFormat.splitBytes(headline.total)
+        let amount = RoomFormat.splitBytes(headline.total, hero: true)
         return VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
             Text("Total Developer storage found")
                 .font(RoomTokens.Typography.caption)
@@ -238,7 +238,7 @@ struct RoomDeveloperHeader<Actions: View>: View {
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(hide.masksNow ? "Developer storage, hidden"
-                : "Developer storage found, \(headline.partial ? "at least " : "")\(RoomFormat.bytes(headline.total))")
+                : "Developer storage found, \(headline.partial ? "at least " : "")\(RoomFormat.gb(headline.total, hero: true))")
             .accessibilityAddTraits(.isHeader)
             if headline.unreferenced > 0 {
                 RoomMaskable("\(RoomDeveloperFormat.whole(headline.unreferenced, partial: headline.partial)) of it is not referenced by the projects you chose.",
@@ -291,7 +291,7 @@ struct RoomDeveloperBreakdown: View {
                     .font(RoomTokens.Typography.caption)
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel(hide.masksNow ? "\(part.kind.title), hidden"
-                        : "\(part.kind.title), \(headline.partial ? "at least " : "")\(RoomFormat.bytes(part.bytes))")
+                        : "\(part.kind.title), \(headline.partial ? "at least " : "")\(RoomFormat.gb(part.bytes))")
                 }
             }
         }

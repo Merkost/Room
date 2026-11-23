@@ -119,7 +119,7 @@ final class RoomWeeklyCheckScheduler {
             return String(localized: "weekly.title.hidden", defaultValue: "Caches grew this week.", bundle: RoomCopy.bundle)
         }
         let template = String(localized: "weekly.title", defaultValue: "Caches grew %@ this week.", bundle: RoomCopy.bundle)
-        return String.localizedStringWithFormat(template, RoomFormat.overviewBytes(growth))
+        return String.localizedStringWithFormat(template, RoomFormat.gb(growth))
     }
 
     private func run() async {

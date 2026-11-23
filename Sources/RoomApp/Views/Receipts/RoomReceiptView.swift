@@ -74,7 +74,7 @@ struct RoomReceiptView: View {
                 .animation(motion.animation(RoomTokens.Motion.receiptLead, fallback: nil), value: printed)
                 .accessibilityHidden(true)
             Text(RoomCachesVisibility.bytes(bytes, hidden: hidden)).monospacedDigit().fixedSize()
-                .accessibilityLabel(hidden ? "Size hidden" : RoomFormat.overviewBytes(bytes))
+                .accessibilityLabel(hidden ? "Size hidden" : RoomFormat.gb(bytes))
         }
         .accessibilityElement(children: .combine)
     }

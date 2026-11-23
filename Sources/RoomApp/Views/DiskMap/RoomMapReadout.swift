@@ -62,7 +62,7 @@ struct RoomMapContextReadout: View {
     var body: some View {
         let content = RoomMapReadoutContent.make(level: level, hovered: showsCleanupTarget ? nil : pointer.item,
             selectedPath: selectedPath, hidden: hidden, showsHint: showsHint, showsCleanupTarget: showsCleanupTarget,
-            format: RoomFormat.bytes)
+            format: RoomFormat.gb)
         RoomMapReadout(title: content.title, detail: content.detail, isHint: content.isHint)
     }
 }
@@ -118,7 +118,7 @@ struct RoomLargestTable: View {
                             if let kind = row.kind.flatMap(StorageKind.init(rawValue:)) {
                                 Text(kind.title).foregroundStyle(RoomTokens.Ink.secondary)
                             }
-                            Text(hidden ? "Hidden" : (row.isPartial ? "≥ " : "") + RoomFormat.bytes(row.bytes))
+                            Text(hidden ? "Hidden" : (row.isPartial ? "≥ " : "") + RoomFormat.gb(row.bytes))
                                 .monospacedDigit()
                         }
                         .font(RoomTokens.Typography.body)
@@ -262,7 +262,7 @@ struct RoomMapKindControl: View {
 
     private func amount(_ kind: String, totals: [(kind: String, bytes: Int64)]) -> String? {
         guard !hidden, let value = totals.first(where: { $0.kind == kind })?.bytes else { return nil }
-        return (node.isPartial ? "≥ " : "") + RoomFormat.bytes(value)
+        return (node.isPartial ? "≥ " : "") + RoomFormat.gb(value)
     }
 
     private func kindLabel(_ kind: String, totals: [(kind: String, bytes: Int64)]) -> String {

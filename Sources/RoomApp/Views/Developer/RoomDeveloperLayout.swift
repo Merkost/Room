@@ -83,21 +83,8 @@ extension RoomDevPinKind {
 enum RoomDeveloperFormat {
     /// Whole units for rows ("12 GB", "480 MB"). The hero figure alone keeps a decimal.
     static func whole(_ bytes: Int64, partial: Bool = false) -> String {
-        (partial ? "≥ " : "") + wholeAmount(bytes)
-    }
-
-    private static func wholeAmount(_ bytes: Int64) -> String {
-        let value = Double(max(0, bytes))
-        if value >= 1e9 { return "\(Int((value / 1e9).rounded()).formatted()) GB" }
-        if value >= 1e6 {
-            let megabytes = Int((value / 1e6).rounded())
-            return megabytes >= 1000 ? "1 GB" : "\(megabytes) MB"
-        }
-        if value >= 1e3 {
-            let kilobytes = Int((value / 1e3).rounded())
-            return kilobytes >= 1000 ? "1 MB" : "\(kilobytes) KB"
-        }
-        return bytes <= 0 ? "0 KB" : "1 KB"
+        let text = RoomFormat.gb(max(0, bytes))
+        return partial ? RoomFormat.lowerBound(text) : text
     }
 }
 

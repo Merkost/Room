@@ -263,8 +263,8 @@ struct RoomCachesView: View {
             if let bytes = hero.heroBytes {
                 VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
                     Text(hero.heroLabel).font(RoomTokens.Typography.caption).foregroundStyle(RoomTokens.Ink.secondary)
-                    metric(format(bytes), number: RoomTokens.Typography.hero, unit: RoomTokens.Typography.counter)
-                        .roomNumericTransition(format(bytes), enabled: !model.isScanning)
+                    metric(format(bytes, hero: true), number: RoomTokens.Typography.hero, unit: RoomTokens.Typography.counter)
+                        .roomNumericTransition(format(bytes, hero: true), enabled: !model.isScanning)
                 }
             } else if !hero.lowerBound {
                 Text(hero.heroLabel).font(RoomTokens.Typography.lead)
@@ -578,8 +578,10 @@ struct RoomCachesView: View {
         .transition(.opacity)
     }
 
-    private func format(_ bytes: Int64) -> String {
-        RoomCachesVisibility.figure(RoomFormat.bytes(bytes), hidden: hidden)
+    private func format(_ bytes: Int64) -> String { format(bytes, hero: false) }
+
+    private func format(_ bytes: Int64, hero: Bool) -> String {
+        RoomCachesVisibility.figure(RoomFormat.gb(bytes, hero: hero), hidden: hidden)
     }
 
     private func neverSuggest(_ source: RoomSource) {

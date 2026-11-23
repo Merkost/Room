@@ -33,7 +33,7 @@ struct RoomOverviewHistoryLink: View {
 
     @ViewBuilder private func line(_ change: RoomVolumeChange, growth: RoomOverviewHistoryGrowth?) -> some View {
         if case .since(let date, let bytes) = change {
-            let amount = RoomFormat.overviewBytes(abs(bytes))
+            let amount = RoomFormat.gb(abs(bytes))
             let result = if bytes > 0 { "Since \(date): \(amount) used." }
                 else if bytes < 0 { "Since \(date): \(amount) freed." }
                 else { "No change since \(date)." }
@@ -108,7 +108,7 @@ private struct RoomOverviewHistoryPopover: View {
                 .foregroundStyle(RoomTokens.Ink.secondary)
                 .accessibilityHidden(true)
             if let goal, metric == .freeSpace, range == .twelveWeeks {
-                RoomMaskable("Goal: keep \(RoomFormat.overviewBytes(goal)) free")
+                RoomMaskable("Goal: keep \(RoomFormat.gb(goal)) free")
                     .font(RoomTokens.Typography.caption).foregroundStyle(RoomTokens.Ink.secondary)
             }
             notes(history)
@@ -281,13 +281,13 @@ private struct RoomOverviewHistoryPopover: View {
         if let receipt = latestReceipt, let start = history.points.first?.bucket,
            (start...now).contains(receipt.lastChangedAt) {
             let date = receipt.lastChangedAt.formatted(.dateTime.weekday(.abbreviated))
-            let caption = RoomMakeRoomCopy.headline(receipt, format: RoomFormat.overviewBytes)
+            let caption = RoomMakeRoomCopy.headline(receipt, format: RoomFormat.gb)
             RoomMaskable("\(date): \(caption)")
                 .font(RoomTokens.Typography.caption).foregroundStyle(RoomTokens.Ink.secondary)
         }
         if let growth, let goal, let latest = history.latest(for: .freeSpace)?.sample, latest.freeBytes < goal,
            let start = history.points.first?.bucket, (start...now).contains(growth.measuredAt), !hide.masksNow {
-            let bytes = RoomFormat.overviewBytes(growth.bytes)
+            let bytes = RoomFormat.gb(growth.bytes)
             Text("\(growth.name) grew by \(bytes) between maps.")
                 .font(RoomTokens.Typography.caption).foregroundStyle(RoomTokens.Ink.secondary)
         }
@@ -325,7 +325,7 @@ private struct RoomOverviewHistoryPopover: View {
             return point.bucket > now ? "\(label): upcoming" : "\(label): no comparable measurement"
         }
         guard !hide.masksNow else { return "\(label): size hidden" }
-        let amount = RoomFormat.overviewBytes(abs(value))
+        let amount = RoomFormat.gb(abs(value))
         switch metric {
         case .freeSpace: return "\(label): \(amount) free"
         case .change where value > 0: return "\(label): \(amount) used"

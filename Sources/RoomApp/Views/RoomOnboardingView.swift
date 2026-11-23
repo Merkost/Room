@@ -71,7 +71,7 @@ struct RoomOnboardingView: View {
                     .allowsHitTesting(false)
                     .accessibilityRepresentation {
                         Text(RoomOnboardingFlow.planAccessibility(capacityBytes: plan.capacityBytes, freeBytes: plan.freeBytes,
-                            hidden: hide.masksNow, format: RoomFormat.overviewBytes))
+                            hidden: hide.masksNow, format: RoomFormat.gb))
                             .accessibilityAddTraits(.isImage)
                     }
             } else {

@@ -27,7 +27,7 @@ struct RoomApp: App {
         let ledger = RoomMakeRoomStore(home: home)
         ledger.didObserveGain = { entry in
             activity.post(.made(.init(id: entry.id,
-                sentence: RoomMakeRoomCopy.headline(entry, format: RoomFormat.overviewBytes),
+                sentence: RoomMakeRoomCopy.headline(entry, format: RoomFormat.gb),
                 canRestore: entry.stillInTrashBytes > 0)), from: .makeRoom)
         }
         #if DEBUG

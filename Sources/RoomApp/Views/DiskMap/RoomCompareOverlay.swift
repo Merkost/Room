@@ -75,7 +75,7 @@ struct RoomCompareOverlay: View {
                     .accessibilityChildren {
                         ForEach(RoomCompare.rows(then: earlier, now: current), id: \.name) { row in
                             Text(RoomCompare.readout(row, thenLabel: earlierDate.formatted(.dateTime.day().month()),
-                                format: RoomFormat.bytes))
+                                format: RoomFormat.gb))
                         }
                     }
             }
@@ -121,6 +121,6 @@ struct RoomCompareOverlay: View {
     }
 
     private func tag(_ name: String, bytes: Int64) -> String {
-        hidden ? name : "\(name) · \(RoomFormat.bytes(bytes))"
+        hidden ? name : "\(name) · \(RoomFormat.gb(bytes))"
     }
 }
