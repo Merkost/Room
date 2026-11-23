@@ -42,6 +42,8 @@ struct RoomCachesView: View {
     @Environment(\.colorSchemeContrast) private var contrast
     @State private var filter = Filter.clearable
     @State private var undo: Undo?
+    @State private var travellingReceipt: String?
+    @State private var pillOrigin = CGPoint.zero
     @FocusState private var focusedSource: String?
 
     private enum Filter: String, CaseIterable {
@@ -169,6 +171,19 @@ struct RoomCachesView: View {
             }
         }
         .foregroundStyle(RoomTokens.Ink.graphite)
+        .overlay(alignment: .top) {
+            if let travellingReceipt {
+                RoomReceiptTravelPill(text: travellingReceipt, origin: pillOrigin) { self.travellingReceipt = nil }
+            }
+        }
+        .onGeometryChange(for: CGPoint.self) { proxy in
+            let frame = proxy.frame(in: .named(RoomScreenScaffold<EmptyView>.space))
+            return CGPoint(x: frame.midX, y: frame.minY + RoomTokens.Map.readoutHeight / 2)
+        } action: { pillOrigin = $0 }
+        .onChange(of: model.movedReceiptID) { old, new in
+            guard let new, new != old, let receipt = model.activity.first(where: { $0.id == new }) else { return }
+            travellingReceipt = "Moved \(format(receipt.bytes)) to Trash"
+        }
         .task(id: undo) {
             guard undo != nil else { return }
             do { try await Task.sleep(for: .seconds(8)) } catch { return }

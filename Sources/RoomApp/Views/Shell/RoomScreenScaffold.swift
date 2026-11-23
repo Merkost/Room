@@ -12,6 +12,8 @@ extension EnvironmentValues {
 }
 
 struct RoomScreenScaffold<Content: View>: View {
+    /// Coordinate space of the detail column, for motion that aims at the toolbar.
+    static var space: String { "RoomScreen" }
     let title: String
     let subtitle: String?
     var scrolls = true
@@ -35,6 +37,8 @@ struct RoomScreenScaffold<Content: View>: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .environment(\.roomScreenSize, geometry.size)
+            .coordinateSpace(.named(RoomScreenScaffold<EmptyView>.space))
             .background(RoomTokens.Surface.canvas.ignoresSafeArea())
             .toolbar {
                 ToolbarItem(placement: .navigation) {

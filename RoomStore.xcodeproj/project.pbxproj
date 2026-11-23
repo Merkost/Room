@@ -152,6 +152,7 @@
 		C78FDDABF656881CBF0D9365 /* RoomWakeField.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DF7F65ACD69AAB4574B4F5A /* RoomWakeField.swift */; };
 		CAAEADBB77F46D02459FB25C /* RoomDesignTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92CD0954B3278F20A3407B3A /* RoomDesignTokens.swift */; };
 		CC1EC80D8C11720F5E4A9D37 /* RoomSidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15B98248FF04B183FA798E56 /* RoomSidebar.swift */; };
+		CC238ACE206A0E81624B36B9 /* RoomReceiptTravel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FA54FA74DF5817549946A7C /* RoomReceiptTravel.swift */; };
 		CCFEAD33F9E8E3A9EF01602D /* RoomTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC76CE8FA2E434EA39BCD9AE /* RoomTokens.swift */; };
 		CD2578A4D6F4B82AA3104BB9 /* libRoomCore.a in Frameworks */ = {isa = PBXBuildFile; fileRef = B5835208C7B8FEA8D32DD006 /* libRoomCore.a */; };
 		D04C1EBC7CD3270EAB8F0263 /* RoomOverviewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42933AB630386BC76A15121F /* RoomOverviewModel.swift */; };
@@ -278,6 +279,7 @@
 		5B0AECB1AF8A23BAC71359A0 /* RoomDebugMainMenuProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomDebugMainMenuProbe.swift; sourceTree = "<group>"; };
 		5EFC43C180AF07C5C84DAA7B /* ExportOptions-AppStore.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "ExportOptions-AppStore.plist"; sourceTree = "<group>"; };
 		5F27D89489407619B71389A1 /* build-store.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "build-store.sh"; sourceTree = "<group>"; };
+		5FA54FA74DF5817549946A7C /* RoomReceiptTravel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomReceiptTravel.swift; sourceTree = "<group>"; };
 		62AE66F3462032241D04D778 /* RoomVolumeHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomVolumeHistory.swift; sourceTree = "<group>"; };
 		62D3B421466470051A22451E /* Overview.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Overview.xcstrings; sourceTree = "<group>"; };
 		63200A432E05716C02DC6D5F /* RoomCachesRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomCachesRow.swift; sourceTree = "<group>"; };
@@ -663,6 +665,7 @@
 			children = (
 				791783C51B361B535AED855C /* RoomHistoryButton.swift */,
 				DF8498717699334B457230B9 /* RoomHistorySheet.swift */,
+				5FA54FA74DF5817549946A7C /* RoomReceiptTravel.swift */,
 				8F2249C698507E7FFC530722 /* RoomReceiptView.swift */,
 			);
 			path = Receipts;
@@ -1047,6 +1050,7 @@
 				8C9C18ADBBD2ABED3488148A /* RoomPressureHistory.swift in Sources */,
 				5FF5AD261E83645A62949281 /* RoomPressureTimeline.swift in Sources */,
 				11E0F20407BFB444555E80FC /* RoomPure.swift in Sources */,
+				CC238ACE206A0E81624B36B9 /* RoomReceiptTravel.swift in Sources */,
 				A52D785D2D105F5F5D4022E0 /* RoomReceiptView.swift in Sources */,
 				EF09760AAD592862A7AAD98A /* RoomRecentOverviewLine.swift in Sources */,
 				C1AC2272C01A97460BADA4A3 /* RoomRoomMeasurer.swift in Sources */,
