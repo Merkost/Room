@@ -1,3 +1,4 @@
+import RoomCore
 import SwiftUI
 
 nonisolated struct RoomOverviewCapacityBalance {
@@ -15,24 +16,30 @@ nonisolated struct RoomOverviewCapacityBalance {
     var goalDifference: Int64? { goal.map { plan.freeBytes - $0 } }
 }
 
+/// The Overview answer: the page's one headline, drawn on the canvas (no card). Used and Capacity sit at secondary
+/// size beside it, and the goal is labelled at its marker.
 struct RoomOverviewStoragePanel: View {
     let volumeName: String?
     let balance: RoomOverviewCapacityBalance
+    /// Once per launch: the answer fades in and the capacity bar fills from empty (REVIEW §4.1).
+    var arrives = false
     @Environment(\.roomAccent) private var accent
     @Environment(\.roomHide) private var hide
     @Environment(\.roomMotion) private var motion
+    @State private var filled = false
     private var hidden: Bool { hide.masksNow }
+    private typealias Plan = RoomTokens.OverviewPlan
 
     var body: some View {
-        VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
+        VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
             Label(hidden ? "Storage" : volumeName ?? "Storage", systemImage: "internaldrive")
-                .font(RoomTokens.Typography.title)
-                .foregroundStyle(RoomTokens.Ink.graphite)
+                .font(RoomTokens.Typography.section)
+                .foregroundStyle(RoomTokens.Ink.secondary)
                 .lineLimit(1)
                 .accessibilityHeading(.h1)
             ViewThatFits(in: .horizontal) {
-                HStack(alignment: .center, spacing: RoomTokens.Space.breath2) {
-                    availability.frame(minWidth: 168, idealWidth: 200)
+                HStack(alignment: .bottom, spacing: RoomTokens.Space.breath2) {
+                    availability.frame(minWidth: 168, idealWidth: 220, alignment: .leading)
                     breakdown.frame(minWidth: 246)
                 }
                 VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
@@ -41,10 +48,12 @@ struct RoomOverviewStoragePanel: View {
                 }
             }
         }
-        .padding(RoomTokens.Space.breath1)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoomTokens.Surface.group, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.popover))
         .accessibilityIdentifier("RoomOverviewStorage")
+        .task {
+            guard !filled else { return }
+            withAnimation(arrives ? motion.animation(RoomTokens.Motion.page, fallback: nil) : nil) { filled = true }
+        }
     }
 
     private var availability: some View {
@@ -55,6 +64,7 @@ struct RoomOverviewStoragePanel: View {
             RoomByteMetric(bytes: balance.plan.freeBytes, maximumSize: 58, hero: true, animatesChanges: true)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(hidden ? "Available space hidden" : "\(RoomFormat.gb(balance.plan.freeBytes, hero: true)) available")
+                .accessibilityAddTraits(.isHeader)
             if let difference = balance.goalDifference {
                 HStack(spacing: RoomTokens.Space.tight) {
                     Image(systemName: difference < 0 ? "arrow.down.right" : "checkmark")
@@ -68,7 +78,7 @@ struct RoomOverviewStoragePanel: View {
     }
 
     private var breakdown: some View {
-        VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
+        VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
             HStack(alignment: .top, spacing: RoomTokens.Space.inner) {
                 figure("Used", bytes: balance.usedBytes)
                 Spacer(minLength: 0)
@@ -78,7 +88,7 @@ struct RoomOverviewStoragePanel: View {
                 let width = geometry.size.width
                 HStack(spacing: 0) {
                     Rectangle().fill(RoomTokens.Surface.used.opacity(0.48))
-                        .frame(width: width * balance.usedFraction)
+                        .frame(width: width * (filled ? balance.usedFraction : 1))
                     Rectangle().fill(accent.fill)
                 }
                 .clipShape(Capsule())
@@ -94,17 +104,29 @@ struct RoomOverviewStoragePanel: View {
             .frame(height: 12)
             .animation(motion.animation(RoomTokens.Motion.quick, fallback: nil), value: balance.usedFraction)
             .accessibilityHidden(true)
-
+            goalMarkerLabel
             HStack(spacing: RoomTokens.Space.inner) {
                 key("Used", color: RoomTokens.Surface.used.opacity(0.48))
                 key("Available", color: accent.fill)
-                if let goal = balance.goal {
-                    RoomMaskable("\(RoomFormat.gb(goal)) goal")
-                        .font(RoomTokens.Typography.micro)
-                        .foregroundStyle(RoomTokens.Ink.secondary)
-                        .lineLimit(1)
-                }
             }
+        }
+    }
+
+    /// "Goal 50 GB" at the marker itself, not in a legend.
+    @ViewBuilder private var goalMarkerLabel: some View {
+        if let goal = balance.goal, let position = balance.goalPosition {
+            GeometryReader { geometry in
+                let half = Plan.goalLabelSize.width / 2
+                let x = min(max(half, geometry.size.width * position), max(half, geometry.size.width - half))
+                RoomMaskable(RoomOverviewGoalCopy.marker(goal), spoken: RoomOverviewGoalCopy.spoken(goal))
+                    .font(RoomTokens.Typography.micro)
+                    .foregroundStyle(RoomTokens.Ink.secondary)
+                    .lineLimit(1)
+                    .fixedSize()
+                    .position(x: x, y: geometry.size.height / 2)
+            }
+            .frame(height: Plan.goalLabelSize.height)
+            .accessibilityElement(children: .combine)
         }
     }
 
@@ -114,14 +136,16 @@ struct RoomOverviewStoragePanel: View {
         return "At your storage goal"
     }
 
+    /// Secondary figures: 17 pt, well below the hero, so the answer reads first.
     private func figure(_ title: String, bytes: Int64) -> some View {
-        VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
+        VStack(alignment: .leading, spacing: 2) {
             Text(title).font(RoomTokens.Typography.caption).foregroundStyle(RoomTokens.Ink.secondary)
             RoomMaskable(RoomFormat.gb(bytes))
-                .font(RoomTokens.Typography.figure)
+                .font(RoomTokens.Typography.counter)
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
         }
+        .accessibilityElement(children: .combine)
     }
 
     private func key(_ title: String, color: Color) -> some View {
@@ -131,6 +155,12 @@ struct RoomOverviewStoragePanel: View {
         }
         .accessibilityHidden(true)
     }
+}
+
+/// The goal, said at its marker.
+nonisolated enum RoomOverviewGoalCopy {
+    static func marker(_ goal: Int64) -> String { "Goal \(RoomFormat.gb(goal))" }
+    static func spoken(_ goal: Int64) -> String { "Goal: keep \(RoomFormat.gb(goal)) free" }
 }
 
 struct RoomOverviewStorageMap: View {
@@ -282,8 +312,15 @@ struct RoomOverviewStorageMap: View {
             if inside { hoveredLegend = row.id }
             else if hoveredLegend == row.id { hoveredLegend = nil }
         }
+        .help(Self.explanation(row.id) ?? "")
         .accessibilityLabel(row.spoken)
+        .accessibilityHint(Self.explanation(row.id) ?? "")
         .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    static func explanation(_ id: RoomPlanRoom) -> String? {
+        guard case .kind(let key) = id else { return nil }
+        return StorageKind(rawValue: key)?.explanation
     }
 
     @ViewBuilder private func swatch(_ id: RoomPlanRoom) -> some View {

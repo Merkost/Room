@@ -3,6 +3,16 @@ import Charts
 import RoomCore
 import SwiftUI
 
+/// The whole-volume change since a day. It includes things Room did not do (builds, the sleep image, Time Machine),
+/// so it never says "freed" or "made": only the ledger-backed receipt line may claim Room's work (REVIEW §2.9).
+nonisolated enum RoomOverviewHistoryCopy {
+    static func volumeLine(bytes: Int64, since date: String, amount: String) -> String {
+        if bytes > 0 { return "Since \(date): \(amount) used." }
+        if bytes < 0 { return "\(amount) more free than \(date)." }
+        return "No change since \(date)."
+    }
+}
+
 struct RoomOverviewHistoryLink: View {
     let log: RoomVolumeSampleLog
     let goal: Int64?
@@ -34,9 +44,7 @@ struct RoomOverviewHistoryLink: View {
     @ViewBuilder private func line(_ change: RoomVolumeChange, growth: RoomOverviewHistoryGrowth?) -> some View {
         if case .since(let date, let bytes) = change {
             let amount = RoomFormat.gb(abs(bytes))
-            let result = if bytes > 0 { "Since \(date): \(amount) used." }
-                else if bytes < 0 { "Since \(date): \(amount) freed." }
-                else { "No change since \(date)." }
+            let result = RoomOverviewHistoryCopy.volumeLine(bytes: bytes, since: date, amount: amount)
             if date == "Monday", bytes > 0, let growth, growth.bytes > bytes / 2, !hide.masksNow {
                 Text("Since \(date): \(amount) used, mostly \(growth.name).")
                     .foregroundStyle(RoomTokens.Ink.secondary)
@@ -329,7 +337,7 @@ private struct RoomOverviewHistoryPopover: View {
         switch metric {
         case .freeSpace: return "\(label): \(amount) free"
         case .change where value > 0: return "\(label): \(amount) used"
-        case .change where value < 0: return "\(label): \(amount) freed"
+        case .change where value < 0: return "\(label): \(amount) more free"
         case .change: return "\(label): no change"
         }
     }

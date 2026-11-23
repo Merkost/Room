@@ -34,7 +34,15 @@ public nonisolated enum StorageKind: String, CaseIterable, Codable, Sendable {
         case .apps: "Apps"
         case .archives: "Archives"
         case .system: "System & other"
-        case .hidden: "Hidden"
+        case .hidden: "Hidden files"
+        }
+    }
+
+    /// One line for the hover help: what a kind holds when its name alone could mislead ("Hidden" is not "hidden by Room").
+    public var explanation: String? {
+        switch self {
+        case .hidden: "Folders whose names start with a dot, like .gradle or .npm. Finder hides them; Room still measures them."
+        default: nil
         }
     }
 

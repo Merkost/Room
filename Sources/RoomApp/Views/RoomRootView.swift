@@ -349,10 +349,10 @@ struct RoomRootView: View {
         }
     }
 
+    /// Arrival choreography plays once per launch, never on a revisit, never after keyboard navigation (REVIEW §4.1).
     private var overviewArrival: Bool {
-        guard navigation.selectionOrigin != .keyboard, !navigation.needsWelcome else { return false }
-        guard let leftOverviewAt else { return true }
-        return leftOverviewAt.duration(to: .now) >= .seconds(600)
+        RoomOverviewArrival.plays(origin: navigation.selectionOrigin, needsWelcome: navigation.needsWelcome,
+                                  hasLeftOverview: leftOverviewAt != nil)
     }
 
     private func restoreFromCaches(_ record: RoomActivity) {
