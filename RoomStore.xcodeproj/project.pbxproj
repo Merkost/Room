@@ -59,6 +59,8 @@
 		51908EC09BAF8AF295DBD011 /* RoomGoalRulerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A47106EEF661E746D1A482A /* RoomGoalRulerView.swift */; };
 		51CA01E7DC9698EBD7A1BEF4 /* RoomStoreAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = 921CEB24CB399FC3D5DB54ED /* RoomStoreAccess.swift */; };
 		5261A03887BFE3B31CDEEB09 /* RoomHistorySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF8498717699334B457230B9 /* RoomHistorySheet.swift */; };
+		53CEB7CA11A91F56610CD666 /* RoomDeveloperComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 073BC592D58599EC5D76DBB0 /* RoomDeveloperComponents.swift */; };
+		56C8ECB5FC2B82740F2BD633 /* RoomDeveloperLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEE14E2AFB60E0B113D1A6BA /* RoomDeveloperLayout.swift */; };
 		589A103C6DABB5BC2005FFF3 /* RoomStateStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F3085E47FAAA3DE9EB96E2 /* RoomStateStore.swift */; };
 		58AC16036416BF81CA1D1225 /* RoomOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF130D1DB04ABCF7EC616D48 /* RoomOnboardingView.swift */; };
 		58BD9CA71B27054F6C701EE1 /* RoomOverviewStoragePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08CE51B251FF7B7A82399F9E /* RoomOverviewStoragePanel.swift */; };
@@ -111,6 +113,7 @@
 		97309C20F95EEC22046A8402 /* MemoryEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38F128B13D6DA820AFE609D5 /* MemoryEngine.swift */; };
 		97872A17C246E360DD39079D /* RoomTrashProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB88A4D54C15871548B99A5A /* RoomTrashProbe.swift */; };
 		98105E6673323CB862F03592 /* DeveloperResourcesEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9D865A95607D5DCCE969EF9 /* DeveloperResourcesEngine.swift */; };
+		9D15ADEE3BAFF6357AF26D9A /* RoomDeveloperDebugFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 399238F801C3A6AC1BFC16EA /* RoomDeveloperDebugFixture.swift */; };
 		9E389833E051F56B6B78A017 /* StoreCatalogue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 337A806B1F7E0542B22D7D64 /* StoreCatalogue.swift */; };
 		A010B20887DD95589C50E738 /* RoomMicroMotion.swift in Sources */ = {isa = PBXBuildFile; fileRef = B63BA8B7CA78364EB10BE12A /* RoomMicroMotion.swift */; };
 		A10A09BD4BAAA9225D4D59AB /* RoomDeveloperView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54EDE3A87D12DE25FD309585 /* RoomDeveloperView.swift */; };
@@ -198,6 +201,7 @@
 		04EFB148728AD6CBD4D39E20 /* RoomSavedViewsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomSavedViewsStore.swift; sourceTree = "<group>"; };
 		05F8F40E05565B0DE1024830 /* RoomBeforeAfterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomBeforeAfterView.swift; sourceTree = "<group>"; };
 		06FF4694333FF1CD35E76301 /* ExpandedCatalogue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExpandedCatalogue.swift; sourceTree = "<group>"; };
+		073BC592D58599EC5D76DBB0 /* RoomDeveloperComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomDeveloperComponents.swift; sourceTree = "<group>"; };
 		08CE51B251FF7B7A82399F9E /* RoomOverviewStoragePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomOverviewStoragePanel.swift; sourceTree = "<group>"; };
 		091749FB90F94027ABB338D2 /* Memory.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Memory.xcstrings; sourceTree = "<group>"; };
 		0B92C86803C84662DE154EB0 /* RoomOverviewPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomOverviewPresentation.swift; sourceTree = "<group>"; };
@@ -235,6 +239,7 @@
 		35CF43E7F4CAC6A63AD39274 /* generate-store-project.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "generate-store-project.sh"; sourceTree = "<group>"; };
 		38BBCC5584EF9D0FCCF8EC83 /* RoomMark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomMark.swift; sourceTree = "<group>"; };
 		38F128B13D6DA820AFE609D5 /* MemoryEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryEngine.swift; sourceTree = "<group>"; };
+		399238F801C3A6AC1BFC16EA /* RoomDeveloperDebugFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomDeveloperDebugFixture.swift; sourceTree = "<group>"; };
 		399A01915904D7EED45177A8 /* RoomTreeLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomTreeLayout.swift; sourceTree = "<group>"; };
 		3A47106EEF661E746D1A482A /* RoomGoalRulerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomGoalRulerView.swift; sourceTree = "<group>"; };
 		3AF53587C1EE1792173DE015 /* RoomOverviewHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomOverviewHistory.swift; sourceTree = "<group>"; };
@@ -386,6 +391,7 @@
 		FD7A8E8EF69AFDA4D85C9889 /* RoomMapLayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomMapLayer.swift; sourceTree = "<group>"; };
 		FE30EAD9A3C6460E96881E19 /* LocalModelRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalModelRuntime.swift; sourceTree = "<group>"; };
 		FEAA5DF3AEC90F74DB65EF72 /* StorageAnalysis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageAnalysis.swift; sourceTree = "<group>"; };
+		FEE14E2AFB60E0B113D1A6BA /* RoomDeveloperLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomDeveloperLayout.swift; sourceTree = "<group>"; };
 		FF278288A0D7ABB82AED0239 /* RoomDeveloperUnreferencedStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomDeveloperUnreferencedStore.swift; sourceTree = "<group>"; };
 		FF60FC7E07D7927FC19D54DD /* check-design-gates.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "check-design-gates.sh"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -513,6 +519,8 @@
 			isa = PBXGroup;
 			children = (
 				1142955C216922E7984A14B0 /* RoomDeveloperAIStorageView.swift */,
+				073BC592D58599EC5D76DBB0 /* RoomDeveloperComponents.swift */,
+				FEE14E2AFB60E0B113D1A6BA /* RoomDeveloperLayout.swift */,
 				F02C84F3498D8B389C568137 /* RoomDeveloperMatrixView.swift */,
 				B2A33FFFD214CE106557CB84 /* RoomDeveloperRoomsView.swift */,
 			);
@@ -692,6 +700,7 @@
 				5B0AECB1AF8A23BAC71359A0 /* RoomDebugMainMenuProbe.swift */,
 				B7A34F0BEC666C111EA71748 /* RoomDebugMenuCommands.swift */,
 				03EBD077B8EB17D1D325D7B9 /* RoomDebugTrashSimulator.swift */,
+				399238F801C3A6AC1BFC16EA /* RoomDeveloperDebugFixture.swift */,
 				34997C8F55A6F321B305B044 /* RoomDeveloperModel.swift */,
 				FF278288A0D7ABB82AED0239 /* RoomDeveloperUnreferencedStore.swift */,
 				03FE6F060223DDABDB245961 /* RoomFileAccess.swift */,
@@ -939,6 +948,9 @@
 				5BB80D1F61269DB4F515014E /* RoomDebugMenuCommands.swift in Sources */,
 				8205DB1CFCA44269F99E7B4E /* RoomDebugTrashSimulator.swift in Sources */,
 				FC28C51BA98E8D27FE024776 /* RoomDeveloperAIStorageView.swift in Sources */,
+				53CEB7CA11A91F56610CD666 /* RoomDeveloperComponents.swift in Sources */,
+				9D15ADEE3BAFF6357AF26D9A /* RoomDeveloperDebugFixture.swift in Sources */,
+				56C8ECB5FC2B82740F2BD633 /* RoomDeveloperLayout.swift in Sources */,
 				714EBE58293677EBCDE6C57C /* RoomDeveloperMatrixView.swift in Sources */,
 				B1D77A7021BB6093B5028B89 /* RoomDeveloperModel.swift in Sources */,
 				79E899CBC0B09037A647510F /* RoomDeveloperRoomsView.swift in Sources */,
