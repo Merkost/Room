@@ -2,9 +2,20 @@ import Foundation
 import Observation
 import RoomCore
 
+nonisolated struct RoomMapCleanupTarget: Equatable {
+    let url: URL
+    let revision: UUID
+    let levelPath: String
+    let selectedPath: String?
+
+    var path: String { selectedPath ?? levelPath }
+    var includesContents: Bool { !path.isEmpty }
+}
+
 /// Navigation reads the bounded result of the last walk. Only explicit map actions call the engine.
 @Observable @MainActor
 final class RoomDiskMapModel {
+    private var revision = UUID()
     private(set) var current: RoomStoredTree?
     private(set) var rootURL: URL?
     private(set) var changedAt: Date?
@@ -21,6 +32,12 @@ final class RoomDiskMapModel {
     var trail: [RoomTreeNode] { current?.tree.trail(to: levelPath) ?? [] }
     var canStepOut: Bool { !levelPath.isEmpty }
     var canCompare: Bool { comparison != nil }
+    var cleanupTarget: RoomMapCleanupTarget? {
+        let path = selectedPath ?? levelPath
+        guard let current, !current.cancelled, current.tree.descendant(at: path) != nil,
+              let url = url(for: path) else { return nil }
+        return RoomMapCleanupTarget(url: url, revision: revision, levelPath: levelPath, selectedPath: selectedPath)
+    }
     var comparison: (earlier: RoomTreeNode, date: Date)? {
         guard let current, !current.cancelled, let previous = catalog.entries[current.rootID]?.previous,
               RoomCompare.isAvailable(current: current, previous: previous),
@@ -29,6 +46,7 @@ final class RoomDiskMapModel {
     }
 
     func begin(url: URL) {
+        revision = UUID()
         if rootURL?.standardizedFileURL != url.standardizedFileURL {
             current = nil
             levelPath = ""
@@ -65,6 +83,7 @@ final class RoomDiskMapModel {
     }
 
     func install(_ map: RoomStoredTree, url: URL, isHome: Bool = false) {
+        revision = UUID()
         if rootURL?.standardizedFileURL != url.standardizedFileURL { levelPath = "" }
         rootURL = url
         pendingFolder = nil
@@ -76,6 +95,7 @@ final class RoomDiskMapModel {
     }
 
     func restore(_ map: RoomStoredTree, previous: RoomStoredTree?, root: RoomTreeStore.Root, url: URL?) {
+        revision = UUID()
         rootURL = url
         pendingFolder = nil
         current = map
@@ -137,6 +157,7 @@ final class RoomDiskMapModel {
         guard !result.report.cancelled, var current,
               let updated = RoomTreeSplice.replace(in: current.tree, at: path, with: result.tree) else { return }
         current.tree = RoomTreeBudget.trim(updated)
+        revision = UUID()
         self.current = current
         if current.tree.descendant(at: levelPath)?.isDirectory != true { levelPath = "" }
     }

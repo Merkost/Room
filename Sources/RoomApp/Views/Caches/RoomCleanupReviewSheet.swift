@@ -30,6 +30,7 @@ struct RoomCleanupReviewSheet: View {
 
     var body: some View {
         let review = presentation
+        let mapIssue = mapCleanupIssue(review)
         let saved = review.phase == .moving
             ? Set(model.cleanupProgress.filter { $0.value == .trashed }.keys)
             : []
@@ -82,7 +83,7 @@ struct RoomCleanupReviewSheet: View {
                             }
                         }
                         .toggleStyle(.checkbox)
-                        .disabled(!review.canCancel || !model.canEditSelection)
+                        .disabled(!review.canCancel || !model.canEditSelection || mapIssue != nil)
                         .help(hidden ? "" : row.location ?? "")
                         .accessibilityValue(partial ? "Some items selected" : selected ? "Selected" : "Not selected")
                     }
@@ -94,9 +95,16 @@ struct RoomCleanupReviewSheet: View {
                                 .font(RoomTokens.Typography.caption).foregroundStyle(RoomTokens.Ink.secondary)
                         }
                     }
+                    if let mapIssue {
+                        Label(mapIssue, systemImage: "arrow.clockwise.circle")
+                            .foregroundStyle(RoomTokens.Ink.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("RoomMapCleanupUnavailable")
+                    }
                     #if ROOM_APP_STORE
-                    if review.selectedBytes > 0 && canAccessMapCleanup() {
-                        RoomStorePermissionSection(model: model) { Task { await prepareStoreReview() } }
+                    if review.selectedBytes > 0 && mapIssue == nil {
+                        RoomStorePermissionSection(model: model, retry: { Task { await prepareStoreReview() } },
+                            canApprove: { mapCleanupIssue(presentation) == nil })
                     }
                     #endif
                     if let message = model.errorMessage {
@@ -148,8 +156,21 @@ struct RoomCleanupReviewSheet: View {
         .interactiveDismissDisabled(!review.canCancel || model.isWorking)
         #if ROOM_APP_STORE
         .task { await prepareStoreReview() }
+        .onChange(of: mapIssue) { _, issue in
+            if issue != nil && committed == nil { model.discardStoreReview() }
+        }
         .onDisappear { model.discardStoreReview() }
         #endif
+    }
+
+    private func mapCleanupIssue(_ review: RoomCleanupReview) -> String? {
+        guard let mapCleanup, review.phase != .moving else { return nil }
+        if hidden { return "Reveal item names to review this Disk Map selection." }
+        if !canAccessMapCleanup() { return "Disk Map changed. Close this review and select the item again." }
+        if !model.isCurrentMapSelection(mapCleanup, entryIDs: review.selectedEntryIDs) {
+            return "The cache check changed. Close this review and check the selection again."
+        }
+        return nil
     }
 
     @ViewBuilder private func rowDetail(_ row: RoomCleanupReview.Row) -> some View {
@@ -185,8 +206,10 @@ struct RoomCleanupReviewSheet: View {
     #if ROOM_APP_STORE
     private func prepareStoreReview() async {
         if let mapCleanup {
-            guard canAccessMapCleanup() else { return }
-            await model.prepareStoreMapCleanupReview(mapCleanup, entryIDs: presentation.selectedEntryIDs)
+            guard mapCleanupIssue(presentation) == nil else { return }
+            await model.prepareStoreMapCleanupReview(mapCleanup, entryIDs: presentation.selectedEntryIDs) {
+                !hidden && canAccessMapCleanup()
+            }
         } else {
             await model.prepareStoreCleanupReview()
         }
@@ -201,7 +224,8 @@ struct RoomCleanupReviewSheet: View {
         committed = moving
         Task {
             if let mapCleanup {
-                guard canAccessMapCleanup(), model.canCleanMapSelection(mapCleanup, entryIDs: review.selectedEntryIDs) else {
+                guard !hidden, canAccessMapCleanup(),
+                      model.canCleanMapSelection(mapCleanup, entryIDs: review.selectedEntryIDs) else {
                     committed = nil
                     return
                 }
@@ -221,7 +245,8 @@ struct RoomCleanupReviewSheet: View {
     private func canCommit(_ review: RoomCleanupReview) -> Bool {
         guard review.canCommit else { return false }
         if let mapCleanup {
-            guard canAccessMapCleanup(), model.canCleanMapSelection(mapCleanup, entryIDs: review.selectedEntryIDs) else { return false }
+            guard !hidden, canAccessMapCleanup(),
+                  model.canCleanMapSelection(mapCleanup, entryIDs: review.selectedEntryIDs) else { return false }
             #if ROOM_APP_STORE
             return model.hasStoreCleanupApproval(for: review.selectedEntryIDs)
             #else
@@ -246,5 +271,8 @@ struct RoomCleanupReviewSheet: View {
         }
     }
 
-    private func format(_ bytes: Int64) -> String { RoomCachesVisibility.bytes(bytes, hidden: hidden) }
+    private func format(_ bytes: Int64) -> String {
+        if mapCleanup != nil { return RoomCachesVisibility.figure(RoomFormat.bytes(bytes), hidden: hidden) }
+        return RoomCachesVisibility.bytes(bytes, hidden: hidden)
+    }
 }

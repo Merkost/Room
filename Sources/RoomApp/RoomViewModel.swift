@@ -428,26 +428,33 @@ final class RoomViewModel {
         candidateIndex[sourceID]?.items ?? []
     }
 
-    func mapCleanupAction(at url: URL) -> RoomMapCleanupAction? {
+    func mapCleanupAction(at url: URL, includesContents: Bool = true) -> RoomMapCleanupAction? {
         if isScanning { return .checking }
         guard !isWorking else { return nil }
         guard hasReport else { return .check }
         guard canEditSelection else { return nil }
         let path = url.roomLexicallyNormalized.path
         let hasMatch = candidateIndex.values.contains { index in
-            index.items.contains { $0.bytes > 0 && Self.isInMapSelection($0, path: path) }
+            index.items.contains { $0.bytes > 0 && RoomMapCleanup.matches($0.url, path: path, includesContents: includesContents) }
         }
-        return hasMatch ? .review : .empty
+        if hasMatch { return .review }
+        #if ROOM_APP_STORE
+        if let folder = fileAccess.approval(for: url), !storeScanGrants.contains(folder.id + ":" + folder.url.path) {
+            return .check
+        }
+        #endif
+        return includesContents ? .empty : nil
     }
 
-    func makeMapCleanup(at url: URL) -> RoomMapCleanup? {
+    func makeMapCleanup(at url: URL, includesContents: Bool = true) -> RoomMapCleanup? {
         guard canEditSelection, let report else { return nil }
         let path = url.roomLexicallyNormalized.path
         var seen: Set<UUID> = []
         var rows: [RoomCleanupReview.Row] = []
         for source in sources where source.isAvailable {
             for item in cleanupCandidates(for: source.id)
-                where item.bytes > 0 && Self.isInMapSelection(item, path: path) && seen.insert(item.id).inserted {
+                where item.bytes > 0 && RoomMapCleanup.matches(item.url, path: path, includesContents: includesContents)
+                    && seen.insert(item.id).inserted {
                 #if ROOM_APP_STORE
                 let parents = Set([item.url.deletingLastPathComponent().path])
                 #else
@@ -460,22 +467,23 @@ final class RoomViewModel {
         }
         guard !rows.isEmpty else { return nil }
         rows.sort { $0.bytes == $1.bytes ? ($0.location ?? "") < ($1.location ?? "") : $0.bytes > $1.bytes }
-        return RoomMapCleanup(location: url, reportID: report.id, rows: rows)
-    }
-
-    private static func isInMapSelection(_ item: RoomCleanupCandidate, path: String) -> Bool {
-        item.url.path == path || item.url.path.hasPrefix(path == "/" ? "/" : path + "/")
+        return RoomMapCleanup(location: url, reportID: report.id, rows: rows, includesContents: includesContents)
     }
 
     func canCleanMapSelection(_ request: RoomMapCleanup, entryIDs: Set<UUID>) -> Bool {
-        canEditSelection && isCurrentMapSelection(request, entryIDs: entryIDs)
+        canEditSelection && !entryIDs.isEmpty && isCurrentMapSelection(request, entryIDs: entryIDs)
     }
 
-    private func isCurrentMapSelection(_ request: RoomMapCleanup, entryIDs: Set<UUID>) -> Bool {
-        guard report?.id == request.reportID, request.includes(entryIDs) else { return false }
+    func isCurrentMapSelection(_ request: RoomMapCleanup, entryIDs: Set<UUID>) -> Bool {
+        guard hasReport, report?.id == request.reportID else { return false }
+        guard !entryIDs.isEmpty else { return true }
+        guard request.includes(entryIDs) else { return false }
+        let path = request.location.roomLexicallyNormalized.path
         var remaining = entryIDs
         for index in candidateIndex.values {
-            remaining.subtract(index.ids)
+            for item in index.items where remaining.contains(item.id) && item.bytes > 0 && request.matches(item.url, path: path) {
+                remaining.remove(item.id)
+            }
             if remaining.isEmpty { return true }
         }
         return false
@@ -916,9 +924,9 @@ final class RoomViewModel {
         await prepareStoreCleanupReview(for: ids) { self.selectedEntryIDs == ids }
     }
 
-    func prepareStoreMapCleanupReview(_ request: RoomMapCleanup, entryIDs: Set<UUID>) async {
-        guard canCleanMapSelection(request, entryIDs: entryIDs) else { return }
-        await prepareStoreCleanupReview(for: entryIDs) { self.isCurrentMapSelection(request, entryIDs: entryIDs) }
+    func prepareStoreMapCleanupReview(_ request: RoomMapCleanup, entryIDs: Set<UUID>, mapIsCurrent: () -> Bool = { true }) async {
+        guard mapIsCurrent(), canCleanMapSelection(request, entryIDs: entryIDs) else { return }
+        await prepareStoreCleanupReview(for: entryIDs) { mapIsCurrent() && self.isCurrentMapSelection(request, entryIDs: entryIDs) }
     }
 
     private func prepareStoreCleanupReview(for ids: Set<UUID>, isCurrent: () -> Bool) async {

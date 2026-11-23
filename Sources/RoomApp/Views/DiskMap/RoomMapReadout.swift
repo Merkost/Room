@@ -8,8 +8,8 @@ nonisolated struct RoomMapReadoutContent: Equatable {
     var isHint = false
 
     static func make(level: RoomTreeNode, hovered: RoomMapItem?, selectedPath: String?, hidden: Bool,
-                     showsHint: Bool, format: (Int64) -> String) -> Self {
-        if let hovered, node(at: hovered.parentID, inside: level) != nil {
+                     showsHint: Bool, showsCleanupTarget: Bool = false, format: (Int64) -> String) -> Self {
+        if !showsCleanupTarget, let hovered, node(at: hovered.parentID, inside: level) != nil {
             let name = hovered.isOther ? "Other" : hovered.name
             return measured(name, bytes: hovered.bytes, partial: hovered.isPartial, parent: level,
                             hidden: hidden, isOther: hovered.isOther, format: format)
@@ -19,7 +19,7 @@ nonisolated struct RoomMapReadoutContent: Equatable {
                             parent: level,
                             hidden: hidden, format: format)
         }
-        if showsHint {
+        if showsHint && !showsCleanupTarget {
             return Self(title: "Bigger tile, more space. Hover to read it. Click a folder header to step inside.",
                         detail: nil, isHint: true)
         }
@@ -57,10 +57,12 @@ struct RoomMapContextReadout: View {
     let selectedPath: String?
     let hidden: Bool
     let showsHint: Bool
+    let showsCleanupTarget: Bool
 
     var body: some View {
-        let content = RoomMapReadoutContent.make(level: level, hovered: pointer.item, selectedPath: selectedPath,
-                                                hidden: hidden, showsHint: showsHint, format: RoomFormat.bytes)
+        let content = RoomMapReadoutContent.make(level: level, hovered: showsCleanupTarget ? nil : pointer.item,
+            selectedPath: selectedPath, hidden: hidden, showsHint: showsHint, showsCleanupTarget: showsCleanupTarget,
+            format: RoomFormat.bytes)
         RoomMapReadout(title: content.title, detail: content.detail, isHint: content.isHint)
     }
 }
@@ -150,7 +152,8 @@ struct RoomMapCleanupControl: View {
                 button("Review Cleanup", symbol: "checklist")
                     .help("Review the clearable cache items inside this selection.")
             case .empty:
-                Text("No clearable caches here")
+                button("Check Again", symbol: "arrow.clockwise")
+                    .help("The last check found no clearable caches here.")
             }
         }
         .font(RoomTokens.Typography.caption)

@@ -4,9 +4,18 @@ nonisolated struct RoomMapCleanup: Equatable, Sendable {
     let location: URL
     let reportID: UUID
     let rows: [RoomCleanupReview.Row]
+    var includesContents = true
 
     func includes(_ entryIDs: Set<UUID>) -> Bool {
         !entryIDs.isEmpty && entryIDs.isSubset(of: Set(rows.flatMap(\.entryIDs)))
+    }
+
+    func matches(_ url: URL, path: String) -> Bool {
+        Self.matches(url, path: path, includesContents: includesContents)
+    }
+
+    static func matches(_ url: URL, path: String, includesContents: Bool) -> Bool {
+        url.path == path || (includesContents && url.path.hasPrefix(path == "/" ? "/" : path + "/"))
     }
 }
 

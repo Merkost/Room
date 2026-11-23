@@ -82,6 +82,29 @@ struct RoomTreeStoreTests {
         #expect(model.current == map)
     }
 
+    @MainActor @Test func cleanupTargetChangesWithSelectionAndWithSamePathRescan() throws {
+        let url = URL(fileURLWithPath: "/sample", isDirectory: true)
+        let model = RoomDiskMapModel()
+        var map = makeMap("sample", date: firstDate)
+        map.tree.children = [leaf("cache", directory: false), leaf("other", directory: false)]
+        model.install(map, url: url)
+        #expect(model.cleanupTarget?.includesContents == false)
+        model.select("cache")
+        let original = try #require(model.cleanupTarget)
+        #expect(original.url == url.appendingPathComponent("cache") && original.includesContents)
+        model.select("other")
+        #expect(model.cleanupTarget != original)
+        model.select("cache")
+        #expect(model.cleanupTarget == original)
+        model.begin(url: url)
+        #expect(model.cleanupTarget != original)
+        model.install(map, url: url)
+        model.select("cache")
+        #expect(model.cleanupTarget?.url == original.url && model.cleanupTarget != original)
+        model.removeCurrent()
+        #expect(model.cleanupTarget == nil)
+    }
+
     private func makeStorage() -> RoomStateStore {
         RoomStateStore(directory: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
     }

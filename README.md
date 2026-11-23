@@ -10,7 +10,7 @@ Room is a native Mac app for mapping storage, reviewing cache moves, and watchin
 ## What Room does
 
 - **Overview** shows free space, a timeline for your Mac’s storage, and folders you’ve pinned.
-- **Disk Map** turns folders you choose into a visual map. Find large files, explore accessible hidden items, compare scans, and save useful views.
+- **Disk Map** turns selected folders into a visual map. Find large files, compare scans, save views, and review clearable caches in the selected item.
 - **Caches** shows what’s taking up space and lets you review eligible moves. Room keeps a receipt for each move so you can restore unchanged items when their original locations are available.
 - **Developer** shows virtual devices, SDK and build storage, and tool versions referenced by projects. AI Tools shows local caches, session storage, models, and worktrees by tool.
 - **Memory** shows pressure, RAM use, compression, and swap. The menu bar can show memory or free space.

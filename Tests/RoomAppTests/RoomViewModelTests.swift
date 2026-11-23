@@ -77,13 +77,18 @@ struct RoomViewModelTests {
         #expect(model.mapCleanupAction(at: target) == .review)
         #expect(model.mapCleanupAction(at: fixture.protected) == .empty)
         #expect(model.makeMapCleanup(at: fixture.cache.appendingPathComponent("recent-cache")) == nil)
+        #expect(model.mapCleanupAction(at: fixture.cache, includesContents: false) == nil)
+        #expect(model.makeMapCleanup(at: fixture.cache, includesContents: false) == nil)
 
-        let request = try #require(model.makeMapCleanup(at: target))
+        let request = try #require(model.makeMapCleanup(at: target, includesContents: false))
         #expect(request.rows.map(\.location) == [target.path])
         let targetIDs = try #require(request.rows.first).entryIDs
-        let otherIDs = try #require(model.makeMapCleanup(at: sibling)?.rows.first).entryIDs
+        let other = try #require(model.makeMapCleanup(at: sibling))
+        let otherIDs = try #require(other.rows.first).entryIDs
         #expect(model.canCleanMapSelection(request, entryIDs: targetIDs))
         #expect(!model.canCleanMapSelection(request, entryIDs: targetIDs.union(otherIDs)))
+        let mismatched = RoomMapCleanup(location: target, reportID: request.reportID, rows: other.rows)
+        #expect(!model.canCleanMapSelection(mismatched, entryIDs: otherIDs))
         #expect(model.selectedEntryIDs == targetIDs.union(otherIDs))
 
         model.scan()

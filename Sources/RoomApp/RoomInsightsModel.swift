@@ -953,6 +953,7 @@ final class RoomInsightsModel {
     }
 
     func approvedMapScope(for url: URL) -> URL? { fileAccess.scope(for: url) }
+    func approvedMapFolder(for url: URL) -> RoomAccessFolder? { fileAccess.approval(for: url) }
 
     func reveal(item: DiskMapItem) { NSWorkspace.shared.activateFileViewerSelecting([item.url]) }
 

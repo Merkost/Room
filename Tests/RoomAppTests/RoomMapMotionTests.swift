@@ -59,6 +59,12 @@ struct RoomMapMotionTests {
         #expect(readout(hovered).detail?.contains("of Projects") == true)
         #expect(readout(nil).title == "Sources")
         #expect(readout(hovered, hidden: true) == .init(title: "Name hidden", detail: "Size hidden"))
+        #expect(RoomMapReadoutContent.make(level: level, hovered: hovered, selectedPath: "Projects/Sources",
+                                          hidden: false, showsHint: true, showsCleanupTarget: true,
+                                          format: { String($0) }).title == "Sources")
+        #expect(RoomMapReadoutContent.make(level: level, hovered: hovered, selectedPath: nil,
+                                          hidden: false, showsHint: true, showsCleanupTarget: true,
+                                          format: { String($0) }).title == "Projects")
         let home = node("", children: [level, node("Pictures")])
         let rootReadout = RoomMapReadoutContent.make(level: home, hovered: hovered, selectedPath: nil,
                                                      hidden: false, showsHint: true, format: { String($0) })

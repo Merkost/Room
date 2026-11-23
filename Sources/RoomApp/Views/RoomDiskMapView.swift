@@ -11,8 +11,8 @@ struct RoomDiskMapView: View {
     var openSavedView: (UUID) -> Void = { _ in }
     var canInspectCacheSource: (URL) -> Bool = { _ in false }
     var inspectCacheSource: (URL) -> Void = { _ in }
-    var cleanupAction: (URL) -> RoomMapCleanupAction? = { _ in nil }
-    var activateCleanup: (URL) -> Void = { _ in }
+    var cleanupAction: (RoomMapCleanupTarget) -> RoomMapCleanupAction? = { _ in nil }
+    var activateCleanup: (RoomMapCleanupTarget) -> Void = { _ in }
     @Environment(\.openSettings) private var openSettings
     @Environment(\.roomAccent) private var accent
     @Environment(\.roomHide) private var privacy
@@ -472,11 +472,14 @@ struct RoomDiskMapView: View {
     }
 
     private func readout(_ level: RoomTreeNode, hint: Bool) -> some View {
-        HStack(spacing: RoomTokens.Space.row) {
+        let target = cleanupTarget(in: level)
+        let action = target.flatMap(cleanupAction)
+        let showsCleanupTarget = action == .review || action == .empty
+        return HStack(spacing: RoomTokens.Space.row) {
             RoomMapContextReadout(level: level, pointer: pointer, selectedPath: model.selectedPath,
-                                  hidden: hidden, showsHint: hint)
-            if let location = cleanupLocation(in: level), let action = cleanupAction(location) {
-                RoomMapCleanupControl(action: action) { activateCleanup(location) }
+                                  hidden: hidden, showsHint: hint, showsCleanupTarget: showsCleanupTarget)
+            if let target, let action {
+                RoomMapCleanupControl(action: action) { activateCleanup(target) }
             }
             if let date = model.changedAt, date > model.current?.scannedAt ?? .distantPast {
                 Text("Changed since this scan")
@@ -496,11 +499,10 @@ struct RoomDiskMapView: View {
         }
     }
 
-    private func cleanupLocation(in level: RoomTreeNode) -> URL? {
-        guard !hidden, !insights.isScanningDisk, model.current?.cancelled == false else { return nil }
-        let path = model.selectedPath ?? level.relativePath
-        guard !path.isEmpty, RoomMapReadoutContent.node(at: path, inside: level) != nil else { return nil }
-        return model.url(for: path)
+    private func cleanupTarget(in level: RoomTreeNode) -> RoomMapCleanupTarget? {
+        guard !hidden, !insights.isScanningDisk, let target = model.cleanupTarget,
+              RoomMapReadoutContent.node(at: target.path, inside: level) != nil else { return nil }
+        return target
     }
 
     @ViewBuilder private var inspector: some View {
