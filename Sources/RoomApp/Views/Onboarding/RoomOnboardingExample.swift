@@ -1,332 +1,214 @@
 import SwiftUI
 
-/// Step 2's example: review, Trash with a receipt, Put back (ONBOARDING-V3-SPEC §3.3, MV-6, MV-7).
-/// Static drawings marked "Example" with no sizes. Its only button is Put back, which changes the drawing and calls
-/// no file, Trash, scan, picker or permission API (`exampleNeverTouchesFiles`).
+/// Step 2's toy: three example rooms of dots and a small Trash. Click or flick a room and it hops into the Trash;
+/// Put back springs it home. It only changes this drawing: its buttons send `.demoTrash` and `.demoPutBack`, which
+/// never produce an effect, and nothing here calls a file, Trash, scan, picker or permission API
+/// (`exampleNeverTouchesFiles`). The "Example" chip carries the honesty; its sentence is the tooltip and the label.
 struct RoomOnboardingExample: View {
-    let layout: RoomDemoLayout
+    let beat: RoomDemoBeat
+    let trash: () -> Void
     let putBack: () -> Void
 
     @Environment(\.roomAccent) private var accent
     @Environment(\.roomMotion) private var motion
+    @Environment(\.colorSchemeContrast) private var contrast
+    /// Which room went in last; the reducer only knows that one did.
+    @State private var chosen = 0
+    @State private var hovered: Int?
+    @State private var nudged = false
+    @State private var landed = 0
+    @State private var drag: (index: Int, offset: CGSize)?
 
     private typealias Onboarding = RoomTokens.Onboarding
-    private typealias T = RoomOnboardingText
 
-    private var beat: RoomDemoBeat {
-        switch layout {
-        case .single(let beat): beat
-        case .triptych(let highlight): highlight
-        }
-    }
+    /// The example plan, in stage points (600 x 296): three rooms on the left, the Trash on the right.
+    private static let rooms: [CGRect] = [
+        CGRect(x: 32, y: 64, width: 184, height: 124),
+        CGRect(x: 228, y: 64, width: 136, height: 124),
+        CGRect(x: 32, y: 200, width: 332, height: 64),
+    ]
+    private static let trashCenter = CGPoint(x: 486, y: 136)
+    private static let flick: CGFloat = 36
+
+    private var holding: Bool { beat == .trashed }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: RoomTokens.Radius.plan)
+                .strokeBorder(contrast == .increased ? RoomTokens.Ink.secondary : RoomTokens.Surface.line2,
+                              lineWidth: contrast == .increased ? 1.5 : Onboarding.wallStroke)
             chip
-                .offset(x: Onboarding.chipOrigin.x, y: Onboarding.chipOrigin.y)
-            switch layout {
-            case .single(let beat):
-                panel(beat)
-                    .frame(width: Onboarding.exampleSize.width, height: Onboarding.exampleSize.height)
-                    .offset(x: Onboarding.exampleOrigin.x, y: Onboarding.exampleOrigin.y)
-                rail(current: beat)
-                    .frame(width: Onboarding.railWidth, alignment: .topLeading)
-                    .offset(x: Onboarding.railX, y: Onboarding.exampleOrigin.y)
-            case .triptych(let highlight):
-                triptych(highlight: highlight)
-                    .padding(.horizontal, Onboarding.triptychInset)
-                    .offset(y: Onboarding.triptychTop)
+                .offset(x: RoomTokens.Space.group, y: RoomTokens.Space.group)
+            ForEach(Self.rooms.indices, id: \.self) { index in
+                ghost(index)
+            }
+            trashCan
+            ForEach(Self.rooms.indices, id: \.self) { index in
+                room(index)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(width: RoomOnboardingStage.width, height: RoomOnboardingStage.introWallHeight, alignment: .topLeading)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(RoomOnboardingCopy.demoAccessibility(beat))
+        .accessibilityHint(RoomOnboardingCopy.exampleLead)
         .accessibilityIdentifier("RoomOnboardingExample")
+        .task {
+            // One invitation, once: the first room hops in place. Never a loop.
+            guard motion.isFull, beat == .review else { return }
+            try? await Task.sleep(for: Onboarding.nudgeDelay)
+            guard !Task.isCancelled, beat == .review else { return }
+            withAnimation(RoomTokens.Motion.bounce) { nudged = true }
+            try? await Task.sleep(for: .milliseconds(160))
+            withAnimation(RoomTokens.Motion.pop) { nudged = false }
+        }
+        .onChange(of: beat) { _, beat in
+            guard beat == .trashed, motion.isFull else { return }
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(260))
+                landed += 1
+            }
+        }
     }
 
     private var chip: some View {
-        Text(T.string("onboarding.v3.example.chip", "Example"))
+        Label(RoomOnboardingCopy.exampleChip, systemImage: "hand.point.up.left")
             .font(RoomTokens.Typography.micro)
             .foregroundStyle(RoomTokens.Ink.secondary)
             .padding(.horizontal, RoomTokens.Space.row)
-            .frame(height: 18)
+            .frame(height: 20)
             .overlay { Capsule().strokeBorder(RoomTokens.Surface.line2) }
+            .help(RoomOnboardingCopy.exampleOnly)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(RoomOnboardingCopy.exampleOnly)
+    }
+
+    // MARK: Rooms
+
+    private func isInTrash(_ index: Int) -> Bool { holding && chosen == index }
+
+    /// Where a room was: a dashed outline while it sits in the Trash.
+    private func ghost(_ index: Int) -> some View {
+        let rect = Self.rooms[index]
+        return RoundedRectangle(cornerRadius: RoomTokens.Radius.card)
+            .strokeBorder(RoomTokens.Surface.line2, style: StrokeStyle(lineWidth: 1, dash: RoomTokens.OverviewPlan.dashedWall.dash))
+            .frame(width: rect.width, height: rect.height)
+            .opacity(isInTrash(index) ? 1 : 0)
+            .animation(motion.animation(RoomTokens.Motion.standard), value: isInTrash(index))
+            .offset(x: rect.minX, y: rect.minY)
             .accessibilityHidden(true)
     }
 
-    // MARK: Full motion: one card that changes beat
-
-    private func panel(_ beat: RoomDemoBeat) -> some View {
-        let shape = RoundedRectangle(cornerRadius: RoomTokens.Radius.group)
-        return ZStack(alignment: .topLeading) {
-            switch beat {
-            case .review:
-                reviewDrawing
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .transition(motion.isFull ? .opacity.combined(with: .offset(x: 12)) : .opacity)
-            case .trashed:
-                trashedDrawing
-                    .transition(.opacity)
-            case .restored:
-                restoredDrawing
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .transition(motion.isFull ? .opacity.combined(with: .offset(y: 6)) : .opacity)
-            }
+    private func room(_ index: Int) -> some View {
+        let rect = Self.rooms[index]
+        let inTrash = isInTrash(index)
+        let lifted = hovered == index && !holding
+        let dragOffset = drag?.index == index ? drag?.offset ?? .zero : .zero
+        let toTrash = CGSize(width: Self.trashCenter.x - rect.midX, height: Self.trashCenter.y - rect.midY)
+        let travel = inTrash && motion.isFull ? toTrash : dragOffset
+        let nudge = index == 0 && nudged ? -Onboarding.nudge : 0
+        return Button {
+            send(index)
+        } label: {
+            roomDrawing(rect.size, lifted: lifted)
         }
-        .padding(.vertical, 14)
-        .padding(.horizontal, RoomTokens.Space.group)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(RoomTokens.Surface.group, in: shape)
-        .overlay { shape.strokeBorder(RoomTokens.Surface.line) }
+        .buttonStyle(.plain)
+        .disabled(holding)
+        .frame(width: rect.width, height: rect.height)
+        .scaleEffect(inTrash ? (motion.isFull ? Onboarding.trashLanded : 1) : (lifted ? Onboarding.roomLift : 1))
+        .opacity(inTrash ? 0 : 1)
+        .offset(x: travel.width, y: travel.height + nudge)
+        .animation(motion.animation(inTrash ? RoomTokens.Motion.hop : RoomTokens.Motion.pop), value: inTrash)
+        .animation(motion.animation(RoomTokens.Motion.swell), value: lifted)
+        .offset(x: rect.minX, y: rect.minY)
+        .onHover { inside in
+            if inside { hovered = index } else if hovered == index { hovered = nil }
+        }
+        .simultaneousGesture(flickGesture(index))
+        .accessibilityLabel(RoomOnboardingCopy.exampleRoom)
+        .accessibilityHint(RoomOnboardingCopy.exampleRoomHint)
+        .accessibilityHidden(inTrash)
+        .accessibilityIdentifier("RoomOnboardingExampleRoom\(index + 1)")
     }
 
-    private var reviewDrawing: some View {
-        VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
-            HStack(spacing: RoomTokens.Space.row) {
-                checkbox
-                Text(T.string("onboarding.v3.example.row.name", "DerivedData"))
-                    .font(RoomTokens.Typography.body)
-                    .foregroundStyle(RoomTokens.Ink.graphite)
-                Spacer(minLength: RoomTokens.Space.row)
-                Text(T.string("onboarding.v3.example.row.kind", "Xcode cache"))
-                    .font(RoomTokens.Typography.caption)
-                    .foregroundStyle(RoomTokens.Ink.secondary)
-            }
-            moveCapsule
-        }
+    private func send(_ index: Int) {
+        guard !holding else { return }
+        chosen = index
+        hovered = nil
+        trash()
     }
 
-    private var checkbox: some View {
-        Image(systemName: "checkmark")
-            .font(.system(size: 9, weight: .bold))
-            .foregroundStyle(Color.white)
-            .frame(width: 16, height: 16)
-            .background(accent.fill, in: RoundedRectangle(cornerRadius: 4))
+    /// A flick towards the Trash sends the room; anything else springs back.
+    private func flickGesture(_ index: Int) -> some Gesture {
+        DragGesture(minimumDistance: 4)
+            .onChanged { value in
+                guard !holding, motion.isFull else { return }
+                drag = (index, value.translation)
+            }
+            .onEnded { value in
+                let thrown = value.predictedEndTranslation.width > Self.flick * 2 || value.translation.width > Self.flick
+                withAnimation(motion.animation(RoomTokens.Motion.pop)) { drag = nil }
+                if thrown { send(index) }
+            }
+    }
+
+    private func roomDrawing(_ size: CGSize, lifted: Bool) -> some View {
+        let shape = RoundedRectangle(cornerRadius: RoomTokens.Radius.card)
+        let pitch = Onboarding.examplePitch
+        return ZStack {
+            shape.fill(RoomTokens.Surface.group)
+            Canvas { context, size in
+                let columns = Int((size.width - pitch) / pitch), rows = Int((size.height - pitch) / pitch)
+                let x0 = (size.width - CGFloat(columns - 1) * pitch) / 2, y0 = (size.height - CGFloat(rows - 1) * pitch) / 2
+                var dots = Path()
+                for row in 0..<max(rows, 1) {
+                    for column in 0..<max(columns, 1) {
+                        let r = Onboarding.exampleDot
+                        dots.addEllipse(in: CGRect(x: x0 + CGFloat(column) * pitch - r, y: y0 + CGFloat(row) * pitch - r,
+                                                   width: 2 * r, height: 2 * r))
+                    }
+                }
+                context.fill(dots, with: .color(RoomTokens.Ink.secondary.opacity(lifted ? 0.85 : 0.45)))
+            }
+            .clipShape(shape)
+            shape.strokeBorder(lifted ? accent.text : RoomTokens.Surface.line, lineWidth: lifted ? 1.5 : 1)
+        }
+        .frame(width: size.width, height: size.height)
+        .contentShape(shape)
+    }
+
+    // MARK: Trash and Put back
+
+    private var trashCan: some View {
+        VStack(spacing: RoomTokens.Space.group) {
+            ZStack {
+                Circle().fill(holding ? accent.wash : RoomTokens.Surface.group)
+                Circle().strokeBorder(holding ? accent.text : RoomTokens.Surface.line2, lineWidth: holding ? 1.5 : 1)
+                Image(systemName: holding ? "trash.fill" : "trash")
+                    .font(Onboarding.trashGlyph)
+                    .foregroundStyle(holding ? accent.text : RoomTokens.Ink.secondary)
+                    .contentTransition(motion.isFull ? .symbolEffect(.replace) : .identity)
+                    .symbolEffect(.bounce, options: .nonRepeating, value: landed)
+            }
+            .frame(width: Onboarding.trashSize, height: Onboarding.trashSize)
+            .animation(motion.animation(RoomTokens.Motion.standard), value: holding)
             .accessibilityHidden(true)
-    }
-
-    private var moveCapsule: some View {
-        Text(T.string("onboarding.v3.example.move", "Move to Trash"))
-            .font(RoomTokens.Typography.caption)
-            .foregroundStyle(RoomTokens.Ink.graphite)
-            .padding(.horizontal, RoomTokens.Space.row + 2)
-            .frame(height: 24)
-            .overlay { Capsule().strokeBorder(RoomTokens.Surface.line2) }
-    }
-
-    private var trashedDrawing: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: RoomTokens.Space.row) {
-                Image(systemName: "trash").foregroundStyle(RoomTokens.Ink.secondary).accessibilityHidden(true)
-                Text(T.string("onboarding.v3.example.moved", "Moved to Trash"))
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(RoomTokens.Ink.graphite)
-                Spacer(minLength: RoomTokens.Space.row)
-                putBackButton
+            Button(action: putBack) {
+                Label(RoomOnboardingCopy.putBack, systemImage: "arrow.uturn.backward")
+                    .font(RoomTokens.Typography.bodyStrong)
+                    .padding(.horizontal, RoomTokens.Space.group)
+                    .frame(minHeight: 30)
+                    .overlay { Capsule().strokeBorder(accent.text.opacity(0.6)) }
+                    .contentShape(Capsule())
             }
-            Rectangle().fill(RoomTokens.Surface.line).frame(height: 1)
-                .padding(.vertical, RoomTokens.Space.row + 4)
-            VStack(spacing: 6) {
-                line(T.string("onboarding.v3.example.row.name", "DerivedData"), T.string("onboarding.v3.example.row.kind", "Xcode cache"))
-                line(T.string("onboarding.v3.example.row.where", "Now in"), T.string("onboarding.v3.example.row.trash", "Trash"))
-                line(T.string("onboarding.v3.example.row.receipt", "Receipt"), T.string("onboarding.v3.example.row.kept", "Kept in History"))
-            }
-            Text(T.string("onboarding.v3.example.foot", "Room never empties the Trash. That stays yours."))
-                .font(RoomTokens.Typography.caption)
-                .foregroundStyle(RoomTokens.Ink.secondary)
-                .padding(.top, RoomTokens.Space.row + 4)
+            .roomLink(accent)
+            .opacity(holding ? 1 : 0)
+            .scaleEffect(holding || !motion.isFull ? 1 : 0.8)
+            .animation(motion.animation(RoomTokens.Motion.pop.delay(holding ? 0.18 : 0)), value: holding)
+            .disabled(!holding)
+            .accessibilityHidden(!holding)
+            .accessibilityIdentifier("RoomOnboardingPutBack")
         }
-    }
-
-    private var restoredDrawing: some View {
-        VStack(alignment: .leading, spacing: RoomTokens.Space.row + 4) {
-            HStack(spacing: RoomTokens.Space.row) {
-                Image(systemName: "folder").foregroundStyle(RoomTokens.Ink.secondary).accessibilityHidden(true)
-                Text(T.string("onboarding.v3.example.back", "Back where it was"))
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(RoomTokens.Ink.graphite)
-            }
-            line(T.string("onboarding.v3.example.row.name", "DerivedData"), T.string("onboarding.v3.example.row.restored", "Restored"))
-        }
-    }
-
-    private var putBackButton: some View {
-        Button(action: putBack) {
-            Label(T.string("onboarding.v3.example.putBack", "Put back"), systemImage: "arrow.uturn.backward")
-                .font(RoomTokens.Typography.body)
-                .frame(minWidth: 72, minHeight: RoomTokens.Sidebar.minimumTarget)
-        }
-        .roomLink(accent)
-        .accessibilityIdentifier("RoomOnboardingPutBack")
-    }
-
-    private func line(_ name: String, _ value: String) -> some View {
-        HStack(alignment: .center, spacing: RoomTokens.Space.tight) {
-            Text(name).foregroundStyle(RoomTokens.Ink.graphite).fixedSize()
-            RoomOnboardingLeader()
-                .stroke(RoomTokens.Surface.line2, style: StrokeStyle(lineWidth: 1, dash: [1, 2]))
-                .frame(height: 1)
-                .frame(minWidth: RoomTokens.Space.tight)
-            Text(value).foregroundStyle(RoomTokens.Ink.secondary).fixedSize()
-        }
-        .font(RoomTokens.Typography.body)
-        .lineLimit(1)
-        .frame(minHeight: 18)
-    }
-
-    // MARK: Rail
-
-    private func rail(current: RoomDemoBeat) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(RoomDemoBeat.allCases, id: \.rawValue) { item in
-                railItem(item, current: current)
-            }
-        }
-        .accessibilityHidden(true)
-    }
-
-    private func railItem(_ item: RoomDemoBeat, current: RoomDemoBeat) -> some View {
-        let isCurrent = item == current
-        let isDone = item.rawValue < current.rawValue
-        return HStack(alignment: .top, spacing: RoomTokens.Space.row + 4) {
-            VStack(spacing: 4) {
-                bead(done: isDone, current: isCurrent, size: Onboarding.bead)
-                if item != .restored {
-                    Rectangle().fill(RoomTokens.Surface.line2).frame(width: 1)
-                }
-            }
-            .frame(width: Onboarding.bead)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(Self.railTitle(item))
-                    .font(.system(size: 13, weight: isCurrent ? .semibold : .regular))
-                    .foregroundStyle(isCurrent || isDone ? RoomTokens.Ink.graphite : RoomTokens.Ink.secondary)
-                Text(Self.railDetail(item))
-                    .font(RoomTokens.Typography.caption)
-                    .foregroundStyle(RoomTokens.Ink.secondary)
-            }
-            .lineLimit(1)
-        }
-        .frame(height: Onboarding.railItem, alignment: .top)
-    }
-
-    private func bead(done: Bool, current: Bool, size: CGFloat) -> some View {
-        ZStack {
-            if done {
-                Circle().fill(accent.fill)
-                Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)).foregroundStyle(Color.white)
-            } else if current {
-                Circle().strokeBorder(accent.text, lineWidth: 1.5)
-                Circle().fill(accent.text).frame(width: 8, height: 8)
-            } else {
-                Circle().strokeBorder(RoomTokens.Surface.line2, lineWidth: 1.5)
-            }
-        }
-        .frame(width: size, height: size)
-        .animation(motion.animation(RoomTokens.Motion.quick), value: done)
-        .animation(motion.animation(RoomTokens.Motion.quick), value: current)
-    }
-
-    private static func railTitle(_ beat: RoomDemoBeat) -> String {
-        switch beat {
-        case .review: T.string("onboarding.v3.rail.1", "You review first")
-        case .trashed: T.string("onboarding.v3.rail.2", "Trash, with a receipt")
-        case .restored: T.string("onboarding.v3.rail.3", "You can put it back")
-        }
-    }
-
-    private static func railDetail(_ beat: RoomDemoBeat) -> String {
-        switch beat {
-        case .review: T.string("onboarding.v3.rail.1.detail", "Nothing is picked for you.")
-        case .trashed: T.string("onboarding.v3.rail.2.detail", "Every move is written down.")
-        case .restored: T.string("onboarding.v3.rail.3.detail", "Try it: press Put back.")
-        }
-    }
-
-    // MARK: Reduce Motion / Gentle off: three still cards, no auto-play
-
-    private func triptych(highlight: RoomDemoBeat) -> some View {
-        HStack(alignment: .top, spacing: Onboarding.triptychGap) {
-            ForEach(RoomDemoBeat.allCases, id: \.rawValue) { item in
-                triptychCard(item, highlighted: item == highlight)
-            }
-        }
-        .frame(height: Onboarding.exampleSize.height, alignment: .top)
-    }
-
-    private func triptychCard(_ item: RoomDemoBeat, highlighted: Bool) -> some View {
-        let shape = RoundedRectangle(cornerRadius: RoomTokens.Radius.group)
-        return VStack(alignment: .leading, spacing: RoomTokens.Space.row + 2) {
-            HStack(spacing: RoomTokens.Space.row) {
-                Text(verbatim: "\(item.rawValue)")
-                    .font(.system(size: 11, weight: .medium))
-                    .monospacedDigit()
-                    .foregroundStyle(accent.text)
-                    .frame(width: Onboarding.triptychBead, height: Onboarding.triptychBead)
-                    .overlay { Circle().strokeBorder(accent.text, lineWidth: 1.5) }
-                Text(Self.railTitle(item))
-                    .font(RoomTokens.Typography.caption)
-                    .foregroundStyle(RoomTokens.Ink.graphite)
-                    .lineLimit(1)
-            }
-            .accessibilityHidden(true)
-            triptychDrawing(item)
-                .padding(.horizontal, RoomTokens.Space.row + 2)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(RoomTokens.Surface.group, in: shape)
-                .overlay {
-                    shape.strokeBorder(highlighted ? accent.text : RoomTokens.Surface.line, lineWidth: 1)
-                        .animation(motion.animation(RoomTokens.Motion.fade), value: highlighted)
-                }
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    @ViewBuilder private func triptychDrawing(_ item: RoomDemoBeat) -> some View {
-        switch item {
-        case .review:
-            VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
-                HStack(spacing: RoomTokens.Space.row) {
-                    checkbox
-                    Text(T.string("onboarding.v3.example.row.name", "DerivedData"))
-                        .font(RoomTokens.Typography.body)
-                        .foregroundStyle(RoomTokens.Ink.graphite)
-                }
-                moveCapsule
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        case .trashed:
-            VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
-                HStack(spacing: RoomTokens.Space.tight) {
-                    Image(systemName: "trash").foregroundStyle(RoomTokens.Ink.secondary).accessibilityHidden(true)
-                    Text(T.string("onboarding.v3.example.moved", "Moved to Trash"))
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(RoomTokens.Ink.graphite)
-                }
-                line(T.string("onboarding.v3.example.row.receipt", "Receipt"), T.string("onboarding.v3.example.row.keptShort", "Kept"))
-                putBackButton
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        case .restored:
-            VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
-                HStack(spacing: RoomTokens.Space.tight) {
-                    Image(systemName: "folder").foregroundStyle(RoomTokens.Ink.secondary).accessibilityHidden(true)
-                    Text(T.string("onboarding.v3.example.back", "Back where it was"))
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(RoomTokens.Ink.graphite)
-                }
-                line(T.string("onboarding.v3.example.row.name", "DerivedData"), T.string("onboarding.v3.example.row.restored", "Restored"))
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-}
-
-/// A dotted leader between a receipt line's name and value.
-nonisolated struct RoomOnboardingLeader: Shape {
-    func path(in rect: CGRect) -> Path {
-        Path { path in
-            path.move(to: CGPoint(x: rect.minX, y: rect.midY))
-            path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
-        }
+        .frame(width: 200)
+        .position(x: Self.trashCenter.x, y: Self.trashCenter.y + 23)
     }
 }

@@ -216,9 +216,28 @@ struct RoomOnboardingFlowTests {
         #expect(RoomOnboardingCopy.cachesTitle(edition: .direct) == "Check caches")
     }
 
-    @Test func onc28_EyebrowIsTheProgress() {
-        #expect(RoomOnboardingCopy.eyebrow(.yourMac) == "1 of 3 · Your Mac")
-        #expect(RoomOnboardingCopy.eyebrow(.firstStep) == "3 of 3 · First step")
+    @Test func onc28_PipsSpeakTheProgress() {
+        #expect(RoomOnboardingCopy.stepNumber(.yourMac) == "1 of 3")
+        #expect(RoomOnboardingCopy.stepNumber(.firstStep) == "3 of 3")
+    }
+
+    /// The welcome is nearly wordless: a title of two to four words and one line of eight words or fewer per step.
+    @Test func scenesStayNearlyWordless() {
+        let words: (String) -> Int = { $0.split(separator: " ").count }
+        let plans: [RoomOnboardingPlanState] = [.make(capacityBytes: 494 * gb, freeBytes: 64 * gb), .unreadable,
+                                                .make(capacityBytes: 40_000 * gb, freeBytes: 9_000 * gb)]
+        for step in RoomOnboardingStep.allCases {
+            #expect((2...4).contains(words(RoomOnboardingCopy.title(step))), "\(step)")
+            for plan in plans { #expect(words(RoomOnboardingCopy.line(step, plan: plan)) <= 8, "\(step)") }
+        }
+        #expect(words(RoomOnboardingCopy.busy) <= 8)
+        #expect(RoomOnboardingCopy.title(.yourMac) == "Meet your Mac")
+        #expect(RoomOnboardingCopy.freeUnit("GB") == "GB free")
+        for edition in editions {
+            for picker in [false, true] { #expect(words(RoomOnboardingCopy.mapTitle(needsPicker: picker)) <= 4) }
+            #expect(words(RoomOnboardingCopy.cachesTitle(edition: edition)) <= 4)
+        }
+        #expect(words(RoomOnboardingCopy.menuBarTitle) <= 4)
     }
 
     // MARK: The example on step 2
@@ -249,8 +268,19 @@ struct RoomOnboardingFlowTests {
         #expect(RoomOnboardingFlow.demoLayout(beat: .trashed, motionIsFull: true) == .single(.trashed))
     }
 
+    @Test func demoTrashSendsTheRoomInAndCanReplay() {
+        for ctx in [direct, reduced] {
+            #expect(run([.demoTrash], ctx, from: onStep2).0.beat == .trashed)
+            #expect(run([.demoTrash, .demoPutBack], ctx, from: onStep2).0.beat == .restored)
+            #expect(run([.demoTrash, .demoPutBack, .demoTrash], ctx, from: onStep2).0.beat == .trashed)
+            #expect(run([.demoTrash, .demoTrash], ctx, from: onStep2).0.beat == .trashed)
+        }
+        #expect(run([.demoTrash]).0 == RoomOnboardingState())
+        #expect(run([.demoTrash], from: onStep3).0 == onStep3)
+    }
+
     @Test func onc34_DemoNeverEmitsEffects() {
-        for event in [RoomOnboardingEvent.demoTick, .demoPutBack, .demoTick, .demoPutBack] {
+        for event in [RoomOnboardingEvent.demoTick, .demoTrash, .demoPutBack, .demoTick, .demoPutBack] {
             #expect(RoomOnboardingFlow.reduce(onStep2, event, direct).1.isEmpty)
         }
     }
@@ -265,8 +295,8 @@ struct RoomOnboardingFlowTests {
         // ONC-35 every free ring is placed on both stages
         #expect(sizes.allSatisfy { p.layout(size: $0).dots.count == p.freeDots && q.layout(size: $0).dots.count == q.freeDots })
         // ONC-36 stage sizes
-        #expect(sizes == [CGSize(width: 590, height: 242), CGSize(width: 590, height: 170)])
-        #expect(RoomOnboardingStage.wallHeight(for: .yourSay) == 252 && RoomOnboardingStage.wallHeight(for: .firstStep) == 180)
+        #expect(sizes == [CGSize(width: 590, height: 286), CGSize(width: 590, height: 118)])
+        #expect(RoomOnboardingStage.wallHeight(for: .yourSay) == 296 && RoomOnboardingStage.wallHeight(for: .firstStep) == 128)
         // ONC-37 rings stay inside the free room and none sit in Not mapped
         let plan = p.layout(size: sizes[0])
         let free = try #require(plan.rooms.first { $0.id == .free }).rect
@@ -296,7 +326,7 @@ struct RoomOnboardingFlowTests {
         let document = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
         let rows = try #require(document["strings"] as? [String: [String: Any]])
         let v3 = rows.filter { $0.key.hasPrefix("onboarding.v3.") }
-        #expect(v3.count >= 60)
+        #expect(v3.count >= 45)
         for (key, row) in v3 {
             let unit = ((row["localizations"] as? [String: Any])?["en"] as? [String: Any])?["stringUnit"] as? [String: Any]
             let value = try #require(unit?["value"] as? String, "\(key)")
@@ -364,7 +394,8 @@ struct RoomOnboardingFlowTests {
     @Test func exampleNeverTouchesFiles() {
         for step in RoomOnboardingStep.allCases {
             for ctx in [direct, reduced, store] {
-                let r = run([.demoTick, .demoPutBack, .demoTick, .demoPutBack], ctx, from: .init(step: step, beat: .review, finished: false))
+                let r = run([.demoTick, .demoTrash, .demoPutBack, .demoTick, .demoTrash, .demoPutBack], ctx,
+                            from: .init(step: step, beat: .review, finished: false))
                 #expect(r.1.isEmpty && !r.0.finished && r.0.step == step)
             }
         }
@@ -406,7 +437,8 @@ struct RoomOnboardingFlowTests {
     @Test func noScrollViewInSheet() throws {
         let views = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().appendingPathComponent("Sources/RoomApp/Views", isDirectory: true)
-        for path in ["RoomOnboardingView.swift", "Onboarding/RoomOnboardingPlanView.swift", "Onboarding/RoomOnboardingExample.swift"] {
+        for path in ["RoomOnboardingView.swift", "Onboarding/RoomOnboardingPlanView.swift", "Onboarding/RoomOnboardingExample.swift",
+                     "Onboarding/RoomOnboardingTiles.swift"] {
             let source = try String(contentsOf: views.appendingPathComponent(path), encoding: .utf8)
             #expect(!source.contains("ScrollView"), "\(path)")
             #expect(!source.contains("TimelineView"), "\(path)")
@@ -416,8 +448,14 @@ struct RoomOnboardingFlowTests {
     }
 
     @Test func sheetTokensMatchTheSpec() {
-        #expect(RoomTokens.Onboarding.width == 680 && RoomTokens.Onboarding.height == 540)
-        #expect(RoomTokens.Onboarding.top + 16 + 8 + 28 + 8 + RoomTokens.Onboarding.leadReserve + RoomTokens.Onboarding.leadToStage == 156)
+        typealias O = RoomTokens.Onboarding
+        #expect(O.width == 680 && O.height == 540)
+        // Pips, header, the scene and the footer fit the fixed sheet with no scroll view, with room to breathe.
+        let used = O.top + O.headerHeight + O.headerToStage
+            + RoomOnboardingStage.introWallHeight + O.footerHeight + O.bottom
+        #expect(used <= O.height - 16, "\(used)")
+        #expect(RoomOnboardingStage.chooseWallHeight + O.stageToTiles + O.tileHeight <= RoomOnboardingStage.introWallHeight)
+        #expect(O.width - 2 * O.side == RoomOnboardingStage.width)
     }
 
     private static func startsWork(_ effect: RoomOnboardingEffect) -> Bool {

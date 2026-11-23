@@ -50,6 +50,7 @@ nonisolated enum RoomOnboardingEvent: Sendable {
     case continuePressed, backPressed, skipPressed
     case choose(RoomOnboardingChoice)
     case demoTick                        // one-shot timer, 1.2 s after step 2 appears, full motion only
+    case demoTrash                       // the person clicks or flicks an example room into the example Trash
     case demoPutBack
 }
 
@@ -123,6 +124,9 @@ nonisolated enum RoomOnboardingFlow {
             return choose(choice)
         case .demoTick:
             if state.step == .yourSay, state.beat == .review, context.motionIsFull { next.beat = .trashed }
+        case .demoTrash:
+            // Any motion; again after Put back, so the example can be played twice. Never an effect.
+            if state.step == .yourSay, state.beat != .trashed { next.beat = .trashed }
         case .demoPutBack:
             if state.step == .yourSay {
                 // Full motion: Put back exists only once the card shows the receipt. Triptych: Put back is always visible.
@@ -161,8 +165,8 @@ nonisolated enum RoomOnboardingPlanState: Equatable, Sendable {
 /// Stage sizes: the plan is laid out inside the wall with pad 5 (OVERVIEW-SPEC §6).
 nonisolated enum RoomOnboardingStage {
     static let width: CGFloat = 600
-    static let introWallHeight: CGFloat = 252      // steps 1 and 2
-    static let chooseWallHeight: CGFloat = 180     // step 3
+    static let introWallHeight: CGFloat = 296      // steps 1 and 2: the scene
+    static let chooseWallHeight: CGFloat = 128     // step 3: the plan above the tiles
     static let pad: CGFloat = 5
     static func layoutSize(wallHeight: CGFloat) -> CGSize {
         CGSize(width: width - 2 * pad, height: wallHeight - 2 * pad)
@@ -191,25 +195,36 @@ nonisolated enum RoomOnboardingText {
 nonisolated enum RoomOnboardingCopy {
     private typealias T = RoomOnboardingText
 
-    static func stepName(_ step: RoomOnboardingStep) -> String {
-        switch step {
-        case .yourMac: T.string("onboarding.v3.step1.name", "Your Mac")
-        case .yourSay: T.string("onboarding.v3.step2.name", "Your say")
-        case .firstStep: T.string("onboarding.v3.step3.name", "First step")
-        }
-    }
+    /// The progress pips speak this; nothing on screen spells it out.
     static func stepNumber(_ step: RoomOnboardingStep) -> String {
         T.format("onboarding.v3.step", "%1$d of 3", step.rawValue)
     }
-    static func eyebrow(_ step: RoomOnboardingStep) -> String { "\(stepNumber(step)) · \(stepName(step))" }
 
+    /// Two to four words, in the display face.
     static func title(_ step: RoomOnboardingStep) -> String {
         switch step {
-        case .yourMac: T.string("onboarding.v3.step1.title", "Room to breathe.")
-        case .yourSay: T.string("onboarding.v3.step2.title", "Nothing moves until you say so.")
-        case .firstStep: T.string("onboarding.v3.step3.title", "Where should Room look first?")
+        case .yourMac: T.string("onboarding.v3.step1.title", "Meet your Mac")
+        case .yourSay: T.string("onboarding.v3.step2.title", "You say what moves")
+        case .firstStep: T.string("onboarding.v3.step3.title", "Pick your first step")
         }
     }
+
+    /// The one short line under the title (eight words or fewer). The scene shows the rest.
+    static func line(_ step: RoomOnboardingStep, plan: RoomOnboardingPlanState) -> String {
+        switch step {
+        case .yourMac:
+            switch plan {
+            case .drawn: T.string("onboarding.v3.step1.line", "Every ring is free space.")
+            case .tooLarge: T.string("onboarding.v3.step1.line.tooLarge", "Plans stop at 26 TB for now.")
+            case .unreadable: T.string("onboarding.v3.step1.line.unreadable", "Free space shows once macOS answers.")
+            }
+        case .yourSay: T.string("onboarding.v3.step2.line", "Click a room, then put it back.")
+        case .firstStep: T.string("onboarding.v3.step3.line", "The rest waits on Overview.")
+        }
+    }
+
+    /// The big number's unit line: "GB free". The figure itself is `RoomFormat.gb(_, hero: true)` split at its space.
+    static func freeUnit(_ unit: String) -> String { T.format("onboarding.v3.step1.free", "%@ free", unit) }
 
     static func lead(_ step: RoomOnboardingStep, plan: RoomOnboardingPlanState, hidden: Bool,
                      format: (Int64) -> String) -> RoomOnboardingLead {
@@ -236,10 +251,7 @@ nonisolated enum RoomOnboardingCopy {
 
     static var tooLarge: String { T.string("onboarding.v3.step1.tooLarge", "Room draws plans of disks up to 26 TB for now.") }
 
-    /// Inside the Not mapped yet area. Step 3 swaps it for the hint.
-    static func notMappedLabel(_ step: RoomOnboardingStep) -> String {
-        step == .firstStep ? hint : T.string("onboarding.v3.plan.notMapped", "Not mapped yet")
-    }
+    /// Spoken with the Map tile and shown as the dashed area's tooltip on step 3.
     static var hint: String { T.string("onboarding.v3.hint", "Rooms appear here as Room maps your home folder") }
     static func notMappedDetail(_ plan: RoomOverviewPlanInput, hidden: Bool, format: (Int64) -> String) -> String {
         hidden ? T.string("onboarding.v3.plan.notMappedDetail.hidden", "Room hasn’t looked inside.")
@@ -256,8 +268,6 @@ nonisolated enum RoomOnboardingCopy {
         let s = T.format("onboarding.v3.plan.unit", "1 dot = about %@", "\(Int(plan.gbPerDot)) GB")
         return hidden ? RoomPure.mask(s, first: Int.max, lettersToo: false) : s
     }
-    static var emptyTitle: String { T.string("onboarding.v3.plan.empty.title", "Your Mac’s plan appears here once macOS answers.") }
-    static var emptyDetail: String { T.string("onboarding.v3.plan.empty.detail", "Room only draws what it has measured.") }
 
     /// The ellipsis means "more input follows": the folder picker opens before anything is read.
     static func mapTitle(needsPicker: Bool) -> String {
@@ -281,12 +291,21 @@ nonisolated enum RoomOnboardingCopy {
                           : T.string("onboarding.v3.a11y.caches", "Opens Caches and starts a check.")
     }
 
-    static var menuBarTitle: String { T.string("onboarding.v3.menuBar", "Watch memory in the menu bar") }
+    static var menuBarTitle: String { T.string("onboarding.v3.menuBar", "Watch memory") }
     static var menuBarHint: String { T.string("onboarding.v3.a11y.menuBar", "Adds Room to the menu bar.") }
-    static var alternativesLead: String { T.string("onboarding.v3.or", "Or start with") }
-    static var busy: String { T.string("onboarding.v3.busy", "Room is finishing another task. This is ready in a moment.") }
-    static var local: String { T.string("onboarding.v3.local", "No account. Everything runs on this Mac.") }
+    static var busy: String { T.string("onboarding.v3.busy", "Room is finishing up. One moment.") }
+    /// The example's chip and its tooltip: honesty as a glyph, the sentence only on hover and for VoiceOver.
+    static var exampleChip: String { T.string("onboarding.v3.example.chip", "Example") }
     static var exampleOnly: String { T.string("onboarding.v3.exampleOnly", "Example only. Nothing on your Mac has moved.") }
+    static var putBack: String { T.string("onboarding.v3.example.putBack", "Put back") }
+    static var exampleRoom: String { T.string("onboarding.v3.a11y.example.room", "Example room") }
+    static var exampleRoomHint: String {
+        T.string("onboarding.v3.a11y.example.roomHint", "Moves to the example Trash. Nothing on your Mac moves.")
+    }
+    static var exampleLead: String {
+        T.string("onboarding.v3.step2.lead",
+                 "Room shows you what it found, then waits. Whatever you move goes to Trash with a receipt, so you can put it back.")
+    }
 
     // Accessibility (ONBOARDING-V3-SPEC §8)
     static func planAccessibility(_ plan: RoomOnboardingPlanState, hidden: Bool, format: (Int64) -> String) -> String {
@@ -319,8 +338,9 @@ nonisolated enum RoomOnboardingCopy {
         let p = RoomOverviewPlanInput(capacityBytes: 994 * gb, freeBytes: 312 * gb, goalBytes: nil)
         var out: [String] = []
         for step in RoomOnboardingStep.allCases {
-            out += [eyebrow(step), title(step), notMappedLabel(step)]
+            out += [stepNumber(step), title(step)]
             for plan in [RoomOnboardingPlanState.drawn(p), .unreadable, .tooLarge(capacityBytes: 40_000 * gb, freeBytes: 9_000 * gb)] {
+                out.append(line(step, plan: plan))
                 for hidden in [false, true] {
                     let l = lead(step, plan: plan, hidden: hidden, format: format)
                     out += [l.strong ?? "", l.secondary, planAccessibility(plan, hidden: hidden, format: format)]
@@ -331,7 +351,8 @@ nonisolated enum RoomOnboardingCopy {
             for n in [false, true] { out += [mapTitle(needsPicker: n), mapContext(edition: e, needsPicker: n)] }
             out += [cachesTitle(edition: e), cachesHint(edition: e)]
         }
-        out += [menuBarTitle, menuBarHint, alternativesLead, busy, local, exampleOnly, emptyTitle, emptyDetail, tooLarge,
+        out += [menuBarTitle, menuBarHint, busy, exampleChip, exampleOnly, putBack, exampleRoom, exampleRoomHint, exampleLead,
+                tooLarge, hint, freeUnit("GB"),
                 notMappedDetail(p, hidden: false, format: format), notMappedDetail(p, hidden: true, format: format),
                 freeLegend(p, hidden: false, format: format), unitCaption(p, hidden: false),
                 captionAccessibility(p, hidden: false, format: format)]
