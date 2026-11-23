@@ -181,15 +181,17 @@ public enum StorageAnalyzer {
             !names.isDisjoint(with: [".rustup", "toolchains", "sdks", "ms-playwright"]) {
             return "Installed application, toolchain or persistent library data. Keep it in place and manage it through its owning app."
         }
+        let systemReason = "System-managed data. Keep it protected and use macOS or the owning app to manage it."
+        if lower == "/private/etc" || lower.hasPrefix("/private/etc/")
+            || lower == "/private/var/db" || lower.hasPrefix("/private/var/db/") {
+            return systemReason
+        }
         let knownCache = configuration.roots.contains { root in
             root.allowsKnownLocation(url)
         }
         if knownCache { return nil }
-        for system in ["/System", "/Library", "/bin", "/sbin", "/usr", "/private"] where contains(url, in: URL(fileURLWithPath: system)) {
-            // User-selected fixture/private paths are not automatically OS state;
-            // protect actual system subtrees rather than all /private/tmp work.
-            if system == "/private", !lower.hasPrefix("/private/var/db/") && !lower.hasPrefix("/private/etc/") { continue }
-            return "System-managed data. Keep it protected and use macOS or the owning app to manage it."
+        for system in ["/System", "/Library", "/bin", "/sbin", "/usr"] where contains(url, in: URL(fileURLWithPath: system)) {
+            return systemReason
         }
         let home = configuration.homeDirectory
         if contains(url, in: home.appendingPathComponent("Library", isDirectory: true)) {

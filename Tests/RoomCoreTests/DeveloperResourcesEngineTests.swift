@@ -4,8 +4,182 @@ import Synchronization
 import Testing
 @testable import RoomCore
 
-@Suite("Read-only Android and Gradle resource review")
+@Suite("Read-only developer resource review")
 struct DeveloperResourcesEngineTests {
+    @Test("AI inventory classifies known paths for seven tools without touching settings or profile documents")
+    func aiInventoryUsesNamedLocations() async throws {
+        let fixture = try DeveloperFixture()
+        defer { fixture.remove() }
+        let roots: [(DeveloperAITool, String, String, DeveloperAIStorageCategory)] = [
+            (.codex, "codex", "worktrees/project/build.bin", .worktrees),
+            (.claudeCode, "claude", "projects/project/session.jsonl", .history),
+            (.chatGPT, "chat", "Default/Code Cache/image.bin", .cache),
+            (.cursor, "cursor", "CachedExtensionVSIXs/extension.bin", .cache),
+            (.gemini, "gemini", "tmp/project/chats/session.json", .history),
+            (.copilot, "copilot", "logs/session.log", .diagnostics),
+            (.ollama, "ollama", "models/blobs/model.bin", .runtime),
+        ]
+        let contents = String(repeating: "x", count: 16_384)
+        for (_, home, child, _) in roots {
+            _ = try fixture.write(home + "/" + child, contents)
+            _ = try fixture.write(home + "/auth.json", contents)
+            _ = try fixture.write(home + "/Preferences", contents)
+            _ = try fixture.write(home + "/User/workspaceStorage/sessions.db", contents)
+        }
+        let knownFile = try fixture.write("codex/history.jsonl", contents)
+        let request = DeveloperResourcesRequest(
+            approvedFolders: roots.map { fixture.url($0.1) },
+            aiToolRoots: roots.map { DeveloperAIToolRoot(tool: $0.0, url: fixture.url($0.1)) },
+            scope: .aiTools)
+        let report = await DeveloperResourcesEngine().scan(request: request)
+
+        #expect(report.aiStorageResources.count == 8)
+        #expect(report.aiStorageResources.allSatisfy { $0.allocatedBytes > 0 && !$0.isPartial })
+        #expect(report.aiStorageResources.contains { $0.url.path == knownFile.path && $0.category == .history })
+        for (tool, _, _, category) in roots {
+            #expect(report.aiStorageResources.contains { $0.tool == tool && $0.category == category })
+        }
+        #expect(report.issues.isEmpty)
+        #expect(!report.isPartial)
+        #expect(report.toolchains.isEmpty && report.storageResources.isEmpty)
+    }
+
+    @Test("Desktop profiles measure recognized rendering caches without expanding Claude's CLI cache")
+    func desktopRenderingCachesStayScoped() async throws {
+        let fixture = try DeveloperFixture()
+        defer { fixture.remove() }
+        _ = try fixture.write("codex/Cache/page.bin", "desktop")
+        _ = try fixture.write("claude-app/Default/Code Cache/page.bin", "desktop")
+        _ = try fixture.write("claude-cli/cache/private.db", "unrecognized CLI cache")
+        _ = try fixture.write("claude-cli/cache/changelog.md", "recognized CLI cache")
+        _ = try fixture.write("chat/WebKit/NetworkCache/page.bin", "desktop")
+        _ = try fixture.write("chat/WebKit/LocalStorage/profile.db", "profile")
+        let roots: [DeveloperAIToolRoot] = [.init(tool: .codex, url: fixture.url("codex")),
+            .init(tool: .claudeCode, url: fixture.url("claude-app")),
+            .init(tool: .claudeCode, url: fixture.url("claude-cli")), .init(tool: .chatGPT, url: fixture.url("chat"))]
+        let report = await DeveloperResourcesEngine().scan(request: .init(
+            approvedFolders: roots.map(\.url), aiToolRoots: roots, scope: .aiTools))
+        #expect(Set(report.aiStorageResources.map(\.url.path)) == Set([
+            fixture.url("codex/Cache").path, fixture.url("claude-app/Default/Code Cache").path,
+            fixture.url("claude-cli/cache/changelog.md").path, fixture.url("chat/WebKit/NetworkCache").path,
+        ]))
+        #expect(report.issues.isEmpty)
+    }
+
+    @Test("AI inventory requires an exact grant and skips linked roots, duplicate roots and duplicate file storage")
+    func aiInventoryEnforcesBoundaryAndDeduplication() async throws {
+        let fixture = try DeveloperFixture()
+        defer { fixture.remove() }
+        let cursor = try fixture.directory("approved/cursor")
+        let codex = try fixture.directory("approved/codex")
+        let chat = try fixture.directory("approved/chat")
+        let outside = try fixture.directory("outside")
+        let shared = try fixture.write("approved/cursor/Cache/render.bin", String(repeating: "x", count: 16_384))
+        _ = try fixture.write("outside/Cache/secret.bin", "outside")
+        _ = try fixture.write("approved/codex/cache/build.bin", "parent grant only")
+        let linked = try fixture.directory("approved/chat/Code Cache")
+        try FileManager.default.linkItem(at: shared, to: linked.appendingPathComponent("render.bin"))
+        try FileManager.default.createSymbolicLink(at: chat.appendingPathComponent("Cache"),
+                                                   withDestinationURL: outside.appendingPathComponent("Cache"))
+        let request = DeveloperResourcesRequest(
+            approvedFolders: [fixture.url("approved"), cursor, chat],
+            aiToolRoots: [.init(tool: .cursor, url: cursor), .init(tool: .cursor, url: cursor),
+                          .init(tool: .chatGPT, url: chat), .init(tool: .codex, url: codex)],
+            scope: .aiTools)
+        let report = await DeveloperResourcesEngine().scan(request: request)
+
+        #expect(report.aiStorageResources.count == 2)
+        #expect(report.aiStorageResources.filter { $0.allocatedBytes > 0 }.count == 1)
+        #expect(report.issues.contains { $0.url.path == codex.path && $0.message.contains("explicitly") })
+        #expect(report.issues.contains { $0.url.path == chat.appendingPathComponent("Cache").path })
+        #expect(report.isPartial)
+    }
+
+    @Test("Tool storage retains a partial lower bound if a measured folder disappears")
+    func unavailableResourceAtFinalValidation() async throws {
+        let fixture = try DeveloperFixture()
+        defer { fixture.remove() }
+        let sdk = try fixture.directory("sdk")
+        let images = try fixture.directory("sdk/system-images")
+        let contents = String(repeating: "x", count: 16_384)
+        _ = try fixture.write("sdk/system-images/system.img", contents)
+        let moved = fixture.url("moved-images")
+
+        let engine = DeveloperResourcesEngine(beforeResourceValidation: { url in
+            guard url.path == images.path else { return }
+            do { try FileManager.default.moveItem(at: images, to: moved) }
+            catch { Issue.record("Could not rename the owned fixture: \(error)") }
+        })
+        let report = await engine.scan(request: .init(approvedFolders: [sdk], sdkRoots: [sdk], scope: .toolStorage))
+
+        let resource = try #require(report.storageResources.first)
+        #expect(resource.kind == .androidSystemImages)
+        #expect(resource.isPartial && resource.allocatedBytes > 0)
+        #expect(report.isPartial && !report.cancelled)
+        #expect(report.issues.contains { $0.url.path == images.path && $0.message.contains("became unavailable") })
+        #expect(try String(contentsOf: moved.appendingPathComponent("system.img"), encoding: .utf8) == contents)
+    }
+
+    @Test("Developer storage measures documented subfolders and keeps them out of toolchain attribution")
+    func toolStorageMeasuresExactRoots() async throws {
+        let f = try DeveloperFixture()
+        defer { f.remove() }
+        let gradle = try f.directory("custom-gradle")
+        let sdk = try f.directory("custom-sdk")
+        let simulatorDevices = try f.directory("custom-device-set")
+        let contents = String(repeating: "x", count: 16_384)
+        _ = try f.write("custom-gradle/daemon/8.10/daemon.log", contents)
+        _ = try f.write("custom-gradle/jdks/jdk-21/Contents/Home/release", contents)
+        _ = try f.write("custom-gradle/caches/8.10/build.bin", contents)
+        _ = try f.write("custom-sdk/system-images/android-35/google_apis/arm64-v8a/system.img", contents)
+        let device = UUID().uuidString
+        _ = try f.write("custom-device-set/\(device)/device.plist", contents)
+        _ = try f.write("custom-device-set/\(device)/data/private/app.bin", contents)
+        _ = try f.write("custom-sdk/platforms/android-35/android.jar", contents)
+
+        let report = await DeveloperResourcesEngine().scan(request: DeveloperResourcesRequest(
+            approvedFolders: [gradle, sdk, simulatorDevices], gradleHomes: [gradle, gradle], sdkRoots: [sdk],
+            simulatorDeviceRoots: [simulatorDevices], scope: .toolStorage))
+
+        #expect(Set(report.storageResources.map(\.kind)) == [.gradleDaemon, .gradleJDKs, .androidSystemImages, .simulatorDevices])
+        #expect(Set(report.storageResources.map { $0.url.path }) == Set([
+            f.url("custom-gradle/daemon").path, f.url("custom-gradle/jdks").path,
+            f.url("custom-sdk/system-images").path, simulatorDevices.path,
+        ]))
+        #expect(report.storageResources.count == 4)
+        #expect(report.storageResources.allSatisfy { $0.allocatedBytes > 0 && !$0.isPartial })
+        #expect(report.toolchains.isEmpty)
+        #expect(report.gradleResources.isEmpty)
+        #expect(report.androidDevices.isEmpty)
+        #expect(!report.isPartial)
+    }
+
+    @Test("Developer storage requires approval and skips links and unrecognized Simulator choices")
+    func toolStorageDoesNotFollowOtherPaths() async throws {
+        let f = try DeveloperFixture()
+        defer { f.remove() }
+        let gradle = try f.directory("gradle")
+        let caches = try f.directory("gradle/caches")
+        let sdk = try f.directory("sdk")
+        let outside = try f.directory("outside")
+        let unrelated = try f.directory("unrelated")
+        _ = try f.write("gradle/daemon/daemon.log", "an unapproved sibling")
+        _ = try f.write("outside/device_set.plist", "unapproved marker")
+        _ = try f.write("outside/system.img", "unapproved runtime")
+        try FileManager.default.createSymbolicLink(at: f.url("sdk/system-images"), withDestinationURL: outside)
+        try FileManager.default.createSymbolicLink(at: f.url("unrelated/device_set.plist"),
+                                                   withDestinationURL: f.url("outside/device_set.plist"))
+
+        let report = await DeveloperResourcesEngine().scan(request: DeveloperResourcesRequest(
+            approvedFolders: [caches, sdk, unrelated], gradleHomes: [gradle], sdkRoots: [sdk],
+            simulatorDeviceRoots: [outside, unrelated], scope: .toolStorage))
+
+        #expect(report.storageResources.isEmpty)
+        #expect(report.issues.contains { $0.url.path == outside.path && $0.message.contains("approval") })
+        #expect(report.issues.contains { $0.url.path == unrelated.path && $0.message.contains("device set") })
+        #expect(report.issues.contains { $0.url.path == f.url("sdk/system-images").path })
+    }
+
     @Test("AVD metadata and sparse allocations are useful without inventing a last-launch date")
     func androidEvidence() async throws {
         let f = try DeveloperFixture()
@@ -162,6 +336,112 @@ struct DeveloperResourcesEngineTests {
         let noTime = await DeveloperResourcesEngine().scan(request: DeveloperResourcesRequest(approvedFolders: [avds], avdRoots: [avds],
             limits: DeveloperResourcesLimits(timeLimit: 0)))
         #expect(noTime.isPartial)
+    }
+
+    @Test func fixtureSubyKMPAndStandupbotJVM() async throws {
+        let f = try DeveloperFixture()
+        defer { f.remove() }
+        let projects = try f.directory("projects")
+        let sdk = try f.directory("sdk")
+        let konan = try f.directory("konan")
+        let gradle = try f.directory("gradle")
+        _ = try f.directory("gradle/caches")
+        _ = try f.write("projects/Suby/settings.gradle.kts", "rootProject.name = \"Suby\"")
+        _ = try f.write("projects/Suby/gradle/wrapper/gradle-wrapper.properties",
+                        "distributionUrl=https://example.invalid/gradle-8.9-bin.zip")
+        _ = try f.write("projects/Suby/gradle/libs.versions.toml", """
+            [versions]
+            k = "2.1.0"
+            n = "27.1.12297006"
+            [plugins]
+            kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "k" }
+            """)
+        _ = try f.write("projects/Suby/shared/build.gradle.kts", """
+            plugins { alias(libs.plugins.kotlin.multiplatform) }
+            kotlin { iosArm64() }
+            android { ndkVersion = libs.versions.n.get() }
+            """)
+        _ = try f.write("projects/Standup/build.gradle.kts", #"plugins { kotlin("jvm") version "2.0.21" }"#)
+        _ = try f.write("sdk/ndk/27.1.12297006/tool", "NDK")
+        _ = try f.write("konan/kotlin-native-prebuilt-macos-aarch64-2.1.0/tool", "native")
+        _ = try f.write("konan/kotlin-native-prebuilt-macos-aarch64-2.0.21/tool", "native")
+        _ = try f.write("gradle/wrapper/dists/gradle-8.9-bin/hash/archive", "Gradle")
+        _ = try f.write("gradle/wrapper/dists/gradle-7.6.4-bin/hash/archive", "old Gradle")
+
+        let report = await DeveloperResourcesEngine().scan(request: .init(
+            approvedFolders: [projects, sdk, konan, gradle], gradleHomes: [gradle],
+            projectRoots: [projects], sdkRoots: [sdk], konanRoots: [konan]))
+        #expect(report.projects.count == 2)
+        let suby = try #require(report.projects.first { $0.name == "Suby" })
+        let standup = try #require(report.projects.first { $0.name == "Standup" })
+        #expect(suby.pinsKonan && suby.ndk == "27.1.12297006" && suby.gradle?.version == "8.9")
+        #expect(!standup.pinsKonan && standup.kotlin == "2.0.21")
+        let summary = RoomDeveloperRooms.summarize(projects: report.projects, artifacts: report.toolchains,
+                                                    scanPartial: report.isPartial)
+        let row = try #require(summary.rows.first { $0.project.name == "Suby" })
+        #expect(row.segments.map(\.kind) == [.ndk, .kotlinNative, .gradle])
+        #expect(summary.orphans.contains { $0.artifact.version == "7.6.4-bin" })
+    }
+
+    @Test func localPropertiesNeverRead() async throws {
+        let f = try DeveloperFixture()
+        defer { f.remove() }
+        let project = try f.directory("projects/Project")
+        _ = try f.write("projects/Project/build.gradle.kts", "kotlin { iosArm64() }")
+        for name in ["local.properties", "gradle.properties", ".env", ".env.production"] {
+            #expect(mkfifo(project.appendingPathComponent(name).path, 0o600) == 0)
+        }
+        let report = await DeveloperResourcesEngine().scan(request: .init(
+            approvedFolders: [project], projectRoots: [project]))
+        #expect(report.projects.count == 1)
+        #expect(report.issues.isEmpty)
+    }
+
+    @Test func unapprovedRootNotInspected() async throws {
+        let f = try DeveloperFixture()
+        defer { f.remove() }
+        let approved = try f.directory("approved")
+        let outside = try f.directory("other")
+        _ = try f.write("other/ndk/99.0/tool", "not approved")
+        _ = try f.write("other/build.gradle.kts", "kotlin { iosArm64() }")
+        let report = await DeveloperResourcesEngine().scan(request: .init(
+            approvedFolders: [approved], projectRoots: [outside], sdkRoots: [outside]))
+        #expect(report.projects.isEmpty && report.toolchains.isEmpty)
+        #expect(report.issues.count == 2)
+        #expect(report.issues.allSatisfy { $0.url.path == outside.path })
+    }
+
+    @Test func derivedDataOutsideApprovalNotStatted() async throws {
+        let f = try DeveloperFixture()
+        defer { f.remove() }
+        let projects = try f.directory("projects")
+        let data = try f.directory("derived-data")
+        for (folder, workspace) in [("Inside", "projects/Gone.xcodeproj"), ("Outside", "other/Gone.xcodeproj")] {
+            let container = try f.directory("derived-data/" + folder)
+            let plist = try PropertyListSerialization.data(fromPropertyList: ["WorkspacePath": f.url(workspace).path],
+                                                           format: .binary, options: 0)
+            try plist.write(to: container.appendingPathComponent("info.plist"))
+        }
+        let report = await DeveloperResourcesEngine().scan(request: .init(
+            approvedFolders: [projects, data], derivedDataRoots: [data]))
+        let summary = RoomDeveloperRooms.summarize(projects: report.projects, artifacts: report.toolchains,
+                                                    scanPartial: report.isPartial)
+        let reasons = Dictionary(uniqueKeysWithValues: summary.orphans.map { ($0.artifact.version, $0.reason) })
+        #expect(reasons["Inside"] == .projectFolderGone)
+        #expect(reasons["Outside"] == .pinnedByNone)
+        #expect(report.toolchains.first { $0.version == "Outside" }?.workspacePresent == nil)
+    }
+
+    @Test func oversizeFileIsIssue() async throws {
+        let f = try DeveloperFixture()
+        defer { f.remove() }
+        let projects = try f.directory("projects")
+        let large = try f.write("projects/Project/build.gradle.kts",
+                                "ndkVersion = \"27.1.12297006\"\n" + String(repeating: "x", count: 262_145))
+        let report = await DeveloperResourcesEngine().scan(request: .init(approvedFolders: [projects],
+                                                                          projectRoots: [projects]))
+        #expect(report.isPartial)
+        #expect(report.issues.contains { $0.url == large })
     }
 
     @Test("Version parsing handles release candidates and discards URL credentials and nonstandard filenames")

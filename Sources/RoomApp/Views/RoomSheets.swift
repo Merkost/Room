@@ -1,100 +1,16 @@
 import AppKit
 import SwiftUI
 
-struct RoomReviewSheet: View {
-    @Bindable var model: RoomViewModel
-    @Environment(\.dismiss) private var dismiss
-    private var sources: [RoomSource] { model.sources.filter { model.selection.contains($0.id) && $0.isAvailable } }
-
-    var body: some View {
-        #if ROOM_APP_STORE
-        RoomStoreCacheReviewSheet(model: model)
-        #else
-        VStack(alignment: .leading, spacing: 24) {
-            RoomSheetHeading(title: "Make a little room.", subtitle: "Review the caches you’ve selected.")
-
-            HStack(alignment: .firstTextBaseline) {
-                Text(RoomFormat.bytes(model.selectedBytes))
-                    .font(RoomType.figure(40))
-                    .tracking(-1.5)
-                Spacer()
-                Text("\(sources.count) \(sources.count == 1 ? "source" : "sources")")
-                    .font(.system(size: 14))
-                    .foregroundStyle(.secondary)
-            }
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    ForEach(sources) { source in
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Text(source.name).font(.system(size: 14, weight: .medium))
-                                Spacer()
-                                Text(RoomFormat.bytes(source.eligibleBytes)).font(.system(size: 14)).monospacedDigit()
-                            }
-                            Text(source.notes)
-                                .font(.system(size: 13))
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 3)
-            }
-            .frame(maxHeight: 250)
-            .scrollIndicators(.visible)
-
-            Label {
-                Text("Caches may rebuild. Items stay recoverable in Trash; disk space is released when Trash is emptied.")
-                    .font(.system(size: 13))
-                    .fixedSize(horizontal: false, vertical: true)
-            } icon: {
-                Image(systemName: "arrow.uturn.backward")
-                    .font(.system(size: 15))
-            }
-            .foregroundStyle(.secondary)
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 16))
-
-            HStack(spacing: 12) {
-                Button("Cancel") { dismiss() }
-                    .buttonStyle(.glass)
-                    .keyboardShortcut(.cancelAction)
-                Spacer()
-                if model.isWorking { ProgressView().controlSize(.small) }
-                Button {
-                    Task {
-                        await model.cleanSelected()
-                        dismiss()
-                    }
-                } label: {
-                    Label(model.isWorking ? "Moving…" : "Move to Trash", systemImage: "trash")
-                        .padding(.horizontal, 8)
-                }
-                .buttonStyle(.glassProminent)
-                .keyboardShortcut(.defaultAction)
-                .disabled(sources.isEmpty || model.isScanning || model.isWorking)
-            }
-            .controlSize(.large)
-            .disabled(model.isWorking)
-        }
-        .padding(32)
-        .frame(width: 550)
-        .interactiveDismissDisabled(model.isWorking)
-        #endif
-    }
-}
-
 struct RoomSourceSheet: View {
+    @Environment(\.roomHide) private var hide
+    private var hidden: Bool { hide.masksNow }
     let source: RoomSource
     @Bindable var model: RoomViewModel
     @Environment(\.dismiss) private var dismiss
 
     private var heldBytes: Int64 { max(0, source.bytes - source.eligibleBytes) }
     private func measured(_ bytes: Int64) -> String {
-        (source.isPartial ? "≥ " : "") + RoomFormat.bytes(bytes)
+        (source.isPartial ? "≥ " : "") + RoomCachesVisibility.bytes(bytes, hidden: hidden)
     }
 
     var body: some View {
@@ -103,7 +19,7 @@ struct RoomSourceSheet: View {
 
             HStack(alignment: .firstTextBaseline, spacing: 24) {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(RoomFormat.bytes(source.eligibleBytes))
+                    Text(RoomCachesVisibility.bytes(source.eligibleBytes, hidden: hidden))
                         .font(RoomType.figure(34))
                         .tracking(-1)
                     Text("Clearable").font(.system(size: 13)).foregroundStyle(.secondary)
@@ -143,12 +59,12 @@ struct RoomSourceSheet: View {
                             ForEach(source.largestEntries, id: \.path) { entry in
                                 VStack(alignment: .leading, spacing: 4) {
                                     HStack(alignment: .firstTextBaseline, spacing: 16) {
-                                        Text(entry.name)
+                                        Text(hidden ? "Item name hidden" : entry.name)
                                             .font(.system(size: 13, weight: .medium))
                                             .lineLimit(1)
                                             .truncationMode(.middle)
                                         Spacer(minLength: 0)
-                                        Text(RoomFormat.bytes(entry.bytes))
+                                        Text(RoomCachesVisibility.bytes(entry.bytes, hidden: hidden))
                                             .font(.system(size: 13)).monospacedDigit()
                                             .foregroundStyle(.secondary)
                                             .fixedSize()
@@ -157,7 +73,7 @@ struct RoomSourceSheet: View {
                                         .font(.system(size: 12)).foregroundStyle(.secondary)
                                         .lineLimit(1)
                                 }
-                                .help(entry.path + (entry.reason.map { "\n" + $0 } ?? ""))
+                                .help(hidden ? "Location hidden" : entry.path + (entry.reason.map { "\n" + $0 } ?? ""))
                                 .accessibilityElement(children: .combine)
                             }
                         }
@@ -173,7 +89,7 @@ struct RoomSourceSheet: View {
                                             .fixedSize(horizontal: false, vertical: true)
                                         Spacer(minLength: 0)
                                         VStack(alignment: .trailing, spacing: 3) {
-                                            Text(RoomFormat.bytes(held.bytes)).monospacedDigit()
+                                            Text(RoomCachesVisibility.bytes(held.bytes, hidden: hidden)).monospacedDigit()
                                             Text("\(held.count) \(held.count == 1 ? "item" : "items")").foregroundStyle(.secondary)
                                         }
                                         .font(.system(size: 12))
@@ -187,7 +103,7 @@ struct RoomSourceSheet: View {
                     }
 
                     DisclosureGroup("Locations") {
-                        Text(source.path)
+                        Text(hidden ? "Location hidden" : source.path)
                             .font(.system(size: 12))
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
@@ -197,7 +113,7 @@ struct RoomSourceSheet: View {
                     .font(.system(size: 13, weight: .medium))
 
                     DisclosureGroup("Cleanup rules") {
-                        Text(source.notes)
+                        Text(hidden ? "Review details hidden" : source.notes)
                             .font(.system(size: 13))
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
@@ -227,50 +143,6 @@ struct RoomSourceSheet: View {
     }
 }
 
-struct RoomProtectedSheet: View {
-    @Bindable var model: RoomViewModel
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            RoomSheetHeading(title: "Your work stays.", subtitle: "These locations are excluded from cleanup.")
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    ForEach(model.protectedSources) { source in
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Label(source.name, systemImage: "lock")
-                                    .font(.system(size: 14, weight: .medium))
-                                Spacer()
-                                Text(RoomFormat.bytes(source.bytes))
-                                    .font(.system(size: 13))
-                                    .foregroundStyle(.secondary)
-                                    .monospacedDigit()
-                                Button { model.revealProtected(source: source) } label: { Image(systemName: "arrow.up.forward") }
-                                    .buttonStyle(.plain)
-                                    .help("Show \(source.name) in Finder")
-                                    .accessibilityLabel("Show \(source.name) in Finder")
-                            }
-                            Text(source.reason).font(.system(size: 13)).foregroundStyle(.secondary)
-                            Text(source.path)
-                                .font(.system(size: 12, design: .monospaced))
-                                .foregroundStyle(.secondary)
-                                .textSelection(.enabled)
-                        }
-                    }
-                }
-                .padding(.vertical, 4)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .frame(maxHeight: 360)
-            HStack { Spacer(); Button("Done") { dismiss() }.buttonStyle(.glassProminent).keyboardShortcut(.defaultAction) }
-                .controlSize(.large)
-        }
-        .padding(32)
-        .frame(width: 580)
-    }
-}
-
 struct RoomScanIssuesSheet: View {
     let issues: [String]
     @Environment(\.dismiss) private var dismiss
@@ -292,126 +164,6 @@ struct RoomScanIssuesSheet: View {
         }
         .padding(32)
         .frame(width: 570)
-    }
-}
-
-struct RoomActivityView: View {
-    @Bindable var model: RoomViewModel
-    #if ROOM_APP_STORE
-    @State private var restoreReview: RoomActivity?
-    #endif
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Activity")
-                        .font(RoomType.heading(24))
-                    Text("Your cleanup history. Restore anything still in Trash.")
-                        .font(.system(size: 14)).foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button { model.openTrash() } label: { Label("Open Trash", systemImage: "trash") }
-                    .buttonStyle(.glass)
-                    .controlSize(.large)
-            }
-
-            if model.activity.isEmpty {
-                ContentUnavailableView {
-                    Label("No cleanup history", systemImage: "clock.arrow.circlepath")
-                } description: {
-                    Text("Caches you move to Trash will appear here.")
-                }
-                .frame(maxWidth: .infinity, minHeight: 240)
-            } else {
-                VStack(alignment: .leading, spacing: 20) {
-                    ForEach(model.activity) { record in
-                        RoomActivityRow(record: record, isWorking: model.isWorking || model.isScanning) {
-                            #if ROOM_APP_STORE
-                            restoreReview = record
-                            #else
-                            Task { await model.restore(record: record) }
-                            #endif
-                        }
-                    }
-                }
-            }
-
-            Text("Disk space is released when you empty Trash in Finder.")
-                .font(.system(size: 13)).foregroundStyle(.secondary)
-            if model.isScanning {
-                Label("Cache scan in progress. Stop it in Clean to restore now.", systemImage: "magnifyingglass")
-                    .font(.system(size: 13)).foregroundStyle(.secondary)
-            }
-            if let message = model.statusMessage, !message.isEmpty {
-                Text(message)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                    .accessibilityAddTraits(.updatesFrequently)
-            }
-        }
-        #if ROOM_APP_STORE
-        .sheet(item: $restoreReview, onDismiss: { model.discardStoreReview() }) { record in
-            RoomStoreRestoreSheet(model: model, record: record)
-        }
-        #endif
-    }
-}
-
-private struct RoomActivityRow: View {
-    let record: RoomActivity
-    let isWorking: Bool
-    let restore: () -> Void
-    @State private var expanded = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 15) {
-            HStack(spacing: 18) {
-                Image(systemName: record.canRestore ? "trash" : "arrow.uturn.backward")
-                    .font(.system(size: 21)).foregroundStyle(.secondary)
-                    .frame(width: 30)
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(record.title).font(.system(size: 14, weight: .medium))
-                    Text(record.date.formatted(date: .abbreviated, time: .shortened))
-                        .font(.system(size: 12)).foregroundStyle(.secondary)
-                }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 5) {
-                    Text(RoomFormat.bytes(record.bytes)).font(.system(size: 14)).monospacedDigit()
-                    Text("\(record.itemCount) \(record.itemCount == 1 ? "item" : "items") · \(record.restoredCount) restored")
-                        .font(.system(size: 12)).foregroundStyle(.secondary)
-                }
-                Button("Restore", action: restore)
-                    .buttonStyle(.glass)
-                    .controlSize(.large)
-                    .disabled(!record.canRestore || isWorking)
-            }
-
-            DisclosureGroup(isExpanded: $expanded) {
-                VStack(alignment: .leading, spacing: 14) {
-                    ForEach(record.details) { item in
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Text(item.name).font(.system(size: 13, weight: .medium))
-                                Spacer()
-                                if item.isRestored {
-                                    Text("Restored").font(.system(size: 12)).foregroundStyle(.secondary)
-                                }
-                            }
-                            Text(item.message).font(.system(size: 12)).foregroundStyle(.secondary)
-                            Text(item.path).font(.system(size: 12, design: .monospaced)).foregroundStyle(.secondary).textSelection(.enabled)
-                        }
-                    }
-                }
-                .padding(.top, 12)
-            } label: {
-                Text(record.errorCount > 0 ? "Review \(record.errorCount) \(record.errorCount == 1 ? "issue" : "issues") and item details" : "Item details")
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
-            }
-            .padding(.leading, 48)
-        }
-        .padding(16)
-        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
 

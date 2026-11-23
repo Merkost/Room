@@ -6,7 +6,8 @@ import SwiftUI
 struct RoomApp: App {
     @NSApplicationDelegateAdaptor(RoomApplicationDelegate.self) private var delegate
     @State private var model: RoomViewModel
-    @State private var insights = RoomInsightsModel()
+    @State private var insights = RoomInsightsModel(volumeHistory: .shared, pressureWriter: .shared, activityCenter: .shared)
+    @State private var navigation = RoomWindowNavigation()
     @State private var memoryActions = MemoryActionsModel()
     @State private var rooms: RoomRoomsModel
     #if !ROOM_APP_STORE
@@ -17,7 +18,29 @@ struct RoomApp: App {
     @Environment(\.openSettings) private var openSettings
 
     init() {
-        let cacheModel = RoomViewModel()
+        #if ROOM_APP_STORE
+        let home = RoomStoreEnvironment.userHome ?? FileManager.default.homeDirectoryForCurrentUser
+        #else
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        #endif
+        let activity = RoomActivityCenter.shared
+        let ledger = RoomMakeRoomStore(home: home)
+        ledger.didObserveGain = { entry in
+            activity.post(.made(.init(id: entry.id,
+                sentence: RoomMakeRoomCopy.headline(entry, format: RoomFormat.overviewBytes),
+                canRestore: entry.stillInTrashBytes > 0)), from: .makeRoom)
+        }
+        #if DEBUG
+        let fixtureEngine = ProcessInfo.processInfo.environment["ROOM_MAIN_MENU_TEST_OUTPUT"].map { output in
+            let fixture = URL(fileURLWithPath: output).deletingLastPathComponent()
+            return CacheEngine(configuration: CacheConfiguration(roots: [], homeDirectory: fixture),
+                               activityDirectory: fixture.appendingPathComponent("Activity", isDirectory: true))
+        }
+        #else
+        let fixtureEngine: CacheEngine? = nil
+        #endif
+        let cacheModel = RoomViewModel(engine: fixtureEngine, cachesCheckStore: RoomCachesCheckStore(writer: .shared),
+            makeRoomStore: ledger, activityCenter: activity, ignoreStore: RoomIgnoreStore(), mapStore: .shared)
         _model = State(initialValue: cacheModel)
         #if ROOM_APP_STORE
         _rooms = State(initialValue: RoomRoomsModel(isWorking: { cacheModel.isWorking }))
@@ -28,30 +51,93 @@ struct RoomApp: App {
         #endif
     }
 
+    private var isWorking: Bool {
+        #if ROOM_APP_STORE
+        model.isWorking
+        #else
+        model.isWorking || agentWork.isWorking
+        #endif
+    }
+
+    private func openMainWindow() {
+        openWindow(id: "room")
+        NSApp.activate()
+    }
+
+    private func isOnboardingBusy() -> Bool {
+        isWorking || RoomNativeFolderPicker.shared.isPresenting
+    }
+
+    private func enableOnboardingMonitor() {
+        menuBarEnabled = true
+        delegate.statusMonitor?.setEnabled(true)
+    }
+
     @ViewBuilder private var rootView: some View {
         #if ROOM_APP_STORE
-        RoomRootView(model: model, insights: insights, memoryActions: memoryActions, rooms: rooms)
+        RoomRootView(model: model, insights: insights, memoryActions: memoryActions, rooms: rooms, navigation: navigation,
+                     isOnboardingBusy: isOnboardingBusy, enableOnboardingMonitor: enableOnboardingMonitor,
+                     showOnboardingMonitor: { delegate.statusMonitor?.showMonitor() })
         #else
-        RoomRootView(model: model, insights: insights, memoryActions: memoryActions, rooms: rooms, agentWork: agentWork)
+        RoomRootView(model: model, insights: insights, memoryActions: memoryActions, rooms: rooms,
+                     navigation: navigation, agentWork: agentWork, isOnboardingBusy: isOnboardingBusy,
+                     enableOnboardingMonitor: enableOnboardingMonitor,
+                     showOnboardingMonitor: { delegate.statusMonitor?.showMonitor() })
         #endif
     }
 
     var body: some Scene {
         Window("Room", id: "room") {
             rootView
+                .environment(\.roomActivityCenter, model.activityCenter)
+                .modifier(RoomMotionRoot())
+                .modifier(RoomAccentRoot())
+                .modifier(RoomHideRoot())
                 .background(RoomWindowConfigurator())
                 .onAppear {
                     delegate.model = model
+                    delegate.insights = insights
+                    insights.recordCapacityOnLaunch()
                     #if !ROOM_APP_STORE
                     delegate.agentWork = agentWork
+                    RoomWeeklyCheckScheduler.shared.configure(source: {
+                        guard !isWorking, !model.isScanning else { return nil }
+                        return await model.weeklyQuickCheck()
+                    }, openCaches: {
+                        navigation.select(.clean)
+                        openMainWindow()
+                    })
                     #endif
                     delegate.configureMonitor(insights: insights, cacheModel: model, rooms: rooms, enabled: menuBarEnabled, openRoom: {
                         openWindow(id: "room")
                         NSApp.activate()
                     }, openSettings: { openSettings() })
                 }
+                .onChange(of: model.lastScanned) { _, date in
+                    if date != nil { insights.recordCapacityAfterScan() }
+                }
                 .onChange(of: menuBarEnabled, initial: true) { _, enabled in
                     delegate.statusMonitor?.setEnabled(enabled)
+                }
+                .task {
+                    await insights.updateTreeApprovals()
+                    if insights.diskCapacitySampledAt == nil { insights.refreshDiskCapacity() }
+                    await model.ignoreStore?.load()
+                    await model.refreshHistory()
+                    await model.makeRoomStore?.checkNow()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                    Task { await model.makeRoomStore?.checkNow() }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { notification in
+                    guard (notification.object as? NSWindow)?.identifier == RoomApplicationDelegate.primaryWindowID else { return }
+                    Task { await model.makeRoomStore?.checkNow() }
+                }
+                .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didWakeNotification)) { _ in
+                    Task { await model.makeRoomStore?.checkNow() }
+                }
+                .onChange(of: insights.volumeCapacity, initial: true) { _, capacity in
+                    model.activityCenter?.setIdle(freeBytes: capacity?.freeBytes)
                 }
         }
         .defaultSize(width: 1000, height: 760)
@@ -59,27 +145,35 @@ struct RoomApp: App {
         .windowToolbarStyle(.unified)
         .windowBackgroundDragBehavior(.enabled)
         .commands {
+            RoomCommands(windowContext: delegate.commandWindow, menuBarEnabled: menuBarEnabled, isWorking: { isWorking },
+                         rooms: rooms, navigation: navigation, showMonitor: { delegate.statusMonitor?.showMonitor() },
+                         openTrash: model.openTrash, showWelcome: {
+                insights.requestedWelcome = true
+                openMainWindow()
+            }, navigate: { destination in
+                navigation.select(.screen(destination), origin: .keyboard)
+                openMainWindow()
+            }, canOpenPinnedRooms: { insights.canChooseDiskLocation }, navigateToRoom: { id in
+                navigation.select(.room(id), origin: .keyboard)
+                openMainWindow()
+            })
             #if DEBUG
-            RoomDebugMenuCommands(monitor: { delegate.statusMonitor })
+            RoomDebugMenuCommands(windowContext: delegate.commandWindow, enabled: menuBarEnabled,
+                monitor: { delegate.statusMonitor },
+                simulateTrash: {
+                    guard !model.isWorking else { return }
+                    Task { await model.makeRoomStore?.simulateTrash() }
+                }, resetTrash: {
+                    model.makeRoomStore?.resetSimulatedTrash()
+                    model.activityCenter?.clear(.makeRoom)
+                })
             #endif
-            CommandGroup(replacing: .newItem) { }
-            CommandGroup(after: .appInfo) {
-                Button("Show Monitor") { delegate.statusMonitor?.showMonitor() }
-                    .keyboardShortcut("m", modifiers: [.command, .shift])
-                    .disabled(!menuBarEnabled)
-                Button(model.isScanning ? "Stop Cache Scan" : "Scan Caches") {
-                    insights.requestedDestination = .clean
-                    if model.isScanning { model.cancelScan() } else { model.scan() }
-                }
-                    .keyboardShortcut("r", modifiers: [.command, .shift])
-                    .disabled(model.isWorking)
-                Button("Open Trash") { model.openTrash() }
-            }
         }
         Settings {
-            RoomSettingsView(model: model, insights: insights, rooms: rooms)
+            RoomSettingsView(model: model, insights: insights, rooms: rooms, isWorking: { isWorking })
                 .modifier(RoomMotionRoot())
                 .modifier(RoomAccentRoot())
+                .modifier(RoomHideRoot())
         }
         .windowResizability(.contentSize)
 
@@ -87,7 +181,11 @@ struct RoomApp: App {
 }
 
 final class RoomApplicationDelegate: NSObject, NSApplicationDelegate {
+    static let primaryWindowID = NSUserInterfaceItemIdentifier("RoomPrimaryWindow")
+
     weak var model: RoomViewModel?
+    weak var insights: RoomInsightsModel?
+    private var waitingForStateWrites = false
     #if !ROOM_APP_STORE
     weak var agentWork: AgentWorkModel?
     #endif
@@ -99,10 +197,12 @@ final class RoomApplicationDelegate: NSObject, NSApplicationDelegate {
         #endif
     }
     private(set) var statusMonitor: RoomStatusMonitor?
+    let commandWindow = RoomCommandWindowContext()
 
     func configureMonitor(insights: RoomInsightsModel, cacheModel: RoomViewModel,
                           rooms: RoomRoomsModel, enabled: Bool, openRoom: @escaping () -> Void,
                           openSettings: @escaping () -> Void) {
+        self.insights = insights
         if let statusMonitor {
             statusMonitor.updateOpenRoom(openRoom)
             statusMonitor.updateOpenSettings(openSettings)
@@ -122,6 +222,27 @@ final class RoomApplicationDelegate: NSObject, NSApplicationDelegate {
             NSApp.applicationIconImage = icon
         }
         NSApp.activate()
+        for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification,
+                     NSWindow.willBeginSheetNotification, NSWindow.didEndSheetNotification,
+                     NSWindow.willCloseNotification] {
+            NotificationCenter.default.addObserver(self, selector: #selector(commandWindowChanged), name: name, object: nil)
+        }
+        NotificationCenter.default.addObserver(self, selector: #selector(finishWindowConfirmations),
+                                               name: NSWindow.willCloseNotification, object: nil)
+        commandWindow.update()
+        #if DEBUG
+        RoomDebugMainMenuProbe.start()
+        #endif
+    }
+
+    @objc private func commandWindowChanged() {
+        Task { @MainActor in commandWindow.update() }
+    }
+
+    @objc private func finishWindowConfirmations(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow, !(window is NSPanel), window.sheetParent == nil else { return }
+        let prefix = window.identifier == Self.primaryWindowID ? "sidebar:" : "settings:"
+        RoomInlineConfirmCenter.shared.finishAll(prefix: prefix)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -133,24 +254,42 @@ final class RoomApplicationDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         #if !ROOM_APP_STORE
         agentWork?.shutdown()
+        RoomWeeklyCheckScheduler.shared.stop()
         #endif
         StorageAIEngine.shutdownOwnedWorkers()
         statusMonitor?.setEnabled(false)
     }
 
+    func applicationDidBecomeActive(_ notification: Notification) {
+        insights?.recordCapacityOnActivation()
+    }
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard model?.isWorking == true || isAgentOperationWorking else { return .terminateNow }
-        let alert = NSAlert()
-        alert.messageText = "Room is finishing a file operation."
-        alert.informativeText = "Keep Room open while its recovery record is saved. Files already moved remain in Trash."
-        alert.addButton(withTitle: "Keep Room Open")
-        alert.runModal()
-        return .terminateCancel
+        if model?.isWorking == true || isAgentOperationWorking {
+            let alert = NSAlert()
+            alert.messageText = "Room is finishing a file operation."
+            alert.informativeText = "Keep Room open while its recovery record is saved. Files already moved remain in Trash."
+            alert.addButton(withTitle: "Keep Room Open")
+            alert.runModal()
+            return .terminateCancel
+        }
+        if waitingForStateWrites { return .terminateLater }
+        RoomInlineConfirmCenter.shared.finishAll()
+        insights?.volumeHistory.prepareForTermination()
+        insights?.savePressureHistory()
+        let writer = RoomStateWriter.shared
+        guard writer.hasPendingWrites else { return .terminateNow }
+        waitingForStateWrites = true
+        Task { @MainActor in
+            await writer.flush(deadline: .milliseconds(500))
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if !flag {
-            sender.windows.first { $0.identifier?.rawValue == "RoomPrimaryWindow" }?.makeKeyAndOrderFront(nil)
+            sender.windows.first { $0.identifier == Self.primaryWindowID }?.makeKeyAndOrderFront(nil)
         }
         return true
     }
@@ -169,7 +308,7 @@ private final class RoomWindowBridge: NSView {
         window.titlebarAppearsTransparent = true
         window.isOpaque = false
         window.backgroundColor = .clear
-        window.identifier = NSUserInterfaceItemIdentifier("RoomPrimaryWindow")
+        window.identifier = RoomApplicationDelegate.primaryWindowID
         window.isReleasedWhenClosed = false
         window.setFrameAutosaveName("RoomPrimaryWindow")
     }

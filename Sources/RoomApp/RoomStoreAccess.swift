@@ -101,6 +101,30 @@ final class RoomStoreFolderReview {
         grantedPaths.insert(expected.path)
     }
 
+    /// Only grants still required by the current review survive a narrower selection.
+    func narrow(to paths: Set<String>) {
+        let removed = Set(locations.map(\.path)).subtracting(paths)
+        guard !removed.isEmpty else { return }
+        generation = UUID()
+        for path in removed {
+            if let grant = grants.removeValue(forKey: path), grant.scoped { endScope(grant.url) }
+            identities.removeValue(forKey: path)
+        }
+        grantedPaths.subtract(removed)
+        trashPaths.subtract(removed)
+        locations.removeAll { removed.contains($0.path) }
+    }
+
+    /// Stages new exact parents as a group before changing the review.
+    func add(_ urls: [URL]) throws {
+        let additional = Dictionary(grouping: urls.filter { identities[$0.path] == nil }, by: \.path)
+            .compactMap { $0.value.first }
+        let expected = try Dictionary(uniqueKeysWithValues: additional.map { ($0.path, try Self.identity($0)) })
+        identities.merge(expected) { current, _ in current }
+        locations.append(contentsOf: additional)
+        locations.sort { $0.path < $1.path }
+    }
+
     func validate(exactly urls: [URL]) throws {
         let paths = Set(urls.map(\.path))
         guard !paths.isEmpty, paths == Set(locations.map(\.path)), allGranted else { throw RoomStoreAccessError.approvalRequired }

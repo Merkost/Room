@@ -7,6 +7,31 @@ import Testing
 
 @Suite("Store native review boundaries") @MainActor
 struct RoomStoreAccessTests {
+    @Test func narrowKeepsRemainingGrantsAndEndsDroppedScopes() async throws {
+        let fixture = try StoreAccessFixture()
+        defer { fixture.remove() }
+        let state = StorePickerState()
+        let review = RoomStoreFolderReview(picker: { _, _ in state.selected },
+            beginScope: { _ in state.starts += 1; return true }, endScope: { _ in state.ends += 1 })
+        try review.prepare([fixture.cache, fixture.trash])
+        state.selected = fixture.cache
+        try await review.allow(fixture.cache)
+        state.selected = fixture.trash
+        try await review.allow(fixture.trash)
+        review.narrow(to: [fixture.cache.path])
+        #expect(review.grantedPaths == [fixture.cache.path] && state.ends == 1)
+        try review.validate(exactly: [fixture.cache])
+        #expect(throws: (any Error).self) { try review.validate(exactly: [fixture.cache, fixture.trash]) }
+
+        try review.add([fixture.cache, fixture.trash])
+        #expect(review.grantedPaths == [fixture.cache.path] && !review.allGranted)
+        #expect(throws: (any Error).self) { try review.validate(exactly: [fixture.cache, fixture.trash]) }
+        try await review.allow(fixture.trash)
+        try review.validate(exactly: [fixture.cache, fixture.trash])
+        review.discard()
+        #expect(state.starts == state.ends)
+    }
+
     @Test func exactPhysicalApprovalRejectsParentsLinksAndReplacements() async throws {
         let fixture = try StoreAccessFixture()
         defer { fixture.remove() }
