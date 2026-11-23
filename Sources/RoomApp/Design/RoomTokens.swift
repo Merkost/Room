@@ -184,47 +184,67 @@ enum RoomTokens {
         static let plan: CGFloat = 11
     }
 
-    /// Onboarding v3 sheet (ONBOARDING-V3-SPEC §3). The stage sizes live in `RoomOnboardingStage`.
+    /// The first-run welcome: three wordless scenes (title, one line, a graphic). Stage sizes live in `RoomOnboardingStage`.
     enum Onboarding {
         static let width: CGFloat = RoomDS.Layout.onboardingSheet.width
         static let height: CGFloat = RoomDS.Layout.onboardingSheet.height
         static let maxHeight: CGFloat = 600
-        static let top: CGFloat = 32
+        static let top: CGFloat = 40
         static let side: CGFloat = 40
         static let bottom: CGFloat = 24
-        static let headerGap: CGFloat = 8
-        static let leadReserve: CGFloat = 44
-        static let leadWidth: CGFloat = 560
-        static let leadToStage: CGFloat = 20
-        static let captionGap: CGFloat = 8
-        static let captionHeight: CGFloat = 16
-        static let choiceGap: CGFloat = 20
-        static let alternativesGap: CGFloat = 16
-        /// Skip to Continue, and between the step 3 links.
-        static let linkGap: CGFloat = 20
-        static let contextWidth: CGFloat = 370
+        static let pipsHeight: CGFloat = 12
+        static let titleToLine: CGFloat = 6
+        static let headerHeight: CGFloat = 92
+        static let headerToStage: CGFloat = 24
         static let footerHeight: CGFloat = 34
-        static let exampleOrigin = CGPoint(x: 24, y: 46)
-        static let exampleSize = CGSize(width: 336, height: 178)
-        static let chipOrigin = CGPoint(x: 16, y: 14)
-        static let railX: CGFloat = 388
-        static let railWidth: CGFloat = 192
-        static let railItem: CGFloat = 60
-        static let bead: CGFloat = 20
-        static let triptychBead: CGFloat = 18
-        static let triptychTop: CGFloat = 50
-        static let triptychInset: CGFloat = 16
-        static let triptychGap: CGFloat = 12
-        static let demoTick: Duration = .milliseconds(1200)
-        /// 22 pt semibold, tracking -0.2, line 28 (Typography.aboutHeading).
-        static let title = Typography.aboutHeading
-        static let titleTracking: CGFloat = -0.2
-        static let markSize: CGFloat = 44
+        static let linkGap: CGFloat = 20
+        /// Progress pips: the current one stretches into a capsule.
+        static let pip: CGFloat = 6
+        static let pipCurrent: CGFloat = 22
+        static let pipGap: CGFloat = 6
+        /// Display face (Fraunces) for the title and the one big number; SF for everything else.
+        static let title = RoomDS.TypeRole.displayXl.font
+        static let titleTracking: CGFloat = RoomDS.TypeRole.displayXl.spec.tracking
+        static let line = RoomDS.TypeRole.lead.font
+        static let bigNumber = Font.custom(RoomDS.displayFamilyName, fixedSize: 76).weight(.semibold)
+        static let bigNumberTracking: CGFloat = -1.6
+        static let bigUnit = Font.system(size: 15, weight: .medium)
+        static let numberPopFrom: CGFloat = 0.82
+        static let numberDelay: TimeInterval = 0.18
+        /// Rings: centres from the shared RoomDotPlan, drawn larger than Overview's so the scene reads at a glance.
+        static let ringRadiusFactor: CGFloat = 0.34
+        static let ringRadiusMax: CGFloat = 10
+        static let ringStroke: CGFloat = 1.5
+        static let ringPopFrom: CGFloat = 0.2
+        /// Pointer swell: rings within `swellReach` grow by up to `swellGain`, then relax. No motion at rest.
+        static let swellReach: CGFloat = 76
+        static let swellGain: CGFloat = 0.7
+        static let wallStroke: CGFloat = 1
+        /// Used space Room has not looked inside: quiet points on the ring lattice, never a guess.
+        static let usedPoint: CGFloat = 1.4
+        static let usedPointOpacity: Double = 0.4
+        /// The step 2 example: three rooms of filled dots, a Trash, a Put back link.
+        static let exampleDot: CGFloat = 3.4
+        static let examplePitch: CGFloat = 14
+        static let trashSize: CGFloat = 104
+        static let trashGlyph = Font.system(size: 34, weight: .regular)
+        static let trashLanded: CGFloat = 0.16
+        static let roomLift: CGFloat = 1.04
+        static let nudge: CGFloat = 8
+        static let nudgeDelay: Duration = .milliseconds(1100)
+        static let chipGlyph = Font.system(size: 10, weight: .semibold)
+        /// Step 3 tiles: one filled (Map my home folder), two quiet.
+        static let tileHeight: CGFloat = 140
+        static let tileGap: CGFloat = 16
+        static let tileGlyph = Font.system(size: 30, weight: .regular)
+        static let tileHover: CGFloat = 1.035
+        static let tilePress: CGFloat = 0.95
+        static let stageToTiles: CGFloat = 20
+        /// The finishing mark: pops, then the sheet closes.
+        static let markSize: CGFloat = 72
+        static let markHold: Duration = .milliseconds(420)
         static let markOpacity: Double = 0.55
         static let notMappedOpacity: Double = 0.6
-        static let labelBackingRadius: CGFloat = 5
-        static let ringGlyphRadius: CGFloat = 3.4
-        static let settleScale: CGFloat = 0.6
         static let disabledOpacity: Double = 0.55
     }
 
@@ -374,6 +394,13 @@ enum RoomTokens {
         static let onboardingText = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.24).delay(0.07)
         static let settle = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.24)
         static let success = RoomDS.Motion.Spring.success.spec.animation  // the only overshoot
+        /// The welcome's play (owner brief 2026-11-24: "be playful"): light springs that settle in one bounce.
+        /// Onboarding only; the product keeps `success` as its one overshoot.
+        static let pop = Animation.spring(response: 0.42, dampingFraction: 0.62)
+        static let hop = Animation.spring(response: 0.46, dampingFraction: 0.78)
+        static let swell = Animation.spring(response: 0.3, dampingFraction: 0.55)
+        static let bounce = Animation.spring(response: 0.26, dampingFraction: 0.5)
+        nonisolated static let popSpread: TimeInterval = 0.55
         nonisolated static let fadeDuration: TimeInterval = 0.15                                // Reduce Motion fallback
         nonisolated static let fadeCurve = UnitCurve.easeOut
         static let fade = Animation.timingCurve(fadeCurve, duration: fadeDuration)

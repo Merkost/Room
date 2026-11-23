@@ -1,185 +1,163 @@
 import SwiftUI
 
-/// The person's own Mac as a dot plan, inside the onboarding stage wall (ONBOARDING-V3-SPEC §3.2, §3.4, MV-1, MV-2, MV-8).
-/// Geometry is the shared `RoomDotPlan` (the same rings Overview draws); only `RoomVolumeCapacity` is drawn: free
-/// rings and one dashed Not mapped area. No kind room, kind colour or count appears here (D-ONV-7).
-/// A separate view from `RoomDotPlanView` because the onboarding plan needs a per-row settle and the step 3 hint,
-/// and Overview's plan carries hover, wake and selection that the sheet must not have.
+/// The person's own Mac as rings (steps 1 and 3). Geometry is the shared `RoomDotPlan` (the same centres Overview
+/// draws); only `RoomVolumeCapacity` is drawn: free rings and one dashed Not mapped area. No kind, colour or count.
+/// The rings pop in once in a diagonal wave and swell under the pointer, then relax. Nothing moves at rest.
 struct RoomOnboardingPlanView: View {
     let plan: RoomOverviewPlanInput
-    let wallHeight: CGFloat
+    /// The wall's outer size; the plan sits inside it with `RoomOnboardingStage.pad`.
+    let size: CGSize
     let hidden: Bool
-    /// Step 3: the Not mapped area is where rooms will appear; the hint shows while Map my home folder is in focus.
-    var showsHint = false
-    var hintActive = false
-    /// MV-1: false until the one settle of this presentation runs.
-    let settled: Bool
+    /// Step 3: the Not mapped area is where rooms will appear; it lights while Map my home folder is in play.
+    var highlight = false
 
     @Environment(\.roomAccent) private var accent
     @Environment(\.roomMotion) private var motion
     @Environment(\.colorSchemeContrast) private var contrast
+    @State private var appeared = false
+    @State private var pointer: CGPoint?
 
     private typealias Tokens = RoomTokens.OverviewPlan
     private typealias Onboarding = RoomTokens.Onboarding
-
-    private struct RingRow: Identifiable {
-        let id: Int
-        let centers: [CGPoint]
-    }
+    private var pad: CGFloat { RoomOnboardingStage.pad }
 
     var body: some View {
-        let size = RoomOnboardingStage.layoutSize(wallHeight: wallHeight)
-        let layout = plan.layout(size: size)
+        let inner = CGSize(width: size.width - 2 * pad, height: size.height - 2 * pad)
+        let layout = plan.layout(size: inner)
+        let free = layout.dots.filter { $0.room == .free }.map(\.center)
+        let spacing = Self.spacing(free, fallback: layout.pitch)
+        let radius = min(spacing * Onboarding.ringRadiusFactor, Onboarding.ringRadiusMax)
         let notMapped = layout.rooms.first { $0.id == .notMapped }?.rect.insetBy(dx: Tokens.roomGap, dy: Tokens.roomGap)
-        let rows = Self.rows(layout)
-        let hint = showsHint && hintActive
+        let wave = Self.wave(free)
         ZStack(alignment: .topLeading) {
-            if let notMapped, !notMapped.isEmpty {
-                notMappedArea(notMapped, pitch: layout.pitch, hint: hint)
-                    .opacity(settled ? 1 : 0)
-                    .animation(settleAnimation(delay: motion.isFull ? RoomTokens.Motion.settleStagger : 0), value: settled)
+            RoundedRectangle(cornerRadius: RoomTokens.Radius.plan)
+                .strokeBorder(wallInk, lineWidth: contrast == .increased ? 1.5 : Onboarding.wallStroke)
+            ZStack(alignment: .topLeading) {
+                if let notMapped, !notMapped.isEmpty {
+                    notMappedArea(notMapped, pitch: spacing, anchor: free.first ?? notMapped.origin)
+                        .opacity(appeared ? 1 : 0)
+                        .animation(motion.isFull ? RoomTokens.Motion.standard.delay(RoomTokens.Motion.popSpread / 2)
+                                                 : RoomTokens.Motion.fade, value: appeared)
+                }
+                ForEach(free.indices, id: \.self) { index in
+                    ring(at: free[index], radius: radius, delay: wave(free[index]))
+                }
             }
-            ForEach(rows) { row in
-                RoomOnboardingRingRow(centers: row.centers, radius: layout.radius,
-                                      scale: settled || !motion.isFull ? 1 : Onboarding.settleScale)
-                    .stroke(freeInk, lineWidth: RoomTokens.Dots.freeRingStroke)
-                    .opacity(settled ? 1 : 0)
-                    .animation(settleAnimation(delay: motion.isFull ? RoomTokens.Motion.stagger
-                        * Double(min(row.id, RoomTokens.Motion.maxStaggered - 1)) : 0), value: settled)
-            }
-            if let notMapped, notMapped.width >= 200, notMapped.height >= 56 {
-                label(hint: hint)
-                    .frame(width: notMapped.width - 2 * Tokens.labelInset)
-                    .position(x: notMapped.midX, y: notMapped.midY)
-                    .opacity(settled ? 1 : 0)
-                    .animation(settleAnimation(delay: motion.isFull ? RoomTokens.Motion.settleStagger : 0), value: settled)
-            }
+            .frame(width: inner.width, height: inner.height, alignment: .topLeading)
+            .padding(pad)
         }
         .frame(width: size.width, height: size.height, alignment: .topLeading)
-        .padding(RoomOnboardingStage.pad)
-        .animation(motion.animation(RoomTokens.Motion.standard), value: hint)
-        .allowsHitTesting(false)
-    }
-
-    /// Rings grouped by row (top to bottom) for the row-by-row settle.
-    private static func rows(_ layout: RoomDotPlan) -> [RingRow] {
-        let free = layout.dots.filter { $0.room == .free }
-        let grouped = Dictionary(grouping: free) { Int(($0.center.y * 2).rounded()) }
-        return grouped.keys.sorted().enumerated().map { index, key in
-            RingRow(id: index, centers: grouped[key, default: []].map(\.center))
+        .contentShape(Rectangle())
+        .onContinuousHover(coordinateSpace: .local) { phase in
+            guard motion.isFull else { return }
+            switch phase {
+            case .active(let location): pointer = CGPoint(x: location.x - pad, y: location.y - pad)
+            case .ended: pointer = nil
+            }
         }
+        .onAppear { Task { @MainActor in appeared = true } }
     }
 
-    private func settleAnimation(delay: TimeInterval) -> Animation {
-        motion.isFull ? RoomTokens.Motion.settle.delay(delay) : RoomTokens.Motion.fade
+    private func ring(at center: CGPoint, radius: CGFloat, delay: TimeInterval) -> some View {
+        let swell = swell(at: center)
+        return Circle()
+            .strokeBorder(swell > 1.05 ? RoomTokens.Ink.graphite : freeInk, lineWidth: Onboarding.ringStroke)
+            .frame(width: 2 * radius, height: 2 * radius)
+            .scaleEffect(swell)
+            .animation(motion.isFull ? RoomTokens.Motion.swell : nil, value: swell)
+            .scaleEffect(appeared || !motion.isFull ? 1 : Onboarding.ringPopFrom)
+            .opacity(appeared ? 1 : 0)
+            .animation(motion.isFull ? RoomTokens.Motion.pop.delay(delay) : RoomTokens.Motion.fade, value: appeared)
+            .position(center)
+    }
+
+    /// 1 at rest; up to 1 + gain for the ring under the pointer, easing out over `swellReach`.
+    private func swell(at center: CGPoint) -> CGFloat {
+        guard let pointer, motion.isFull else { return 1 }
+        let distance = hypot(center.x - pointer.x, center.y - pointer.y)
+        let reach = max(0, 1 - distance / Onboarding.swellReach)
+        return 1 + Onboarding.swellGain * reach * reach
+    }
+
+    /// The lattice step the rings actually sit on (the plan may tighten its nominal pitch to fit a short wall).
+    private static func spacing(_ centers: [CGPoint], fallback: CGFloat) -> CGFloat {
+        guard let first = centers.first else { return fallback }
+        let nearest = centers.dropFirst().map { hypot($0.x - first.x, $0.y - first.y) }.filter { $0 > 0.5 }.min()
+        return min(nearest ?? fallback, fallback)
+    }
+
+    /// The pop-in order: a diagonal wave from the top-left ring, spread over `popSpread`.
+    private static func wave(_ centers: [CGPoint]) -> (CGPoint) -> TimeInterval {
+        let sums = centers.map { $0.x + $0.y }
+        let low = sums.min() ?? 0, high = sums.max() ?? 0
+        let span = max(high - low, 1)
+        return { center in RoomTokens.Motion.popSpread * Double((center.x + center.y - low) / span) }
     }
 
     private var freeInk: Color {
         RoomTokens.Ink.secondary.opacity(contrast == .increased ? 1 : RoomTokens.Dots.freeRingOpacity)
     }
 
+    private var wallInk: Color {
+        contrast == .increased ? RoomTokens.Ink.secondary : RoomTokens.Surface.line2
+    }
+
     private var neutralOutline: Color {
         RoomTokens.Ink.secondary.opacity(contrast == .increased ? 1 : Onboarding.notMappedOpacity)
     }
 
-    private func notMappedArea(_ rect: CGRect, pitch: CGFloat, hint: Bool) -> some View {
-        let shape = RoundedRectangle(cornerRadius: RoomTokens.Radius.planRoom)
-        let step = max(Tokens.gridPoint, pitch * Tokens.gridPitchFactor)
+    /// Used space: one quiet point per lattice position on the rings' own pitch, so the disk reads as one field.
+    private func notMappedArea(_ rect: CGRect, pitch: CGFloat, anchor: CGPoint) -> some View {
+        let shape = RoundedRectangle(cornerRadius: RoomTokens.Radius.card)
+        let step = max(pitch, 4)
+        let first = CGPoint(x: anchor.x + ((rect.minX + step / 3 - anchor.x) / step).rounded(.up) * step - rect.minX,
+                            y: anchor.y + ((rect.minY + step / 3 - anchor.y) / step).rounded(.up) * step - rect.minY)
+        let point = Onboarding.usedPoint
+        let ink = RoomTokens.Ink.secondary.opacity(contrast == .increased ? 0.8 : Onboarding.usedPointOpacity)
         return ZStack {
-            shape.fill(accent.wash).opacity(hint ? 1 : 0)
-            if contrast == .increased { shape.fill(accent.wash).opacity(hint ? 1 : 0) }
+            shape.fill(accent.wash).opacity(highlight ? 1 : 0)
             Canvas { context, size in
                 var grid = Path()
-                for y in stride(from: step / 2, to: size.height, by: step) {
-                    for x in stride(from: step / 2, to: size.width, by: step) {
-                        grid.addEllipse(in: CGRect(x: x, y: y, width: Tokens.gridPoint, height: Tokens.gridPoint))
+                for y in stride(from: first.y, through: size.height - step / 3, by: step) {
+                    for x in stride(from: first.x, through: size.width - step / 3, by: step) {
+                        grid.addEllipse(in: CGRect(x: x - point, y: y - point, width: 2 * point, height: 2 * point))
                     }
                 }
-                context.fill(grid, with: .color(RoomTokens.Surface.line2))
+                context.fill(grid, with: .color(ink))
             }
             .clipShape(shape)
-            shape.stroke(hint ? accent.text : neutralOutline,
-                         style: StrokeStyle(lineWidth: hint && contrast == .increased ? 1.5 : Tokens.dashedWall.lineWidth,
+            shape.stroke(highlight ? accent.text : neutralOutline,
+                         style: StrokeStyle(lineWidth: highlight ? 1.5 : Tokens.dashedWall.lineWidth,
                                             dash: Tokens.dashedWall.dash))
         }
         .frame(width: rect.width, height: rect.height)
+        .scaleEffect(highlight && motion.isFull ? 1.006 : 1)
+        .animation(motion.animation(RoomTokens.Motion.bounce), value: highlight)
+        .help(highlight ? RoomOnboardingCopy.hint : RoomOnboardingCopy.notMappedDetail(plan, hidden: hidden, format: RoomFormat.gb))
         .offset(x: rect.minX, y: rect.minY)
     }
-
-    @ViewBuilder private func label(hint: Bool) -> some View {
-        if showsHint {
-            Text(RoomOnboardingCopy.hint)
-                .font(RoomTokens.Typography.bodyStrong)
-                .foregroundStyle(hint ? accent.text : RoomTokens.Ink.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, Tokens.labelInset)
-                .background {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: Onboarding.labelBackingRadius).fill(RoomTokens.Surface.canvas)
-                        RoundedRectangle(cornerRadius: Onboarding.labelBackingRadius).fill(accent.wash).opacity(hint ? 1 : 0)
-                    }
-                }
-        } else {
-            VStack(spacing: RoomTokens.Space.tight / 2) {
-                backed(Text(RoomOnboardingCopy.notMappedLabel(.yourMac))
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(RoomTokens.Ink.graphite))
-                backed(Text(RoomOnboardingCopy.notMappedDetail(plan, hidden: hidden, format: RoomFormat.gb))
-                    .font(RoomTokens.Typography.caption)
-                    .monospacedDigit()
-                    .foregroundStyle(RoomTokens.Ink.secondary))
-            }
-            .multilineTextAlignment(.center)
-        }
-    }
-
-    private func backed(_ text: some View) -> some View {
-        text.padding(.horizontal, Tokens.labelInset)
-            .background(RoomTokens.Surface.canvas, in: RoundedRectangle(cornerRadius: Onboarding.labelBackingRadius))
-    }
 }
 
-/// One row of free rings; `scale` animates each ring about its own centre (MV-1).
-nonisolated struct RoomOnboardingRingRow: Shape {
-    var centers: [CGPoint]
-    var radius: CGFloat
-    var scale: CGFloat
-
-    var animatableData: CGFloat {
-        get { scale }
-        set { scale = newValue }
-    }
-
-    func path(in rect: CGRect) -> Path {
-        Path { path in
-            let r = radius * scale
-            for center in centers {
-                path.addEllipse(in: CGRect(x: center.x - r, y: center.y - r, width: 2 * r, height: 2 * r))
-            }
-        }
-    }
-}
-
-/// Unreadable capacity or a disk over 26 TB: no plan, no ring, no number (§3.2).
+/// Unreadable capacity or a disk over 26 TB: no plan, no ring, no number; the mark in a dashed wall.
 struct RoomOnboardingPlanUnavailable: View {
-    let tooLarge: Bool
+    let size: CGSize
+
+    @Environment(\.roomMotion) private var motion
+    @State private var appeared = false
 
     var body: some View {
-        VStack(spacing: 0) {
+        ZStack {
+            RoundedRectangle(cornerRadius: RoomTokens.Radius.plan)
+                .strokeBorder(RoomTokens.Surface.line2, style: StrokeStyle(lineWidth: 1, dash: RoomTokens.OverviewPlan.dashedWall.dash))
             RoomMark()
                 .fill(RoomTokens.Ink.secondary.opacity(RoomTokens.Onboarding.markOpacity), style: FillStyle(eoFill: true))
                 .frame(width: RoomTokens.Onboarding.markSize, height: RoomTokens.Onboarding.markSize)
-                .padding(.bottom, RoomTokens.Space.group)
-            Text(RoomOnboardingCopy.emptyTitle)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(RoomTokens.Ink.graphite)
-                .padding(.bottom, RoomTokens.Space.tight)
-            Text(tooLarge ? RoomOnboardingCopy.tooLarge : RoomOnboardingCopy.emptyDetail)
-                .font(RoomTokens.Typography.caption)
-                .foregroundStyle(RoomTokens.Ink.secondary)
+                .scaleEffect(appeared || !motion.isFull ? 1 : RoomTokens.Onboarding.ringPopFrom)
+                .opacity(appeared ? 1 : 0)
+                .animation(motion.isFull ? RoomTokens.Motion.pop : RoomTokens.Motion.fade, value: appeared)
         }
-        .multilineTextAlignment(.center)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(width: size.width, height: size.height)
+        .onAppear { Task { @MainActor in appeared = true } }
         .allowsHitTesting(false)
     }
 }

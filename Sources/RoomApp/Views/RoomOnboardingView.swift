@@ -1,9 +1,9 @@
 import AppKit
 import SwiftUI
 
-/// The first-run welcome, v3 (ONBOARDING-V3-SPEC): Your Mac, Your say, First step.
+/// The first-run welcome: three nearly wordless scenes (Meet your Mac, You say what moves, Pick your first step).
 /// Every input goes through `RoomOnboardingFlow.reduce`; effects leave through `onFinish`.
-/// A fixed 680 x 540 layout with no scroll view, so the stage sits at the same place on every step.
+/// A fixed 680 x 540 layout with no scroll view: pips, a display title with one short line, the scene, the footer.
 struct RoomOnboardingView: View {
     let capacity: RoomVolumeCapacity?
     let isWorking: Bool
@@ -15,60 +15,55 @@ struct RoomOnboardingView: View {
     @Environment(\.roomMotion) private var motion
     @Environment(\.roomAccent) private var accent
     @Environment(\.roomHide) private var hide
-    @Environment(\.colorSchemeContrast) private var contrast
     @State private var state = RoomOnboardingState()
-    @State private var planSettled = false
-    @State private var hoveringLink = false
-    @FocusState private var focus: Choice?
+    @State private var hoveredTile: RoomOnboardingChoice?
+    @State private var numberIn = false
+    @State private var finishing = false
+    /// +1 going forward, -1 going back: the scene slides in from that side.
+    @State private var direction: CGFloat = 1
+    @FocusState private var focus: RoomOnboardingChoice?
 
-    private enum Choice: Hashable { case mapHome, checkCaches, menuBar }
     private typealias Onboarding = RoomTokens.Onboarding
 
     private var edition: RoomOnboardingEdition { .current }
-    /// VoiceOver reads the still triptych instead of a beat that changes on a timer.
-    private var exampleMotionIsFull: Bool { motion.isFull && !NSWorkspace.shared.isVoiceOverEnabled }
     private var context: RoomOnboardingContext {
-        RoomOnboardingContext(edition: edition, isWorking: isWorking, motionIsFull: exampleMotionIsFull)
+        RoomOnboardingContext(edition: edition, isWorking: isWorking, motionIsFull: motion.isFull)
     }
     private var planState: RoomOnboardingPlanState {
         .make(capacityBytes: capacity?.capacityBytes, freeBytes: capacity?.freeBytes)
     }
     private var hidden: Bool { hide.masksNow }
     private var choicesEnabled: Bool { RoomOnboardingFlow.choicesEnabled(isWorking: isWorking) }
-    private var hintActive: Bool { !hoveringLink && focus != .checkCaches && focus != .menuBar }
+    /// The dashed Not mapped area lights while Map my home folder (the default action) is the tile in play.
+    private var mapInPlay: Bool { hoveredTile == .mapHome || (hoveredTile == nil && focus != .checkCaches && focus != .menuBar) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            header
-            stage
-                .padding(.top, Onboarding.leadToStage)
-            caption
-                .padding(.top, Onboarding.captionGap)
-            if state.step == .firstStep {
-                choices
-                    .padding(.top, Onboarding.choiceGap)
-                    .transition(.opacity)
+        ZStack {
+            VStack(alignment: .leading, spacing: 0) {
+                header
+                stage
+                    .padding(.top, Onboarding.headerToStage)
+                Spacer(minLength: 0)
+                footer
             }
-            Spacer(minLength: 0)
-            footer
+            .padding(.top, Onboarding.top)
+            .padding(.horizontal, Onboarding.side)
+            .padding(.bottom, Onboarding.bottom)
+            .opacity(finishing ? 0 : 1)
+            .scaleEffect(finishing ? 0.98 : 1)
+            if finishing {
+                RoomOnboardingFinishMark()
+            }
         }
-        .padding(.top, Onboarding.top)
-        .padding(.horizontal, Onboarding.side)
-        .padding(.bottom, Onboarding.bottom)
         .frame(width: Onboarding.width, height: Onboarding.height, alignment: .topLeading)
         .background(RoomTokens.Surface.canvas)
         .foregroundStyle(RoomTokens.Ink.graphite)
         .background { arrowKeys }
         .onAppear {
-            Task { @MainActor in planSettled = true }
-        }
-        .task(id: state.step) {
-            guard state.step == .yourSay, exampleMotionIsFull else { return }
-            try? await Task.sleep(for: Onboarding.demoTick)
-            guard !Task.isCancelled else { return }
-            send(.demoTick)
+            Task { @MainActor in numberIn = true }
         }
         .onChange(of: state.step) { _, step in
+            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
             if step == .firstStep { focus = .mapHome }
         }
         .onChange(of: state.beat) { _, beat in
@@ -77,224 +72,132 @@ struct RoomOnboardingView: View {
         }
     }
 
-    // MARK: Header (eyebrow, title, lead)
+    // MARK: Progress pips (the eyebrow, as a picture)
 
-    private var header: some View {
-        let lead = RoomOnboardingCopy.lead(state.step, plan: planState, hidden: hidden, format: RoomFormat.gb)
-        return VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 0) {
-                Text(RoomOnboardingCopy.stepNumber(state.step))
-                    .fontWeight(.semibold)
-                    .foregroundStyle(accent.text)
-                Text(verbatim: " · \(RoomOnboardingCopy.stepName(state.step))")
-                    .foregroundStyle(RoomTokens.Ink.secondary)
+    private var pips: some View {
+        HStack(spacing: Onboarding.pipGap) {
+            ForEach(RoomOnboardingStep.allCases, id: \.rawValue) { step in
+                let current = step == state.step
+                Capsule()
+                    .fill(current ? accent.fill : RoomTokens.Surface.line2)
+                    .frame(width: current ? Onboarding.pipCurrent : Onboarding.pip, height: Onboarding.pip)
             }
-            .font(RoomTokens.Typography.caption)
-            .monospacedDigit()
-            .frame(height: 16)
-            .accessibilityElement(children: .combine)
-            Text(RoomOnboardingCopy.title(state.step))
-                .font(Onboarding.title)
-                .tracking(Onboarding.titleTracking)
-                .frame(height: 28, alignment: .leading)
-                .padding(.top, Onboarding.headerGap)
-                .accessibilityAddTraits(.isHeader)
-                .accessibilityHeading(.h1)
-            VStack(alignment: .leading, spacing: 4) {
-                if let strong = lead.strong {
-                    Text(strong).foregroundStyle(RoomTokens.Ink.graphite).monospacedDigit()
-                }
-                Text(lead.secondary).foregroundStyle(RoomTokens.Ink.secondary)
-            }
-            .font(RoomTokens.Typography.lead)
-            .lineSpacing(4)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(width: Onboarding.leadWidth, alignment: .leading)
-            .frame(minHeight: Onboarding.leadReserve, alignment: .topLeading)
-            .padding(.top, Onboarding.headerGap)
-            .accessibilityElement(children: .combine)
         }
-        .id(state.step)
-        .transition(motion.isFull
-            ? .asymmetric(insertion: .opacity.combined(with: .offset(y: 8)), removal: .opacity)
-            : .opacity)
+        .frame(height: Onboarding.pipsHeight)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(RoomOnboardingCopy.stepNumber(state.step))
     }
 
-    // MARK: Stage (wall, plan or example)
+    // MARK: Header: title, one line, and on step 1 the one big number
 
-    private var wallIsDashed: Bool {
-        if state.step == .yourSay { return false }
-        if case .drawn = planState { return false }
-        return true
+    private var header: some View {
+        ZStack(alignment: .bottomLeading) {
+            HStack(alignment: .lastTextBaseline, spacing: RoomTokens.Space.group) {
+                VStack(alignment: .leading, spacing: Onboarding.titleToLine) {
+                    Text(RoomOnboardingCopy.title(state.step))
+                        .font(Onboarding.title)
+                        .tracking(Onboarding.titleTracking)
+                        .accessibilityAddTraits(.isHeader)
+                        .accessibilityHeading(.h1)
+                    Text(lineText)
+                        .font(Onboarding.line)
+                        .foregroundStyle(RoomTokens.Ink.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                if state.step == .yourMac, planState.measured != nil {
+                    bigNumber
+                }
+            }
+            .id(state.step)
+            .transition(sceneTransition)
+        }
+        .frame(height: Onboarding.headerHeight, alignment: .bottomLeading)
+    }
+
+    private var lineText: String {
+        if state.step == .firstStep, !choicesEnabled { return RoomOnboardingCopy.busy }
+        return RoomOnboardingCopy.line(state.step, plan: planState)
+    }
+
+    /// The free space in the display face; it pops in once, after the first rings. Hide masks every digit.
+    private var bigNumber: some View {
+        let formatted = RoomFormat.gb(planState.measured?.free ?? 0, hero: true)
+        let shown = hidden ? RoomPure.mask(formatted, first: Int.max, lettersToo: false) : formatted
+        let parts = shown.split(separator: " ", maxSplits: 1).map(String.init)
+        let figure = parts.first ?? shown
+        let unit = parts.count > 1 ? parts[1] : ""
+        return VStack(alignment: .trailing, spacing: 0) {
+            Text(verbatim: figure)
+                .font(Onboarding.bigNumber)
+                .tracking(Onboarding.bigNumberTracking)
+                .monospacedDigit()
+            Text(verbatim: RoomOnboardingCopy.freeUnit(unit))
+                .font(Onboarding.bigUnit)
+                .foregroundStyle(RoomTokens.Ink.secondary)
+        }
+        .lineLimit(1)
+        .fixedSize()
+        .scaleEffect(numberIn || !motion.isFull ? 1 : Onboarding.numberPopFrom, anchor: .bottomTrailing)
+        .opacity(numberIn ? 1 : 0)
+        .animation(motion.isFull ? RoomTokens.Motion.pop.delay(Onboarding.numberDelay) : RoomTokens.Motion.fade, value: numberIn)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(RoomOnboardingCopy.lead(.yourMac, plan: planState, hidden: hidden, format: RoomFormat.gb).strong ?? "")
+    }
+
+    // MARK: Stage
+
+    private var sceneTransition: AnyTransition {
+        guard motion.isFull else { return .opacity }
+        return .asymmetric(insertion: .opacity.combined(with: .offset(x: 28 * direction)),
+                           removal: .opacity.combined(with: .offset(x: -14 * direction)))
     }
 
     private var stage: some View {
-        let height = RoomOnboardingStage.wallHeight(for: state.step)
-        let wall = RoundedRectangle(cornerRadius: RoomTokens.OverviewPlan.outerRadius)
-        let wallInk = contrast == .increased ? RoomTokens.Ink.secondary.opacity(0.6) : RoomTokens.Surface.line2
-        return ZStack(alignment: .topLeading) {
-            wall.strokeBorder(wallInk, style: StrokeStyle(lineWidth: RoomTokens.OverviewPlan.wall,
-                                                          dash: wallIsDashed ? RoomTokens.OverviewPlan.dashedWall.dash : []))
-            stageContent(height: height)
+        ZStack(alignment: .topLeading) {
+            Group {
+                switch state.step {
+                case .yourMac:
+                    plan(height: RoomOnboardingStage.introWallHeight, highlight: false)
+                case .yourSay:
+                    RoomOnboardingExample(beat: state.beat,
+                                          trash: { send(.demoTrash) },
+                                          putBack: { send(.demoPutBack) })
+                        .frame(width: RoomOnboardingStage.width, height: RoomOnboardingStage.introWallHeight)
+                case .firstStep:
+                    VStack(spacing: Onboarding.stageToTiles) {
+                        plan(height: RoomOnboardingStage.chooseWallHeight, highlight: mapInPlay)
+                        RoomOnboardingTiles(needsPicker: needsPicker, edition: edition, enabled: choicesEnabled,
+                                            focus: $focus, hovered: $hoveredTile) { send(.choose($0)) }
+                    }
+                }
+            }
+            .id(state.step)
+            .transition(sceneTransition)
         }
-        .frame(width: RoomOnboardingStage.width, height: height, alignment: .topLeading)
+        .frame(width: RoomOnboardingStage.width, height: RoomOnboardingStage.introWallHeight, alignment: .topLeading)
     }
 
-    @ViewBuilder private func stageContent(height: CGFloat) -> some View {
-        switch state.step {
-        case .yourMac, .firstStep:
-            planContent(height: height)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(planAccessibility)
-                .accessibilityAddTraits(.isImage)
-                .accessibilityIdentifier("RoomOnboardingPlan")
-                .transition(.opacity)
-        case .yourSay:
-            RoomOnboardingExample(layout: RoomOnboardingFlow.demoLayout(beat: state.beat, motionIsFull: exampleMotionIsFull),
-                                  putBack: { send(.demoPutBack) })
-                .frame(width: RoomOnboardingStage.width, height: height)
-                .transition(motion.isFull
-                    ? .asymmetric(insertion: .opacity.combined(with: .offset(y: 8)), removal: .opacity)
-                    : .opacity)
+    @ViewBuilder private func plan(height: CGFloat, highlight: Bool) -> some View {
+        let size = CGSize(width: RoomOnboardingStage.width, height: height)
+        Group {
+            switch planState {
+            case .drawn(let plan):
+                RoomOnboardingPlanView(plan: plan, size: size, hidden: hidden, highlight: highlight)
+            case .tooLarge, .unreadable:
+                RoomOnboardingPlanUnavailable(size: size)
+            }
         }
-    }
-
-    @ViewBuilder private func planContent(height: CGFloat) -> some View {
-        switch planState {
-        case .drawn(let plan):
-            RoomOnboardingPlanView(plan: plan, wallHeight: height, hidden: hidden,
-                                   showsHint: state.step == .firstStep, hintActive: hintActive, settled: planSettled)
-        case .tooLarge:
-            RoomOnboardingPlanUnavailable(tooLarge: true)
-        case .unreadable:
-            RoomOnboardingPlanUnavailable(tooLarge: false)
-        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(planAccessibility)
+        .accessibilityAddTraits(.isImage)
+        .accessibilityIdentifier("RoomOnboardingPlan")
     }
 
     private var planAccessibility: String {
         let plan = RoomOnboardingCopy.planAccessibility(planState, hidden: hidden, format: RoomFormat.gb)
         guard state.step == .firstStep, case .drawn = planState else { return plan }
         return "\(plan) \(RoomOnboardingCopy.hint)."
-    }
-
-    // MARK: Caption row
-
-    @ViewBuilder private var caption: some View {
-        HStack(spacing: 0) {
-            switch state.step {
-            case .yourSay:
-                Label {
-                    Text(RoomOnboardingCopy.local)
-                } icon: {
-                    Image(systemName: "lock").font(RoomTokens.Typography.caption)
-                }
-                Spacer(minLength: RoomTokens.Space.row)
-                Text(RoomOnboardingCopy.exampleOnly)
-            case .yourMac, .firstStep:
-                if case .drawn(let plan) = planState {
-                    HStack(spacing: 6) {
-                        Circle()
-                            .stroke(RoomTokens.Ink.secondary, lineWidth: RoomTokens.Dots.freeRingStroke)
-                            .frame(width: 2 * Onboarding.ringGlyphRadius, height: 2 * Onboarding.ringGlyphRadius)
-                        Text(RoomOnboardingCopy.freeName)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(RoomTokens.Ink.graphite)
-                        Text(verbatim: RoomOnboardingCopy.freeSize(plan, hidden: hidden, format: RoomFormat.gb))
-                            .padding(.leading, 2)
-                    }
-                    Spacer(minLength: RoomTokens.Space.row)
-                    Text(verbatim: RoomOnboardingCopy.unitCaption(plan, hidden: hidden))
-                }
-            }
-        }
-        .font(RoomTokens.Typography.caption)
-        .monospacedDigit()
-        .foregroundStyle(RoomTokens.Ink.secondary)
-        .lineLimit(1)
-        .frame(width: RoomOnboardingStage.width, height: Onboarding.captionHeight)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(captionAccessibility)
-    }
-
-    private var captionAccessibility: String {
-        switch state.step {
-        case .yourSay: return "\(RoomOnboardingCopy.local) \(RoomOnboardingCopy.exampleOnly)"
-        case .yourMac, .firstStep:
-            guard case .drawn(let plan) = planState else { return "" }
-            return RoomOnboardingCopy.captionAccessibility(plan, hidden: hidden, format: RoomFormat.gb)
-        }
-    }
-
-    // MARK: Step 3 choices
-
-    private var choices: some View {
-        VStack(alignment: .leading, spacing: Onboarding.alternativesGap) {
-            HStack(alignment: .center, spacing: RoomTokens.Space.group) {
-                Button { send(.choose(.mapHome)) } label: {
-                    Label(RoomOnboardingCopy.mapTitle(needsPicker: needsPicker), systemImage: "house")
-                }
-                .roomScreenPrimary(accent)
-                .keyboardShortcut(.defaultAction)
-                .focused($focus, equals: .mapHome)
-                .accessibilityHint(RoomOnboardingCopy.mapContext(edition: edition, needsPicker: needsPicker))
-                .accessibilityIdentifier("RoomOnboardingMapHome")
-                Text(choicesEnabled ? RoomOnboardingCopy.mapContext(edition: edition, needsPicker: needsPicker)
-                                    : RoomOnboardingCopy.busy)
-                    .font(RoomTokens.Typography.caption)
-                    .foregroundStyle(RoomTokens.Ink.secondary)
-                    .lineLimit(3)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: Onboarding.contextWidth, alignment: .leading)
-                    .accessibilityHidden(true)
-            }
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: Onboarding.linkGap) {
-                    alternativesLead
-                    cachesLink
-                    menuBarLink
-                }
-                VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
-                    alternativesLead
-                    cachesLink
-                    menuBarLink
-                }
-            }
-        }
-        .disabled(!choicesEnabled)
-        .opacity(choicesEnabled ? 1 : Onboarding.disabledOpacity)
-    }
-
-    private var alternativesLead: some View {
-        Text(RoomOnboardingCopy.alternativesLead)
-            .font(RoomTokens.Typography.body)
-            .foregroundStyle(RoomTokens.Ink.secondary)
-            .fixedSize()
-    }
-
-    private var cachesLink: some View {
-        Button { send(.choose(.checkCaches)) } label: {
-            Label(RoomOnboardingCopy.cachesTitle(edition: edition), systemImage: "archivebox")
-                .font(RoomTokens.Typography.body)
-                .fixedSize()
-        }
-        .roomLink(accent)
-        .focused($focus, equals: .checkCaches)
-        .onHover { hoveringLink = $0 }
-        .accessibilityHint(RoomOnboardingCopy.cachesHint(edition: edition))
-        .accessibilityIdentifier("RoomOnboardingCheckCaches")
-    }
-
-    private var menuBarLink: some View {
-        Button { send(.choose(.menuBar)) } label: {
-            Label(RoomOnboardingCopy.menuBarTitle, systemImage: "memorychip")
-                .font(RoomTokens.Typography.body)
-                .fixedSize()
-        }
-        .roomLink(accent)
-        .focused($focus, equals: .menuBar)
-        .onHover { hoveringLink = $0 }
-        .accessibilityHint(RoomOnboardingCopy.menuBarHint)
-        .accessibilityIdentifier("RoomOnboardingMenuBar")
     }
 
     // MARK: Footer
@@ -327,15 +230,21 @@ struct RoomOnboardingView: View {
             .accessibilityIdentifier("RoomOnboardingSkip")
             if state.step != .firstStep {
                 Button { send(.continuePressed) } label: {
-                    Text("onboarding.p1.continue", bundle: RoomCopy.bundle)
+                    Label {
+                        Text("onboarding.p1.continue", bundle: RoomCopy.bundle)
+                    } icon: {
+                        Image(systemName: "arrow.right")
+                    }
+                    .labelStyle(RoomTrailingIconLabelStyle())
                 }
-                .roomScreenPrimary(accent) // one-filled: exclusive with Map my home folder (shown only on steps 1 and 2)
+                .roomScreenPrimary(accent) // one-filled: exclusive with the Map tile (Continue shows only on steps 1 and 2)
                 .keyboardShortcut(.defaultAction)
                 .accessibilityIdentifier("RoomOnboardingContinue")
             }
         }
         .font(RoomTokens.Typography.body)
         .frame(height: Onboarding.footerHeight)
+        .overlay { pips }
     }
 
     /// ← and → move between steps (→ never chooses). Invisible shortcut buttons work wherever focus is.
@@ -351,29 +260,65 @@ struct RoomOnboardingView: View {
 
     // MARK: Events
 
-    /// Key-driven changes never animate; pointer changes use the step's motion (MV-3...MV-7).
+    /// Key-driven step changes never animate; pointer changes use springs. A choice pops the Room mark, then closes.
     private func send(_ event: RoomOnboardingEvent, fromKey: Bool = false) {
         let previous = state
         let (next, effects) = RoomOnboardingFlow.reduce(previous, event, context)
         if !effects.isEmpty {
             state = next
-            if !onFinish(effects) { state.finished = false }
+            finish(effects)
             return
         }
         guard next != previous else { return }
+        direction = next.step.rawValue >= previous.step.rawValue ? 1 : -1
         let keyDriven = fromKey || NSApp.currentEvent?.type == .keyDown || NSApp.currentEvent?.type == .keyUp
         if keyDriven, next.step != previous.step {
             roomWithoutMotion { state = next }
             return
         }
-        withAnimation(animation(from: previous, to: next)) { state = next }
+        withAnimation(previous.step != next.step ? motion.animation(RoomTokens.Motion.page) : nil) { state = next }
     }
 
-    private func animation(from previous: RoomOnboardingState, to next: RoomOnboardingState) -> Animation? {
-        if previous.step != next.step {
-            let crossesChoose = previous.step == .firstStep || next.step == .firstStep
-            return motion.animation(crossesChoose ? RoomTokens.Motion.page : RoomTokens.Motion.settle)
+    private func finish(_ effects: [RoomOnboardingEffect]) {
+        guard effects != RoomOnboardingFlow.skipEffects, motion.isFull else {
+            if !onFinish(effects) { state.finished = false }
+            return
         }
-        return motion.animation(RoomTokens.Motion.standard)
+        withAnimation(RoomTokens.Motion.pop) { finishing = true }
+        Task { @MainActor in
+            try? await Task.sleep(for: Onboarding.markHold)
+            if !onFinish(effects) {
+                state.finished = false
+                withAnimation(RoomTokens.Motion.standard) { finishing = false }
+            }
+        }
+    }
+}
+
+/// "Continue →": the arrow rides after the word.
+private struct RoomTrailingIconLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: RoomTokens.Space.tight) {
+            configuration.title
+            configuration.icon.imageScale(.small)
+        }
+    }
+}
+
+/// The finishing beat: the Room mark pops in the accent, then the sheet closes. Full motion only.
+private struct RoomOnboardingFinishMark: View {
+    @Environment(\.roomAccent) private var accent
+    @State private var popped = false
+
+    var body: some View {
+        RoomMark()
+            .fill(accent.fill, style: FillStyle(eoFill: true))
+            .frame(width: RoomTokens.Onboarding.markSize, height: RoomTokens.Onboarding.markSize)
+            .scaleEffect(popped ? 1 : RoomTokens.Onboarding.ringPopFrom)
+            .opacity(popped ? 1 : 0)
+            .animation(RoomTokens.Motion.pop, value: popped)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onAppear { Task { @MainActor in popped = true } }
+            .accessibilityHidden(true)
     }
 }

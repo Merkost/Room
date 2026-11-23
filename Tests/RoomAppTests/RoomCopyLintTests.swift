@@ -14,7 +14,7 @@ struct RoomCopyLintTests {
     }
 
     @Test func defaultValueMatchesCatalogue() {
-        let fallback = String(localized: "onboarding.v3.step1.title", defaultValue: "Room to breathe.", bundle: .main)
+        let fallback = String(localized: "onboarding.v3.step1.title", defaultValue: "Meet your Mac", bundle: .main)
         let localized = RoomCopy.bundle.localizedString(forKey: "onboarding.v3.step1.title", value: nil, table: nil)
         #expect(fallback == localized)
     }
