@@ -1,5 +1,51 @@
 import Foundation
 
+/// Availability is queried on map selection changes. Index eligible items and their enclosing folders once per report.
+nonisolated struct RoomMapCleanupPathIndex {
+    private let items: Set<String>
+    private let folders: Set<Substring>
+
+    init(_ paths: [String]) {
+        items = Set(paths)
+        var enclosingFolders: Set<Substring> = []
+        for path in items {
+            // Match the character boundaries used by String.hasPrefix in the review.
+            for index in path.indices where path[index] == "/" {
+                let folder = index == path.startIndex ? path[...index] : path[..<index]
+                enclosingFolders.insert(folder)
+            }
+        }
+        folders = enclosingFolders
+    }
+
+    func contains(path: String, includesContents: Bool) -> Bool {
+        items.contains(path) || (includesContents && folders.contains(path[...]))
+    }
+}
+
+nonisolated struct RoomMapCleanup: Equatable, Sendable {
+    let location: URL
+    let reportID: UUID
+    let rows: [RoomCleanupReview.Row]
+    var includesContents = true
+
+    func includes(_ entryIDs: Set<UUID>) -> Bool {
+        !entryIDs.isEmpty && entryIDs.isSubset(of: Set(rows.flatMap(\.entryIDs)))
+    }
+
+    func matches(_ url: URL, path: String) -> Bool {
+        Self.matches(url, path: path, includesContents: includesContents)
+    }
+
+    static func matches(_ url: URL, path: String, includesContents: Bool) -> Bool {
+        url.path == path || (includesContents && url.path.hasPrefix(path == "/" ? "/" : path + "/"))
+    }
+}
+
+nonisolated enum RoomMapCleanupAction: Equatable {
+    case check, checking, review, empty
+}
+
 nonisolated struct RoomCleanupReview: Equatable, Sendable {
     struct Row: Equatable, Sendable, Identifiable {
         var id: String                 // RoomSource.id (family)
@@ -8,6 +54,10 @@ nonisolated struct RoomCleanupReview: Equatable, Sendable {
         var consequence: String        // user's words, e.g. "Rebuilt by ./gradlew on next sync"
         var entryIDs: Set<UUID>
         var parentFolders: Set<String> // Store: exact parents from authorizationLocations
+        var pickedBytes: Int64? = nil
+        var location: String? = nil
+
+        var selectedBytes: Int64 { pickedBytes ?? bytes }
     }
     enum Phase: Equatable, Sendable { case reviewing, preparingAccess, moving, finished }
     enum Commit: Equatable, Sendable {
@@ -25,7 +75,7 @@ nonisolated struct RoomCleanupReview: Equatable, Sendable {
     var phase: Phase = .reviewing
 
     var selectedRows: [Row] { rows.filter { selected.contains($0.id) } }
-    var selectedBytes: Int64 { selectedRows.reduce(0) { $0 + $1.bytes } }
+    var selectedBytes: Int64 { selectedRows.reduce(0) { $0 + $1.selectedBytes } }
     var offeredBytes: Int64 { rows.reduce(0) { $0 + $1.bytes } }
     var selectedEntryIDs: Set<UUID> { selectedRows.reduce(into: Set<UUID>()) { $0.formUnion($1.entryIDs) } }
     var requiredFolders: Set<String> { store ? selectedRows.reduce(into: Set<String>()) { $0.formUnion($1.parentFolders) } : [] }

@@ -225,9 +225,7 @@ struct RoomDeveloperView: View {
             if section == .aiTools || section == .devices {
                 Menu {
                     ForEach(section == .aiTools ? RoomDeveloperFolderRole.aiRoles : RoomDeveloperFolderRole.deviceRoles) { role in
-                        Button { model.addFolder(role: role) } label: {
-                            Label(role.title, systemImage: role.symbol)
-                        }
+                        folderChoice(role)
                     }
                 } label: {
                     Label(section == .aiTools ? "Choose Tool Folder…" : "Choose Device Folder…", systemImage: "folder.badge.plus")
@@ -238,12 +236,13 @@ struct RoomDeveloperView: View {
                 .disabled(model.isScanning || model.isChoosingFolder)
                 .accessibilityIdentifier(section == .aiTools ? "RoomDeveloperChooseAITool" : "RoomDeveloperChooseDeviceFolder")
             } else if section != .storage {
-                Button { model.addFolder(role: .project) } label: {
-                    Label("Projects Folder…", systemImage: "folder.badge.plus")
-                }
-                .roomLink(accent)
-                .disabled(model.isScanning || model.isChoosingFolder)
-                .accessibilityIdentifier("RoomDeveloperAddFolder")
+                // Saved-folder reuse (#1) with the redesign's quiet link style; the menu form keeps the same look.
+                folderChoice(.project, title: "Projects Folder…", symbol: "folder.badge.plus")
+                    .roomLink(accent)
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .disabled(model.isScanning || model.isChoosingFolder)
+                    .accessibilityIdentifier("RoomDeveloperAddFolder")
             }
 
             scanButton
@@ -295,7 +294,7 @@ struct RoomDeveloperView: View {
                         }
                         Menu("Choose another folder…") {
                             ForEach(model.selectableFolderRoles) { role in
-                                Button(role.title) { model.addFolder(role: role) }
+                                folderChoice(role)
                             }
                         }
                         .disabled(model.isScanning || model.isChoosingFolder)
@@ -319,6 +318,33 @@ struct RoomDeveloperView: View {
         .padding(quiet ? 0 : RoomTokens.Space.group)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(quiet ? Color.clear : RoomTokens.Surface.group, in: .rect(cornerRadius: RoomTokens.Radius.group))
+    }
+
+    @ViewBuilder private func folderChoice(_ role: RoomDeveloperFolderRole, title: String? = nil, symbol: String? = nil) -> some View {
+        let folders = model.reusableFolders(for: role)
+        if folders.isEmpty {
+            Button { model.addFolder(role: role) } label: {
+                Label(title ?? role.title, systemImage: symbol ?? role.symbol)
+            }
+        } else {
+            Menu {
+                ForEach(Array(folders.enumerated()), id: \.element.id) { index, folder in
+                    let name = hide.masksNow ? "Saved folder \(index + 1)"
+                        : (folder.url.path as NSString).abbreviatingWithTildeInPath
+                    Button { model.attach(role: role, to: folder.id) } label: {
+                        Label(name, systemImage: "folder")
+                    }
+                    .accessibilityLabel("Use \(name) for \(role.title)")
+                    .accessibilityIdentifier("RoomDeveloperReuse-\(role.id)-\(folder.id)")
+                }
+                Divider()
+                Button { model.addFolder(role: role) } label: {
+                    Label("Choose Folder…", systemImage: "folder.badge.plus")
+                }
+            } label: {
+                Label(title ?? role.title, systemImage: symbol ?? role.symbol)
+            }
+        }
     }
 
     private func folderRow(_ location: RoomDeveloperLocation) -> some View {
@@ -415,9 +441,7 @@ struct RoomDeveloperView: View {
             trailing: {
                 Menu {
                     ForEach(RoomDeveloperFolderRole.storageRoles) { role in
-                        Button { model.addFolder(role: role) } label: {
-                            Label(role.title, systemImage: role.symbol)
-                        }
+                        folderChoice(role)
                     }
                 } label: {
                     Label("Choose Folder…", systemImage: "folder.badge.plus")

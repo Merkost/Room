@@ -16,6 +16,13 @@ struct RoomCacheLocationGroup: Identifiable {
     var locations: [Location]
 }
 
+struct RoomCleanupCandidate: Identifiable {
+    let id: UUID
+    let name: String
+    let url: URL
+    let bytes: Int64
+}
+
 @Observable
 @MainActor
 final class RoomViewModel {
@@ -42,6 +49,8 @@ final class RoomViewModel {
     private(set) var isWorking = false
     private(set) var scanProgress: Double?
     private(set) var lastScanned: Date?
+    private(set) var inspectionConfiguration: CacheConfiguration?
+    private(set) var configurationRevision = UUID()
     var errorMessage: String?
     var operationAlert: RoomActionAlert?
     private(set) var scanIssues: [String] = []
@@ -58,16 +67,31 @@ final class RoomViewModel {
     @ObservationIgnored private var sourceGroups: [String: [CacheGroup]] = [:]
     @ObservationIgnored private var movedEntryIDs: Set<UUID> = []
     @ObservationIgnored private var ignoredEntryIDs: Set<UUID> = []
+    @ObservationIgnored private var mapCleanupPaths = RoomMapCleanupPathIndex([])
+    @ObservationIgnored private var candidateIndex: [String: CandidateIndex] = [:] {
+        didSet {
+            mapCleanupPaths = RoomMapCleanupPathIndex(candidateIndex.values.flatMap { index in
+                index.items.compactMap { $0.bytes > 0 ? $0.url.path : nil }
+            })
+        }
+    }
+    private var excludedEntryIDs: Set<UUID> = []
+
+    private struct CandidateIndex {
+        let items: [RoomCleanupCandidate]
+        let ids: Set<UUID>
+        let bytesByID: [UUID: Int64]
+        let bytes: Int64
+    }
     #if !ROOM_APP_STORE
     @ObservationIgnored private var checkingWeekly = false
     #endif
 
     #if ROOM_APP_STORE
     @ObservationIgnored private let fileAccess: RoomFileAccess
-    @ObservationIgnored private let storeReview = RoomStoreFolderReview()
+    @ObservationIgnored private let storeReview: RoomStoreFolderReview
     @ObservationIgnored private var storeReviewKey: StoreReviewKey?
     @ObservationIgnored private var storeReviewGeneration = UUID()
-    @ObservationIgnored private var cleanupReviewParents: [String: [URL]] = [:]
     @ObservationIgnored private var storeScanGrants: Set<String> = []
     private(set) var isPreparingStoreReview = false
     private(set) var lastStoreMoveCompleted = false
@@ -86,8 +110,12 @@ final class RoomViewModel {
     var storeTrashPaths: Set<String> { storeReview.trashPaths }
     var storeAllLocationsGranted: Bool { storeReview.allGranted }
     var canRunStoreCleanup: Bool {
+        canReviewCleanup && hasStoreCleanupApproval(for: selectedEntryIDs)
+    }
+
+    func hasStoreCleanupApproval(for entryIDs: Set<UUID>) -> Bool {
         guard let report else { return false }
-        return storeReviewKey == .cleanup(report.id, selectedEntryIDs) && storeReview.allGranted
+        return storeReviewKey == .cleanup(report.id, entryIDs) && storeReview.allGranted
             && !isWorking && !isScanning && !isPreparingStoreReview
     }
     var canRunStoreRestore: Bool {
@@ -98,7 +126,7 @@ final class RoomViewModel {
 
     var totalBytes: Int64 { sources.reduce(0) { $0 + $1.bytes } }
     var selectedBytes: Int64 {
-        sources.filter { selection.contains($0.id) }.reduce(0) { $0 + $1.eligibleBytes }
+        selection.reduce(0) { $0 + selectedBytes(for: $1) }
     }
 
     var isDeepScan: Bool { scanScope == .full }
@@ -165,24 +193,35 @@ final class RoomViewModel {
         scan()
     }
 
-    var canReviewCleanup: Bool { report != nil && !isScanning && !isPartialScan && !isWorking && selectedBytes > 0 }
+    var canEditSelection: Bool {
+        guard report != nil, !isScanning, !isPartialScan, !isWorking else { return false }
+        #if ROOM_APP_STORE
+        return !isPreparingStoreReview && storeScanGrants.isSubset(of: Set(storeAccessRevision))
+        #else
+        return true
+        #endif
+    }
+    var canReviewCleanup: Bool { canEditSelection && selectedBytes > 0 }
     var cleanupRows: [RoomCleanupReview.Row] {
         sources.filter(\.isAvailable).map { source in
             #if ROOM_APP_STORE
-            let parents = Set(cleanupReviewParents[source.id, default: []].map(\.path))
+            let parents = Set(cleanupCandidates(for: source.id).filter { isEntrySelected($0.id, sourceID: source.id) }
+                .map { $0.url.deletingLastPathComponent().path })
             #else
             let parents = Set<String>()
             #endif
             return .init(id: source.id, name: source.name, bytes: source.eligibleBytes,
                          consequence: source.cleanupConsequences.joined(separator: "\n"),
-                         entryIDs: entryIDs(for: source.id), parentFolders: parents)
+                         entryIDs: selectedIDs(for: source.id), parentFolders: parents,
+                         pickedBytes: selectedBytes(for: source.id))
         }
     }
 
     init(engine: CacheEngine? = nil, cachesCheckStore: RoomCachesCheckStore = RoomCachesCheckStore(),
          makeRoomStore: RoomMakeRoomStore? = nil, activityCenter: RoomActivityCenter? = nil,
          ignoreStore: RoomIgnoreStore? = nil, mapStore: RoomTreeStore? = nil,
-         access: RoomFileAccess? = nil, beforeScanPublication: (@MainActor (ScanReport) async -> Void)? = nil) {
+         access: RoomFileAccess? = nil, beforeScanPublication: (@MainActor (ScanReport) async -> Void)? = nil,
+         storePicker: (@MainActor (URL, Bool) async -> URL?)? = nil) {
         self.cachesCheckStore = cachesCheckStore
         self.makeRoomStore = makeRoomStore
         self.activityCenter = activityCenter
@@ -192,6 +231,7 @@ final class RoomViewModel {
         #if ROOM_APP_STORE
         let access = access ?? .shared
         self.fileAccess = access
+        self.storeReview = RoomStoreFolderReview(picker: storePicker)
         let initialEngine = engine ?? Self.makeStoreEngine(approvedFolders: access.folders.map(\.url))
         #else
         let initialEngine = engine ?? CacheEngine(configurationProvider: { .full })
@@ -212,8 +252,12 @@ final class RoomViewModel {
         engine = CacheEngine(configurationProvider: { full ? .full : .standard })
         #endif
         report = nil
+        inspectionConfiguration = nil
+        configurationRevision = UUID()
         sources = []
         sourceGroups = [:]
+        candidateIndex = [:]
+        excludedEntryIDs = []
         protectedSources = []
         selection = []
         lastScanned = nil
@@ -276,6 +320,8 @@ final class RoomViewModel {
         if let previous = report { apply(previous, selectInitially: false, allowsCleanup: false) }
         report = nil
         selection = []
+        excludedEntryIDs = []
+        candidateIndex = [:]
         activityCenter?.reportScanLabel(.caches, label: "Checking caches…", files: 0, bytes: 0)
         scanIssues = []
         scanProgress = 0
@@ -292,6 +338,7 @@ final class RoomViewModel {
             let result = await engine.scan { [weak self] progress in
                 await self?.receiveProgress(progress, generation: generation)
             }
+            let measuredConfiguration = result.cancelled || Task.isCancelled ? nil : await engine.resolvedInspectionConfiguration()
             await self?.beforeScanPublication?(result)
             guard let self, self.scanGeneration == generation else { return }
             self.isScanning = false
@@ -308,6 +355,8 @@ final class RoomViewModel {
             }
             self.isPartialScan = false
             self.scanProgress = 1
+            self.inspectionConfiguration = measuredConfiguration
+            self.configurationRevision = UUID()
             self.apply(result, selectInitially: npmContinuation == nil)
             if let at = self.lastScanned {
                 self.cachesCheckStore.save(RoomCachesCheck(at: at, bytes: self.clearableBytes,
@@ -345,43 +394,167 @@ final class RoomViewModel {
     }
 
     func toggleSelection(id: String) {
-        guard report != nil, !isScanning, !isPartialScan, !isWorking, sources.contains(where: { $0.id == id && $0.isAvailable }) else { return }
-        if selection.contains(id) { selection.remove(id) } else { selection.insert(id) }
+        setSelection(id: id, selected: !selection.contains(id) || partiallySelectedSource(id))
+    }
+
+    func setSelection(id: String, selected: Bool) {
+        guard canEditSelection, let index = candidateIndex[id] else { return }
+        if selected {
+            selection.insert(id)
+            excludedEntryIDs.subtract(index.ids)
+        } else {
+            selection.remove(id)
+        }
+        selectionChanged()
+    }
+
+    func selectRecommended() {
+        guard canEditSelection else { return }
+        selection = Set(candidateIndex.keys)
+        excludedEntryIDs = []
+        selectionChanged()
+    }
+
+    func clearSelection() {
+        guard canEditSelection else { return }
+        selection = []
+        excludedEntryIDs = []
+        selectionChanged()
+    }
+
+    var selectedEntryIDs: Set<UUID> {
+        selection.reduce(into: []) { $0.formUnion(selectedIDs(for: $1)) }
+    }
+
+    private func selectedIDs(for sourceID: String) -> Set<UUID> {
+        guard selection.contains(sourceID), let index = candidateIndex[sourceID] else { return [] }
+        return index.ids.subtracting(excludedEntryIDs)
+    }
+
+    func cleanupCandidates(for sourceID: String) -> [RoomCleanupCandidate] {
+        candidateIndex[sourceID]?.items ?? []
+    }
+
+    func mapCleanupAction(at url: URL, includesContents: Bool = true) -> RoomMapCleanupAction? {
+        if isScanning { return .checking }
+        guard !isWorking else { return nil }
+        guard hasReport else { return .check }
+        guard canEditSelection else { return nil }
+        let path = url.roomLexicallyNormalized.path
+        if mapCleanupPaths.contains(path: path, includesContents: includesContents) { return .review }
         #if ROOM_APP_STORE
-        if case .cleanup = storeReviewKey {
-            do { try reconcileCleanupReview() }
+        if let folder = fileAccess.approval(for: url), !storeScanGrants.contains(folder.id + ":" + folder.url.path) {
+            return .check
+        }
+        #endif
+        return includesContents ? .empty : nil
+    }
+
+    func makeMapCleanup(at url: URL, includesContents: Bool = true) -> RoomMapCleanup? {
+        guard canEditSelection, let report else { return nil }
+        let path = url.roomLexicallyNormalized.path
+        var seen: Set<UUID> = []
+        var rows: [RoomCleanupReview.Row] = []
+        for source in sources where source.isAvailable {
+            for item in cleanupCandidates(for: source.id)
+                where item.bytes > 0 && RoomMapCleanup.matches(item.url, path: path, includesContents: includesContents)
+                    && seen.insert(item.id).inserted {
+                #if ROOM_APP_STORE
+                let parents = Set([item.url.deletingLastPathComponent().path])
+                #else
+                let parents = Set<String>()
+                #endif
+                rows.append(.init(id: item.id.uuidString, name: item.name, bytes: item.bytes,
+                    consequence: source.cleanupConsequences.joined(separator: "\n"), entryIDs: [item.id],
+                    parentFolders: parents, location: item.url.path))
+            }
+        }
+        guard !rows.isEmpty else { return nil }
+        rows.sort { $0.bytes == $1.bytes ? ($0.location ?? "") < ($1.location ?? "") : $0.bytes > $1.bytes }
+        return RoomMapCleanup(location: url, reportID: report.id, rows: rows, includesContents: includesContents)
+    }
+
+    func canCleanMapSelection(_ request: RoomMapCleanup, entryIDs: Set<UUID>) -> Bool {
+        canEditSelection && !entryIDs.isEmpty && isCurrentMapSelection(request, entryIDs: entryIDs)
+    }
+
+    func isCurrentMapSelection(_ request: RoomMapCleanup, entryIDs: Set<UUID>) -> Bool {
+        guard hasReport, report?.id == request.reportID else { return false }
+        guard !entryIDs.isEmpty else { return true }
+        guard request.includes(entryIDs) else { return false }
+        let path = request.location.roomLexicallyNormalized.path
+        var remaining = entryIDs
+        for index in candidateIndex.values {
+            for item in index.items where remaining.contains(item.id) && item.bytes > 0 && request.matches(item.url, path: path) {
+                remaining.remove(item.id)
+            }
+            if remaining.isEmpty { return true }
+        }
+        return false
+    }
+
+    func source(containing path: String) -> RoomSource? {
+        guard path.hasPrefix("/") else { return nil }
+        let url = URL(fileURLWithPath: path)
+        let matches = sourceGroups.flatMap { sourceID, groups in
+            groups.filter { RoomFileAccess.contains(parent: $0.rootURL, child: url) }
+                .map { (sourceID, $0.rootURL.path.count) }
+        }
+        guard let match = matches.max(by: { $0.1 < $1.1 }) else { return nil }
+        return sources.first { $0.id == match.0 }
+    }
+
+    func isEntrySelected(_ id: UUID, sourceID: String) -> Bool {
+        selection.contains(sourceID) && !excludedEntryIDs.contains(id) && candidateIndex[sourceID]?.ids.contains(id) == true
+    }
+
+    func selectedBytes(for sourceID: String) -> Int64 {
+        guard selection.contains(sourceID), let index = candidateIndex[sourceID] else { return 0 }
+        return index.bytes - excludedEntryIDs.intersection(index.ids).reduce(0) { $0 + (index.bytesByID[$1] ?? 0) }
+    }
+
+    func partiallySelectedSource(_ sourceID: String) -> Bool {
+        selection.contains(sourceID) && candidateIndex[sourceID].map { !$0.ids.isDisjoint(with: excludedEntryIDs) } == true
+    }
+
+    func toggleEntrySelection(id: UUID, sourceID: String) {
+        guard canEditSelection, let index = candidateIndex[sourceID], index.ids.contains(id) else { return }
+        if !selection.contains(sourceID) {
+            selection.insert(sourceID)
+            excludedEntryIDs.formUnion(index.ids)
+            excludedEntryIDs.remove(id)
+        } else if excludedEntryIDs.remove(id) == nil {
+            excludedEntryIDs.insert(id)
+        }
+        if index.ids.isSubset(of: excludedEntryIDs) { selection.remove(sourceID) }
+        selectionChanged()
+    }
+
+    private func selectionChanged() {
+        #if ROOM_APP_STORE
+        if case .cleanup(_, let previousIDs) = storeReviewKey {
+            do { try reconcileCleanupReview(previousIDs: previousIDs) }
             catch { discardStoreReview(); errorMessage = error.localizedDescription }
         }
         #endif
     }
 
-    func selectRecommended() {
-        guard report != nil, !isScanning, !isWorking else { return }
-        selection = Set(sources.filter(\.isAvailable).map(\.id))
-    }
-
-    func clearSelection() {
-        guard !isWorking else { return }
-        selection = []
-    }
-
-    private var selectedEntryIDs: Set<UUID> {
-        selection.reduce(into: []) { $0.formUnion(entryIDs(for: $1)) }
-    }
-
-    private func entryIDs(for sourceID: String) -> Set<UUID> {
-        Set(sourceGroups[sourceID, default: []].flatMap(\.eligibleEntries).map(\.id))
-            .subtracting(movedEntryIDs).subtracting(ignoredEntryIDs)
-    }
-
     func cleanSelected() async {
-        guard !isScanning, !isWorking, report != nil else { return }
-        let ids = selectedEntryIDs
+        guard canReviewCleanup else { return }
+        await performCleanup(selectedEntryIDs, keepsCacheSelection: false)
+    }
+
+    func cleanMapSelection(_ request: RoomMapCleanup, entryIDs: Set<UUID>) async {
+        guard canCleanMapSelection(request, entryIDs: entryIDs) else { return }
+        await performCleanup(entryIDs, keepsCacheSelection: true)
+    }
+
+    private func performCleanup(_ ids: Set<UUID>, keepsCacheSelection: Bool) async {
         guard !ids.isEmpty else { return }
         operationAlert = nil
         #if ROOM_APP_STORE
         lastStoreMoveCompleted = false
-        guard canRunStoreCleanup else { errorMessage = RoomStoreAccessError.approvalRequired.localizedDescription; return }
+        guard hasStoreCleanupApproval(for: ids) else { errorMessage = RoomStoreAccessError.approvalRequired.localizedDescription; return }
         let scopes = beginStoreReadAccess()
         #endif
         isWorking = true
@@ -395,6 +568,7 @@ final class RoomViewModel {
         #if ROOM_APP_STORE
         do {
             let required = try await engine.authorizationLocations(entryIDs: Array(ids))
+            guard storeScanGrants.isSubset(of: Set(storeAccessRevision)) else { throw RoomStoreAccessError.reviewChanged }
             try storeReview.validate(exactly: required)
         } catch { errorMessage = error.localizedDescription; return }
         #endif
@@ -406,7 +580,10 @@ final class RoomViewModel {
         await makeRoomStore?.recordMove(receipt: receipt)
         let movedPaths = receipt.items.filter { $0.status == .trashed }.map(\.originalURL)
         for url in movedPaths { await mapStore?.markChanged(under: url, at: receipt.date) }
-        selection = []
+        if !keepsCacheSelection {
+            selection = []
+            excludedEntryIDs = []
+        }
         #if ROOM_APP_STORE
         lastStoreMoveCompleted = receipt.trashedCount > 0
         #endif
@@ -441,10 +618,6 @@ final class RoomViewModel {
             return
         }
         let scopes = beginStoreReadAccess()
-        if !usesInjectedEngine {
-            let parents = storeReview.locations.filter { !storeReview.trashPaths.contains($0.path) }
-            recoveryEngine = Self.makeStoreEngine(approvedFolders: fileAccess.folders.map(\.url), restoreParents: parents)
-        }
         #endif
         isWorking = true
         defer {
@@ -455,15 +628,20 @@ final class RoomViewModel {
             #endif
         }
         #if ROOM_APP_STORE
+        let operationEngine: CacheEngine
         do {
-            let parents = try await recoveryEngine.restoreAuthorizationLocations(receiptID: record.id)
-            let fallbackItems = try await recoveryEngine.restoreTrashAuthorizationLocations(receiptID: record.id)
+            try storeReview.validate(exactly: storeReview.locations)
+            let originalParents = storeReview.locations.filter { !storeReview.trashPaths.contains($0.path) }
+            operationEngine = usesInjectedEngine ? recoveryEngine : Self.makeStoreEngine(
+                approvedFolders: fileAccess.folders.map(\.url), restoreParents: originalParents)
+            let parents = try await operationEngine.restoreAuthorizationLocations(receiptID: record.id)
+            let fallbackItems = try await operationEngine.restoreTrashAuthorizationLocations(receiptID: record.id)
             guard Set(fallbackItems.map(\.path)).isSubset(of: storeReview.trashPaths) else { throw RoomStoreAccessError.reviewChanged }
             let reviewedTrash = storeReview.locations.filter { storeReview.trashPaths.contains($0.path) }
             try storeReview.validate(exactly: parents + reviewedTrash)
         } catch { errorMessage = error.localizedDescription; return }
         await cachesCheckStore.invalidateBeforeFileChange(at: Date())
-        let result = await recoveryEngine.restore(receiptID: record.id, approvedTrashItems: storeReview.approvedTrashItems)
+        let result = await operationEngine.restore(receiptID: record.id, approvedTrashItems: storeReview.approvedTrashItems)
         lastStoreRestoreCompleted = result.restoredCount > 0
         #else
         await cachesCheckStore.invalidateBeforeFileChange(at: Date())
@@ -481,6 +659,8 @@ final class RoomViewModel {
         if result.restoredCount > 0 {
             report = nil
             selection = []
+            excludedEntryIDs = []
+            candidateIndex = [:]
             movedReceiptID = nil
             isAfterRestore = true
         }
@@ -649,8 +829,23 @@ final class RoomViewModel {
             RoomProtectedSource(id: $0.id, name: $0.title, path: $0.url.path,
                 reason: $0.reason, bytes: $0.byteCount)
         }
-        let available = Set(sources.filter(\.isAvailable).map(\.id))
+        if allowsCleanup {
+            candidateIndex = sourceGroups.compactMapValues { groups in
+                let entries = groups.flatMap(\.eligibleEntries)
+                    .filter { !movedEntryIDs.contains($0.id) && !ignoredEntryIDs.contains($0.id) }
+                guard entries.contains(where: { $0.byteCount > 0 }) else { return nil }
+                let items = entries.sorted { $0.byteCount == $1.byteCount ? $0.url.path < $1.url.path : $0.byteCount > $1.byteCount }
+                    .map { RoomCleanupCandidate(id: $0.id, name: $0.name, url: $0.url, bytes: $0.byteCount) }
+                let sizes = Dictionary(items.map { ($0.id, $0.bytes) }, uniquingKeysWith: { first, _ in first })
+                return CandidateIndex(items: items, ids: Set(sizes.keys), bytesByID: sizes, bytes: sizes.values.reduce(0, +))
+            }
+        } else {
+            candidateIndex = [:]
+        }
+        let available = Set(candidateIndex.keys)
         selection = selectInitially ? available : selection.intersection(available)
+        excludedEntryIDs.formIntersection(candidateIndex.values.reduce(into: Set<UUID>()) { $0.formUnion($1.ids) })
+        selection = selection.filter { !selectedIDs(for: $0).isEmpty }
     }
 
     func refreshHistory() async {
@@ -706,7 +901,11 @@ final class RoomViewModel {
         scanTask = nil
         isScanning = false
         selection = []
+        excludedEntryIDs = []
+        candidateIndex = [:]
         report = nil
+        inspectionConfiguration = nil
+        configurationRevision = UUID()
         sources = []
         sourceGroups = [:]
         protectedSources = []
@@ -724,34 +923,69 @@ final class RoomViewModel {
     }
 
     func prepareStoreCleanupReview() async {
-        guard canReviewCleanup, !isPreparingStoreReview, let report else { return }
+        guard canReviewCleanup else { return }
+        let ids = selectedEntryIDs
+        await prepareStoreCleanupReview(for: ids) { self.selectedEntryIDs == ids }
+    }
+
+    func prepareStoreMapCleanupReview(_ request: RoomMapCleanup, entryIDs: Set<UUID>, mapIsCurrent: () -> Bool = { true }) async {
+        guard mapIsCurrent(), canCleanMapSelection(request, entryIDs: entryIDs) else { return }
+        await prepareStoreCleanupReview(for: entryIDs) { mapIsCurrent() && self.isCurrentMapSelection(request, entryIDs: entryIDs) }
+    }
+
+    private func prepareStoreCleanupReview(for ids: Set<UUID>, isCurrent: () -> Bool) async {
+        guard !isPreparingStoreReview, let report else { return }
         discardStoreReview()
         errorMessage = nil
         lastStoreMoveCompleted = false
         let token = storeReviewGeneration
-        let rows = cleanupRows
         let scopes = beginStoreReadAccess()
         isPreparingStoreReview = true
         defer { Self.endStoreReadAccess(scopes); if token == storeReviewGeneration { isPreparingStoreReview = false } }
         do {
-            var locations: [String: [URL]] = [:]
-            for row in rows {
-                locations[row.id] = try await engine.authorizationLocations(entryIDs: Array(row.entryIDs))
-                guard token == storeReviewGeneration, self.report?.id == report.id else { return }
-            }
-            cleanupReviewParents = locations
-            try reconcileCleanupReview()
+            let locations = try await engine.authorizationLocations(entryIDs: Array(ids))
+            guard token == storeReviewGeneration, self.report?.id == report.id, isCurrent(),
+                  storeScanGrants.isSubset(of: Set(storeAccessRevision)) else { return }
+            try storeReview.add(locations)
+            storeReviewKey = .cleanup(report.id, ids)
+            postStoreApprovalNeeds()
         } catch { if token == storeReviewGeneration { errorMessage = error.localizedDescription } }
     }
 
-    private func reconcileCleanupReview() throws {
+    private func reconcileCleanupReview(previousIDs: Set<UUID>) throws {
         guard let report else { throw RoomStoreAccessError.reviewChanged }
-        let locations = selection.flatMap { cleanupReviewParents[$0, default: []] }
+        let selected = selection.flatMap { sourceID in
+            cleanupCandidates(for: sourceID).filter { isEntrySelected($0.id, sourceID: sourceID) }
+        }
+        let locations = Set(selected.map { $0.url.deletingLastPathComponent().path })
+        let expandedParents = Set(selected.filter { !previousIDs.contains($0.id) }
+            .map { $0.url.deletingLastPathComponent().path })
+        try reconcileCleanupReview(reportID: report.id, entryIDs: Set(selected.map(\.id)),
+                                   locations: locations, expandedParents: expandedParents)
+    }
+
+    func updateStoreMapCleanupReview(_ request: RoomMapCleanup, entryIDs: Set<UUID>) {
+        guard case .cleanup(let reportID, let previousIDs) = storeReviewKey, reportID == request.reportID,
+              entryIDs.isEmpty || canCleanMapSelection(request, entryIDs: entryIDs) else { return }
+        let rows = request.rows.filter { !$0.entryIDs.isDisjoint(with: entryIDs) }
+        let locations = Set(rows.flatMap(\.parentFolders))
+        let expandedParents = Set(rows.filter { !$0.entryIDs.isSubset(of: previousIDs) }.flatMap(\.parentFolders))
+        do {
+            try reconcileCleanupReview(reportID: reportID, entryIDs: entryIDs,
+                                       locations: locations, expandedParents: expandedParents)
+        } catch {
+            discardStoreReview()
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func reconcileCleanupReview(reportID: UUID, entryIDs: Set<UUID>,
+                                        locations: Set<String>, expandedParents: Set<String>) throws {
         let scopes = beginStoreReadAccess()
         defer { Self.endStoreReadAccess(scopes) }
-        storeReview.narrow(to: Set(locations.map(\.path)))
-        try storeReview.add(locations)
-        storeReviewKey = .cleanup(report.id, selectedEntryIDs)
+        storeReview.narrow(to: locations.subtracting(expandedParents))
+        try storeReview.add(locations.sorted().map { URL(fileURLWithPath: $0, isDirectory: true) })
+        storeReviewKey = .cleanup(reportID, entryIDs)
         postStoreApprovalNeeds()
     }
 
@@ -789,6 +1023,7 @@ final class RoomViewModel {
 
     func allowStoreReviewLocation(_ url: URL) async {
         guard !isWorking, !isScanning, !isPreparingStoreReview, storeReviewKey != nil else { return }
+        errorMessage = nil
         isWorking = true
         defer { isWorking = false }
         do { try await storeReview.allow(url) }
@@ -804,7 +1039,6 @@ final class RoomViewModel {
 
     func discardStoreReview() {
         guard !isWorking else { return }
-        cleanupReviewParents = [:]
         storeReviewGeneration = UUID()
         storeReviewKey = nil
         isPreparingStoreReview = false
@@ -836,6 +1070,7 @@ final class RoomViewModel {
     #endif
 
     private static func familyID(_ id: String) -> String {
+        if id.hasPrefix("store-npm-sha512-") { return "npm-downloads" }
         if id.hasPrefix("lmstudio-models") { return "lmstudio-models" }
         if id.hasPrefix("pnpm-store") { return "pnpm-store" }
         if id.hasPrefix("docker-disk") { return "docker-disk" }
@@ -855,6 +1090,7 @@ final class RoomViewModel {
     }
 
     private static func familyTitle(_ id: String, fallback: String) -> String {
+        if id == "npm-downloads" { return "Verified npm downloads" }
         if let managed = Self.managedFamilies[id] { return managed.title }
         return ["codex": "Codex", "claude": "Claude", "xcode": "Xcode", "gradle": "Gradle", "npm": "npm", "yarn": "Yarn", "pip": "Python packages", "homebrew": "Homebrew",
          "cursor": "Cursor", "vscode": "VS Code", "antigravity": "Antigravity", "swiftpm": "Swift packages", "androidstudio": "Android Studio",
@@ -864,6 +1100,7 @@ final class RoomViewModel {
     }
 
     private func familySubtitle(_ id: String) -> String {
+        if id == "npm-downloads" { return "Verified objects in the current batch" }
         if id.hasPrefix("store-selected-") { return "Approved folder · inspect only" }
         if let managed = Self.managedFamilies[id] { return managed.subtitle }
         if id.hasPrefix("sandbox-cache-") { return "Sandboxed app cache · inspect only" }

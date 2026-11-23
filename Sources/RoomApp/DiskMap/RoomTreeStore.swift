@@ -88,7 +88,8 @@ actor RoomTreeStore {
         if isHome { catalog.homeRootID = id }
         guard catalog.record(map, now: map.scannedAt), let entry = catalog.entries[id] else { return }
         if isHome { index.homeRootID = id }
-        index.roots[id] = Root(location: location, lastUsed: map.scannedAt, changedAt: nil)
+        let changedAt = index.roots[id]?.changedAt.flatMap { $0 > map.scannedAt ? $0 : nil }
+        index.roots[id] = Root(location: location, lastUsed: map.scannedAt, changedAt: changedAt)
         index.lastOpened = id
         var removed: [String] = []
         while index.roots.count > RoomTreeCatalog.maxRoots,

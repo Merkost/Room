@@ -110,8 +110,7 @@ struct RoomOverviewView: View {
             recentLine(standalone: true)
                 .modifier(arrivalGroup(4))
         }
-        .frame(maxWidth: 920, alignment: .leading)
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .foregroundStyle(RoomTokens.Ink.graphite)
         .roomReveal(!animatesArrival || motion.isFull || arrived, animation: RoomTokens.Motion.fade)
         .task { arrived = true }

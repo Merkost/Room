@@ -3,6 +3,22 @@ import Testing
 @testable import RoomApp
 
 struct RoomCleanupReviewTests {
+    @Test func indexedMapLookupMatchesSelectionBoundaries() {
+        let entries = ["/cache-backup/a", "/cache/子/a", "/cache/file", "/cache/child-sibling/a", "/cache/child/z",
+                       "/unicode/\u{0301}early", "/unicode/子", "/accent-only/\u{0301}early", "/café/entry"]
+            .map { URL(fileURLWithPath: $0) }
+        let index = RoomMapCleanupPathIndex(entries.map(\.path))
+        let probes = ["/", "/cache", "/cache/子", "/cache/file", "/cache/child", "/cache/child-sib",
+                      "/cache/other", "/cache-b", "/missing", "/unicode", "/accent-only", "/cafe\u{0301}"]
+        for path in probes {
+            for includesContents in [false, true] {
+                let expected = entries.contains { RoomMapCleanup.matches($0, path: path, includesContents: includesContents) }
+                #expect(index.contains(path: path, includesContents: includesContents) == expected)
+            }
+        }
+        #expect(!RoomMapCleanupPathIndex([]).contains(path: "/", includesContents: true))
+    }
+
     @Test func commitLabelEqualsSelectedSumAtEveryToggle() {
         let a = RoomCleanupReview.Row(id: "a", name: "A", bytes: 7, consequence: "Rebuilt", entryIDs: [UUID()], parentFolders: ["/a"])
         let b = RoomCleanupReview.Row(id: "b", name: "B", bytes: 14, consequence: "Rebuilt", entryIDs: [UUID()], parentFolders: ["/b"])

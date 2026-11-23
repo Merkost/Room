@@ -57,6 +57,7 @@ enum RoomTokens {
         static let navigationLabel = Font.system(size: 12, weight: .medium)
         static let captionNumeric = Font.system(size: 12, weight: .regular).monospacedDigit()
         static let aboutHeading = Font.system(size: 22, weight: .semibold)
+        static let emptyHeading = Font.system(size: 30, weight: .semibold)
         static let aboutTagline = Font.system(size: 15, weight: .medium)
         static let madeRoom = Font.system(size: 28, weight: .regular).monospacedDigit()
         /// Functional text floor (DESIGN.md): ticks, key caps, plan labels. Never smaller.
@@ -68,6 +69,11 @@ enum RoomTokens {
         static func unit(for figureSize: CGFloat) -> Font { RoomDS.unitFont(for: figureSize) }
         /// Tracking: -0.5 for 40 pt, -0.2 for 22 pt, 0 below.
         static func tracking(for size: CGFloat) -> CGFloat { size >= 30 ? -0.5 : size >= 20 ? -0.2 : 0 }
+    }
+
+    enum Screen {
+        static let compactBreakpoint: CGFloat = 700
+        static let maximumColumnWidth: CGFloat = 1_120
     }
 
     enum Overview {

@@ -63,6 +63,7 @@ struct RoomStoreRestoreSheet: View {
 struct RoomStorePermissionSection: View {
     @Bindable var model: RoomViewModel
     let retry: () -> Void
+    var canApprove: () -> Bool = { true }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -90,7 +91,11 @@ struct RoomStorePermissionSection: View {
                             Label("Allowed", systemImage: "checkmark.circle").font(.system(size: 12))
                                 .foregroundStyle(.secondary).fixedSize()
                         } else {
-                            Button("Allow") { Task { await model.allowStoreReviewLocation(url) } }
+                            Button("Allow") {
+                                Task {
+                                    if canApprove() { await model.allowStoreReviewLocation(url) }
+                                }
+                            }
                                 .buttonStyle(.glass).disabled(model.isWorking || model.isScanning)
                                 .accessibilityLabel("Allow exactly \(url.path)")
                         }

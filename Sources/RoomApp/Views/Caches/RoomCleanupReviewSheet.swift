@@ -4,23 +4,33 @@ struct RoomCleanupReviewSheet: View {
     @Environment(\.roomHide) private var hide
     private var hidden: Bool { hide.masksNow }
     let model: RoomViewModel
+    var mapCleanup: RoomMapCleanup? = nil
+    var canAccessMapCleanup: () -> Bool = { true }
     @Environment(\.dismiss) private var dismiss
     @Environment(\.roomAccent) private var accent
     @Environment(\.roomMotion) private var motion
     @State private var committed: RoomCleanupReview?
+    @State private var mapSelection: Set<String>?
+
+    private var reviewRows: [RoomCleanupReview.Row] { mapCleanup?.rows ?? model.cleanupRows }
+    private var selectedRows: Set<String> {
+        if let mapCleanup { return mapSelection ?? Set(mapCleanup.rows.map(\.id)) }
+        return model.selection
+    }
 
     private var presentation: RoomCleanupReview {
         if let committed { return committed }
         #if ROOM_APP_STORE
-        return .init(rows: model.cleanupRows, selected: model.selection, store: true,
+        return .init(rows: reviewRows, selected: selectedRows, store: true,
             allowed: model.storeGrantedPaths, phase: model.isPreparingStoreReview ? .preparingAccess : .reviewing)
         #else
-        return .init(rows: model.cleanupRows, selected: model.selection, store: false)
+        return .init(rows: reviewRows, selected: selectedRows, store: false)
         #endif
     }
 
     var body: some View {
         let review = presentation
+        let mapIssue = mapCleanupIssue(review)
         let saved = review.phase == .moving
             ? Set(model.cleanupProgress.filter { $0.value == .trashed }.keys)
             : []
@@ -28,13 +38,21 @@ struct RoomCleanupReviewSheet: View {
         VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
             VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
                 Text("caches.review.title", tableName: "Caches", bundle: RoomCopy.bundle).font(RoomTokens.Typography.lead.weight(.semibold)).accessibilityHeading(.h1)
-                Text("caches.review.intro", tableName: "Caches", bundle: RoomCopy.bundle).foregroundStyle(RoomTokens.Ink.secondary)
+                if let mapCleanup {
+                    Text(hidden ? "Clearable caches in the selected location." :
+                        "Clearable caches in “\(mapCleanup.location.lastPathComponent)”.")
+                        .foregroundStyle(RoomTokens.Ink.secondary)
+                } else {
+                    Text("caches.review.intro", tableName: "Caches", bundle: RoomCopy.bundle).foregroundStyle(RoomTokens.Ink.secondary)
+                }
             }
             ScrollView {
-                VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
+                LazyVStack(alignment: .leading, spacing: RoomTokens.Space.group) {
                     ForEach(review.rows) { row in
                         let selected = review.selected.contains(row.id)
-                        Toggle(isOn: Binding(get: { selected }, set: { _ in model.toggleSelection(id: row.id) })) {
+                        let partial = selected && row.selectedBytes < row.bytes
+                        Toggle(isOn: Binding(get: { selectedRows.contains(row.id) },
+                                             set: { setSelection(row.id, selected: $0) })) {
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(hidden ? "Name hidden" : row.name)
@@ -48,10 +66,11 @@ struct RoomCleanupReviewSheet: View {
                                                 .allowsHitTesting(false)
                                                 .accessibilityHidden(true)
                                         }
-                                    Text(row.consequence).foregroundStyle(RoomTokens.Ink.secondary)
+                                    rowDetail(row)
                                 }
                                 Spacer()
-                                Text(format(row.bytes)).font(RoomTokens.Typography.section.monospacedDigit())
+                                Text(format(selected ? row.selectedBytes : row.bytes))
+                                    .font(RoomTokens.Typography.section.monospacedDigit())
                                 if ticked.contains(row.id) {
                                     RoomCheckmarkPath()
                                         .stroke(accent.text, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
@@ -64,8 +83,9 @@ struct RoomCleanupReviewSheet: View {
                             }
                         }
                         .toggleStyle(.checkbox)
-                        .disabled(!review.canCancel || model.isWorking)
-                        .accessibilityValue(selected ? "Selected" : "Not selected")
+                        .disabled(!review.canCancel || !model.canEditSelection || mapIssue != nil)
+                        .help(hidden ? "" : row.location ?? "")
+                        .accessibilityValue(partial ? "Some items selected" : selected ? "Selected" : "Not selected")
                     }
                     VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
                         Text("Before you move").font(RoomTokens.Typography.section)
@@ -75,11 +95,23 @@ struct RoomCleanupReviewSheet: View {
                                 .font(RoomTokens.Typography.caption).foregroundStyle(RoomTokens.Ink.secondary)
                         }
                     }
+                    if let mapIssue {
+                        Label(mapIssue, systemImage: "arrow.clockwise.circle")
+                            .foregroundStyle(RoomTokens.Ink.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("RoomMapCleanupUnavailable")
+                    }
                     #if ROOM_APP_STORE
-                    if review.selectedBytes > 0 {
-                        RoomStorePermissionSection(model: model) { Task { await model.prepareStoreCleanupReview() } }
+                    if review.selectedBytes > 0 && mapIssue == nil {
+                        RoomStorePermissionSection(model: model, retry: { Task { await prepareStoreReview() } },
+                            canApprove: { mapCleanupIssue(presentation) == nil })
                     }
                     #endif
+                    if let message = model.errorMessage {
+                        Text(message)
+                            .foregroundStyle(RoomTokens.Ink.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 4)
@@ -93,7 +125,7 @@ struct RoomCleanupReviewSheet: View {
                     .roomSecondary().keyboardShortcut(.cancelAction)
                     .disabled(!review.canCancel || model.isWorking)
                 Button {
-                    move(review)
+                    move()
                 } label: {
                     ZStack {
                         if review.phase == .moving {
@@ -123,18 +155,84 @@ struct RoomCleanupReviewSheet: View {
         .frame(width: 560)
         .interactiveDismissDisabled(!review.canCancel || model.isWorking)
         #if ROOM_APP_STORE
-        .task { await model.prepareStoreCleanupReview() }
+        .task { await prepareStoreReview() }
+        .onChange(of: mapIssue) { _, issue in
+            if issue != nil && committed == nil { model.discardStoreReview() }
+        }
         .onDisappear { model.discardStoreReview() }
         #endif
     }
 
-    private func move(_ review: RoomCleanupReview) {
+    private func mapCleanupIssue(_ review: RoomCleanupReview) -> String? {
+        guard let mapCleanup, review.phase != .moving else { return nil }
+        if hidden { return "Reveal item names to review this Disk Map selection." }
+        if !canAccessMapCleanup() { return "Disk Map changed. Close this review and select the item again." }
+        if !model.isCurrentMapSelection(mapCleanup, entryIDs: review.selectedEntryIDs) {
+            return "The cache check changed. Close this review and check the selection again."
+        }
+        return nil
+    }
+
+    @ViewBuilder private func rowDetail(_ row: RoomCleanupReview.Row) -> some View {
+        if let location = row.location, let mapCleanup {
+            let components = URL(fileURLWithPath: location).pathComponents
+            let parents = components.dropFirst(mapCleanup.location.pathComponents.count).dropLast()
+            if !parents.isEmpty {
+                Text(hidden ? "Location hidden" : parents.joined(separator: "/"))
+                    .foregroundStyle(RoomTokens.Ink.secondary)
+                    .lineLimit(1).truncationMode(.middle)
+            }
+        } else {
+            Text(row.consequence).foregroundStyle(RoomTokens.Ink.secondary)
+        }
+    }
+
+    private func setSelection(_ id: String, selected: Bool) {
+        guard mapCleanup != nil else {
+            model.setSelection(id: id, selected: selected)
+            return
+        }
+        var updated = selectedRows
+        if selected { updated.insert(id) } else { updated.remove(id) }
+        mapSelection = updated
+        #if ROOM_APP_STORE
+        if let mapCleanup {
+            let ids = Set(mapCleanup.rows.filter { updated.contains($0.id) }.flatMap(\.entryIDs))
+            model.updateStoreMapCleanupReview(mapCleanup, entryIDs: ids)
+        }
+        #endif
+    }
+
+    #if ROOM_APP_STORE
+    private func prepareStoreReview() async {
+        if let mapCleanup {
+            guard mapCleanupIssue(presentation) == nil else { return }
+            await model.prepareStoreMapCleanupReview(mapCleanup, entryIDs: presentation.selectedEntryIDs) {
+                !hidden && canAccessMapCleanup()
+            }
+        } else {
+            await model.prepareStoreCleanupReview()
+        }
+    }
+    #endif
+
+    private func move() {
+        let review = presentation
         guard canCommit(review) else { return }
         var moving = review
         moving.phase = .moving
         committed = moving
         Task {
-            await model.cleanSelected()
+            if let mapCleanup {
+                guard !hidden, canAccessMapCleanup(),
+                      model.canCleanMapSelection(mapCleanup, entryIDs: review.selectedEntryIDs) else {
+                    committed = nil
+                    return
+                }
+                await model.cleanMapSelection(mapCleanup, entryIDs: review.selectedEntryIDs)
+            } else {
+                await model.cleanSelected()
+            }
             committed = nil
             #if ROOM_APP_STORE
             if model.lastStoreMoveCompleted { dismiss() }
@@ -145,7 +243,17 @@ struct RoomCleanupReviewSheet: View {
     }
 
     private func canCommit(_ review: RoomCleanupReview) -> Bool {
-        guard review.canCommit, model.canReviewCleanup else { return false }
+        guard review.canCommit else { return false }
+        if let mapCleanup {
+            guard !hidden, canAccessMapCleanup(),
+                  model.canCleanMapSelection(mapCleanup, entryIDs: review.selectedEntryIDs) else { return false }
+            #if ROOM_APP_STORE
+            return model.hasStoreCleanupApproval(for: review.selectedEntryIDs)
+            #else
+            return true
+            #endif
+        }
+        guard model.canReviewCleanup else { return false }
         #if ROOM_APP_STORE
         return model.canRunStoreCleanup
         #else
@@ -163,5 +271,8 @@ struct RoomCleanupReviewSheet: View {
         }
     }
 
-    private func format(_ bytes: Int64) -> String { RoomCachesVisibility.bytes(bytes, hidden: hidden) }
+    private func format(_ bytes: Int64) -> String {
+        if mapCleanup != nil { return RoomCachesVisibility.figure(RoomFormat.bytes(bytes), hidden: hidden) }
+        return RoomCachesVisibility.bytes(bytes, hidden: hidden)
+    }
 }

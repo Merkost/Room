@@ -107,8 +107,12 @@ final class RoomFileAccess {
     }
 
     func scope(for url: URL) -> URL? {
+        approval(for: url)?.url
+    }
+
+    func approval(for url: URL) -> RoomAccessFolder? {
         folders.filter { Self.contains(parent: $0.url, child: url) }
-            .max { $0.url.path.count < $1.url.path.count }?.url
+            .max { $0.url.path.count < $1.url.path.count }
     }
 
     func setNote(_ message: String?) { note = message }

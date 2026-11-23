@@ -1,50 +1,60 @@
 import SwiftUI
 
+private struct RoomScreenInsetsKey: EnvironmentKey {
+    static let defaultValue = EdgeInsets()
+}
+
+extension EnvironmentValues {
+    var roomScreenInsets: EdgeInsets {
+        get { self[RoomScreenInsetsKey.self] }
+        set { self[RoomScreenInsetsKey.self] = newValue }
+    }
+}
+
 struct RoomScreenScaffold<Content: View>: View {
     let title: String
     let subtitle: String?
     var scrolls = true
-    var requestedDensity: RoomTokens.Density? = nil
     @ViewBuilder var content: () -> Content
 
     var body: some View {
         GeometryReader { geometry in
-            let density: RoomTokens.Density = geometry.size.width >= 700 ? requestedDensity ?? .calm : .compact
+            let width = geometry.size.width
+            let density: RoomTokens.Density = width < RoomTokens.Screen.compactBreakpoint ? .compact : .calm
+            let gutter = density.gutter + max(0, (width - RoomTokens.Screen.maximumColumnWidth) / 2)
+            let insets = EdgeInsets(top: density.topInset, leading: gutter,
+                                    bottom: RoomTokens.Space.breath1, trailing: gutter)
             Group {
                 if scrolls {
                     ScrollView {
-                        content()
-                            .padding(.horizontal, requestedDensity == nil ? RoomTokens.Space.breath1 : density.gutter)
-                            .padding(.top, requestedDensity == nil ? 4 : density.topInset)
-                            .padding(.bottom, RoomTokens.Space.breath1)
-                            .frame(maxWidth: 1120, alignment: .topLeading)
-                            .frame(maxWidth: .infinity)
+                        content().frame(maxWidth: .infinity, alignment: .topLeading).padding(insets)
                     }
                     .scrollIndicators(.hidden)
                 } else {
-                    content()
+                    content().environment(\.roomScreenInsets, insets)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(RoomTokens.Surface.canvas.ignoresSafeArea())
+            .toolbar {
+                ToolbarItem(placement: .navigation) {
+                    HStack(alignment: .firstTextBaseline, spacing: RoomTokens.Space.inner) {
+                        Text(title).font(RoomTokens.Typography.title).fixedSize()
+                        if let subtitle {
+                            Text(subtitle).font(RoomTokens.Typography.caption)
+                                .foregroundStyle(RoomTokens.Ink.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityAddTraits(.isHeader)
+                    // The native toolbar already insets navigation items by 4 points.
+                    .padding(.leading, gutter - 4)
+                }
+                .sharedBackgroundVisibility(.hidden)
+            }
         }
         .navigationTitle(title)
         .navigationSubtitle(subtitle ?? "")
-        .toolbar {
-            ToolbarItem(placement: .navigation) {
-                HStack(alignment: .firstTextBaseline, spacing: RoomTokens.Space.inner) {
-                    Text(title).font(RoomTokens.Typography.title).fixedSize()
-                    if let subtitle {
-                        Text(subtitle).font(RoomTokens.Typography.caption)
-                            .foregroundStyle(RoomTokens.Ink.secondary)
-                            .lineLimit(1)
-                    }
-                }
-                .accessibilityElement(children: .combine)
-                .accessibilityAddTraits(requestedDensity == nil ? .isHeader : [])
-                .padding(.leading, requestedDensity == nil ? (scrolls ? RoomTokens.Space.breath1 : RoomTokens.Space.group) - 4 : 0)
-            }
-            .sharedBackgroundVisibility(.hidden)
-        }
     }
 }
