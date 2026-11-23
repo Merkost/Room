@@ -50,6 +50,7 @@ enum RoomTokens {
         static let navigationLabel = Font.system(size: 12, weight: .medium)
         static let captionNumeric = Font.system(size: 12, weight: .regular).monospacedDigit()
         static let aboutHeading = Font.system(size: 22, weight: .semibold)
+        static let emptyHeading = Font.system(size: 30, weight: .semibold)
         static let aboutTagline = Font.system(size: 15, weight: .medium)
         static let madeRoom = Font.system(size: 28, weight: .regular).monospacedDigit()
         /// Functional text floor (DESIGN.md): ticks, key caps, plan labels. Never smaller.
