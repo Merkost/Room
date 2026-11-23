@@ -156,6 +156,14 @@ struct RoomStoreAccessTests {
         await model.cleanSelected()
         #expect(calls.withLock { $0 } == 0)
         #expect(try Data(contentsOf: item) == data)
+        let request = try #require(model.makeMapCleanup(at: item))
+        let ids = Set(request.rows.flatMap(\.entryIDs))
+        await model.prepareStoreMapCleanupReview(request, entryIDs: ids)
+        #expect(model.storeReviewLocations.map(\.path) == [fixture.cache.path])
+        #expect(!model.hasStoreCleanupApproval(for: ids))
+        await model.cleanMapSelection(request, entryIDs: ids)
+        #expect(calls.withLock { $0 } == 0)
+        #expect(try Data(contentsOf: item) == data)
         model.discardStoreReview()
     }
 }

@@ -127,6 +127,10 @@ struct RoomRootView: View {
         .sheet(item: $sheet, onDismiss: performOnboardingFollowUp) { selected in
             switch selected {
             case .review: RoomCleanupReviewSheet(model: model)
+            case .mapCleanup(let review):
+                RoomCleanupReviewSheet(model: model, mapCleanup: review, canAccessMapCleanup: {
+                    !hide.masksNow && insights.approvedMapScope(for: review.location) != nil
+                })
             case .source(let source): RoomSourceSheet(source: source, model: model)
             case .welcome:
                 RoomOnboardingView(capacity: insights.volumeCapacity, isWorking: isOnboardingBusy(),
@@ -284,7 +288,8 @@ struct RoomRootView: View {
             RoomDiskMapView(insights: insights, rooms: rooms, savedViews: savedViews,
                 savedViewDisplay: savedViewDisplay, openSavedView: openSavedView,
                 canInspectCacheSource: { cacheSource(for: $0) != nil },
-                inspectCacheSource: inspectCacheSource)
+                inspectCacheSource: inspectCacheSource, cleanupAction: mapCleanupAction,
+                activateCleanup: activateMapCleanup)
         case .developer:
             #if ROOM_APP_STORE
             RoomDeveloperView(model: developer)
@@ -304,6 +309,20 @@ struct RoomRootView: View {
         guard let source = cacheSource(for: url) else { return }
         navigation.select(.screen(.clean), origin: .controlActivation)
         sheet = .source(source)
+    }
+
+    private func mapCleanupAction(_ url: URL) -> RoomMapCleanupAction? {
+        guard !hide.masksNow, insights.approvedMapScope(for: url) != nil else { return nil }
+        return model.mapCleanupAction(at: url)
+    }
+
+    private func activateMapCleanup(_ url: URL) {
+        switch mapCleanupAction(url) {
+        case .check: model.scan()
+        case .review:
+            if let request = model.makeMapCleanup(at: url) { sheet = .mapCleanup(request) }
+        case .checking, .empty, nil: break
+        }
     }
 
     private func openSavedView(_ id: UUID) {
@@ -361,12 +380,14 @@ struct RoomRootView: View {
 
 private enum RoomSheet: Identifiable {
     case review, source(RoomSource), welcome, protectedSources, scanIssues, history
+    case mapCleanup(RoomMapCleanup)
     #if ROOM_APP_STORE
     case restore(RoomActivity)
     #endif
     var id: String {
         switch self {
         case .review: "review"
+        case .mapCleanup: "map-cleanup"
         case .source(let source): "source-\(source.id)"
         case .welcome: "welcome"
         case .protectedSources: "protected"

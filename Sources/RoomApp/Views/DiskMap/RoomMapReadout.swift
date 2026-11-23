@@ -27,7 +27,7 @@ nonisolated struct RoomMapReadoutContent: Equatable {
                         hidden: hidden, format: format)
     }
 
-    private static func node(at path: String, inside level: RoomTreeNode) -> RoomTreeNode? {
+    static func node(at path: String, inside level: RoomTreeNode) -> RoomTreeNode? {
         if path == level.relativePath { return level }
         if level.relativePath.isEmpty { return level.descendant(at: path) }
         let prefix = level.relativePath + "/"
@@ -95,6 +95,7 @@ struct RoomMapReadout: View {
 struct RoomLargestTable: View {
     let level: RoomTreeNode
     let hidden: Bool
+    var selection: String? = nil
     let select: (String) -> Void
 
     var body: some View {
@@ -122,12 +123,47 @@ struct RoomLargestTable: View {
                         .frame(minHeight: RoomTokens.Map.largestRowHeight)
                         .contentShape(Rectangle())
                     }
-                    .buttonStyle(RoomHoverButtonStyle())
+                    .buttonStyle(RoomHoverButtonStyle(isActive: selection == row.id))
+                    .accessibilityAddTraits(selection == row.id ? .isSelected : [])
                 }
             }
             .padding(RoomTokens.Space.row)
         }
         .accessibilityIdentifier("RoomDiskMapLargestTable")
+    }
+}
+
+struct RoomMapCleanupControl: View {
+    let action: RoomMapCleanupAction
+    let activate: () -> Void
+    @Environment(\.roomAccent) private var accent
+
+    var body: some View {
+        Group {
+            switch action {
+            case .check:
+                button("Check Caches", symbol: "magnifyingglass")
+                    .help("Check for eligible caches in Room’s cache locations, then review items in this selection.")
+            case .checking:
+                ProgressView("Checking caches…").controlSize(.small)
+            case .review:
+                button("Review Cleanup", symbol: "checklist")
+                    .help("Review the clearable cache items inside this selection.")
+            case .empty:
+                Text("No clearable caches here")
+            }
+        }
+        .font(RoomTokens.Typography.caption)
+        .foregroundStyle(RoomTokens.Ink.secondary)
+        .fixedSize()
+    }
+
+    private func button(_ title: String, symbol: String) -> some View {
+        Button(action: activate) { Label(title, systemImage: symbol) }
+            .buttonStyle(.glassProminent)
+            .tint(accent.fill)
+            .controlSize(.regular)
+            .accessibilityIdentifier("RoomDiskMapCleanup")
     }
 }
 

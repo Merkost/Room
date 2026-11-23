@@ -11,6 +11,8 @@ struct RoomDiskMapView: View {
     var openSavedView: (UUID) -> Void = { _ in }
     var canInspectCacheSource: (URL) -> Bool = { _ in false }
     var inspectCacheSource: (URL) -> Void = { _ in }
+    var cleanupAction: (URL) -> RoomMapCleanupAction? = { _ in nil }
+    var activateCleanup: (URL) -> Void = { _ in }
     @Environment(\.openSettings) private var openSettings
     @Environment(\.roomAccent) private var accent
     @Environment(\.roomHide) private var privacy
@@ -406,7 +408,9 @@ struct RoomDiskMapView: View {
                         }
                         .frame(minHeight: RoomTokens.Map.minimumHeight)
                     } else {
-                        RoomLargestTable(level: visible, hidden: hidden) { activate($0, false, false) }
+                        RoomLargestTable(level: visible, hidden: hidden, selection: model.selectedPath) {
+                            activate($0, false, false)
+                        }
                         readout(visible, hint: false)
                     }
                 }
@@ -471,8 +475,14 @@ struct RoomDiskMapView: View {
         HStack(spacing: RoomTokens.Space.row) {
             RoomMapContextReadout(level: level, pointer: pointer, selectedPath: model.selectedPath,
                                   hidden: hidden, showsHint: hint)
+            if let location = cleanupLocation(in: level), let action = cleanupAction(location) {
+                RoomMapCleanupControl(action: action) { activateCleanup(location) }
+            }
             if let date = model.changedAt, date > model.current?.scannedAt ?? .distantPast {
-                Text("Changed since this scan").foregroundStyle(RoomTokens.Ink.secondary)
+                Text("Changed since this scan")
+                    .font(RoomTokens.Typography.caption)
+                    .foregroundStyle(RoomTokens.Ink.secondary)
+                    .lineLimit(1)
             } else if let date = model.current?.scannedAt {
                 Text("Scanned \(date.formatted(.dateTime.month().day()))")
                     .font(RoomTokens.Typography.caption)
@@ -484,6 +494,13 @@ struct RoomDiskMapView: View {
                     .buttonStyle(.borderless)
             }
         }
+    }
+
+    private func cleanupLocation(in level: RoomTreeNode) -> URL? {
+        guard !hidden, !insights.isScanningDisk, model.current?.cancelled == false else { return nil }
+        let path = model.selectedPath ?? level.relativePath
+        guard !path.isEmpty, RoomMapReadoutContent.node(at: path, inside: level) != nil else { return nil }
+        return model.url(for: path)
     }
 
     @ViewBuilder private var inspector: some View {
