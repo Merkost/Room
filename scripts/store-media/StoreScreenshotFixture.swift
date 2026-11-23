@@ -74,7 +74,6 @@ struct StoreScreenshotFixture: View {
         let scene = CommandLine.arguments.dropFirst().first ?? "overview"
         screen = Screen(rawValue: scene) ?? .overview
         let defaults = UserDefaults.standard
-        defaults.set(false, forKey: RoomOverviewPreferences.greetingKey)
         defaults.set(false, forKey: RoomOverviewPreferences.roomsChapterKey)
         defaults.set(RoomOnboardingFlow.version, forKey: "RoomOnboardingVersion")
         defaults.set("dark", forKey: "RoomAppearance")
