@@ -11,6 +11,13 @@ struct RoomWeeklyCheckTests {
         RoomWeeklyCheckRecord(at: base.addingTimeInterval(day * Double(days)), eligibleBytes: bytes, partial: partial, scope: scope)
     }
 
+    @MainActor @Test func hideOmitsTheSizeFromTheNotificationTitle() {
+        let shown = RoomWeeklyCheckScheduler.title(growth: 7_000_000_000, hideSizes: false)
+        let hidden = RoomWeeklyCheckScheduler.title(growth: 7_000_000_000, hideSizes: true)
+        #expect(shown.contains(RoomFormat.overviewBytes(7_000_000_000)))
+        #expect(!hidden.contains(where: \.isNumber) && !hidden.contains("GB"))
+    }
+
     @Test func onlyMatchingCompleteWeeklyMeasurementsCanNotify() {
         let previous = record(0, bytes: 10)
         #expect(RoomWeeklyCheck.growthToReport(previous: nil, current: record(7, bytes: 15), thresholdBytes: 5) == nil)

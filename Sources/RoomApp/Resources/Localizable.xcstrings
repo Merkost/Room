@@ -1137,6 +1137,17 @@
         }
       }
     },
+    "weekly.title.hidden": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Caches grew this week."
+          }
+        }
+      }
+    },
     "weekly.title": {
       "extractionState": "manual",
       "localizations": {
