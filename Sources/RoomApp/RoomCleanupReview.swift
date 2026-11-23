@@ -1,5 +1,28 @@
 import Foundation
 
+/// Availability is queried on map selection changes. Index eligible items and their enclosing folders once per report.
+nonisolated struct RoomMapCleanupPathIndex {
+    private let items: Set<String>
+    private let folders: Set<Substring>
+
+    init(_ paths: [String]) {
+        items = Set(paths)
+        var enclosingFolders: Set<Substring> = []
+        for path in items {
+            // Match the character boundaries used by String.hasPrefix in the review.
+            for index in path.indices where path[index] == "/" {
+                let folder = index == path.startIndex ? path[...index] : path[..<index]
+                enclosingFolders.insert(folder)
+            }
+        }
+        folders = enclosingFolders
+    }
+
+    func contains(path: String, includesContents: Bool) -> Bool {
+        items.contains(path) || (includesContents && folders.contains(path[...]))
+    }
+}
+
 nonisolated struct RoomMapCleanup: Equatable, Sendable {
     let location: URL
     let reportID: UUID

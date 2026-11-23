@@ -67,7 +67,14 @@ final class RoomViewModel {
     @ObservationIgnored private var sourceGroups: [String: [CacheGroup]] = [:]
     @ObservationIgnored private var movedEntryIDs: Set<UUID> = []
     @ObservationIgnored private var ignoredEntryIDs: Set<UUID> = []
-    @ObservationIgnored private var candidateIndex: [String: CandidateIndex] = [:]
+    @ObservationIgnored private var mapCleanupPaths = RoomMapCleanupPathIndex([])
+    @ObservationIgnored private var candidateIndex: [String: CandidateIndex] = [:] {
+        didSet {
+            mapCleanupPaths = RoomMapCleanupPathIndex(candidateIndex.values.flatMap { index in
+                index.items.compactMap { $0.bytes > 0 ? $0.url.path : nil }
+            })
+        }
+    }
     private var excludedEntryIDs: Set<UUID> = []
 
     private struct CandidateIndex {
@@ -434,10 +441,7 @@ final class RoomViewModel {
         guard hasReport else { return .check }
         guard canEditSelection else { return nil }
         let path = url.roomLexicallyNormalized.path
-        let hasMatch = candidateIndex.values.contains { index in
-            index.items.contains { $0.bytes > 0 && RoomMapCleanup.matches($0.url, path: path, includesContents: includesContents) }
-        }
-        if hasMatch { return .review }
+        if mapCleanupPaths.contains(path: path, includesContents: includesContents) { return .review }
         #if ROOM_APP_STORE
         if let folder = fileAccess.approval(for: url), !storeScanGrants.contains(folder.id + ":" + folder.url.path) {
             return .check
