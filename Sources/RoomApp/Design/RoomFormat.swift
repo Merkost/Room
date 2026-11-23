@@ -98,6 +98,8 @@ struct RoomByteMetric: View {
     /// The screen's one hero figure: one decimal below 100 GB.
     var hero = false
     var animatesChanges = false
+    /// The Overview hero only: the figure in the display face (Fraunces), in fixed-width slots.
+    var display = false
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
@@ -112,15 +114,20 @@ struct RoomByteMetric: View {
     private func metric(size: CGFloat) -> some View {
         let amount = RoomFormat.splitBytes(bytes, memory: memory, hero: hero)
         return HStack(alignment: .firstTextBaseline, spacing: 9) {
-            Group {
-                if memory { Text(amount.value) } else { RoomMaskable(amount.value) }
+            if display && !memory {
+                RoomDisplayFigure(value: amount.value, size: size, animatesChanges: animatesChanges)
+                    .fixedSize()
+            } else {
+                Group {
+                    if memory { Text(amount.value) } else { RoomMaskable(amount.value) }
+                }
+                    .font(RoomType.figure(size))
+                    .tracking(size > 30 ? -0.5 : 0)
+                    .monospacedDigit()
+                    .roomNumericTransition(amount.value, enabled: animatesChanges)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
             }
-                .font(RoomType.figure(size))
-                .tracking(size > 30 ? -0.5 : 0)
-                .monospacedDigit()
-                .roomNumericTransition(amount.value, enabled: animatesChanges)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
             Text(amount.unit)
                 .font(RoomType.figure(max(14, size * 0.4)))
                 .foregroundStyle(.secondary)

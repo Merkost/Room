@@ -11,7 +11,8 @@ struct RoomRecentOverviewLine: View {
     var body: some View {
         VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
             if standalone {
-                Text(String(localized: "recent.title", defaultValue: "Recent", table: "Overview", bundle: RoomCopy.bundle)).font(RoomTokens.Typography.title).accessibilityHeading(.h2)
+                Text(String(localized: "recent.title", defaultValue: "Recent", table: "Overview", bundle: RoomCopy.bundle))
+                    .font(RoomDisplayType.chapter).tracking(RoomDisplayType.chapterTracking).accessibilityHeading(.h2)
             }
             if let entry {
                 RoomMaskable(RoomMakeRoomCopy.headline(entry, format: RoomFormat.gb))
