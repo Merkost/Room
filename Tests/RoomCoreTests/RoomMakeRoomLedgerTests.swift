@@ -43,6 +43,20 @@ struct RoomMakeRoomLedgerTests {
             trashIdentity: identity, originalIdentity: identity) == .unknown)
     }
 
+    @Test func anEntryNeverObservableForThirtyDaysStopsBeingChecked() throws {
+        let entry = try stageOne(bytes: 600_000_000)
+        let late = now.addingTimeInterval(RoomMakeRoomLedger.closeAfter + 60)
+        let reading = RoomCapacitySample(freeBytes: free, device: device, at: late)
+        #expect(RoomMakeRoomLedger.needsChecks([entry]))
+        let next = RoomMakeRoomLedger.advance([entry], observations: [:], sample: reading, now: late)
+        #expect(next.first?.closed == true)
+        #expect(!RoomMakeRoomLedger.needsChecks(next))
+        let soon = now.addingTimeInterval(3600)
+        let early = RoomMakeRoomLedger.advance([entry], observations: [:],
+            sample: RoomCapacitySample(freeBytes: free, device: device, at: soon), now: soon)
+        #expect(early.first?.closed == false)
+    }
+
     @Test func backwardsClockLeavesEvidenceUnchanged() throws {
         let entry = try stageOne(bytes: 600_000_000)
         let rolledBack = try after(entry, freeGain: 600_000_000, afterSeconds: -1)

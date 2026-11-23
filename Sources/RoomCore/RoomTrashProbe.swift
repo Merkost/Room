@@ -34,13 +34,13 @@ package nonisolated enum RoomTrashProbe {
     }
 
     #if ROOM_APP_STORE
-    private static func bookmark(_ data: Data?) -> RoomBookmarkProbe {
+    package static func bookmark(_ data: Data?) -> RoomBookmarkProbe {
         guard let data else { return .noBookmark }
         do {
-            var stale = false
+            var stale = false // intentionally ignored: the resolved URL is valid
             let url = try URL(resolvingBookmarkData: data, options: [.withSecurityScope, .withoutUI],
                               relativeTo: nil, bookmarkDataIsStale: &stale)
-            guard !stale else { return .failed }
+            // A stale bookmark still resolves to the item's current location; only a real error is unknown.
             return .resolved(path: url.roomLexicallyNormalized.path)
         } catch CocoaError.fileNoSuchFile {
             return .noSuchFile

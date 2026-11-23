@@ -105,7 +105,9 @@ package nonisolated enum RoomMakeRoomLedger {
         let totalNewly = entries.filter(attributable).reduce(Int64(0)) { $0 + newly($1) }
         func closing(_ entry: RoomMakeRoomEntry) -> RoomMakeRoomEntry {
             var c = entry
-            if !c.closed, !c.isObserved, now.timeIntervalSince(c.lastChangedAt) > closeAfter { c.closed = true }
+            // An entry Room could not observe for 30 days stops being checked, so the 60 s loop always ends.
+            if !c.closed, !c.isObserved || observations[c.id] == nil,
+               now.timeIntervalSince(c.lastChangedAt) > closeAfter { c.closed = true }
             return c
         }
         func step(_ e: RoomMakeRoomEntry) -> RoomMakeRoomEntry {
