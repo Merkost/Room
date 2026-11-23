@@ -1,0 +1,311 @@
+{
+  "$schema": "./room.tokens.schema.md",
+  "$description": "Room design tokens: the single source of truth for the website and the macOS app. Edit here, then run `node build/all.mjs`. Never edit dist/ by hand.",
+  "$version": "1.0.0",
+
+  "color": {
+    "$type": "color",
+    "$description": "Colour values are {light, dark, lightHC?, darkHC?}; HC = Increase Contrast (app) / prefers-contrast: more (web). A value may carry alpha as #RRGGBB@0.10. Missing HC falls back to light/dark.",
+
+    "brand": {
+      "$description": "Brand surfaces only: the website outside [data-ui] fragments, Store art, OG images, social. Never inside an app window.",
+      "field":     { "$value": { "light": "#1E44D6", "dark": "#0B1A4C" }, "$description": "Cobalt field. The brand colour. Large surfaces only." },
+      "onField":   { "$value": { "light": "#FFFFFF", "dark": "#F3F5FF" }, "$description": "Type and controls on the field." },
+      "onField2":  { "$value": { "light": "#DCE3FF", "dark": "#AEB9E8" }, "$description": "Secondary type on the field." },
+      "fieldRing": { "$value": { "light": "#FFFFFF@0.62", "dark": "#DCE4FF@0.50", "lightHC": "#FFFFFF@0.80", "darkHC": "#DCE4FF@0.72" }, "$description": "Free-space rings on the field (3:1 non-text)." },
+      "fieldDash": { "$value": { "light": "#FFFFFF@0.72", "dark": "#DCE4FF@0.58", "lightHC": "#FFFFFF@0.85", "darkHC": "#DCE4FF@0.78" }, "$description": "The dashed not-measured room on the field." },
+      "paper":     { "$value": { "light": "#F4F1E8", "dark": "#0F1222" }, "$description": "Paper sections between fields." },
+      "paper2":    { "$value": { "light": "#EAE5D6", "dark": "#141831" }, "$description": "Second paper, for calm whole-section fields." },
+      "raise":     { "$value": { "light": "#FFFFFF", "dark": "#171B30" }, "$description": "A card or tooltip lifted off paper." },
+      "ink":       { "$value": { "light": "#0D1433", "dark": "#EEF0F8" }, "$description": "Type on paper." },
+      "ink2":      { "$value": { "light": "#3A4266", "dark": "#A9B0CC", "lightHC": "#2A3156", "darkHC": "#C9CEE2" }, "$description": "Secondary type on paper." },
+      "link":      { "$value": { "light": "#1E44D6", "dark": "#8FA6FF" }, "$description": "Links and the one accent on paper (brand surfaces)." },
+      "fill":      { "$value": { "light": "#1E44D6", "dark": "#3355E8" }, "$description": "The filled button on paper." },
+      "onFill":    { "$value": { "light": "#FFFFFF", "dark": "#FFFFFF" } },
+      "band":      { "$value": { "light": "#0D1433", "dark": "#070A18" }, "$description": "Ink band (footer, the one dark turn)." },
+      "onBand":    { "$value": { "light": "#F4F1E8", "dark": "#EEF0F8" } },
+      "onBand2":   { "$value": { "light": "#C9CCDA", "dark": "#A9B0CC" } },
+      "tip":       { "$value": { "light": "#FFFFFF", "dark": "#F3F5FF" }, "$description": "Tooltip and capsule on the field." },
+      "onTip":     { "$value": { "light": "#0D1433", "dark": "#0B1A4C" } },
+      "focus":     { "$value": { "light": "#1E44D6", "dark": "#8FA6FF" }, "$description": "Focus ring on paper. On the field the ring is onField." }
+    },
+
+    "product": {
+      "$description": "App windows, popover, sheets, and the site's [data-ui] app fragments. Cool neutral graphite so a Room window sits among other Mac windows.",
+      "canvas":   { "$value": { "light": "#F3F5F6", "dark": "#17191A" } },
+      "group":    { "$value": { "light": "#FFFFFF", "dark": "#202325" } },
+      "ink":      { "$value": { "light": "#222527", "dark": "#F3F5F6", "lightHC": "#111314", "darkHC": "#FFFFFF" } },
+      "ink2":     { "$value": { "light": "#5B6266", "dark": "#A3A9AC", "lightHC": "#43494D", "darkHC": "#C9CED1" } },
+      "track":    { "$value": { "light": "#E3E7E9", "dark": "#2C3033", "lightHC": "#D3D9DC", "darkHC": "#3A3F43" } },
+      "used":     { "$value": { "light": "#4A5257", "dark": "#9AA3A8" } },
+      "line":     { "$value": { "light": "#222527@0.10", "dark": "#F3F5F6@0.09", "lightHC": "#222527@0.22", "darkHC": "#F3F5F6@0.24" } },
+      "line2":    { "$value": { "light": "#222527@0.16", "dark": "#F3F5F6@0.16", "lightHC": "#222527@0.30", "darkHC": "#F3F5F6@0.32" } },
+      "hover":    { "$value": { "light": "#222527@0.045", "dark": "#F3F5F6@0.05" } },
+      "press":    { "$value": { "light": "#222527@0.09", "dark": "#F3F5F6@0.10" } },
+      "hatch":    { "$value": { "light": "#222527@0.16", "dark": "#F3F5F6@0.16", "lightHC": "#222527@0.28", "darkHC": "#F3F5F6@0.28" } },
+      "freeRing": { "$value": { "light": "#5B6266@0.80", "dark": "#A3A9AC@0.80", "lightHC": "#43494D", "darkHC": "#C9CED1" }, "$description": "Unlit free-space rings in the plan (3:1 non-text)." },
+      "tileInk":  { "$value": { "light": "#222527", "dark": "#F3F5F6" } },
+      "tileInk2": { "$value": { "light": "#3E4448", "dark": "#C5CCD0" } },
+      "iconTile": { "$value": { "light": "#222527", "dark": "#222527" }, "$description": "App icon tile, both modes." }
+    },
+
+    "accent": {
+      "$description": "The product's one interactive accent (Teal, default). fill = the one filled button; text = links, selected text, focus; wash = selection and hover on accent rows.",
+      "fill":   { "$value": { "light": "#3D7482", "dark": "#37717F", "lightHC": "#2F5F6B", "darkHC": "#2C5F6B" } },
+      "text":   { "$value": { "light": "#3D7482", "dark": "#7FB5C3", "lightHC": "#2C5966", "darkHC": "#A6D2DD" } },
+      "wash":   { "$value": { "light": "#3D7482@0.10", "dark": "#7FB5C3@0.14", "lightHC": "#3D7482@0.16", "darkHC": "#7FB5C3@0.22" } },
+      "onFill": { "$value": { "light": "#FFFFFF", "dark": "#FFFFFF" } },
+      "focus":  { "$value": { "light": "#3D7482", "dark": "#7FB5C3", "lightHC": "#2C5966", "darkHC": "#A6D2DD" }, "$description": "Custom focus rings (plan rooms, tiles). Native controls use the macOS keyboard focus ring." }
+    },
+
+    "accentOption": {
+      "$description": "Customise › Accent alternatives (app only). Same roles as accent.",
+      "graphite": { "fill": { "$value": { "light": "#3A4146", "dark": "#596167" } }, "text": { "$value": { "light": "#3A4146", "dark": "#D2D8DB" } } },
+      "harbour":  { "fill": { "$value": { "light": "#3A6491", "dark": "#3A6289" } }, "text": { "$value": { "light": "#3A6491", "dark": "#8DB4DD" } } },
+      "berry":    { "fill": { "$value": { "light": "#8A4766", "dark": "#84476A" } }, "text": { "$value": { "light": "#8A4766", "dark": "#DDA6C0" } } }
+    },
+
+    "status": {
+      "$description": "Memory pressure and the free-space goal only. Never a data series.",
+      "normal":       { "$value": { "light": "#2E7D4F", "dark": "#5CC08A", "lightHC": "#226B40", "darkHC": "#7FD6A5" } },
+      "elevated":     { "$value": { "light": "#A3590A", "dark": "#F0A040", "lightHC": "#8A4A06", "darkHC": "#F6B866" } },
+      "critical":     { "$value": { "light": "#C4242A", "dark": "#FF6B66", "lightHC": "#A51C22", "darkHC": "#FF8C88" } },
+      "elevatedWash": { "$value": { "light": "#A3590A@0.09", "dark": "#F0A040@0.12" }, "$description": "Lane tint only; no body text on it." },
+      "criticalWash": { "$value": { "light": "#C4242A@0.09", "dark": "#FF6B66@0.12" }, "$description": "Lane tint only; no body text on it." }
+    },
+
+    "kind": {
+      "$description": "The seven kinds. One hue per kind, three steps: fill = room tint with labels on it (product); mark = dots, thin bars, legend swatches on canvas or paper (both platforms); field = dots on the cobalt field (brand). Kind colour never travels without its name.",
+      "developer": {
+        "fill":  { "$value": { "light": "#A9CBD4", "dark": "#2E5560" } },
+        "mark":  { "$value": { "light": "#137A8F", "dark": "#6CBFCC", "lightHC": "#0E6475", "darkHC": "#7AD0E1" } },
+        "field": { "$value": { "light": "#89E3EF", "dark": "#61C9D5" } }
+      },
+      "media": {
+        "fill":  { "$value": { "light": "#BACFB2", "dark": "#3C5236" } },
+        "mark":  { "$value": { "light": "#276F1C", "dark": "#85C678", "lightHC": "#1E5C15", "darkHC": "#97D184" } },
+        "field": { "$value": { "light": "#AFEE83", "dark": "#90D472" } }
+      },
+      "documents": {
+        "fill":  { "$value": { "light": "#B9C4DA", "dark": "#38455E" } },
+        "mark":  { "$value": { "light": "#3A57BA", "dark": "#A9B8F6", "lightHC": "#2D479E", "darkHC": "#C3CEFA" } },
+        "field": { "$value": { "light": "#F6F7FF", "dark": "#E6EBFF" } }
+      },
+      "apps": {
+        "fill":  { "$value": { "light": "#DCCDA6", "dark": "#58492C" } },
+        "mark":  { "$value": { "light": "#A07800", "dark": "#E6BB45", "lightHC": "#856400", "darkHC": "#F0CC6A" } },
+        "field": { "$value": { "light": "#FFD43B", "dark": "#F1C12E" } }
+      },
+      "archives": {
+        "fill":  { "$value": { "light": "#DDBBA9", "dark": "#5C3F33" } },
+        "mark":  { "$value": { "light": "#B73F2B", "dark": "#E0705A", "lightHC": "#9A3222", "darkHC": "#EE917F" } },
+        "field": { "$value": { "light": "#FD9870", "dark": "#F2794D" } }
+      },
+      "system": {
+        "fill":  { "$value": { "light": "#CBD0D3", "dark": "#3A3F43" } },
+        "mark":  { "$value": { "light": "#717980", "dark": "#9AA4AA", "lightHC": "#5A6168", "darkHC": "#B8C0C5" } },
+        "field": { "$value": { "light": "#ADB4C9", "dark": "#8E98B1" } }
+      },
+      "hidden": {
+        "fill":  { "$value": { "light": "#CCBCD3", "dark": "#4A3C52" } },
+        "mark":  { "$value": { "light": "#A75FC1", "dark": "#B489CE", "lightHC": "#8E4BA7", "darkHC": "#D2A9E3" } },
+        "field": { "$value": { "light": "#EBA1FA", "dark": "#CF85DF" } }
+      }
+    }
+  },
+
+  "contrast": {
+    "$description": "Every text/background and non-text pair the DS uses. min = 4.5 (text), 3 (large text, non-text). Checked in light, dark, lightHC, darkHC by build/contrast.mjs and check/main.swift. 'on' may be an alpha colour (composited over 'bg'). 'tint:' composes 13% of the fg over bg (the room tint a dot sits on).",
+    "pairs": [
+      { "id": "product.ink/canvas",        "fg": "color.product.ink",      "bg": "color.product.canvas", "min": 4.5 },
+      { "id": "product.ink/group",         "fg": "color.product.ink",      "bg": "color.product.group",  "min": 4.5 },
+      { "id": "product.ink2/canvas",       "fg": "color.product.ink2",     "bg": "color.product.canvas", "min": 4.5 },
+      { "id": "product.ink2/group",        "fg": "color.product.ink2",     "bg": "color.product.group",  "min": 4.5 },
+      { "id": "product.ink2/track",        "fg": "color.product.ink2",     "bg": "color.product.track",  "min": 4.5 },
+      { "id": "accent.text/canvas",        "fg": "color.accent.text",      "bg": "color.product.canvas", "min": 4.5 },
+      { "id": "accent.text/group",         "fg": "color.accent.text",      "bg": "color.product.group",  "min": 4.5 },
+      { "id": "accent.onFill/fill",        "fg": "color.accent.onFill",    "bg": "color.accent.fill",    "min": 4.5 },
+      { "id": "accent.focus/canvas",       "fg": "color.accent.focus",     "bg": "color.product.canvas", "min": 3 },
+      { "id": "product.ink/accent.wash",   "fg": "color.product.ink",      "bg": "color.accent.wash",    "over": "color.product.canvas", "min": 4.5 },
+      { "id": "product.freeRing/canvas",   "fg": "color.product.freeRing", "bg": "color.product.canvas", "min": 3 },
+      { "id": "product.freeRing/group",    "fg": "color.product.freeRing", "bg": "color.product.group",  "min": 3 },
+      { "id": "status.normal/canvas",      "fg": "color.status.normal",    "bg": "color.product.canvas", "min": 4.5 },
+      { "id": "status.elevated/canvas",    "fg": "color.status.elevated",  "bg": "color.product.canvas", "min": 4.5 },
+      { "id": "status.critical/canvas",    "fg": "color.status.critical",  "bg": "color.product.canvas", "min": 4.5 },
+      { "id": "status.normal/group",       "fg": "color.status.normal",    "bg": "color.product.group",  "min": 4.5 },
+      { "id": "status.elevated/group",     "fg": "color.status.elevated",  "bg": "color.product.group",  "min": 4.5 },
+      { "id": "status.critical/group",     "fg": "color.status.critical",  "bg": "color.product.group",  "min": 4.5 },
+      { "id": "status.elevated/elevatedWash (glyph)", "fg": "color.status.elevated", "bg": "color.status.elevatedWash", "over": "color.product.canvas", "min": 3 },
+      { "id": "status.critical/criticalWash (glyph)", "fg": "color.status.critical", "bg": "color.status.criticalWash", "over": "color.product.canvas", "min": 3 },
+      { "id": "kind.*.mark/canvas",        "fg": "color.kind.*.mark",      "bg": "color.product.canvas", "min": 3 },
+      { "id": "kind.*.mark/group",         "fg": "color.kind.*.mark",      "bg": "color.product.group",  "min": 3 },
+      { "id": "kind.*.mark/room tint",     "fg": "color.kind.*.mark",      "bg": "tint:color.kind.*.mark", "over": "color.product.canvas", "min": 3 },
+      { "id": "kind.*.mark/brand.paper",   "fg": "color.kind.*.mark",      "bg": "color.brand.paper",    "min": 3 },
+      { "id": "product.tileInk/kind.*.fill",  "fg": "color.product.tileInk",  "bg": "color.kind.*.fill", "min": 4.5 },
+      { "id": "product.tileInk2/kind.*.fill", "fg": "color.product.tileInk2", "bg": "color.kind.*.fill", "min": 4.5 },
+      { "id": "kind.*.field/brand.field",  "fg": "color.kind.*.field",     "bg": "color.brand.field",    "min": 3 },
+      { "id": "brand.ink/paper",           "fg": "color.brand.ink",        "bg": "color.brand.paper",    "min": 4.5 },
+      { "id": "brand.ink/paper2",          "fg": "color.brand.ink",        "bg": "color.brand.paper2",   "min": 4.5 },
+      { "id": "brand.ink2/paper",          "fg": "color.brand.ink2",       "bg": "color.brand.paper",    "min": 4.5 },
+      { "id": "brand.ink2/paper2",         "fg": "color.brand.ink2",       "bg": "color.brand.paper2",   "min": 4.5 },
+      { "id": "brand.link/paper",          "fg": "color.brand.link",       "bg": "color.brand.paper",    "min": 4.5 },
+      { "id": "brand.link/raise",          "fg": "color.brand.link",       "bg": "color.brand.raise",    "min": 4.5 },
+      { "id": "brand.onFill/fill",         "fg": "color.brand.onFill",     "bg": "color.brand.fill",     "min": 4.5 },
+      { "id": "brand.onField/field",       "fg": "color.brand.onField",    "bg": "color.brand.field",    "min": 4.5 },
+      { "id": "brand.onField2/field",      "fg": "color.brand.onField2",   "bg": "color.brand.field",    "min": 4.5 },
+      { "id": "brand.fieldRing/field",     "fg": "color.brand.fieldRing",  "bg": "color.brand.field",    "min": 3 },
+      { "id": "brand.fieldDash/field",     "fg": "color.brand.fieldDash",  "bg": "color.brand.field",    "min": 3 },
+      { "id": "brand.onTip/tip",           "fg": "color.brand.onTip",      "bg": "color.brand.tip",      "min": 4.5 },
+      { "id": "brand.onBand/band",         "fg": "color.brand.onBand",     "bg": "color.brand.band",     "min": 4.5 },
+      { "id": "brand.onBand2/band",        "fg": "color.brand.onBand2",    "bg": "color.brand.band",     "min": 4.5 },
+      { "id": "brand.focus/paper",         "fg": "color.brand.focus",      "bg": "color.brand.paper",    "min": 3 },
+      { "id": "accent.text/brand.paper (fragment edge)", "fg": "color.accent.text", "bg": "color.brand.paper", "min": 4.5 }
+    ]
+  },
+
+  "type": {
+    "$type": "typography",
+    "$description": "Named roles. web.size is a CSS value (clamp for fluid roles; min/max in px for checks). app.family: sf (system, follows system settings), sfMono, fraunces (bundled display face; display moments only). Line heights: web unitless, app in points.",
+    "family": {
+      "web":  { "display": "\"Fraunces\", \"Fraunces Fallback\", ui-serif, \"New York\", Georgia, serif", "text": "\"Geist\", \"Geist Fallback\", -apple-system, BlinkMacSystemFont, system-ui, \"Helvetica Neue\", Arial, sans-serif", "mono": "\"Geist Mono\", \"Geist Mono Fallback\", ui-monospace, \"SF Mono\", Menlo, monospace" },
+      "app":  { "display": "Fraunces", "text": "SF Pro (Font.system)", "mono": "SF Mono (Font.system design: .monospaced)" }
+    },
+    "role": {
+      "displayXl": { "use": "Website hero headline; Store art headline; About title in the app",
+        "web": { "family": "display", "size": "clamp(56px, 2.4rem + 5.6vw, 128px)", "min": 56, "max": 128, "weight": 600, "lineHeight": 0.92, "tracking": "-0.035em" },
+        "app": { "family": "fraunces", "size": 34, "weight": 600, "lineHeight": 38, "tracking": -0.6 } },
+      "display": { "use": "Website section headlines; app onboarding headlines and empty-state headlines",
+        "web": { "family": "display", "size": "clamp(34px, 1.4rem + 2.7vw, 64px)", "min": 34, "max": 64, "weight": 500, "lineHeight": 1.02, "tracking": "-0.03em" },
+        "app": { "family": "fraunces", "size": 26, "weight": 500, "lineHeight": 30, "tracking": -0.3 } },
+      "h1": { "use": "Card and panel titles (web); toolbar titles and chapter headings (app)",
+        "web": { "family": "text", "size": "clamp(22px, 1.1rem + 0.5vw, 26px)", "min": 22, "max": 26, "weight": 600, "lineHeight": 1.25, "tracking": "-0.01em" },
+        "app": { "family": "sf", "size": 15, "weight": 600, "lineHeight": 20, "tracking": 0 } },
+      "h2": { "use": "Section headings inside a panel or screen",
+        "web": { "family": "text", "size": "17px", "min": 17, "max": 17, "weight": 600, "lineHeight": 1.35, "tracking": "0" },
+        "app": { "family": "sf", "size": 13, "weight": 600, "lineHeight": 16, "tracking": 0 } },
+      "lead": { "use": "One supporting sentence under a headline; the app's greeting and goal sentence",
+        "web": { "family": "text", "size": "clamp(18px, 1rem + 0.4vw, 22px)", "min": 18, "max": 22, "weight": 400, "lineHeight": 1.5, "tracking": "0" },
+        "app": { "family": "sf", "size": 15, "weight": 400, "lineHeight": 22, "tracking": 0 } },
+      "body": { "use": "Running text, rows, button labels",
+        "web": { "family": "text", "size": "17px", "min": 17, "max": 17, "weight": 400, "lineHeight": 1.6, "tracking": "0" },
+        "app": { "family": "sf", "size": 13, "weight": 400, "lineHeight": 18, "tracking": 0 } },
+      "small": { "use": "Captions, ages, chart axes, footnotes",
+        "web": { "family": "text", "size": "14px", "min": 14, "max": 14, "weight": 400, "lineHeight": 1.5, "tracking": "0" },
+        "app": { "family": "sf", "size": 12, "weight": 400, "lineHeight": 16, "tracking": 0 } },
+      "label": { "use": "Plan labels, key caps, sidebar group titles. The floor: never smaller",
+        "web": { "family": "text", "size": "12px", "min": 12, "max": 12, "weight": 500, "lineHeight": 1.3, "tracking": "0.01em" },
+        "app": { "family": "sf", "size": 11, "weight": 500, "lineHeight": 14, "tracking": 0 } },
+      "numberXl": { "use": "The one hero figure per screen (free space). Tabular",
+        "web": { "family": "text", "size": "clamp(56px, 3rem + 4.4vw, 112px)", "min": 56, "max": 112, "weight": 600, "lineHeight": 0.95, "tracking": "-0.045em", "tabular": true },
+        "app": { "family": "sf", "size": 40, "weight": 400, "lineHeight": 44, "tracking": -0.5, "tabular": true } },
+      "number": { "use": "Sibling figures, kind totals, legend values. Tabular",
+        "web": { "family": "text", "size": "clamp(22px, 1.1rem + 0.5vw, 26px)", "min": 22, "max": 26, "weight": 500, "lineHeight": 1.2, "tracking": "-0.01em", "tabular": true },
+        "app": { "family": "sf", "size": 22, "weight": 400, "lineHeight": 26, "tracking": -0.2, "tabular": true } },
+      "mono": { "use": "Paths and versions only (~/Library/Developer/Xcode/DerivedData, Gradle 8.9)",
+        "web": { "family": "mono", "size": "13px", "min": 13, "max": 13, "weight": 400, "lineHeight": 1.45, "tracking": "0" },
+        "app": { "family": "sfMono", "size": 11.5, "weight": 400, "lineHeight": 15, "tracking": 0 } }
+    },
+    "rule": {
+      "unitScale": { "$value": 0.4, "$description": "A unit (GB) rides the figure's baseline at 0.4 x the figure size, minimum 14 (app) / 0.4em (web)." },
+      "unitMin":   { "$value": 14 },
+      "appFloor":  { "$value": 11, "$description": "No app text below 11 pt." },
+      "webFloor":  { "$value": 12, "$description": "No web text below 12 px." }
+    }
+  },
+
+  "space": {
+    "$type": "dimension",
+    "$description": "One 4/8 scale. px on the web (rem = px / 16), pt in the app. s2 is for hairline gaps only.",
+    "scale": { "s0": 0, "s2": 2, "s4": 4, "s8": 8, "s12": 12, "s16": 16, "s24": 24, "s32": 32, "s40": 40, "s48": 48, "s64": 64, "s72": 72, "s96": 96, "s112": 112, "s160": 160 },
+    "app": {
+      "row": "s8", "inner": "s12", "group": "s16", "breath1": "s24", "breath2": "s40", "breath3": "s64", "breath4": "s96",
+      "gutterCalm": "s40", "gutterCompact": "s24", "topInsetCalm": "s24", "topInsetCompact": "s16"
+    },
+    "web": {
+      "margin": "s24", "marginWide": "s48", "gap": "s24", "gapWide": "s32", "cardPad": "s24", "cardPadWide": "s32",
+      "headGap": "s32", "headGapWide": "s48", "section": "s72", "sectionWide": "s112", "major": "s112", "majorWide": "s160"
+    },
+    "measure": { "app": 560, "web": "56ch" }
+  },
+
+  "radius": {
+    "$type": "dimension",
+    "$description": "One family. App corners are continuous (RoundedRectangle(style: .continuous)); web uses plain border-radius. Concentric rule: outer = inner + padding.",
+    "scale": { "r3": 3, "r5": 5, "r6": 6, "r8": 8, "r10": 10, "r12": 12, "r16": 16, "r20": 20, "r24": 24, "pill": 999 },
+    "role": {
+      "planRoom": "r3", "tile": "r5", "field": "r6", "row": "r8", "plan": "r10", "card": "r10", "group": "r12", "control": "r12",
+      "popover": "r16", "window": "r16", "sheet": "r20", "webCard": "r24", "button": "pill", "chip": "pill"
+    }
+  },
+
+  "stroke": {
+    "$type": "dimension",
+    "hairline": { "$value": 1 }, "ring": { "$value": 1.2 }, "drawing": { "$value": 1.4 }, "wall": { "$value": 1.5 }, "focus": { "$value": 2 }, "wallHC": { "$value": 2 },
+    "dash": { "$value": [4, 3], "$description": "The dashed not-measured room, pt/px at product scale." }
+  },
+
+  "elevation": {
+    "$description": "Web shadows by level. The app draws no shadows in content: e1 is a hairline (product.line); e3 and e4 belong to native popovers, menus, sheets and windows.",
+    "e0": { "web": "none", "app": "none" },
+    "e1": { "web": "0 0 0 1px var(--room-product-line)", "app": "stroke product.line, hairline" },
+    "e2": { "web": "0 0 0 1px var(--room-product-line), 0 1px 2px rgba(20,28,32,.04), 0 18px 40px -18px rgba(20,28,32,.18)", "app": "none (cards sit on canvas)" },
+    "e3": { "web": "0 0 0 1px rgba(20,28,32,.08), 0 8px 24px -8px rgba(20,28,32,.22)", "app": "native (popover, menu, toast: y 8, blur 24, 18%)" },
+    "e4": { "web": "0 0 0 1px rgba(3,8,40,.06), 0 30px 80px rgba(3,8,40,.36)", "app": "native window shadow" }
+  },
+
+  "layout": {
+    "app": {
+      "windowDefault": [1000, 760], "windowMin": [800, 650], "sidebarLabelled": 212, "sidebarIcons": 56, "sidebarCollapseBelow": 900,
+      "sidebarRow": 30, "toolbarHeight": 52, "popoverWidth": 340, "onboardingSheet": [680, 540], "settingsWidth": 620,
+      "hitTargetMin": 24, "hitTargetComfort": 28
+    },
+    "web": { "max": 1200, "columns": 12, "headerHeight": 72, "hitTargetMin": 44, "breakpoint": 761 }
+  },
+
+  "motion": {
+    "$description": "Settle, don't perform. Four durations, two curves, three springs. Same names on both platforms.",
+    "duration": {
+      "$type": "duration",
+      "quick":    { "$value": 120, "$description": "Press, hover, exits." },
+      "standard": { "$value": 200, "$description": "State changes, kind lighting, toasts in, Reduce Motion crossfade." },
+      "page":     { "$value": 320, "$description": "Pages, sheets of content, counts, step inside." },
+      "slow":     { "$value": 600, "$description": "Once-per-arrival choreography only (dots assemble, rings breathe)." }
+    },
+    "easing": {
+      "$type": "cubicBezier",
+      "out":   { "$value": [0.23, 1, 0.32, 1], "$description": "Room out: strong ease-out for everything timed." },
+      "inOut": { "$value": [0.65, 0, 0.35, 1], "$description": "Morph: a shape becomes another shape (week range, mode)." },
+      "linear": { "$value": [0, 0, 1, 1], "$description": "Only the scan trace while a real scan runs." }
+    },
+    "spring": {
+      "page":    { "response": 0.32, "damping": 1.0, "$description": "No overshoot. Step inside, page change, glide." },
+      "slow":    { "response": 0.60, "damping": 1.0, "$description": "No overshoot. Dots assemble." },
+      "success": { "response": 0.28, "damping": 0.7, "$description": "The only overshoot in Room: Made N GB of room." }
+    },
+    "stagger": { "item": 30, "itemCap": 12, "dot": 16, "dotSpreadCap": 600, "group": 70 },
+    "delay": { "tooltip": 500 },
+    "press": { "scale": 0.96, "reducedOpacity": 0.7 },
+    "reduceMotion": { "crossfade": "standard", "$description": "Every spatial animation becomes a standard-duration opacity crossfade or nothing." },
+    "vocabulary": {
+      "dotsAssemble":  { "what": "The plan's dots arrive column by column into place, once per arrival.", "duration": "slow", "curve": "spring.slow", "stagger": "dot", "reduce": "fade", "web": "room-dots-assemble", "app": "RoomMotion.dotsAssemble" },
+      "ringsBreathe":  { "what": "Free-space rings rise from 0 to full opacity once, after the dots settle. Never loops.", "duration": "slow", "curve": "easing.out", "stagger": "none", "reduce": "fade", "web": "room-rings-breathe", "app": "RoomMotion.ringsBreathe" },
+      "pocketFills":   { "what": "The mark's pocket fills from the bottom to the memory pressure level.", "duration": "standard", "curve": "easing.out", "stagger": "none", "reduce": "swap", "web": "room-pocket-fills", "app": "RoomMotion.pocketFills" },
+      "receiptLights": { "what": "After Trash is emptied and free space rises, the returned rings light in sequence (accent fill), then stay lit.", "duration": "slow", "curve": "easing.out", "stagger": "item", "reduce": "fade", "web": "room-receipt-lights", "app": "RoomMotion.receiptLights" },
+      "kindLights":    { "what": "Hover or focus on a kind: it stays at full strength, the others dim to 18%.", "duration": "standard", "curve": "easing.out", "stagger": "none", "reduce": "swap", "web": "room-kind-lights", "app": "RoomMotion.kindLights" },
+      "press":         { "what": "Scale 0.96 while pressed; opacity 0.7 under Reduce Motion.", "duration": "quick", "curve": "easing.out", "stagger": "none", "reduce": "opacity", "web": "room-press", "app": "RoomMotion.press" },
+      "stepInside":    { "what": "A room grows into the view; stepping out reverses from the present frame.", "duration": "page", "curve": "spring.page", "stagger": "none", "reduce": "fade", "web": "room-step-inside", "app": "RoomMotion.stepInside" },
+      "countChange":   { "what": "A figure rolls to its new value, on real data changes only.", "duration": "page", "curve": "easing.out", "stagger": "none", "reduce": "swap", "web": "room-count", "app": "RoomMotion.countChange" },
+      "toast":         { "what": "Rise 12 to 0 with opacity in; out 0 to 6, faster.", "duration": "standard", "curve": "easing.out", "stagger": "none", "reduce": "fade", "web": "room-toast", "app": "RoomMotion.toast" },
+      "madeRoom":      { "what": "The check of Made N GB of room: scale 0.6 to 1. The only overshoot.", "duration": "page", "curve": "spring.success", "stagger": "none", "reduce": "swap", "web": "room-made", "app": "RoomMotion.madeRoom" }
+    },
+    "never": ["keyboard navigation (selection jumps)", "the menu-bar value outside a real change", "numbers that did not change because of new data", "whole-screen colour", "anything rotated, tilted, skewed or in perspective", "loops at rest"]
+  },
+
+  "dot": {
+    "$description": "The dot plan primitive. product = instrument scale (app, site fragments); poster = brand scale (site hero, Store art, footer wordmark). pitch is the centre-to-centre distance.",
+    "product": { "radiusFactor": 0.15, "radiusMin": 2.4, "radiusMax": 3.6, "ringStroke": 1.2, "dimOpacity": 0.18, "roomGap": 2, "roomInset": 5, "wall": 1.5, "labelInset": 8, "hoverRadiusGain": 2.2 },
+    "poster":  { "radiusFactor": 0.30, "ringStrokeFactor": 0.054, "dashFactor": [0.12, 0.08], "roomRadiusFactor": 0.4, "dimOpacity": 0.18 },
+    "unit": { "$description": "GB per dot. The app picks the smallest unit from the list that keeps the plan under 320 dots; the site sample uses 2.", "steps": [1, 2, 4, 8, 16, 32] },
+    "maxDots": 320
+  }
+}

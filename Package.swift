@@ -19,7 +19,12 @@ let package = Package(
             swiftSettings: [.defaultIsolation(MainActor.self)] + editionSettings
         ),
         .testTarget(name: "RoomCoreTests", dependencies: ["RoomCore"], swiftSettings: editionSettings),
-        .testTarget(name: "RoomAppTests", dependencies: ["RoomApp", "RoomCore"], swiftSettings: editionSettings)
+        .testTarget(
+            name: "RoomAppTests",
+            dependencies: ["RoomApp", "RoomCore"],
+            resources: [.copy("Resources/room.tokens.json")],
+            swiftSettings: editionSettings
+        )
     ],
     swiftLanguageModes: [.v6]
 )
