@@ -162,12 +162,12 @@ struct RoomOnboardingExample: View {
 
     private func line(_ name: String, _ value: String) -> some View {
         HStack(alignment: .center, spacing: RoomTokens.Space.tight) {
-            Text(name).foregroundStyle(RoomTokens.Ink.graphite)
+            Text(name).foregroundStyle(RoomTokens.Ink.graphite).fixedSize()
             RoomOnboardingLeader()
                 .stroke(RoomTokens.Surface.line2, style: StrokeStyle(lineWidth: 1, dash: [1, 2]))
                 .frame(height: 1)
-                .frame(minWidth: RoomTokens.Space.group)
-            Text(value).foregroundStyle(RoomTokens.Ink.secondary)
+                .frame(minWidth: RoomTokens.Space.tight)
+            Text(value).foregroundStyle(RoomTokens.Ink.secondary).fixedSize()
         }
         .font(RoomTokens.Typography.body)
         .lineLimit(1)
@@ -270,7 +270,7 @@ struct RoomOnboardingExample: View {
             }
             .accessibilityHidden(true)
             triptychDrawing(item)
-                .padding(.horizontal, RoomTokens.Space.row + 4)
+                .padding(.horizontal, RoomTokens.Space.row + 2)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(RoomTokens.Surface.group, in: shape)
                 .overlay {

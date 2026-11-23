@@ -100,14 +100,14 @@ struct RoomOnboardingView: View {
                 .padding(.top, Onboarding.headerGap)
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityHeading(.h1)
-            VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 4) {
                 if let strong = lead.strong {
                     Text(strong).foregroundStyle(RoomTokens.Ink.graphite).monospacedDigit()
                 }
                 Text(lead.secondary).foregroundStyle(RoomTokens.Ink.secondary)
             }
             .font(RoomTokens.Typography.lead)
-            .lineSpacing(3)
+            .lineSpacing(4)
             .fixedSize(horizontal: false, vertical: true)
             .frame(width: Onboarding.leadWidth, alignment: .leading)
             .frame(minHeight: Onboarding.leadReserve, alignment: .topLeading)
