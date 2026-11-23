@@ -336,15 +336,16 @@ enum RoomTokens {
             case .hidden: .room(RoomDS.Kind.hidden.fill, name: "room.kind.hid.fill")
             }
         }
+        /// Retuned marks (DS-8): 3:1 on canvas and group, separated for colour-vision deficiency, with Increase Contrast steps.
         var mark: Color {
             switch self {
-            case .developer: .room(light: 0x2E8AA0, dark: 0x4FA9BF, name: "room.kind.dev.mark")
-            case .media: .room(light: 0x5F9150, dark: 0x7DB06C, name: "room.kind.media.mark")
-            case .documents: .room(light: 0x5F7DBB, dark: 0x7E9BD8, name: "room.kind.docs.mark")
-            case .apps: .room(light: 0x9A8A14, dark: 0xBFAE3A, name: "room.kind.apps.mark")
-            case .archives: .room(light: 0xCE5660, dark: 0xE87C86, name: "room.kind.arch.mark")
-            case .system: .room(light: 0x7F8990, dark: 0x98A2A8, name: "room.kind.sys.mark")
-            case .hidden: .room(light: 0x9670AE, dark: 0xB28DCB, name: "room.kind.hid.mark")
+            case .developer: .room(RoomDS.Kind.developer.mark, name: "room.kind.dev.mark")
+            case .media: .room(RoomDS.Kind.media.mark, name: "room.kind.media.mark")
+            case .documents: .room(RoomDS.Kind.documents.mark, name: "room.kind.docs.mark")
+            case .apps: .room(RoomDS.Kind.apps.mark, name: "room.kind.apps.mark")
+            case .archives: .room(RoomDS.Kind.archives.mark, name: "room.kind.arch.mark")
+            case .system: .room(RoomDS.Kind.system.mark, name: "room.kind.sys.mark")
+            case .hidden: .room(RoomDS.Kind.hidden.mark, name: "room.kind.hid.mark")
             }
         }
         static let tileInk = Color.room(RoomDS.Product.tileInk, name: "room.tile.ink")
