@@ -82,7 +82,7 @@ struct RoomHistoryButton: View {
                 Spacer()
                 if RoomMakeRoomCopy.footerWord(entry, receiptCanRestore: receipt.canRestore) == nil {
                     Button("Restore") { showingCards = false; restore(receipt) }
-                        .buttonStyle(.glass).disabled(model.isScanning || model.isWorking)
+                        .buttonStyle(.glass).tint(nil).disabled(model.isScanning || model.isWorking)
                 }
             }
             .font(RoomTokens.Typography.caption)

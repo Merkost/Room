@@ -356,7 +356,7 @@ struct RoomDiskMapView: View {
                                "Map “\(pending.lastPathComponent)” to see what takes up space.",
                            artwork: .map) {
                 Button("Map This Folder") { insights.scanDisk(url: pending) }
-                    .roomScreenPrimary(accent)
+                    .roomScreenPrimary(accent) // one-filled: exclusive start panel, shown only before a map exists
                     .disabled(!insights.canChooseDiskLocation)
                     .accessibilityIdentifier("RoomDiskMapPendingFolder")
                 Button("Choose Another Folder…", action: insights.chooseDiskFolder)
@@ -370,7 +370,7 @@ struct RoomDiskMapView: View {
                 Button(action: insights.chooseDiskFolder) {
                     Label("Choose Folder…", systemImage: "folder")
                 }
-                .roomScreenPrimary(accent)
+                .roomScreenPrimary(accent) // one-filled: exclusive start panel, shown only before a map exists
                 .disabled(!insights.canChooseDiskLocation)
                 .accessibilityIdentifier("RoomDiskChooseFolder")
                 if !insights.accessFolders.isEmpty {

@@ -274,7 +274,7 @@ struct RoomOverviewView: View {
                 Button(insights.isChoosingDiskFolder ? "Choosing a folder…" :
                        snapshot.state == .mappingStopped ? "Map again" : snapshot.actionTitle,
                        action: insights.scanHome)
-                    .roomScreenPrimary(accent)
+                    .roomScreenPrimary(accent) // one-filled: exclusive with the caches action (one action case at a time)
                     .disabled(insights.isChoosingDiskFolder)
             case .stopMapping:
                 Button(snapshot.actionTitle, action: insights.cancelDiskScan).roomSecondary()

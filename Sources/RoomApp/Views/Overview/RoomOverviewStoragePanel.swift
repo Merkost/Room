@@ -229,8 +229,9 @@ struct RoomOverviewStorageMap: View {
         Button(action: openDiskMap) {
             Label("Open Disk Map", systemImage: "arrow.up.right")
                 .labelStyle(.titleAndIcon)
+                .font(RoomTokens.Typography.body)
         }
-        .roomSecondary()
+        .roomLink(accent)
         .accessibilityIdentifier("RoomOverviewOpenDiskMap")
     }
 

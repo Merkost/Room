@@ -39,7 +39,7 @@ struct RoomReceiptView: View {
                 } else {
                     let count = receipt.details.filter(\.canRestore).count
                     Text(hidden ? "Items in Trash" : "\(count) \(count == 1 ? "item" : "items") in Trash")
-                    if let restore { Button("Restore", action: restore).buttonStyle(.glass) }
+                    if let restore { Button("Restore", action: restore).buttonStyle(.glass).tint(nil) }
                 }
             }
             .foregroundStyle(RoomTokens.Ink.secondary)

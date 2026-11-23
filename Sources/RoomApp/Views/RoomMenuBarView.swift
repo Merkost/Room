@@ -55,7 +55,7 @@ struct RoomMenuBarView: View {
                 .buttonStyle(.glassProminent).tint(accent.fill)
                 .accessibilityIdentifier("RoomPopoverOpenRoom")
                 Button(RoomPopoverPresentation.quitTitle) { NSApp.terminate(nil) }
-                    .buttonStyle(.glass).accessibilityIdentifier("RoomPopoverQuit")
+                    .buttonStyle(.glass).tint(nil).accessibilityIdentifier("RoomPopoverQuit")
             }
             .font(RoomTokens.Typography.bodyStrong)
             .padding(.top, RoomTokens.Space.inner - RoomTokens.Space.row)

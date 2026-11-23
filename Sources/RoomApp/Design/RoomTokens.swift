@@ -463,8 +463,9 @@ extension View {
     func roomScreenPrimary(_ accent: RoomTokens.Accent) -> some View {
         buttonStyle(RoomScreenPrimaryStyle(accent: accent))
     }
-    /// Secondary actions: ordinary glass.
-    func roomSecondary() -> some View { buttonStyle(.glass).controlSize(.large) }
+    /// Secondary actions: ordinary, untinted glass. The scene root tints everything with the accent, and tinted glass
+    /// reads as a second filled button, so secondary buttons drop the tint (one filled button per screen).
+    func roomSecondary(_ size: ControlSize = .large) -> some View { buttonStyle(.glass).tint(nil).controlSize(size) }
     /// Quiet links ("See what is using space", "Your week ›"): plain, accent text step, 24 pt hit target.
     func roomLink(_ accent: RoomTokens.Accent) -> some View {
         buttonStyle(RoomPressStyle()).foregroundStyle(accent.text).frame(minHeight: 24).contentShape(Rectangle())

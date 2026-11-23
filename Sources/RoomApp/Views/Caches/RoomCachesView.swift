@@ -316,7 +316,7 @@ struct RoomCachesView: View {
                     Button(action: review) {
                         Label(bytes > 0 ? "Review \(format(bytes))" : "Review", systemImage: "checklist")
                     }
-                    .roomScreenPrimary(accent).disabled(!model.canReviewCleanup)
+                    .roomScreenPrimary(accent).disabled(!model.canReviewCleanup) // one-filled: exclusive with Check (hero.primary switch)
                     .help(hero.disabledReason ?? "Review the selected caches.")
                 }
             case .none: EmptyView()
@@ -340,7 +340,7 @@ struct RoomCachesView: View {
             Label(String(localized: "caches.action.choose", defaultValue: "Choose Folder & Check",
                 table: "Caches", bundle: RoomCopy.bundle), systemImage: "folder.badge.plus")
         }
-        .roomScreenPrimary(accent)
+        .roomScreenPrimary(accent) // one-filled: exclusive with Check (Store folder approval)
         .disabled(!model.canScan)
     }
 
