@@ -55,6 +55,51 @@ struct DeveloperSimulatorRuntimeTests {
         #expect(payload.allocatedBytes == (try fixture.allocatedBytes(of: image)))
     }
 
+    @Test func exportedBundleMeasuresItsBackingImageFromAnApprovedFolderOrPackage() async throws {
+        let fixture = try RuntimeFixture()
+        defer { fixture.remove() }
+        let name = "Exports/iphonesimulator_27.2_24B8117.exportedBundle"
+        let bundle = try fixture.directory(name)
+        let root = bundle.deletingLastPathComponent()
+        _ = try fixture.exportMetadata(in: name)
+        let image = try fixture.write(name + "/Restore/141-80522-035.dmg", byteCount: 32_768)
+        _ = try fixture.write(name + "/Restore/Firmware/unrelated.dmg", byteCount: 16_384)
+        let engine = DeveloperResourcesEngine()
+        let direct = await engine.scan(request: .init(
+            approvedFolders: [bundle], simulatorRuntimeRoots: [bundle], scope: .toolStorage))
+        let listed = await engine.scan(request: .init(
+            approvedFolders: [root, bundle], simulatorRuntimeRoots: [root, bundle], scope: .toolStorage))
+
+        #expect(direct.storageResources == listed.storageResources)
+        let resource = try #require(direct.storageResources.first)
+        #expect(direct.storageResources.count == 1 && !direct.isPartial && !listed.isPartial)
+        #expect(resource.url.path == image.path)
+        #expect(resource.kind == .simulatorRuntimeImage)
+        #expect(resource.runtime?.name == "iOS 27.2" && resource.runtime?.build == "24B8117")
+        #expect(resource.allocatedBytes == (try fixture.allocatedBytes(of: image)))
+    }
+
+    @Test func exportedBundleRejectsLinkedMetadataAndLinkedRestoreFolders() async throws {
+        let fixture = try RuntimeFixture()
+        defer { fixture.remove() }
+        let externalMetadata = try fixture.exportMetadata(in: "Outside")
+        let externalImage = try fixture.write("Outside/Restore/other.dmg", byteCount: 32_768)
+        let linkedMetadata = try fixture.directory("Exports/Metadata.exportedBundle")
+        try FileManager.default.createSymbolicLink(at: linkedMetadata.appendingPathComponent("ExportedMetadata.plist"),
+                                                    withDestinationURL: externalMetadata)
+        _ = try fixture.write("Exports/Metadata.exportedBundle/Restore/available.dmg", byteCount: 16_384)
+        let linkedPayload = try fixture.directory("Exports/Payload.exportedBundle")
+        _ = try fixture.exportMetadata(in: "Exports/Payload.exportedBundle")
+        try FileManager.default.createSymbolicLink(at: linkedPayload.appendingPathComponent("Restore"),
+                                                    withDestinationURL: externalImage.deletingLastPathComponent())
+        let root = linkedMetadata.deletingLastPathComponent()
+        let report = await DeveloperResourcesEngine().scan(request: .init(
+            approvedFolders: [root], simulatorRuntimeRoots: [root], scope: .toolStorage))
+
+        #expect(report.storageResources.isEmpty && report.isPartial)
+        #expect(Set(report.issues.map(\.url.path)) == [linkedMetadata.path, linkedPayload.path])
+    }
+
     @Test func catalogueOnlyLabelsImagesInsideAnExactlyApprovedRoot() async throws {
         let fixture = try RuntimeFixture()
         defer { fixture.remove() }
@@ -125,6 +170,12 @@ private struct RuntimeFixture {
         try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
         try PropertyListSerialization.data(fromPropertyList: fields, format: .binary, options: 0).write(to: file)
         return file
+    }
+
+    func exportMetadata(in name: String) throws -> URL {
+        try plist(["CFBundleIdentifier": "com.apple.MobileAsset.iOSSimulatorRuntime",
+                   "MobileAssetProperties": ["SimulatorVersion": "27.2", "Build": "24B8117"]],
+                  at: name + "/ExportedMetadata.plist")
     }
 
     func runtime(_ name: String, withRuntimeRoot: Bool) throws -> URL {

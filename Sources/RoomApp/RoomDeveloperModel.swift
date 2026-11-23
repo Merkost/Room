@@ -227,7 +227,7 @@ final class RoomDeveloperModel {
         isChoosingFolder = true
         let message = switch role {
         case .simulators: "Choose the Simulator Devices folder to measure each device’s installed apps and data."
-        case .simulatorRuntimes: "Choose a folder containing Simulator runtime bundles, backing images, or Apple Simulator assets."
+        case .simulatorRuntimes: "Choose Simulator runtime bundles, Xcode runtime exports, or a folder containing their backing images."
         case _ where role.aiTool != nil: "Choose the tool’s data folder. Room measures known locations by file size alone."
         default: "Room reads sizes and version files here. It never changes anything in this folder."
         }
