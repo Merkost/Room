@@ -23,7 +23,20 @@ struct RoomMainMenuTests {
         configuration.environment = ["ROOM_MAIN_MENU_TEST_OUTPUT": output.path,
                                      "ROOM_MAIN_MENU_ACTIVATION_TIMEOUT": String(activationTimeout)]
         let application = try await NSWorkspace.shared.openApplication(at: bundle, configuration: configuration)
-        defer { if !application.isTerminated { application.terminate() } }
+        // A polite terminate() can be ignored (a stuck launch, an open sheet), which leaked one running Room per failed
+        // run. Ask once, then force-quit, and block until the process is really gone before the temp copy is deleted.
+        defer {
+            if !application.isTerminated {
+                application.terminate()
+                let grace = ContinuousClock.now + .seconds(3)
+                while !application.isTerminated, ContinuousClock.now < grace { usleep(50_000) }
+                if !application.isTerminated {
+                    application.forceTerminate()
+                    let hard = ContinuousClock.now + .seconds(3)
+                    while !application.isTerminated, ContinuousClock.now < hard { usleep(50_000) }
+                }
+            }
+        }
 
         application.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
         let deadline = ContinuousClock.now + .seconds(activationTimeout + 15)
