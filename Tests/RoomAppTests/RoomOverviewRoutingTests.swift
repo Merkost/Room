@@ -131,10 +131,7 @@ struct RoomOverviewRoutingTests {
         #expect(fixture.navigation.destination == .clean)
         #expect(fixture.cache.isScanning)
         #expect(!fixture.cache.isWorking && !fixture.cache.canReviewCleanup)
-        let deadline = ContinuousClock.now + .seconds(2)
-        while fixture.cache.isScanning, ContinuousClock.now < deadline {
-            try await Task.sleep(for: .milliseconds(10))
-        }
+        #expect(await RoomTestWait.until(timeout: .seconds(10)) { !fixture.cache.isScanning })
         #expect(fixture.cache.lastScanned != nil)
     }
 }
