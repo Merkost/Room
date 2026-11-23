@@ -47,15 +47,15 @@ struct RoomShellView<Detail: View>: View {
 
     @MainActor private func changeMode(to target: RoomSidebarMode) async {
         let labels = target == .labelled
-        let animateLabels = motion.animation(RoomTokens.Motion.sidebarLabels, fallback: RoomTokens.Motion.fade)
+        let animateLabels = motion.animation(RoomTokens.Motion.quick, fallback: RoomTokens.Motion.fade)
         if !labels {
             withAnimation(animateLabels) { showsSidebarLabels = false }
             if animateLabels != nil { try? await Task.sleep(for: .milliseconds(110)) }
             guard !Task.isCancelled else { return }
         }
-        withAnimation(motion.animation(RoomTokens.Motion.sidebarWidth, fallback: nil)) { sidebarMode = target }
+        withAnimation(motion.animation(RoomTokens.Motion.standard, fallback: nil)) { sidebarMode = target }
         if labels {
-            if motion.animation(RoomTokens.Motion.sidebarWidth, fallback: nil) != nil {
+            if motion.animation(RoomTokens.Motion.standard, fallback: nil) != nil {
                 try? await Task.sleep(for: .milliseconds(160))
             }
             guard !Task.isCancelled else { return }

@@ -384,16 +384,14 @@ enum RoomTokens {
     }
 
     // MARK: Motion values (the environment value in RoomMotion folds in Gentle motion + Reduce Motion)
+    /// Motion (DS-9): four durations from RoomDS (quick 120, standard 200, page 320, slow 600 ms), the ease-out curve,
+    /// the page spring and one overshoot. Everything below is either one of those or a named choreography parameter
+    /// (v4 board) that is not a duration. No other timing literals in the app.
     enum Motion {
         static let quick = RoomDS.Motion.timed(.quick)
         static let standard = RoomDS.Motion.timed(.standard)
-        static let exit = RoomDS.Motion.timed(.quick)
         static let pageResponse = RoomDS.Motion.Spring.page.spec.response
         static let page = RoomDS.Motion.Spring.page.spec.animation
-        static let compareGlide = Animation.spring(response: 0.36, dampingFraction: 1)
-        static let receiptLead = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.28)
-        static let onboardingText = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.24).delay(0.07)
-        static let settle = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.24)
         static let success = RoomDS.Motion.Spring.success.spec.animation  // the only overshoot
         /// The welcome's play (owner brief 2026-11-24: "be playful"): light springs that settle in one bounce.
         /// Onboarding only; the product keeps `success` as its one overshoot.
@@ -402,21 +400,20 @@ enum RoomTokens {
         static let swell = Animation.spring(response: 0.3, dampingFraction: 0.55)
         static let bounce = Animation.spring(response: 0.26, dampingFraction: 0.5)
         nonisolated static let popSpread: TimeInterval = 0.55
-        nonisolated static let fadeDuration: TimeInterval = 0.15                                // Reduce Motion fallback
+        /// Reduce Motion fallback and the Hide dissolve: 150 ms (REVIEW §4.7 keeps Hide at 150 ms).
+        nonisolated static let fadeDuration: TimeInterval = 0.15
         nonisolated static let fadeCurve = UnitCurve.easeOut
         static let fade = Animation.timingCurve(fadeCurve, duration: fadeDuration)
         static let count: TimeInterval = RoomDS.Motion.Duration.page.seconds
         static let countAnimation = Animation.easeOut(duration: count)
         nonisolated static let stagger: TimeInterval = RoomDS.Motion.staggerItem
-        static let settleStagger: TimeInterval = 0.07
+        static let groupStagger: TimeInterval = RoomDS.Motion.staggerGroup
         static let maxStaggered = RoomDS.Motion.staggerCap
         static let tooltipDelay: TimeInterval = RoomDS.Motion.tooltipDelay
         static let pressScale: CGFloat = RoomDS.Motion.pressScale
 
-        // Board v4 tokens (room-design-v4/src/10-body.html:243-248). Values shared with RoomPure.
-        /// Motion.roll: label in 180 ms, out 140 ms, ease-out, 100 % travel; odometer 260 ms per column.
-        static let rollIn = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.18)
-        static let rollOut = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.14)
+        // Board v4 choreography parameters (room-design-v4/src/10-body.html:243-248), not durations.
+        /// Odometer: 260 ms per column.
         static let odometerColumn = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.26)
         /// Motion.trace: the pill's dash, one lap per 1.4 s, linear, 22 % of the outline. Only while a scan runs.
         static let traceLap: TimeInterval = 1.4
@@ -425,33 +422,15 @@ enum RoomTokens {
         static func coast(distanceGB: Double) -> Animation {
             .spring(response: min(0.62, 0.26 + abs(distanceGB) * 0.003), dampingFraction: 1)
         }
-        /// Motion.morph: Your week range / mode morph, 340 ms ease-in-out cubic.
-        nonisolated static let morphDuration: TimeInterval = 0.34
+        /// Motion.morph: Your week range / mode morph, page duration, ease-in-out cubic.
+        nonisolated static let morphDuration: TimeInterval = RoomDS.Motion.Duration.page.seconds
         nonisolated static let morphCurve = UnitCurve.bezier(startControlPoint: .init(x: 0.65, y: 0),
                                                endControlPoint: .init(x: 0.35, y: 1))
         nonisolated static let historyDotDuration: TimeInterval = 0.22
         nonisolated static let historyDotRise: CGFloat = 6
-        /// Motion.wake: parameters live in RoomPure (34 pt, τ 150 ms, gain 1.2, ring 0.42 pt/ms); the drawn ring lasts 650 ms.
-        static let ringDrawn: TimeInterval = 0.65
-        /// Pill width spring and history stack spring (both without overshoot).
-        static let pillWidth = Animation.spring(response: 0.26, dampingFraction: 1)
-        static let stackApart = Animation.spring(response: 0.32, dampingFraction: 1)
-        static func stackDelay(_ index: Int) -> TimeInterval { 0.06 + 0.04 * Double(index) }
-        /// Small controls (B4 d41, d42): inline confirm armed 4 s, Undo 8 s; list skeleton hold 560 ms, rows 260 ms, 60 ms apart.
+        /// Small controls (B4 d41, d42): inline confirm armed 4 s, Undo 8 s. Dwell times, not motion.
         static let confirmArmed: TimeInterval = 4
         static let undoWindow: TimeInterval = 8
-        static let skeletonHold: TimeInterval = 0.56
-        static let skeletonRow = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.26)
-        static let skeletonStagger: TimeInterval = 0.06
-        /// Sidebar collapse: labels 100 ms, then the panel 220 ms starting at 110 ms.
-        static let sidebarLabels = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.10)
-        static let sidebarWidth = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.22)
-        static let sidebarPanel = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.22).delay(0.11)
-        /// Make room: stage 1 lift 260 ms, 16 ms per dot; stage 2 lights 640 ms per dot, 60 ms apart.
-        static let liftDuration: TimeInterval = 0.26, liftPerDot: TimeInterval = 0.016
-        static let lightDuration: TimeInterval = 0.64, lightPerDot: TimeInterval = 0.06
-        /// Hide: 22 ms per character; hold 280 ms to peek.
-        static let hidePerCharacter: TimeInterval = 0.022, peekHold: TimeInterval = 0.28
     }
 
     /// Dot plan drawing (board v4 `planDotsSVG`): radius from pitch, free rings, dimming.

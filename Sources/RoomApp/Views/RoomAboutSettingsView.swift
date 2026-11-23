@@ -94,7 +94,7 @@ struct RoomAboutSettingsView: View {
         }
         .formStyle(.grouped).scrollDisabled(true)
         .fixedSize(horizontal: false, vertical: true)
-        .animation(motion.animation(RoomTokens.Motion.settle), value: madeRoom != nil)
+        .animation(motion.animation(RoomTokens.Motion.standard), value: madeRoom != nil)
         .modifier(RoomHideRoot())
         .task { await model.refreshHistory() }
     }

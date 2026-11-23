@@ -5,8 +5,8 @@ extension RoomMotionPolicy {
     var labelReplacement: AnyTransition {
         guard isFull else { return .identity }
         return .asymmetric(
-            insertion: .offset(y: 3).combined(with: .opacity).animation(RoomTokens.Motion.rollIn),
-            removal: .offset(y: -3).combined(with: .opacity).animation(RoomTokens.Motion.rollOut)
+            insertion: .offset(y: 3).combined(with: .opacity).animation(RoomTokens.Motion.standard),
+            removal: .offset(y: -3).combined(with: .opacity).animation(RoomTokens.Motion.quick)
         )
     }
 
@@ -14,7 +14,7 @@ extension RoomMotionPolicy {
         guard isFull else { return .opacity.animation(RoomTokens.Motion.fade) }
         return .asymmetric(
             insertion: .offset(y: -RoomTokens.Space.row).combined(with: .opacity).animation(RoomTokens.Motion.standard),
-            removal: .opacity.animation(RoomTokens.Motion.exit)
+            removal: .opacity.animation(RoomTokens.Motion.quick)
         )
     }
 }
@@ -74,7 +74,7 @@ private struct RoomPanelChange<Identity: Hashable>: ViewModifier {
             content.id(identity)
                 .transition(.asymmetric(
                     insertion: arrival.animation(RoomTokens.Motion.standard.delay(RoomPanelChangeTiming.insertionDelay)),
-                    removal: .opacity.animation(RoomTokens.Motion.exit)))
+                    removal: .opacity.animation(RoomTokens.Motion.quick)))
         }
         .animation(motion.animation(RoomTokens.Motion.standard), value: identity)
     }
