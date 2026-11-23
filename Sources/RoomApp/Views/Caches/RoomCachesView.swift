@@ -36,6 +36,9 @@ struct RoomCachesView: View {
     let showKept: () -> Void
     let showScanNotes: () -> Void
     let restore: (RoomActivity) -> Void
+    /// Heavy agent worktrees (already over the threshold), or nil. Never cleaned here.
+    var agentWorktreeBytes: Int64? = nil
+    var reviewWorktrees: (() -> Void)? = nil
 
     @Environment(\.roomAccent) private var accent
     @Environment(\.roomMotion) private var motion
@@ -153,6 +156,9 @@ struct RoomCachesView: View {
             } else if !model.isScanning && !model.hasReport && !model.isPartialScan && !model.isAfterRestore {
                 startingPlaces
                 lastReceipt
+            }
+            if let bytes = agentWorktreeBytes, let reviewWorktrees, !model.isScanning {
+                worktreeHint(bytes, review: reviewWorktrees)
             }
             if !model.scanIssues.isEmpty {
                 Button(action: showScanNotes) {
@@ -651,6 +657,22 @@ struct RoomCachesView: View {
         .overlay {
             RoundedRectangle(cornerRadius: RoomTokens.Radius.group).strokeBorder(RoomTokens.Surface.line2)
         }
+        .transition(.opacity)
+    }
+
+    /// One quiet line and one secondary button; Developer does the reviewing.
+    private func worktreeHint(_ bytes: Int64, review: @escaping () -> Void) -> some View {
+        HStack(spacing: RoomTokens.Space.inner) {
+            Text(RoomAgentWorktreeHint.line(bytes: bytes, hidden: hidden))
+                .font(RoomTokens.Typography.caption)
+                .foregroundStyle(RoomTokens.Ink.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+            Button(RoomAgentWorktreeHint.actionTitle, action: review)
+                .roomSecondary(.regular)
+                .accessibilityIdentifier("RoomCachesReviewWorktrees")
+        }
+        .frame(maxWidth: RoomTokens.Space.measure, alignment: .leading)
         .transition(.opacity)
     }
 

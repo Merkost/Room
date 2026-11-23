@@ -88,6 +88,28 @@ struct StoreCatalogueTests {
         #expect(config.roots.allSatisfy { if case .inspectOnly = $0.cleanupPolicy { return true }; return false })
     }
 
+    @Test("Approved agent folders keep VMs, transcripts and worktrees inspect-only in the Store edition")
+    func storeAgentFolders() async throws {
+        let fixture = try StoreFixture()
+        defer { fixture.remove() }
+        let claudeHome = try fixture.directory(".claude")
+        let support = try fixture.directory("Library/Application Support/Claude")
+        let vm = try fixture.write("Library/Application Support/Claude/vm_bundles/claudevm.bundle/disk.img", "vm")
+        let transcript = try fixture.write(".claude/projects/project/session.jsonl", "work")
+        let worktree = try fixture.write(".claude/worktrees/feature/file.swift", "work")
+        let config = CacheConfiguration.store(approvedFolders: [claudeHome, support], userHome: fixture.home)
+        #expect(config.protectedLocations.contains { $0.id == "claude-worktrees" })
+        #expect(config.protectedLocations.contains { $0.id == "claude-projects" })
+        #expect(config.roots.allSatisfy { root in [claudeHome, support].contains { parent in
+            root.url.path == parent.path || root.url.path.hasPrefix(parent.path + "/") } })
+        let report = await fixture.engine(config).scan()
+        let eligible = report.eligibleEntries.map(\.url.path)
+        for kept in [vm, transcript, worktree] {
+            #expect(!eligible.contains { kept.path == $0 || kept.path.hasPrefix($0 + "/") })
+        }
+        #expect(report.protectedData.contains { $0.id == "claude-worktrees" && $0.byteCount > 0 })
+    }
+
     @Test("Nested approvals do not count known or unknown allocations twice")
     func overlapAndSentinel() async throws {
         let fixture = try StoreFixture()

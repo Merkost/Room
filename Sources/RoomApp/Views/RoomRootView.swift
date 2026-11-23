@@ -283,7 +283,8 @@ struct RoomRootView: View {
         case .clean:
             RoomCachesView(model: model, review: { sheet = .review },
                 inspect: { sheet = .source($0) }, showKept: { sheet = .protectedSources },
-                showScanNotes: { sheet = .scanIssues }, restore: restoreFromCaches)
+                showScanNotes: { sheet = .scanIssues }, restore: restoreFromCaches,
+                agentWorktreeBytes: heavyAgentWorktreeBytes, reviewWorktrees: reviewAgentWorktrees)
                 .roomPanelArrival(enabled: navigation.selectionOrigin == .pointer, from: RoomTokens.Space.tight)
         case .memory:
             RoomMemoryView(insights: insights, memoryActions: memoryActions)
@@ -300,6 +301,27 @@ struct RoomRootView: View {
             RoomDeveloperView(model: developer, agentWork: agentWork, memoryReport: insights.memoryReport)
             #endif
         }
+    }
+
+    /// Heavy agent worktrees for the Caches line; Store has no Worktrees view, so no line.
+    private var heavyAgentWorktreeBytes: Int64? {
+        #if ROOM_APP_STORE
+        nil
+        #else
+        RoomAgentWorktreeHint.suggestedBytes(scanned: RoomAgentWorktreeHint.scannedBytes(agentWork.report),
+            measured: RoomAgentWorktreeHint.measuredBytes(model.protectedSources.map { ($0.id, $0.bytes) }))
+        #endif
+    }
+
+    private var reviewAgentWorktrees: (() -> Void)? {
+        #if ROOM_APP_STORE
+        nil
+        #else
+        {
+            developer.section = .worktrees
+            navigation.select(.screen(.developer), origin: .controlActivation)
+        }
+        #endif
     }
 
     private func cacheSource(for url: URL) -> RoomSource? {

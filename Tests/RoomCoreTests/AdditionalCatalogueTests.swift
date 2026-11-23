@@ -265,6 +265,76 @@ struct AdditionalCatalogueTests {
         #expect(!fixture.additional(environment: ["UNRECOGNIZED_CACHE_DIR": cache.path]).roots.contains { $0.id.hasPrefix("custom-") })
     }
 
+    @Test("Agent app storage is measured inspect-only; only Codex component downloads can move")
+    func agentStorageSafetyClasses() throws {
+        let fixture = try AdditionalFixture()
+        defer { fixture.remove() }
+        let inspectOnly = [
+            "claude-vm-bundles": "Library/Application Support/Claude/vm_bundles/claudevm.bundle",
+            "claude-desktop-code": "Library/Application Support/Claude/claude-code/2.1.0",
+            "claude-desktop-code-vm": "Library/Application Support/Claude/claude-code-vm/2.1.0",
+            "claude-desktop-sessions": "Library/Application Support/Claude/claude-code-sessions/session",
+            "claude-local-agent-sessions": "Library/Application Support/Claude/local-agent-mode-sessions/session",
+            "claude-scratch-workspaces": "Library/Application Support/Claude/scratch-workspaces/work",
+            "codex-artifact-sessions": "Library/Application Support/Codex/artifact-sessions/session",
+            "codex-widevine": "Library/Application Support/Codex/WidevineCdm/1.0",
+            "claude-skills": ".claude/skills/mine", "claude-jobs": ".claude/jobs/job",
+            "claude-security": ".claude/security/state", "claude-downloads": ".claude/downloads/file",
+            "claude-backups": ".claude/backups/copy", "claude-telemetry": ".claude/telemetry/queue",
+            "codex-computer-use": ".codex/computer-use/helper", "codex-vendor-imports": ".codex/vendor_imports/tool",
+            "codex-shell-snapshots": ".codex/shell_snapshots/snapshot"
+        ]
+        for path in inspectOnly.values { _ = try fixture.directory(path) }
+        _ = try fixture.write(".codex/logs_2.sqlite", count: 4_000)
+        _ = try fixture.write(".codex/state_5.sqlite", count: 4_000)
+        _ = try fixture.directory("Library/Application Support/Codex/component_crx_cache/component")
+        let config = fixture.additional()
+        for id in Array(inspectOnly.keys) + ["codex-log-database", "codex-state-database"] {
+            let root = try #require(config.roots.first { $0.id == id }, "missing \(id)")
+            guard case .inspectOnly(let reason) = root.cleanupPolicy else { Issue.record("\(id) allowed cleanup"); continue }
+            #expect(!reason.isEmpty)
+            #expect(root.category == "agents")
+        }
+        #expect(config.roots.first { $0.id == "codex-log-database" }?.scope == .singleFile)
+        let component = try #require(config.roots.first { $0.id == "codex-component-downloads" })
+        guard case .allowed = component.cleanupPolicy else { Issue.record("Component downloads lost cleanup"); return }
+        #expect(component.guardedProcesses == ["codex", "chatgpt"])
+        #expect(component.minimumAge >= 7 * 86_400)
+        // Nothing that can move overlaps a VM, installed tool, session, skill or worktree.
+        let allowed = config.roots.filter { if case .allowed = $0.cleanupPolicy { return true }; return false }
+        for path in inspectOnly.values.map({ fixture.url($0).deletingLastPathComponent().path }) + [fixture.url(".claude/worktrees").path] {
+            #expect(!allowed.contains { $0.url.path == path || $0.url.path.hasPrefix(path + "/") || path.hasPrefix($0.url.path + "/") })
+        }
+        #expect(Set(config.roots.map(\.id)).count == config.roots.count)
+    }
+
+    @Test("Agent storage behind an app-container alias is skipped before its metadata is read")
+    func agentStorageContainerAlias() throws {
+        let fixture = try AdditionalFixture()
+        defer { fixture.remove() }
+        let container = try fixture.directory("Library/Containers/com.anthropic.claude/Data/Claude")
+        _ = try fixture.directory("Library/Containers/com.anthropic.claude/Data/Claude/vm_bundles/claudevm.bundle")
+        _ = try fixture.directory("Library/Application Support")
+        try FileManager.default.createSymbolicLink(at: fixture.url("Library/Application Support/Claude"), withDestinationURL: container)
+        for config in [fixture.additional(), CacheConfiguration.addingAdditionalSources(to: fixture.base, environment: [:])] {
+            #expect(!config.roots.contains { $0.url.path.contains("/Application Support/Claude/") })
+        }
+    }
+
+    @Test("CODEX_HOME and CLAUDE_CONFIG_DIR overrides are measured inspect-only inside home")
+    func agentHomeOverrides() throws {
+        let fixture = try AdditionalFixture()
+        defer { fixture.remove() }
+        let codex = try fixture.directory("agents/codex")
+        let claude = try fixture.directory("agents/claude")
+        let config = fixture.additional(environment: ["CODEX_HOME": codex.path, "CLAUDE_CONFIG_DIR": claude.path])
+        for id in ["custom-codex-home", "custom-claude-config"] {
+            let root = try #require(config.roots.first { $0.id == id })
+            guard case .inspectOnly = root.cleanupPolicy else { Issue.record("\(id) allowed cleanup"); continue }
+        }
+        #expect(!fixture.additional(environment: ["CODEX_HOME": "/private/tmp"]).roots.contains { $0.id == "custom-codex-home" })
+    }
+
     @Test("Inspection-only reporting is preserved in progress and legacy encoded groups decode")
     func inspectionReporting() async throws {
         let fixture = try AdditionalFixture()
