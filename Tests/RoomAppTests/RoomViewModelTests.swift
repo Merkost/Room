@@ -62,7 +62,72 @@ struct RoomViewModelTests {
         #expect(!model.partiallySelectedSource(source.id))
     }
 
+    @Test func diskMapReviewUsesExactEligiblePathsAndExpiresOnRescan() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let target = fixture.cache.appendingPathComponent("old-cache")
+        let sibling = try fixture.addOldCache(named: "old-cache-other")
+        let model = RoomViewModel(engine: CacheEngine(configuration: fixture.configuration,
+            activityDirectory: fixture.directory.appendingPathComponent("activity")), cachesCheckStore: fixture.cachesCheckStore)
+
+        #expect(model.mapCleanupAction(at: target) == .check)
+        model.scan()
+        #expect(model.mapCleanupAction(at: target) == .checking)
+        try await waitForScan(model)
+        #expect(model.mapCleanupAction(at: target) == .review)
+        #expect(model.mapCleanupAction(at: fixture.protected) == .empty)
+        #expect(model.makeMapCleanup(at: fixture.cache.appendingPathComponent("recent-cache")) == nil)
+        #expect(model.mapCleanupAction(at: fixture.cache, includesContents: false) == nil)
+        #expect(model.makeMapCleanup(at: fixture.cache, includesContents: false) == nil)
+
+        let request = try #require(model.makeMapCleanup(at: target, includesContents: false))
+        #expect(request.rows.map(\.location) == [target.path])
+        let targetIDs = try #require(request.rows.first).entryIDs
+        let other = try #require(model.makeMapCleanup(at: sibling))
+        let otherIDs = try #require(other.rows.first).entryIDs
+        #expect(model.canCleanMapSelection(request, entryIDs: targetIDs))
+        #expect(!model.canCleanMapSelection(request, entryIDs: targetIDs.union(otherIDs)))
+        let mismatched = RoomMapCleanup(location: target, reportID: request.reportID, rows: other.rows)
+        #expect(!model.canCleanMapSelection(mismatched, entryIDs: otherIDs))
+        #expect(model.selectedEntryIDs == targetIDs.union(otherIDs))
+
+        model.scan()
+        try await waitForScan(model)
+        #expect(!model.canCleanMapSelection(request, entryIDs: targetIDs))
+    }
+
     #if !ROOM_APP_STORE
+    @Test func diskMapCleanupMovesOnlyReviewedItemsAndKeepsOtherCacheSelections() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let unselected = try fixture.addOldCache(named: "unselected-cache")
+        let original = fixture.cache.appendingPathComponent("old-cache")
+        let trash = fixture.directory.appendingPathComponent("fixture-trash", isDirectory: true)
+        try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: false)
+        let engine = CacheEngine(configuration: fixture.configuration,
+            activityDirectory: fixture.directory.appendingPathComponent("activity"), processProvider: { [] },
+            fixtureTrashDirectory: trash, trashProvider: { item in
+                let destination = trash.appendingPathComponent(item.lastPathComponent)
+                try FileManager.default.moveItem(at: item, to: destination)
+                return destination
+            })
+        let model = RoomViewModel(engine: engine, cachesCheckStore: fixture.cachesCheckStore)
+        model.scan()
+        try await waitForScan(model)
+
+        let review = try #require(model.makeMapCleanup(at: fixture.cache))
+        let selected = try #require(review.rows.first { $0.location == original.path }).entryIDs
+        let retained = try #require(review.rows.first { $0.location == unselected.path }).entryIDs
+        await model.cleanMapSelection(review, entryIDs: selected)
+
+        #expect(!FileManager.default.fileExists(atPath: original.path))
+        #expect(FileManager.default.fileExists(atPath: unselected.path))
+        #expect(FileManager.default.fileExists(atPath: fixture.protected.appendingPathComponent("session").path))
+        #expect(model.selectedEntryIDs == retained)
+        #expect(model.movedReceipt?.details.map(\.name) == ["old-cache"])
+        #expect(!model.canCleanMapSelection(review, entryIDs: selected))
+    }
+
     @Test func onlySelectedItemsMoveAndRestoreDoesNotRescan() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }

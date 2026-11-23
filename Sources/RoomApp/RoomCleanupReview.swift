@@ -1,5 +1,28 @@
 import Foundation
 
+nonisolated struct RoomMapCleanup: Equatable, Sendable {
+    let location: URL
+    let reportID: UUID
+    let rows: [RoomCleanupReview.Row]
+    var includesContents = true
+
+    func includes(_ entryIDs: Set<UUID>) -> Bool {
+        !entryIDs.isEmpty && entryIDs.isSubset(of: Set(rows.flatMap(\.entryIDs)))
+    }
+
+    func matches(_ url: URL, path: String) -> Bool {
+        Self.matches(url, path: path, includesContents: includesContents)
+    }
+
+    static func matches(_ url: URL, path: String, includesContents: Bool) -> Bool {
+        url.path == path || (includesContents && url.path.hasPrefix(path == "/" ? "/" : path + "/"))
+    }
+}
+
+nonisolated enum RoomMapCleanupAction: Equatable {
+    case check, checking, review, empty
+}
+
 nonisolated struct RoomCleanupReview: Equatable, Sendable {
     struct Row: Equatable, Sendable, Identifiable {
         var id: String                 // RoomSource.id (family)
@@ -9,6 +32,7 @@ nonisolated struct RoomCleanupReview: Equatable, Sendable {
         var entryIDs: Set<UUID>
         var parentFolders: Set<String> // Store: exact parents from authorizationLocations
         var pickedBytes: Int64? = nil
+        var location: String? = nil
 
         var selectedBytes: Int64 { pickedBytes ?? bytes }
     }

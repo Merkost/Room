@@ -192,8 +192,14 @@ private struct RoomMapCanvasSurface: View {
         .accessibilityLabel("Disk Map")
         .accessibilityChildren {
             ForEach(ordered, id: \.id) { item in
-                Button(spoken(item)) { activate(item.id, item.canStepInside, false) }
+                Button(spoken(item)) { activate(item.id, item.isOther, false) }
                     .accessibilityRotorEntry(id: item.id, in: rotor)
+                    .accessibilityAddTraits(item.id == selection ? .isSelected : [])
+                    .accessibilityActions {
+                        if item.canStepInside {
+                            Button("Step inside") { activate(item.id, true, false) }
+                        }
+                    }
                     .accessibilityAction(named: "Show in Finder") { reveal(item.id) }
             }
         }

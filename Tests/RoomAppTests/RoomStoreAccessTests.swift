@@ -7,6 +7,26 @@ import Testing
 
 @Suite("Store native review boundaries") @MainActor
 struct RoomStoreAccessTests {
+    @Test func newlyApprovedMapFolderOffersAFreshCheck() async throws {
+        let fixture = try StoreAccessFixture()
+        defer { fixture.remove() }
+        let defaults = try #require(UserDefaults(suiteName: fixture.root.lastPathComponent))
+        defer { defaults.removePersistentDomain(forName: fixture.root.lastPathComponent) }
+        let access = RoomFileAccess(defaults: defaults)
+        _ = try access.remember(fixture.cache)
+        let engine = CacheEngine(configuration: .init(roots: [], homeDirectory: fixture.root),
+                                 activityDirectory: fixture.root.appendingPathComponent("activity"))
+        let model = RoomViewModel(engine: engine, cachesCheckStore: RoomCachesCheckStore(defaults: defaults), access: access)
+        model.scan()
+        await model.scanTask?.value
+        #expect(model.hasReport)
+        #expect(model.mapCleanupAction(at: fixture.cache) == .empty)
+        let added = try access.remember(fixture.trash)
+        model.storeAccessChanged()
+        #expect(model.hasReport && model.mapCleanupAction(at: added) == .check)
+        #expect(model.mapCleanupAction(at: added, includesContents: false) == .check)
+    }
+
     @Test func replacingAnEqualSizeItemNeedsFreshApprovalWhileNarrowingKeepsIt() async throws {
         let fixture = try StoreAccessFixture()
         defer { fixture.remove() }
@@ -154,6 +174,14 @@ struct RoomStoreAccessTests {
         await model.prepareStoreCleanupReview()
         #expect(!model.storeReviewLocations.isEmpty && !model.storeAllLocationsGranted)
         await model.cleanSelected()
+        #expect(calls.withLock { $0 } == 0)
+        #expect(try Data(contentsOf: item) == data)
+        let request = try #require(model.makeMapCleanup(at: item))
+        let ids = Set(request.rows.flatMap(\.entryIDs))
+        await model.prepareStoreMapCleanupReview(request, entryIDs: ids)
+        #expect(model.storeReviewLocations.map(\.path) == [fixture.cache.path])
+        #expect(!model.hasStoreCleanupApproval(for: ids))
+        await model.cleanMapSelection(request, entryIDs: ids)
         #expect(calls.withLock { $0 } == 0)
         #expect(try Data(contentsOf: item) == data)
         model.discardStoreReview()

@@ -8,8 +8,8 @@ nonisolated struct RoomMapReadoutContent: Equatable {
     var isHint = false
 
     static func make(level: RoomTreeNode, hovered: RoomMapItem?, selectedPath: String?, hidden: Bool,
-                     showsHint: Bool, format: (Int64) -> String) -> Self {
-        if let hovered, node(at: hovered.parentID, inside: level) != nil {
+                     showsHint: Bool, showsCleanupTarget: Bool = false, format: (Int64) -> String) -> Self {
+        if !showsCleanupTarget, let hovered, node(at: hovered.parentID, inside: level) != nil {
             let name = hovered.isOther ? "Other" : hovered.name
             return measured(name, bytes: hovered.bytes, partial: hovered.isPartial, parent: level,
                             hidden: hidden, isOther: hovered.isOther, format: format)
@@ -19,7 +19,7 @@ nonisolated struct RoomMapReadoutContent: Equatable {
                             parent: level,
                             hidden: hidden, format: format)
         }
-        if showsHint {
+        if showsHint && !showsCleanupTarget {
             return Self(title: "Bigger tile, more space. Hover to read it. Click a folder header to step inside.",
                         detail: nil, isHint: true)
         }
@@ -27,7 +27,7 @@ nonisolated struct RoomMapReadoutContent: Equatable {
                         hidden: hidden, format: format)
     }
 
-    private static func node(at path: String, inside level: RoomTreeNode) -> RoomTreeNode? {
+    static func node(at path: String, inside level: RoomTreeNode) -> RoomTreeNode? {
         if path == level.relativePath { return level }
         if level.relativePath.isEmpty { return level.descendant(at: path) }
         let prefix = level.relativePath + "/"
@@ -57,10 +57,12 @@ struct RoomMapContextReadout: View {
     let selectedPath: String?
     let hidden: Bool
     let showsHint: Bool
+    let showsCleanupTarget: Bool
 
     var body: some View {
-        let content = RoomMapReadoutContent.make(level: level, hovered: pointer.item, selectedPath: selectedPath,
-                                                hidden: hidden, showsHint: showsHint, format: RoomFormat.bytes)
+        let content = RoomMapReadoutContent.make(level: level, hovered: showsCleanupTarget ? nil : pointer.item,
+            selectedPath: selectedPath, hidden: hidden, showsHint: showsHint, showsCleanupTarget: showsCleanupTarget,
+            format: RoomFormat.bytes)
         RoomMapReadout(title: content.title, detail: content.detail, isHint: content.isHint)
     }
 }
@@ -95,6 +97,7 @@ struct RoomMapReadout: View {
 struct RoomLargestTable: View {
     let level: RoomTreeNode
     let hidden: Bool
+    var selection: String? = nil
     let select: (String) -> Void
 
     var body: some View {
@@ -122,12 +125,48 @@ struct RoomLargestTable: View {
                         .frame(minHeight: RoomTokens.Map.largestRowHeight)
                         .contentShape(Rectangle())
                     }
-                    .buttonStyle(RoomHoverButtonStyle())
+                    .buttonStyle(RoomHoverButtonStyle(isActive: selection == row.id))
+                    .accessibilityAddTraits(selection == row.id ? .isSelected : [])
                 }
             }
             .padding(RoomTokens.Space.row)
         }
         .accessibilityIdentifier("RoomDiskMapLargestTable")
+    }
+}
+
+struct RoomMapCleanupControl: View {
+    let action: RoomMapCleanupAction
+    let activate: () -> Void
+    @Environment(\.roomAccent) private var accent
+
+    var body: some View {
+        Group {
+            switch action {
+            case .check:
+                button("Check Caches", symbol: "magnifyingglass")
+                    .help("Check for eligible caches in Room’s cache locations, then review items in this selection.")
+            case .checking:
+                ProgressView("Checking caches…").controlSize(.small)
+            case .review:
+                button("Review Cleanup", symbol: "checklist")
+                    .help("Review the clearable cache items inside this selection.")
+            case .empty:
+                button("Check Again", symbol: "arrow.clockwise")
+                    .help("The last check found no clearable caches here.")
+            }
+        }
+        .font(RoomTokens.Typography.caption)
+        .foregroundStyle(RoomTokens.Ink.secondary)
+        .fixedSize()
+    }
+
+    private func button(_ title: String, symbol: String) -> some View {
+        Button(action: activate) { Label(title, systemImage: symbol) }
+            .buttonStyle(.glassProminent)
+            .tint(accent.fill)
+            .controlSize(.regular)
+            .accessibilityIdentifier("RoomDiskMapCleanup")
     }
 }
 

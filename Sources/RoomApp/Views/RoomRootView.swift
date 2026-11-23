@@ -127,6 +127,10 @@ struct RoomRootView: View {
         .sheet(item: $sheet, onDismiss: performOnboardingFollowUp) { selected in
             switch selected {
             case .review: RoomCleanupReviewSheet(model: model)
+            case .mapCleanup(let context):
+                RoomCleanupReviewSheet(model: model, mapCleanup: context.request, canAccessMapCleanup: {
+                    canAccessMapCleanup(context)
+                })
             case .source(let source): RoomSourceSheet(source: source, model: model)
             case .welcome:
                 RoomOnboardingView(capacity: insights.volumeCapacity, isWorking: isOnboardingBusy(),
@@ -284,7 +288,8 @@ struct RoomRootView: View {
             RoomDiskMapView(insights: insights, rooms: rooms, savedViews: savedViews,
                 savedViewDisplay: savedViewDisplay, openSavedView: openSavedView,
                 canInspectCacheSource: { cacheSource(for: $0) != nil },
-                inspectCacheSource: inspectCacheSource)
+                inspectCacheSource: inspectCacheSource, cleanupAction: mapCleanupAction,
+                activateCleanup: activateMapCleanup)
         case .developer:
             #if ROOM_APP_STORE
             RoomDeveloperView(model: developer)
@@ -304,6 +309,31 @@ struct RoomRootView: View {
         guard let source = cacheSource(for: url) else { return }
         navigation.select(.screen(.clean), origin: .controlActivation)
         sheet = .source(source)
+    }
+
+    private func mapCleanupAction(_ target: RoomMapCleanupTarget) -> RoomMapCleanupAction? {
+        guard !hide.masksNow, !insights.isScanningDisk, insights.approvedMapFolder(for: target.url) != nil else { return nil }
+        return model.mapCleanupAction(at: target.url, includesContents: target.includesContents)
+    }
+
+    private func activateMapCleanup(_ target: RoomMapCleanupTarget) {
+        guard insights.diskMap.cleanupTarget == target,
+              let folder = insights.approvedMapFolder(for: target.url) else { return }
+        switch mapCleanupAction(target) {
+        case .check, .empty: model.scan()
+        case .review:
+            if let request = model.makeMapCleanup(at: target.url, includesContents: target.includesContents) {
+                sheet = .mapCleanup(RoomMapCleanupContext(request: request, target: target, route: navigation.route,
+                                                        approvalID: folder.id))
+            }
+        case .checking, nil: break
+        }
+    }
+
+    private func canAccessMapCleanup(_ context: RoomMapCleanupContext) -> Bool {
+        !hide.masksNow && !insights.isScanningDisk && navigation.route == context.route
+            && insights.diskMap.cleanupTarget == context.target
+            && insights.approvedMapFolder(for: context.target.url)?.id == context.approvalID
     }
 
     private func openSavedView(_ id: UUID) {
@@ -359,14 +389,23 @@ struct RoomRootView: View {
     }
 }
 
+private struct RoomMapCleanupContext {
+    let request: RoomMapCleanup
+    let target: RoomMapCleanupTarget
+    let route: RoomRoute
+    let approvalID: String
+}
+
 private enum RoomSheet: Identifiable {
     case review, source(RoomSource), welcome, protectedSources, scanIssues, history
+    case mapCleanup(RoomMapCleanupContext)
     #if ROOM_APP_STORE
     case restore(RoomActivity)
     #endif
     var id: String {
         switch self {
         case .review: "review"
+        case .mapCleanup: "map-cleanup"
         case .source(let source): "source-\(source.id)"
         case .welcome: "welcome"
         case .protectedSources: "protected"
