@@ -111,7 +111,7 @@ struct RoomCompareOverlay: View {
         switch move {
         case .instant: roomWithoutMotion { divider = next }
         case .jump120: withAnimation(RoomTokens.Motion.quick) { divider = next }
-        case .glide360: withAnimation(RoomTokens.Motion.compareGlide) { divider = next }
+        case .glide360: withAnimation(RoomTokens.Motion.page) { divider = next }
         }
     }
 

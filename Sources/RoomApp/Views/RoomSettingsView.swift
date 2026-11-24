@@ -57,7 +57,7 @@ struct RoomSettingsView: View {
         .frame(width: RoomTokens.Settings.width)
         .fixedSize(horizontal: false, vertical: true)
         // A tab's content fades in as the window settles to its height (240 ms, no travel); Reduce Motion: 150 ms fade.
-        .animation(motion.animation(RoomTokens.Motion.settle), value: selectedTab)
+        .animation(motion.animation(RoomTokens.Motion.standard), value: selectedTab)
         .preferredColorScheme(colorScheme)
         .onAppear {
             if RoomSettingsTab(rawValue: selectedTab) == nil { selectedTab = RoomSettingsTab.general.rawValue }

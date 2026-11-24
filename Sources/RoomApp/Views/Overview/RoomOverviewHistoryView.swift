@@ -90,7 +90,7 @@ private struct RoomOverviewHistoryPopover: View {
     var body: some View {
         let history = RoomOverviewHistory(log: log, range: range, now: now, calendar: .autoupdatingCurrent)
         VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
-            Text("Your week").font(RoomTokens.Typography.title).accessibilityHeading(.h1)
+            Text("Your week").font(RoomDisplayType.chapter).tracking(RoomDisplayType.chapterTracking).accessibilityHeading(.h1)
             HStack(spacing: RoomTokens.Space.inner) {
                 Picker("Time range", selection: Binding(get: { range }, set: { changePlot(range: $0, metric: metric) })) {
                     ForEach(RoomOverviewHistoryRange.allCases, id: \.self) { Text($0.title).tag($0) }

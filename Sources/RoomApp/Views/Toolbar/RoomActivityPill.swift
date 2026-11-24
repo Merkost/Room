@@ -199,7 +199,7 @@ private struct RoomMadeMark: View {
                     .trim(from: 0, to: visible ? 1 : 0)
                     .stroke(RoomTokens.Surface.canvas, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
                     .frame(width: 7, height: 5)
-                    .animation(motion.animation(RoomTokens.Motion.receiptLead, fallback: nil), value: visible)
+                    .animation(motion.animation(RoomDS.Motion.timed(.page), fallback: nil), value: visible)
             }
             .scaleEffect(visible ? 1 : 0.6)
             .animation(motion.animation(RoomTokens.Motion.success, fallback: nil), value: visible)

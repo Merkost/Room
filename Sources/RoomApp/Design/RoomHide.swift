@@ -77,6 +77,7 @@ struct RoomMaskable: View {
     let spoken: String
     @Environment(\.roomHide) private var hide
     @Environment(\.roomMotion) private var motion
+    @Environment(\.roomNumericRoll) private var rolls
 
     init(_ text: String, kind: RoomMaskKind = .figure, spoken: String? = nil) {
         self.text = text
@@ -89,7 +90,7 @@ struct RoomMaskable: View {
     var body: some View {
         Text(verbatim: RoomHideMask.display(text, kind: kind, hide: hide))
             .monospacedDigit()
-            .contentTransition(.opacity)
+            .contentTransition(rolls && !hide.masksNow ? .numericText() : .opacity)
             .animation(hide.isPeeking ? nil : RoomTokens.Motion.fade, value: hide.isOn)
             .phaseAnimator(Dissolve.allCases, trigger: motion.isFull && !hide.isPeeking ? hide.isOn : nil) { content, phase in
                 content.blur(radius: phase == .soft ? RoomHideMask.dissolveBlur : 0)

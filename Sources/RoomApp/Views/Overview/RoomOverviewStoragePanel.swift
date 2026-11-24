@@ -61,7 +61,8 @@ struct RoomOverviewStoragePanel: View {
             Text("Available")
                 .font(RoomTokens.Typography.caption)
                 .foregroundStyle(RoomTokens.Ink.secondary)
-            RoomByteMetric(bytes: balance.plan.freeBytes, maximumSize: 58, hero: true, animatesChanges: true)
+            RoomByteMetric(bytes: balance.plan.freeBytes, maximumSize: 58, hero: true, animatesChanges: true,
+                           display: true)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(hidden ? "Available space hidden" : "\(RoomFormat.gb(balance.plan.freeBytes, hero: true)) available")
                 .accessibilityAddTraits(.isHeader)
@@ -223,7 +224,7 @@ struct RoomOverviewStorageMap: View {
 
     private var heading: some View {
         VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
-            Text("Storage map").font(RoomTokens.Typography.title).accessibilityHeading(.h2)
+            Text("Storage map").font(RoomDisplayType.chapter).tracking(RoomDisplayType.chapterTracking).accessibilityHeading(.h2)
             if plan.mapping != nil {
                 Text("Categories update as folders finish.").font(RoomTokens.Typography.caption)
                     .foregroundStyle(RoomTokens.Ink.secondary)

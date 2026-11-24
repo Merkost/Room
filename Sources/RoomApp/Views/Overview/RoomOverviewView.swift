@@ -8,7 +8,7 @@ private struct RoomOverviewArrivalGroup: ViewModifier {
 
     func body(content: Content) -> some View {
         content.roomReveal(visible, from: RoomTokens.Space.tight,
-                           animation: RoomTokens.Motion.settle.delay(Double(index) * RoomTokens.Motion.settleStagger))
+                           animation: RoomTokens.Motion.standard.delay(Double(index) * RoomTokens.Motion.groupStagger))
     }
 }
 

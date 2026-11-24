@@ -71,7 +71,7 @@ struct RoomReceiptView: View {
                 .trim(from: 0, to: showsReceipt ? 1 : 0)
                 .stroke(RoomTokens.Surface.line2, style: StrokeStyle(lineWidth: 1.5, dash: [1, 3]))
                 .frame(height: 2)
-                .animation(motion.animation(RoomTokens.Motion.receiptLead, fallback: nil), value: printed)
+                .animation(motion.animation(RoomDS.Motion.timed(.page), fallback: nil), value: printed)
                 .accessibilityHidden(true)
             Text(RoomCachesVisibility.bytes(bytes, hidden: hidden)).monospacedDigit().fixedSize()
                 .accessibilityLabel(hidden ? "Size hidden" : RoomFormat.gb(bytes))
