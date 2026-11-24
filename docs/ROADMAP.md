@@ -30,6 +30,13 @@ Apple Foundation Models, on the Mac, no network. Advice only; the catalogue rule
 4. Worktree triage hints, with Git facts still checked by Room.
 Rules: names and sizes only, never contents; Hide masks names; the feature disappears where Apple Intelligence is unavailable; the privacy page gains one line.
 
+## Redesign: "Your Mac, drawn" (parked, come back later)
+
+Planned by Fable 5.2, not built. A personal, graphical, animated redesign of every screen (floor-plan hero per screen, kind glyphs, illustrated empty states, the Make room moment, a command bar, time-of-day tint).
+- Plan and runnable web mockups: `room-site/design/fable-plan/` (round 2: hierarchy and navigation) and `room-site/design/fable-plan/v2/` (round 3: personal, graphical, motion). Open `v2/mockups/shell.html` for the whole app; `v2/mockups/index.html` is only a contact sheet.
+- Build plan: `fable-plan/05-BUILD-PLAN.md` and `v2/04-BUILD-PLAN-V2.md`. Needs owner sign-off on the mockups first; UI changes need approved mockups.
+- Open gaps: Caches "couldn't read this place" shelf, Settings Menu bar and About tabs, History layout beside the plan (D-39).
+
 ## Later
 
 - A VoiceOver and keyboard pass on every screen.
