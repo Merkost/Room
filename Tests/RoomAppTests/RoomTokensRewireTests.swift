@@ -108,11 +108,11 @@ struct RoomTokensRewireTests {
         #expect(T.unit(for: 20) == Font.system(size: 14, weight: .regular))
     }
 
-    @Test func motionIsUnchanged() {
+    /// DS-9: the four RoomDS durations, the page spring and the one overshoot; no duplicate timings.
+    @Test func motionUsesTheDSDurations() {
         typealias M = RoomTokens.Motion
         #expect(M.quick == Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.12))
         #expect(M.standard == Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.20))
-        #expect(M.exit == Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.12))
         #expect(M.pageResponse == 0.32)
         #expect(M.page == Animation.spring(response: 0.32, dampingFraction: 1))
         #expect(M.success == Animation.spring(response: 0.28, dampingFraction: 0.7))
@@ -122,7 +122,7 @@ struct RoomTokensRewireTests {
         #expect(M.tooltipDelay == 0.5)
         #expect(M.pressScale == 0.96)
         #expect(M.fadeDuration == 0.15)
-        #expect(M.receiptLead == Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.28))
-        #expect(M.settle == Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.24))
+        #expect(M.morphDuration == RoomDS.Motion.Duration.page.seconds)
+        #expect(M.groupStagger == 0.07)
     }
 }
