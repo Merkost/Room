@@ -47,12 +47,29 @@ struct RoomRootView: View {
     }
 
     private var destination: RoomDestination { navigation.destination }
+    /// Screens drawn with `RoomScreenFrame` (headline, evidence, footer) manage their own scrolling.
+    static let framedDestinations: Set<RoomDestination> = [.disk, .history, .settings]
+    /// Memory's sidebar sparkline only takes new samples while Memory is open, so the column never moves at idle.
+    @State private var sidebarMemory: [Int64] = []
+
+    private var sidebarValues: RoomSidebarValue.Input {
+        RoomSidebarValue.Input(freeBytes: insights.volumeCapacity?.freeBytes,
+                               mappedFolders: insights.diskMap.current?.tree.children.count,
+                               cachesChecked: model.hasReport && !model.isScanning,
+                               cachesReclaimableBytes: model.clearableBytes,
+                               developerBytes: developer.totalBytes,
+                               memorySamples: sidebarMemory,
+                               receipts: model.activity.count)
+    }
+
+    /// What Make room would give back: the cache moves a completed check found eligible.
+    private var couldGoBytes: Int64 { model.hasReport ? model.clearableBytes : 0 }
     private var colorScheme: ColorScheme? {
         switch appearance { case "light": .light; case "dark": .dark; default: nil }
     }
     private var screenActions: RoomScreenActions {
         var commands = destinationActions
-        commands.showHistory = { sheet = .history }
+        commands.showHistory = { navigation.select(.screen(.history), origin: .controlActivation) }
         return commands
     }
 
@@ -74,6 +91,8 @@ struct RoomRootView: View {
         case .memory:
             RoomScreenActions(destination: .memory, canRescan: true, isScanning: insights.isScanningMemory,
                               rescan: insights.scanMemory)
+        case .history: RoomScreenActions(destination: .history)
+        case .settings: RoomScreenActions(destination: .settings)
         }
     }
 
@@ -96,8 +115,10 @@ struct RoomRootView: View {
 
     var body: some View {
         RoomShellView(navigation: navigation, rooms: rooms, insights: insights, selectRoom: openPinnedRoom,
-                      savedViews: savedViews, selectSavedView: openSavedView) {
-            RoomScreenScaffold(title: screenActions.title, subtitle: screenSubtitle, scrolls: destination != .disk) {
+                      savedViews: savedViews, selectSavedView: openSavedView,
+                      sidebarValues: sidebarValues, couldGoBytes: couldGoBytes) {
+            RoomScreenScaffold(title: screenActions.title, subtitle: screenSubtitle,
+                               scrolls: !Self.framedDestinations.contains(destination)) {
                 screenContent
             }
         }
@@ -106,12 +127,12 @@ struct RoomRootView: View {
         .toolbar {
             ToolbarItem(placement: .principal) {
                 // The pill carries status on every screen; the free-space figure lives in the hero (Overview) or the sidebar foot.
-                RoomActivityPill(stop: stopActivity, restore: restoreActivity, showHistory: { sheet = .history },
+                RoomActivityPill(stop: stopActivity, restore: restoreActivity,
+                                 showHistory: { navigation.select(.screen(.history), origin: .controlActivation) },
                                  prefersQuietIdleLabel: true)
             }
             .sharedBackgroundVisibility(.hidden)
             ToolbarItemGroup(placement: .primaryAction) {
-                RoomHistoryButton(model: model, show: { sheet = .history }, restore: restoreFromCaches)
                 if destination == .overview {
                     Button { showingCustomise.toggle() } label: {
                         Label("Customise", systemImage: "slider.horizontal.3")
@@ -144,7 +165,6 @@ struct RoomRootView: View {
                     .preferredColorScheme(colorScheme)
             case .protectedSources: RoomWhatStaysSheet(model: model)
             case .scanIssues: RoomScanIssuesSheet(issues: model.scanIssues)
-            case .history: RoomHistorySheet(model: model)
             #if ROOM_APP_STORE
             case .restore(let record): RoomStoreRestoreSheet(model: model, record: record)
             #endif
@@ -188,6 +208,9 @@ struct RoomRootView: View {
             insights.openDiskMap(rootURL: url, requestNavigation: false)
         }
         .task { await savedViews.load() }
+        .onChange(of: insights.memorySamples.values, initial: true) { _, values in
+            if destination == .memory || sidebarMemory.isEmpty { sidebarMemory = values }
+        }
         .task(id: SavedViewRequest(route: navigation.route, retry: savedViewRetry)) {
             openedSavedView = nil
             guard case .savedView(let id) = navigation.route else { return }
@@ -258,7 +281,7 @@ struct RoomRootView: View {
         case .overview: nil
         case .disk: nil
         case .clean: model.cachesStatus
-        case .memory, .developer: nil
+        case .memory, .developer, .history, .settings: nil
         }
     }
 
@@ -300,6 +323,10 @@ struct RoomRootView: View {
             #else
             RoomDeveloperView(model: developer, agentWork: agentWork, memoryReport: insights.memoryReport)
             #endif
+        case .history:
+            RoomHistoryScreen(model: model, restore: restoreFromCaches)
+        case .settings:
+            RoomSettingsScreen(openAllSettings: { openSettings() })
         }
     }
 
@@ -407,7 +434,7 @@ struct RoomRootView: View {
         switch action {
         case .checkAgain: model.scan()
         case .reviewAgain: if model.canReviewCleanup { sheet = .review }
-        case .showSkipped, .showWhy: sheet = .history
+        case .showSkipped, .showWhy: navigation.select(.screen(.history), origin: .programmatic)
         case .showInTrash: model.openTrash()
         case .ok: break
         }
@@ -422,7 +449,7 @@ private struct RoomMapCleanupContext {
 }
 
 private enum RoomSheet: Identifiable {
-    case review, source(RoomSource), welcome, protectedSources, scanIssues, history
+    case review, source(RoomSource), welcome, protectedSources, scanIssues
     case mapCleanup(RoomMapCleanupContext)
     #if ROOM_APP_STORE
     case restore(RoomActivity)
@@ -435,7 +462,6 @@ private enum RoomSheet: Identifiable {
         case .welcome: "welcome"
         case .protectedSources: "protected"
         case .scanIssues: "issues"
-        case .history: "history"
         #if ROOM_APP_STORE
         case .restore(let record): "restore-\(record.id)"
         #endif

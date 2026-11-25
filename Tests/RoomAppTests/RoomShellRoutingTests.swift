@@ -65,8 +65,8 @@ struct RoomSidebarLayoutTests {
 
     @Test func iconColumnDoesNotMove() {
         #expect(RoomSidebarLayout.iconLeading == 16)
-        #expect(RoomSidebarLayout.width(.labelled) == 212)
-        #expect(RoomSidebarLayout.width(.iconsOnly) == 56)
+        #expect(RoomSidebarLayout.width(.labelled) == 248)
+        #expect(RoomSidebarLayout.width(.iconsOnly) == 62)
     }
 
     @Test func shortcutHintsOnlyLabelled() {

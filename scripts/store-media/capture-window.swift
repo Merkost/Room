@@ -72,7 +72,7 @@ private final class RecordingDelegate: NSObject, SCRecordingOutputDelegate, SCSt
 @MainActor
 struct RoomFixtureCapture {
     private static let fixtureBundle = "dev.merkost.room.screenshot-fixture"
-    private static let fixtureTitles: Set<String> = ["Room Screenshot Fixture", "Overview", "Disk Map", "Caches", "Developer", "Memory"]
+    private static let fixtureTitles: Set<String> = ["Room Screenshot Fixture", "Overview", "Disk Map", "Caches", "Developer", "Memory", "History", "Settings"]
 
     static func main() async {
         do {

@@ -24,6 +24,7 @@ struct StoreScreenshotEntry {
         let directory = URL(fileURLWithPath: output).deletingLastPathComponent()
         let app = NSApplication.shared
         app.setActivationPolicy(.regular)
+        _ = RoomDisplayFont.register()
         let fixture = try StoreScreenshotFixture(directory: directory)
         let frame = NSRect(origin: .zero, size: fixture.windowSize)
         let window = NSWindow(contentRect: frame,
@@ -54,7 +55,10 @@ struct StoreScreenshotEntry {
 struct StoreScreenshotFixture: View {
     private enum Screen: String {
         case overview, diskMap = "disk-map", cachesReview = "caches-review", developer, aiTools = "ai-tools", memory, monitor
+        case caches, history, settings
     }
+    /// `--light` captures the light appearance (the nav-v3 mockup frames are light).
+    private static var light: Bool { CommandLine.arguments.contains("--light") }
 
     private let screen: Screen
     private let navigation: RoomWindowNavigation
@@ -76,7 +80,7 @@ struct StoreScreenshotFixture: View {
         let defaults = UserDefaults.standard
         defaults.set(false, forKey: RoomOverviewPreferences.roomsChapterKey)
         defaults.set(RoomOnboardingFlow.version, forKey: "RoomOnboardingVersion")
-        defaults.set("dark", forKey: "RoomAppearance")
+        defaults.set(Self.light ? "light" : "dark", forKey: "RoomAppearance")
         defaults.set("teal", forKey: "RoomAccent")
 
         let sampleHome = directory.appendingPathComponent("Sample Home", isDirectory: true)
@@ -111,9 +115,12 @@ struct StoreScreenshotFixture: View {
         case .cachesReview: navigation.select(.clean)
         case .developer, .aiTools: navigation.select(.developer)
         case .memory: navigation.select(.memory)
+        case .caches: navigation.select(.clean)
+        case .history: navigation.select(.history)
+        case .settings: navigation.select(.settings)
         }
         let approvedCaches: [URL]
-        if screen == .cachesReview {
+        if screen == .cachesReview || screen == .caches {
             let npm = try Self.sampleNPM(in: sampleHome)
             approvedCaches = [npm]
         } else {
@@ -163,7 +170,7 @@ struct StoreScreenshotFixture: View {
             .modifier(RoomAccentRoot())
             .modifier(RoomHideRoot())
             .environment(\.roomActivityCenter, activity)
-            .preferredColorScheme(.dark)
+            .preferredColorScheme(Self.light ? .light : .dark)
             .task { await prepare() }
             .sheet(isPresented: $showReview) {
                 RoomCleanupReviewSheet(model: caches)
@@ -219,6 +226,12 @@ struct StoreScreenshotFixture: View {
             }
         case .developer, .aiTools:
             developer.scan()
+        case .caches:
+            caches.scan()
+            while caches.isScanning, !Task.isCancelled { try? await Task.sleep(for: .milliseconds(30)) }
+            caches.selectRecommended()
+        case .history, .settings:
+            break
         case .memory, .monitor:
             if screen == .monitor {
                 caches.cachesCheckStore.save(.init(at: Date().addingTimeInterval(-2_400), bytes: 156_000_000, partial: false))
