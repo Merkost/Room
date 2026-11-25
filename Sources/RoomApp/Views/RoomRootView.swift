@@ -51,10 +51,20 @@ struct RoomRootView: View {
     /// Memory's sidebar sparkline only takes new samples while Memory is open, so the column never moves at idle.
     @State private var sidebarMemory: [Int64] = []
     @State private var rowActivity = RoomSidebarActivity()
+    /// Make room: the bytes the review chose (for "Moving 7 of 22 GB") and the toast after it lands.
+    @State private var makeRoomTotal: Int64 = 0
+    @State private var madeToast: RoomMadeToastState?
+    @State private var toastTask: Task<Void, Never>?
+
+    private var isMakingRoom: Bool { model.isWorking && !model.cleanupProgress.isEmpty }
+    private var makeRoomMoved: Int64 { RoomMakeRoomProgress.movedBytes(model.cleanupProgress, totalBytes: makeRoomTotal) }
 
     /// What each engine is doing, for the sidebar rows (ring, sentence, counted dots, finished, failed).
     private var rowSignals: [RoomDestination: RoomRowSignal] {
-        [.clean: RoomRowSignals.caches(isScanning: model.isScanning, checked: model.scannedLocationCount,
+        [.overview: RoomRowSignals.makeRoom(isMoving: isMakingRoom, movedBytes: makeRoomMoved, totalBytes: makeRoomTotal,
+                                            madeBytes: model.movedReceipt?.bytes,
+                                            failed: RoomMakeRoomProgress.failed(model.cleanupProgress)),
+         .clean: RoomRowSignals.caches(isScanning: model.isScanning, checked: model.scannedLocationCount,
                                        of: model.scanLocationCount, clearableBytes: model.clearableBytes,
                                        unreadable: model.scanIssues.count),
          .developer: RoomRowSignals.developer(isScanning: developer.isScanning, progress: developer.progress,
@@ -93,7 +103,10 @@ struct RoomRootView: View {
     }
 
     /// What Make room would give back: the cache moves a completed check found eligible.
-    private var couldGoBytes: Int64 { model.hasReport ? model.clearableBytes : 0 }
+    private var couldGoBytes: Int64 {
+        guard model.hasReport else { return 0 }
+        return max(0, model.clearableBytes - (isMakingRoom ? makeRoomMoved : 0))
+    }
     private var colorScheme: ColorScheme? {
         switch appearance { case "light": .light; case "dark": .dark; default: nil }
     }
@@ -154,6 +167,18 @@ struct RoomRootView: View {
                                scrolls: !Self.framedDestinations.contains(destination)) {
                 screenContent
             }
+            .overlay(alignment: .bottom) {
+                if let madeToast {
+                    RoomMadeToast(state: madeToast,
+                                  canRestore: model.activity.first { $0.id == madeToast.receiptID }?.canRestore == true
+                                    && !model.isWorking && !model.isScanning,
+                                  restore: restoreFromToast)
+                        .padding(.bottom, RoomTokens.Screen2.toastBottom)
+                        .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity),
+                                                removal: .opacity))
+                }
+            }
+            .animation(motion.animation(RoomTokens.Motion.ui, fallback: RoomTokens.Motion.fade), value: madeToast)
         }
         .preferredColorScheme(colorScheme)
         .focusedSceneValue(\.roomScreen, screenActions)
@@ -242,6 +267,13 @@ struct RoomRootView: View {
             insights.openDiskMap(rootURL: url, requestNavigation: false)
         }
         .task { await savedViews.load() }
+        .onChange(of: isMakingRoom) { _, moving in
+            if moving { makeRoomTotal = model.selectedBytes }
+        }
+        .onChange(of: model.movedReceiptID) { old, new in
+            guard let new, new != old, let receipt = model.activity.first(where: { $0.id == new }) else { return }
+            showToast(RoomMadeToastState(receiptID: receipt.id, bytes: receipt.bytes))
+        }
         .onChange(of: rowSignals, initial: true) { _, signals in
             rowActivity.update(signals, open: navigation.route.highlightedScreen)
         }
@@ -445,6 +477,25 @@ struct RoomRootView: View {
         #else
         Task { await model.restore(record: record) }
         #endif
+    }
+
+    /// Six seconds, then the toast leaves; History keeps the receipt.
+    private func showToast(_ state: RoomMadeToastState, for duration: Duration = RoomTokens.Screen2.toastHold) {
+        toastTask?.cancel()
+        madeToast = state
+        toastTask = Task {
+            do { try await Task.sleep(for: duration) } catch { return }
+            madeToast = nil
+        }
+    }
+
+    private func restoreFromToast() {
+        guard let toast = madeToast, let receipt = model.activity.first(where: { $0.id == toast.receiptID }),
+              receipt.canRestore, !model.isScanning, !model.isWorking else { return }
+        restoreFromCaches(receipt)
+        var restored = toast
+        restored.restored = true
+        showToast(restored, for: .milliseconds(1100))
     }
 
     private func restoreActivity(_ id: UUID) {
