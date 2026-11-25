@@ -28,6 +28,8 @@ final class RoomWindowNavigation {
     private(set) var history: RoomNavigationHistory
     private(set) var prefersSidebarIcons: Bool
     private(set) var selectionOrigin = RoomSelectionOrigin.programmatic
+    /// When the place last changed, for the content arrival (`RoomEnterContext`).
+    private(set) var changedAt = Date.distantPast
     var route: RoomRoute { history.current }
     var destination: RoomDestination { route.highlightedScreen ?? .disk }
     var canGoBack: Bool { history.canGoBack }
@@ -61,7 +63,11 @@ final class RoomWindowNavigation {
         change(.programmatic) { history.remove(route, fallback: .screen(.disk)) }
     }
 
+    /// Whether the last fold came from the keyboard (⌃⌘S): keyboard actions never animate.
+    private(set) var sidebarFoldByKeyboard = false
+
     func toggleSidebarLabels() {
+        sidebarFoldByKeyboard = RoomSelectionOrigin.controlActivation == .keyboard
         prefersSidebarIcons.toggle()
         defaults.set(prefersSidebarIcons, forKey: "RoomSidebarIconsOnly")
     }
@@ -76,7 +82,10 @@ final class RoomWindowNavigation {
         let previous = route
         func update() {
             operation()
-            if route != previous { selectionOrigin = origin }
+            if route != previous {
+                selectionOrigin = origin
+                changedAt = Date()
+            }
         }
         if case .keyboard = origin {
             withTransaction(transaction(for: origin), update)

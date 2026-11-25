@@ -7,6 +7,8 @@ nonisolated enum RoomGlyph: String, CaseIterable, Sendable {
     case overview, diskMap, caches, developer, memory, history, settings
     // Kinds and quiet tiles
     case term, grid, film, doc, box, photo, down, folder, window, target, eye, bar, cal, wave, search, layers, phone, branch, spark
+    // Stand-in app glyphs (mockup `GL`) and the sidebar fold
+    case hammer, compass, hex, stack, mug, globe, fold
 
     fileprivate var parts: [RoomGlyphPart] {
         switch self {
@@ -38,6 +40,13 @@ nonisolated enum RoomGlyph: String, CaseIterable, Sendable {
         case .branch: [.circle(5.5, 4.5, 1.5), .circle(5.5, 13.5, 1.5), .circle(12.5, 6.5, 1.5),
                        .path("M5.5 6v6M12.5 8q0 3-7 4")]
         case .spark: [.path("M9 3v3M9 12v3M3 9h3M12 9h3M5 5l2 2M11 11l2 2M13 5l-2 2M7 11l-2 2")]
+        case .hammer: [.path("M10.5 3.5l4 4-2 2-4-4z"), .path("M9.5 8.5L4 14")]
+        case .compass: [.circle(9, 9, 5.5), .path("M11.5 6.5l-1.5 3.5-3.5 1.5L8 8z")]
+        case .hex: [.path("M9 2.8l5.4 3.1v6.2L9 15.2l-5.4-3.1V5.9z")]
+        case .stack: [.path("M3.5 10h3v3h-3zM7.5 10h3v3h-3zM11.5 10h3v3h-3zM7.5 6h3v3h-3z")]
+        case .mug: [.path("M4.5 6h8v5q0 3-3 3h-2q-3 0-3-3z"), .path("M12.5 7.5h1q1.5 0 1.5 1.5t-1.5 1.5h-1")]
+        case .globe: [.circle(9, 9, 5.5), .path("M3.5 9h11M9 3.5q2.8 5.5 0 11M9 3.5q-2.8 5.5 0 11")]
+        case .fold: [.rect(2.5, 3.5, 13, 11, 3), .path("M7 3.5v11")]
         }
     }
 
