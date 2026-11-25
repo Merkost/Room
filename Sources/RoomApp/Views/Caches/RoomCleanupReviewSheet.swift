@@ -6,7 +6,9 @@ struct RoomCleanupReviewSheet: View {
     let model: RoomViewModel
     var mapCleanup: RoomMapCleanup? = nil
     var canAccessMapCleanup: () -> Bool = { true }
-    @Environment(\.dismiss) private var dismiss
+    /// Set when the review is drawn in the window (`roomSheetOverlay`) rather than as a system sheet.
+    var close: (() -> Void)? = nil
+    @Environment(\.dismiss) private var systemDismiss
     @Environment(\.roomAccent) private var accent
     @Environment(\.roomMotion) private var motion
     @State private var committed: RoomCleanupReview?
@@ -26,6 +28,10 @@ struct RoomCleanupReviewSheet: View {
         #else
         return .init(rows: reviewRows, selected: selectedRows, store: false)
         #endif
+    }
+
+    private func dismiss() {
+        if let close { close() } else { systemDismiss() }
     }
 
     var body: some View {
@@ -91,7 +97,7 @@ struct RoomCleanupReviewSheet: View {
             HStack(spacing: RoomTokens.Space.row) {
                 Spacer()
                 Button("Cancel") { dismiss() }
-                    .roomSecondary().keyboardShortcut(.cancelAction)
+                    .roomQuiet().keyboardShortcut(.cancelAction)
                     .disabled(!review.canCancel || model.isWorking)
                 Button {
                     move()
@@ -100,7 +106,7 @@ struct RoomCleanupReviewSheet: View {
                         Text(commitLabel(review.commit))
                     }
                 }
-                .roomPrimary(accent).keyboardShortcut(.defaultAction)
+                .roomScreenPrimary(accent).keyboardShortcut(.defaultAction)
                 .disabled(!canCommit(review))
                 .accessibilityLabel(hidden && review.canCommit ? "Move selected items to Trash. Sizes hidden." : commitLabel(review.commit))
                 .accessibilityIdentifier("RoomReviewMoveButton")
@@ -108,11 +114,12 @@ struct RoomCleanupReviewSheet: View {
             .padding(.top, RoomTokens.Space.group)
         }
         .font(RoomTokens.Typography.body)
-        .padding(.horizontal, RoomTokens.Space.group + 8)
-        .padding(.top, RoomTokens.Space.group + 8)
-        .padding(.bottom, RoomTokens.Space.group + 2)
-        .frame(width: RoomTokens.Screen2.sheetWidth + 60)
+        .padding(.horizontal, RoomTokens.Screen2.sheetPad)
+        .padding(.top, RoomTokens.Screen2.sheetPad)
+        .padding(.bottom, RoomTokens.Screen2.sheetPadBottom)
+        .frame(width: RoomTokens.Screen2.sheetWidth)
         .interactiveDismissDisabled(!review.canCancel || model.isWorking)
+        .onExitCommand { if review.canCancel && !model.isWorking { dismiss() } }
         #if ROOM_APP_STORE
         .task { await prepareStoreReview() }
         .onChange(of: mapIssue) { _, issue in
@@ -132,7 +139,7 @@ struct RoomCleanupReviewSheet: View {
         } label: {
             HStack(spacing: RoomTokens.Space.row) {
                 RoomTick(on: selected, partial: partial)
-                RoomThingIcon(path: path, fallback: .box, size: RoomTokens.Screen2.iconSmall)
+                RoomThingIcon(path: path, name: row.name, fallback: .box, size: RoomTokens.Screen2.iconSmall)
                 VStack(alignment: .leading, spacing: 1) {
                     RoomMaskable(row.name, kind: .name).foregroundStyle(selected ? RoomTokens.Ink.graphite : RoomTokens.Ink.tertiary)
                         .lineLimit(1)
@@ -150,7 +157,7 @@ struct RoomCleanupReviewSheet: View {
                 RoomMaskable(RoomFormat.gb(selected ? row.selectedBytes : row.bytes))
                     .foregroundStyle(RoomTokens.Ink.secondary)
             }
-            .frame(minHeight: 34)
+            .frame(minHeight: RoomTokens.Screen2.sheetRow)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -179,9 +186,8 @@ struct RoomCleanupReviewSheet: View {
                     .foregroundStyle(RoomTokens.Ink.secondary)
                     .lineLimit(1).truncationMode(.middle)
             }
-        } else {
-            Text(row.consequence).foregroundStyle(RoomTokens.Ink.secondary)
         }
+        // Cache rows stay one line (mockup `.sheet li`); what moving means is said once under the list.
     }
 
     private func setSelection(_ id: String, selected: Bool) {

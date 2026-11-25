@@ -25,42 +25,59 @@ struct RoomSettingsScreen: View {
             VStack(alignment: .leading, spacing: 0) {
                 RoomGroupLabel(text: "General")
                 row(.window, "Open on", "The screen Room starts with") {
-                    Picker("Open on", selection: $openOn) {
-                        Text("Overview").tag(RoomOpenOn.overview.rawValue)
-                        Text("Last place").tag(RoomOpenOn.last.rawValue)
+                    Menu {
+                        Picker("Open on", selection: $openOn) {
+                            Text("Overview").tag(RoomOpenOn.overview.rawValue)
+                            Text("Last place").tag(RoomOpenOn.last.rawValue)
+                        }
+                        .pickerStyle(.inline).labelsHidden()
+                    } label: {
+                        valueLabel(openOn == RoomOpenOn.overview.rawValue ? "Overview" : "Last place")
                     }
-                    .labelsHidden().fixedSize()
+                    .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+                    .accessibilityLabel("Open on")
                 }
                 row(.target, "Free space goal", "Overview measures against it") {
-                    Stepper(onIncrement: step(1), onDecrement: step(-1)) {
-                        Text(verbatim: RoomFormat.gb(goalBytes)).monospacedDigit().foregroundStyle(RoomTokens.Ink.secondary)
+                    Menu {
+                        ForEach(Self.goalChoices, id: \.self) { gb in
+                            Button {
+                                RoomMenuBarSettings.setGoalBytes(RoomMenuBarSettings.clampGoalBytes(gb * 1_000_000_000), in: .standard)
+                            } label: {
+                                if gb * 1_000_000_000 == goalBytes { Label("\(gb) GB", systemImage: "checkmark") } else { Text(verbatim: "\(gb) GB") }
+                            }
+                        }
+                        Divider()
+                        Button("Smaller") { step(-1)?() }.disabled(step(-1) == nil)
+                        Button("Larger") { step(1)?() }.disabled(step(1) == nil)
+                    } label: {
+                        valueLabel(RoomFormat.gb(goalBytes), masked: true)
                     }
-                    .fixedSize()
+                    .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
                     .accessibilityLabel("Free space goal")
-                    .accessibilityValue(RoomFormat.gb(goalBytes))
+                    .accessibilityValue(hide.masksNow ? "size hidden" : RoomFormat.gb(goalBytes))
                 }
                 RoomGroupLabel(text: "Privacy")
                 row(.eye, "Hide sizes and names", "For screen sharing") {
                     Toggle("Hide sizes and names", isOn: Binding(get: { hideControl.state.isOn },
                                                                  set: { if $0 != hideControl.state.isOn { hideControl.toggle() } }))
-                        .toggleStyle(.switch).labelsHidden()
+                        .toggleStyle(RoomSwitchStyle()).labelsHidden()
                 }
                 RoomGroupLabel(text: "Monitor")
                 row(.bar, "Menu bar monitor", "Free space and pressure, always in view") {
-                    Toggle("Menu bar monitor", isOn: $menuBarEnabled).toggleStyle(.switch).labelsHidden()
+                    Toggle("Menu bar monitor", isOn: $menuBarEnabled).toggleStyle(RoomSwitchStyle()).labelsHidden()
                 }
                 #if !ROOM_APP_STORE
                 row(.cal, "Weekly check", "A quiet note when caches pass \(weeklyCheck.thresholdGB) GB") {
                     Toggle("Weekly check", isOn: Binding(get: { weeklyCheck.enabled || weeklyCheck.permissionPending },
                                                          set: { weeklyCheck.setEnabled($0) }))
-                        .toggleStyle(.switch).labelsHidden()
+                        .toggleStyle(RoomSwitchStyle()).labelsHidden()
                         .disabled(weeklyCheck.permissionPending)
                 }
                 #endif
                 RoomGroupLabel(text: "Motion")
                 row(.wave, "Gentle motion", reduceMotion ? "Off while Reduce Motion is on" : "Room moves a little. Off follows Reduce Motion") {
                     Toggle("Gentle motion", isOn: reduceMotion ? .constant(false) : $motionEnabled)
-                        .toggleStyle(.switch).labelsHidden()
+                        .toggleStyle(RoomSwitchStyle()).labelsHidden()
                         .disabled(reduceMotion)
                 }
                 Button("More settings…", action: openAllSettings)
@@ -72,6 +89,19 @@ struct RoomSettingsScreen: View {
         } action: {
             EmptyView()
         }
+    }
+
+    static let goalChoices: [Int64] = [20, 30, 40, 50, 75, 100]
+
+    /// The mockup's quiet value with a chevron ("Overview  ›"), standing in for a pop-up button.
+    private func valueLabel(_ text: String, masked: Bool = false) -> some View {
+        HStack(spacing: 6) {
+            if masked { RoomMaskable(text) } else { Text(text) }
+            Text(verbatim: "›").foregroundStyle(RoomTokens.Ink.tertiary)
+        }
+        .font(RoomTokens.Typography.body.monospacedDigit())
+        .foregroundStyle(RoomTokens.Ink.secondary)
+        .contentShape(Rectangle())
     }
 
     private func step(_ steps: Int) -> (() -> Void)? {
@@ -90,6 +120,9 @@ struct RoomSettingsScreen: View {
             control()
         }
         .frame(minHeight: RoomTokens.Screen2.listRow + 2)
+        .padding(.horizontal, RoomTokens.Space.row)
+        .roomRowHover()
+        .padding(.horizontal, -RoomTokens.Space.row)
         .accessibilityElement(children: .contain)
     }
 }

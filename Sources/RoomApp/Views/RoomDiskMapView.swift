@@ -85,6 +85,7 @@ struct RoomDiskMapView: View {
                             .foregroundStyle(RoomTokens.Ink.secondary)
                     }
                     details(level, isWide: isWide)
+                        .frame(maxHeight: .infinity, alignment: .top)
                         .roomPanelArrival(enabled: model.blueprint?.phase == .done)
                 } else {
                     folderStart
@@ -146,6 +147,7 @@ struct RoomDiskMapView: View {
             mapStep = nil
         }
         .onChange(of: model.current) { _, _ in pointer.item = nil }
+        .task(id: pickKey) { pickLargest() }
         .onChange(of: filter) { _, _ in pointer.item = nil }
         .onChange(of: layout) { _, _ in
             mapStep = nil
@@ -251,38 +253,60 @@ struct RoomDiskMapView: View {
         .background(RoomTokens.Surface.group, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.row))
     }
 
+    /// The mockup's crumb row carries nothing else, so the view switch, inspector, rescan, folders and saved views
+    /// share one quiet "View" menu at its right end (keyboard and menu bar commands are unchanged).
     private func viewActions(isWide: Bool) -> some View {
         HStack(spacing: RoomTokens.Space.row) {
-            if showsMap, model.current != nil, !insights.isScanningDisk {
-                Picker("Disk Map view", selection: $layout) {
-                    Text(Display.map.rawValue).tag(Display.map)
-                    Text(Display.largest.rawValue).tag(Display.largest)
-                    if model.canCompare { Text(Display.compare.rawValue).tag(Display.compare) }
-                }
-                .pickerStyle(.segmented).labelsHidden()
-                let inspectorVisible = isWide ? !hidesWideInspector : showsInspector
-                Button {
-                    toggleInspector(isWide: isWide)
-                } label: {
-                    Image(systemName: "sidebar.right")
-                        .foregroundStyle(inspectorVisible ? accent.text : RoomTokens.Ink.secondary)
-                }
-                    .buttonStyle(.borderless)
-                    .accessibilityLabel(inspectorVisible ? "Hide inspector" : "Show inspector")
-                    .help(inspectorVisible ? "Hide inspector" : "Show inspector")
-                Button(rescanTitle, action: insights.rescanDisk)
-                    .buttonStyle(.borderless)
-                    .disabled(!insights.canRescanDisk)
-                    .accessibilityIdentifier("RoomDiskScanButton")
-            } else if insights.isScanningDisk {
-                Button("Stop", action: insights.cancelDiskScan).roomSecondary()
+            if insights.isScanningDisk {
+                Button("Stop", action: insights.cancelDiskScan).roomLink(accent).font(RoomTokens.Typography.bodyStrong)
             }
-            folders
-            if let savedViews, !showsFolderStart || !savedViews.visible.isEmpty {
-                viewsMenu(savedViews)
+            Menu {
+                if showsMap, model.current != nil, !insights.isScanningDisk {
+                    Picker("Show", selection: $layout) {
+                        Text(Display.map.rawValue).tag(Display.map)
+                        Text(Display.largest.rawValue).tag(Display.largest)
+                        if model.canCompare { Text(Display.compare.rawValue).tag(Display.compare) }
+                    }
+                    .pickerStyle(.inline)
+                    let inspectorVisible = isWide ? !hidesWideInspector : showsInspector
+                    Button(inspectorVisible ? "Hide Inspector" : "Show Inspector") { toggleInspector(isWide: isWide) }
+                    Button(rescanTitle, action: insights.rescanDisk)
+                        .disabled(!insights.canRescanDisk)
+                        .accessibilityIdentifier("RoomDiskScanButton")
+                    Divider()
+                }
+                folders
+                if let savedViews, !showsFolderStart || !savedViews.visible.isEmpty {
+                    viewsMenu(savedViews)
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Text(layout == .map ? "View" : layout.rawValue)
+                    Text(verbatim: "›").foregroundStyle(RoomTokens.Ink.tertiary)
+                }
+                .font(RoomTokens.Typography.body)
+                .foregroundStyle(RoomTokens.Ink.secondary)
+                .contentShape(Rectangle())
             }
+            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
+            .accessibilityLabel("Disk Map view options")
         }
         .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var pickKey: String {
+        model.levelPath + "|" + (model.current?.rootID ?? "") + "|\(model.level?.children.count ?? -1)"
+    }
+
+    /// The room being looked at: the clicked one, else the largest folder (mockup: the first room is "on").
+    private func shownPick(_ level: RoomTreeNode) -> String? {
+        model.selectedPath ?? level.children.filter(\.isDirectory).max { $0.allocatedBytes < $1.allocatedBytes }?.relativePath
+    }
+
+    /// Like the mockup, the largest room is the one being looked at until another is clicked.
+    private func pickLargest() {
+        guard model.selectedPath == nil, let first = model.level?.children.first(where: { $0.isDirectory }) else { return }
+        model.select(first.relativePath)
     }
 
     private func toggleInspector(isWide: Bool) {
@@ -444,12 +468,14 @@ struct RoomDiskMapView: View {
                         emptyMap(level)
                         readout(visible, hint: false)
                     } else if layout == .map {
-                        RoomDiskRoomsView(rooms: diskRooms(level), picked: model.selectedPath, selection: selection,
+                        RoomDiskRoomsView(rooms: diskRooms(level), picked: shownPick(level), selection: selection,
                                           ticksAvailable: ticksAvailable, pick: { model.select($0); protectionNote = nil },
                                           toggle: toggleTick, stepInside: { stepInside($0, from: $1) })
                             .id(level.relativePath)
                             .transition(RoomDiskZoom.transition(inward: zoomInward, anchor: zoomAnchor, motion: motion))
-                            .frame(minHeight: RoomTokens.Map.minimumHeight * 0.6, maxHeight: RoomTokens.Map.minimumHeight)
+                            // The map takes the room the window has (no dead band under it at any height).
+                            .frame(minHeight: RoomTokens.Screen2.planHeight, maxHeight: .infinity)
+                            .layoutPriority(1)
                         inspectorLine(level)
                     } else if layout == .compare, let compared = model.comparison {
                         RoomCompareOverlay(earlier: compared.earlier, current: level, earlierDate: compared.date, hidden: hidden) {
@@ -463,6 +489,7 @@ struct RoomDiskMapView: View {
                         readout(visible, hint: false)
                     }
                 }
+                .frame(maxHeight: .infinity, alignment: .top)
                 .roomPanelChange(layout)
                 if isWide && !hidesWideInspector && layout != .map { wideInspector }
             }
@@ -524,7 +551,7 @@ struct RoomDiskMapView: View {
         zoomAnchor = anchor
         zoomInward = true
         let pointer = RoomSelectionOrigin.controlActivation == .pointer
-        if pointer, let animation = motion.animation(RoomTokens.Motion.ui, fallback: RoomTokens.Motion.fade) {
+        if pointer, let animation = motion.animation(RoomTokens.Motion.zoom, fallback: RoomTokens.Motion.fade) {
             withAnimation(animation) { _ = model.go(to: path) }
         } else {
             _ = model.go(to: path)
@@ -544,7 +571,7 @@ struct RoomDiskMapView: View {
                     .foregroundStyle(RoomTokens.Ink.secondary)
                 Spacer(minLength: 0)
                 Button("Clear") { selection.clear() }.roomLink(accent)
-            } else if let path = model.selectedPath, let room = rooms.first(where: { $0.path == path }),
+            } else if let path = shownPick(level), let room = rooms.first(where: { $0.path == path }),
                       let node = level.children.first(where: { $0.relativePath == path }) {
                 let share = level.allocatedBytes > 0 ? Int((Double(room.bytes) / Double(level.allocatedBytes) * 100).rounded()) : 0
                 HStack(spacing: 6) {
@@ -746,7 +773,7 @@ struct RoomDiskMapView: View {
         let selection = model.selectedPath
         let generation = mapGeneration + 1
         var opened = false
-        withAnimation(motion.animation(RoomTokens.Motion.page)) {
+        withAnimation(motion.animation(RoomTokens.Motion.zoom)) {
             opened = model.go(to: path)
             guard opened else { return }
             filter = nil

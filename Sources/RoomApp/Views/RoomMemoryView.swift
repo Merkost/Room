@@ -36,14 +36,15 @@ struct RoomMemoryView: View {
                         note: "Sampled once a second while this is open", scrollsEvidence: true) {
             VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
                 RoomMemoryCurve(samples: insights.memorySamples.values)
-                    .frame(height: RoomTokens.Memory2.curveHeight)
+                    .frame(minHeight: RoomTokens.Memory2.curveHeight, maxHeight: RoomTokens.Memory2.curveHeight * 1.6)
+                    .layoutPriority(1)
                 if let report = insights.memoryReport {
                     RoomMemoryFigures(report: report)
                     VStack(alignment: .leading, spacing: 2) {
                         ForEach(Array(report.processes.sorted { $0.residentBytes > $1.residentBytes }.prefix(3))) { process in
                             RoomEvidenceRow(name: process.name, bytes: process.residentBytes,
                                             value: RoomFormat.memory(process.residentBytes)) {
-                                RoomProcessIcon(pid: process.id)
+                                RoomProcessIcon(pid: process.id, name: process.name)
                             }
                         }
                     }

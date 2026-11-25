@@ -62,12 +62,14 @@ struct RoomHistoryScreen: View {
         let presentation = presentation
         RoomScreenFrame(headline: presentation.headline, supporting: presentation.supporting,
                         note: presentation.receipts == 0 ? nil : "Restore puts everything back where it was",
-                        scrollsEvidence: true) {
+                        scrollsEvidence: true, entersEvidence: false) {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(presentation.months, id: \.start) { month in
                     RoomGroupLabel(text: month.start.formatted(.dateTime.month(.wide)))
                     ForEach(month.receiptIDs, id: \.self) { id in
-                        if let receipt = activity.first(where: { $0.id == id }) { row(receipt) }
+                        if let receipt = activity.first(where: { $0.id == id }) {
+                            row(receipt).roomEnter(2 + (activity.firstIndex { $0.id == id } ?? 0))
+                        }
                     }
                 }
                 if presentation.receipts > 0 {
@@ -85,22 +87,27 @@ struct RoomHistoryScreen: View {
         .task { await model.refreshHistory() }
     }
 
+    /// Mockup `.li .lnk`: Restore waits at the end of the row and shows on hover or keyboard focus (VoiceOver always
+    /// reaches it); a receipt that cannot come back says why in the quiet ink.
     private func row(_ receipt: RoomActivity) -> some View {
-        RoomEvidenceRow(name: receipt.title, meta: Self.when(receipt.date), bytes: receipt.bytes, masksName: false) {
-            RoomQuietTile(glyph: receipt.details.first?.source == "diskMap" ? .diskMap : .caches)
-        } trailing: {
-            Group {
-                if receipt.canRestore {
-                    Button("Restore") { restore(receipt) }
-                        .roomLink(accent)
-                        .disabled(model.isScanning || model.isWorking)
-                        .accessibilityLabel(hide.masksNow ? "Restore receipt" : "Restore \(receipt.title)")
-                } else {
-                    Text(receipt.restoredCount > 0 ? "Restored" : "In Trash").foregroundStyle(RoomTokens.Ink.tertiary)
+        RoomHoverReveal { revealed in
+            RoomEvidenceRow(name: receipt.title, meta: Self.when(receipt.date), bytes: receipt.bytes, masksName: false) {
+                RoomQuietTile(glyph: receipt.details.first?.source == "diskMap" ? .diskMap : .box)
+            } trailing: {
+                Group {
+                    if receipt.canRestore {
+                        Button("Restore") { restore(receipt) }
+                            .roomLink(accent)
+                            .disabled(model.isScanning || model.isWorking)
+                            .opacity(revealed ? 1 : 0)
+                            .accessibilityLabel(hide.masksNow ? "Restore receipt" : "Restore \(receipt.title)")
+                    } else {
+                        Text(receipt.restoredCount > 0 ? "Restored" : "In Trash").foregroundStyle(RoomTokens.Ink.tertiary)
+                    }
                 }
+                .font(RoomTokens.Typography.bodyStrong)
+                .frame(minWidth: 64, alignment: .trailing)
             }
-            .font(RoomTokens.Typography.bodyStrong)
-            .frame(minWidth: 64, alignment: .trailing)
         }
     }
 

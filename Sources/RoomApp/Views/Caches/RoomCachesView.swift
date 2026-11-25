@@ -91,7 +91,8 @@ struct RoomCachesView: View {
     var body: some View {
         let words = words
         RoomScreenFrame(headline: words.headline, supporting: words.supporting, supportingMasked: true,
-                        note: words.note, scrollsEvidence: true) {
+                        note: words.note, scrollsEvidence: true,
+                        entersEvidence: !(model.hasReport || model.isScanning || model.isPartialScan)) {
             VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
                 #if ROOM_APP_STORE
                 npmBatch
@@ -311,7 +312,8 @@ struct RoomCachesView: View {
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
             Button(RoomAgentWorktreeHint.actionTitle, action: review)
-                .roomSecondary(.regular)
+                .roomLink(accent)
+                .font(RoomTokens.Typography.caption.weight(.medium))
                 .accessibilityIdentifier("RoomCachesReviewWorktrees")
         }
         .frame(maxWidth: RoomTokens.Space.measure, alignment: .leading)
