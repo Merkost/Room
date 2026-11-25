@@ -1,0 +1,144 @@
+import Foundation
+import Testing
+@testable import RoomApp
+@testable import RoomCore
+
+/// nav-v3 screen hierarchy: one headline with the number first, one supporting line, sizes through RoomFormat.gb.
+@MainActor
+struct RoomScreenHierarchyTests {
+    @Test func overviewLeadsWithFreeSpaceAndTheGoalDistance() {
+        let above = RoomOverviewWords.make(freeBytes: 64_000_000_000, capacityBytes: 494_000_000_000, goalBytes: 50_000_000_000,
+                                           cachesChecked: true, cachesBytes: 22_000_000_000, developerBytes: 120_000_000_000,
+                                           change: .since(label: "Monday", usedBytes: -8_000_000_000))
+        #expect(above.headline == RoomHeadline(figure: "64 GB", words: "free"))
+        #expect(above.supporting == "of 494 GB, 14 GB above your goal")
+        #expect(above.note == "22 GB of caches are safe to move")
+        #expect(above.facts.map(\.label) == ["Caches", "Developer", "Since Monday"])
+        #expect(above.facts.map(\.value) == ["22 GB could go", "120 GB in your tools", "8 GB more free"])
+        #expect(above.facts.map(\.destination) == [.clean, .developer, .history])
+
+        let below = RoomOverviewWords.make(freeBytes: 30_000_000_000, capacityBytes: 494_000_000_000, goalBytes: 50_000_000_000,
+                                           cachesChecked: true, cachesBytes: 0, developerBytes: nil, change: .tracking)
+        #expect(below.supporting == "of 494 GB, 20 GB below your goal")
+        #expect(below.note == "Nothing else is safe to move today")
+        #expect(below.facts[0].value == "All clear")
+        #expect(below.facts[1].value == "Not scanned yet")
+        #expect(below.facts[2].label == "This week")
+
+        let unread = RoomOverviewWords.make(freeBytes: nil, capacityBytes: nil, goalBytes: nil, cachesChecked: false,
+                                            cachesBytes: 0, developerBytes: nil, change: .tracking)
+        #expect(unread.headline.figure == nil, "a missing measurement is never a zero")
+        #expect(unread.supporting == nil)
+    }
+
+    @Test func floorPlanSortsKindsAndKeepsFreeLast() {
+        let plan = RoomOverviewFloorPlan.make(kinds: [("media", 88), ("developer", 120), ("apps", 96), ("documents", 74),
+                                                      ("system", 52), ("archives", 3)],
+                                              notMappedBytes: 0, freeBytes: 64_000_000_000, capacityBytes: 494_000_000_000)
+        #expect(plan.rooms.map(\.title) == ["Developer", "Apps", "Media", "Documents", "System", "Other", "Free"])
+        #expect(plan.rooms.last?.isFree == true)
+        #expect(plan.percent(of: plan.rooms[0]) == 24)
+        let unmapped = RoomOverviewFloorPlan.make(kinds: nil, notMappedBytes: 0, freeBytes: 64, capacityBytes: 494)
+        #expect(unmapped.rooms.map(\.title) == ["Used", "Free"], "no map: Room does not guess what is inside")
+    }
+
+    @Test func floorPlanWidthsAreProportionalWithAFloor() {
+        let rooms = [RoomOverviewFloorPlan.Room(fill: .kind("developer"), title: "Developer", bytes: 120_000_000_000),
+                     RoomOverviewFloorPlan.Room(fill: .kind("apps"), title: "Apps", bytes: 1_000_000_000),
+                     RoomOverviewFloorPlan.Room(fill: .free, title: "Free", bytes: 64_000_000_000)]
+        let widths = RoomOverviewFloorPlan.widths(rooms, total: 812, gap: 6, minimum: 72, freeBoostGB: 26)
+        #expect(widths.count == 3)
+        #expect(abs(widths.reduce(0, +) - 800) < 0.5, "fills the row minus the gaps")
+        #expect(widths[1] == 72, "a tiny room keeps the minimum width")
+        #expect(widths[0] > widths[2])
+    }
+
+    @Test func cachesSayWhatCanGoOrAllClear() {
+        var input = RoomCachesWords.Input()
+        input.hasReport = true
+        input.clearableBytes = 22_400_000_000
+        input.places = 6
+        let found = RoomCachesWords.make(input)
+        #expect(found.headline == RoomHeadline(figure: "22 GB", words: "could go"))
+        #expect(found.supporting == "Rebuildable, in 6 places")
+        #expect(found.note == "Nothing moves without a review")
+
+        input.clearableBytes = 0
+        #expect(RoomCachesWords.make(input).headline == .words("All clear"))
+
+        input.unreadable = 2
+        #expect(RoomCachesWords.make(input).note == "2 places could not be read. Room left them alone.")
+
+        var scanning = RoomCachesWords.Input()
+        scanning.scanning = true
+        scanning.checked = 3
+        scanning.toCheck = 11
+        #expect(RoomCachesWords.make(scanning).supporting == "Checking 4 of 11 places")
+        #expect(RoomCachesWords.make(RoomCachesWords.Input()).headline == .words("Not checked yet"))
+    }
+
+    @Test func memoryLeadsWithTheNumberInUse() {
+        let gib: Int64 = 1_073_741_824
+        let words = RoomMemoryWords.make(usedBytes: 9 * gib, totalBytes: 16 * gib, pressureRaw: "normal")
+        #expect(words.headline == RoomHeadline(figure: "9", words: "of 16 GB in use"))
+        #expect(words.supporting == "Pressure is normal")
+        #expect(RoomMemoryWords.make(usedBytes: nil, totalBytes: nil, pressureRaw: nil).headline.figure == nil)
+    }
+
+    @Test func developerHasAHeadlinePerRoom() {
+        var input = RoomDeveloperWords.Input()
+        input.projectsBytes = 120_000_000_000
+        input.projects = 48
+        input.devicesBytes = 20_000_000_000
+        input.devices = 3
+        input.storageBytes = 67_000_000_000
+        input.aiBytes = 27_000_000_000
+        input.worktreesBytes = 6_000_000_000
+        input.worktrees = 3
+        let rooms = RoomDeveloperWords.make(section: "Rooms", input)
+        #expect(rooms.headline == RoomHeadline(figure: "120 GB", words: "in projects"))
+        #expect(rooms.supporting == "48 projects")
+        #expect(RoomDeveloperWords.make(section: "Matrix", input).headline.words == "of toolchains")
+        #expect(RoomDeveloperWords.make(section: "Devices", input).headline == RoomHeadline(figure: "20 GB", words: "of simulators"))
+        #expect(RoomDeveloperWords.make(section: "Storage", input).supporting == "All of it can be made again")
+        #expect(RoomDeveloperWords.make(section: "AI Tools", input).headline.words == "of AI tools")
+        #expect(RoomDeveloperWords.make(section: "Worktrees", input).headline.words == "in worktrees")
+        #expect(RoomDeveloperWords.make(section: "Devices", RoomDeveloperWords.Input()).headline.figure == nil)
+    }
+
+    @Test func diskMapNamesTheLevel() {
+        let now = Date(timeIntervalSince1970: 2_000_000)
+        let home = RoomDiskMapWords.make(levelName: "kosta", atRoot: true, rootIsHome: true, bytes: 430_000_000_000,
+                                         partial: false, folders: 12, scannedAt: now.addingTimeInterval(-3 * 86_400), now: now)
+        #expect(home.headline == RoomHeadline(figure: "430 GB", words: "in your home"))
+        #expect(home.supporting == "12 folders, mapped 3 days ago")
+        let inside = RoomDiskMapWords.make(levelName: "Developer", atRoot: false, rootIsHome: true, bytes: 120_000_000_000,
+                                           partial: false, folders: 4, scannedAt: now, now: now)
+        #expect(inside.headline.words == "in Developer" && inside.headline.masksWords, "Hide masks the folder name")
+        #expect(inside.supporting == "4 folders inside")
+    }
+
+    @Test func historyCountsThisMonthAndGroupsByMonth() {
+        let calendar = Calendar(identifier: .gregorian)
+        let now = calendar.date(from: DateComponents(year: 2026, month: 11, day: 25))!
+        let a = UUID(), b = UUID(), c = UUID()
+        let presentation = RoomHistoryPresentation.make([
+            (id: a, date: calendar.date(from: DateComponents(year: 2026, month: 11, day: 24))!, bytes: 14_000_000_000, canRestore: true, restoredAll: false),
+            (id: b, date: calendar.date(from: DateComponents(year: 2026, month: 11, day: 3))!, bytes: 14_000_000_000, canRestore: true, restoredAll: false),
+            (id: c, date: calendar.date(from: DateComponents(year: 2026, month: 10, day: 20))!, bytes: 6_000_000_000, canRestore: false, restoredAll: true)
+        ], now: now, calendar: calendar)
+        #expect(presentation.headline == RoomHeadline(figure: "28 GB", words: "made this month"))
+        #expect(presentation.months.count == 2)
+        #expect(presentation.months[0].receiptIDs == [a, b])
+        #expect(presentation.supporting == "3 receipts, 2 still in Trash")
+        #expect(RoomHistoryPresentation.make([], now: now).headline == .words("Nothing moved yet"))
+    }
+
+    @Test func hideMasksHeadlineFiguresAndNamesInSpeech() {
+        let headline = RoomHeadline(figure: "120 GB", words: "in Developer", masksWords: true)
+        #expect(headline.spoken(hidden: true) == "Size hidden name hidden")
+        #expect(headline.spoken(hidden: false) == "120 GB in Developer")
+        let hidden = RoomHideState(isOn: true)
+        #expect(!RoomHideMask.display("120 GB", kind: .figure, hide: hidden).contains("120"))
+    }
+}

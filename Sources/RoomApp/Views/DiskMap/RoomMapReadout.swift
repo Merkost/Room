@@ -162,10 +162,9 @@ struct RoomMapCleanupControl: View {
     }
 
     private func button(_ title: String, symbol: String) -> some View {
+        // nav-v3: the Disk Map's one filled button is Move to Trash; this is a secondary action, in the accent text.
         Button(action: activate) { Label(title, systemImage: symbol) }
-            .buttonStyle(.glassProminent)
-            .tint(accent.fill)
-            .controlSize(.regular)
+            .roomLink(accent)
             .accessibilityIdentifier("RoomDiskMapCleanup")
     }
 }

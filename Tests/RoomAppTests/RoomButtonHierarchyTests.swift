@@ -67,9 +67,12 @@ struct RoomButtonHierarchyTests {
         for (surface, sites) in bySurface {
             #expect(sites.count == 1, "\(surface) has \(sites.count) filled buttons: \(sites)")
         }
-        // The screens the review named each keep exactly one.
-        for screen in ["Overview", "Disk Map", "Caches", "Developer", "Memory"] {
+        // nav-v3 (FEATURES table): these screens keep exactly one; Memory, History and Settings have none.
+        for screen in ["Overview", "Disk Map", "Caches", "Developer"] {
             #expect(bySurface[screen]?.count == 1, "\(screen) should have its one filled button")
+        }
+        for screen in ["Memory", "Settings"] {
+            #expect(bySurface[screen] == nil, "\(screen) has no filled button")
         }
     }
 

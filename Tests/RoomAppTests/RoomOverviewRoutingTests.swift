@@ -7,8 +7,8 @@ import Testing
 struct RoomOverviewRoutingTests {
     @Test func shortcutsUseSpecOrder() {
         let numbered = RoomSidebar.items.filter { $0.shortcut != nil }
-        #expect(numbered.map(\.destination) == [.overview, .disk, .clean, .developer, .memory])
-        #expect(numbered.compactMap(\.shortcut) == Array("12345"))
+        #expect(numbered.map(\.destination) == [.overview, .disk, .clean, .developer, .memory, .history, .settings])
+        #expect(numbered.compactMap(\.shortcut) == Array("1234567"))
         #expect(numbered.first?.id == "overview")
         #expect(numbered.first { $0.destination == .clean }?.title == "Caches")
     }
@@ -39,7 +39,7 @@ struct RoomOverviewRoutingTests {
     @Test func retryCapacityReadsOnlyTheVolume() async throws {
         let fixture = try RoutingFixture()
         defer { fixture.remove() }
-        let view = RoomOverviewView(insights: fixture.insights, rooms: fixture.rooms, navigate: fixture.navigation.select,
+        let view = RoomOverviewScreen(insights: fixture.insights, navigate: fixture.navigation.select,
                                     refresh: fixture.insights.refreshDiskCapacity)
 
         view.retryCapacity()
@@ -111,7 +111,7 @@ struct RoomOverviewRoutingTests {
     @Test func overviewDiskLinkNavigatesWithoutStartingWork() async throws {
         let fixture = try RoutingFixture()
         defer { fixture.remove() }
-        let view = RoomOverviewView(insights: fixture.insights, rooms: fixture.rooms, navigate: fixture.navigation.select,
+        let view = RoomOverviewScreen(insights: fixture.insights, navigate: fixture.navigation.select,
                                     refresh: fixture.insights.refreshDiskCapacity)
 
         view.openDiskMap()
@@ -122,7 +122,7 @@ struct RoomOverviewRoutingTests {
     @Test func overviewCheckCachesNavigatesAndStartsOneReadOnlyCheck() async throws {
         let fixture = try RoutingFixture()
         defer { fixture.remove() }
-        let view = RoomOverviewView(insights: fixture.insights, rooms: fixture.rooms, navigate: fixture.navigation.select,
+        let view = RoomOverviewScreen(insights: fixture.insights, navigate: fixture.navigation.select,
                                     refresh: fixture.insights.refreshDiskCapacity, cacheModel: fixture.cache)
 
         view.openCaches()

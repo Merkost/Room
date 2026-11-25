@@ -7,6 +7,13 @@ struct RoomShellView<Detail: View>: View {
     let selectRoom: (UUID) -> Void
     var savedViews: RoomSavedViewsStore? = nil
     var selectSavedView: (UUID) -> Void = { _ in }
+    var sidebarValues = RoomSidebarValue.Input()
+    var couldGoBytes: Int64 = 0
+    var rowActivity: [RoomDestination: RoomRowActivity] = [:]
+    var stopPlace: (RoomDestination) -> Void = { _ in }
+    var developerSection: RoomDeveloperSection = .rooms
+    var selectDeveloperSection: (RoomDeveloperSection) -> Void = { _ in }
+    var openGoTo: (_ keyboard: Bool) -> Void = { _ in }
     @ViewBuilder var detail: () -> Detail
 
     @Environment(\.roomMotion) private var motion
@@ -23,8 +30,12 @@ struct RoomShellView<Detail: View>: View {
             NavigationSplitView(columnVisibility: $columnVisibility) {
                 RoomSidebar(navigation: navigation, rooms: rooms,
                             mode: sidebarMode, showsLabels: showsSidebarLabels,
-                            foot: foot, canOpenRooms: insights.canChooseDiskLocation, openRoom: selectRoom,
-                            savedViews: savedViews, openSavedView: selectSavedView)
+                            values: sidebarValues, plate: plate,
+                            canOpenRooms: insights.canChooseDiskLocation, openRoom: selectRoom,
+                            savedViews: savedViews, openSavedView: selectSavedView,
+                            activity: rowActivity, stop: stopPlace,
+                            developerSection: developerSection, selectDeveloperSection: selectDeveloperSection,
+                            openGoTo: openGoTo)
                     .navigationSplitViewColumnWidth(RoomSidebarLayout.width(sidebarMode))
             } detail: {
                 detail()
@@ -38,11 +49,13 @@ struct RoomShellView<Detail: View>: View {
         .frame(minWidth: 800, minHeight: 650)
     }
 
-    private var foot: RoomSidebarFoot {
+    private var plate: RoomSidebarPlate {
         let capacity = insights.volumeCapacity
-        return RoomSidebarFoot.make(capacityBytes: capacity?.capacityBytes, freeBytes: capacity?.freeBytes,
-                                    goalBytes: goalEnabled ? Int64(goalBytes) : nil,
-                                    volumeName: capacity?.volumeName, hidden: false, format: RoomFormat.gb)
+        let foot = RoomSidebarFoot.make(capacityBytes: capacity?.capacityBytes, freeBytes: capacity?.freeBytes,
+                                        goalBytes: goalEnabled ? Int64(goalBytes) : nil,
+                                        volumeName: capacity?.volumeName, hidden: false, format: RoomFormat.gb)
+        return RoomSidebarPlate(freeBytes: capacity?.freeBytes, capacityBytes: capacity?.capacityBytes,
+                                couldGoBytes: couldGoBytes, belowGoal: foot.belowGoal)
     }
 
     @MainActor private func changeMode(to target: RoomSidebarMode) async {

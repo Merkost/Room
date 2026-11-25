@@ -46,7 +46,11 @@ final class RoomViewModel {
     private(set) var currentScanPath = ""
     private(set) var scannedLocationCount = 0
     private(set) var scanLocationCount = 0
-    private(set) var isWorking = false
+    /// This model's own move, restore or rule change.
+    private(set) var working = false
+    /// Another engine (Disk Map folder moves) is moving files: one cleanup at a time across Room.
+    var externalCleanupBusy = false
+    var isWorking: Bool { working || externalCleanupBusy }
     private(set) var scanProgress: Double?
     private(set) var lastScanned: Date?
     private(set) var inspectionConfiguration: CacheConfiguration?
@@ -550,16 +554,16 @@ final class RoomViewModel {
     }
 
     private func performCleanup(_ ids: Set<UUID>, keepsCacheSelection: Bool) async {
-        guard !ids.isEmpty else { return }
+        guard !ids.isEmpty, !isWorking else { return }
         operationAlert = nil
         #if ROOM_APP_STORE
         lastStoreMoveCompleted = false
         guard hasStoreCleanupApproval(for: ids) else { errorMessage = RoomStoreAccessError.approvalRequired.localizedDescription; return }
         let scopes = beginStoreReadAccess()
         #endif
-        isWorking = true
+        working = true
         defer {
-            isWorking = false
+            working = false
             #if ROOM_APP_STORE
             Self.endStoreReadAccess(scopes)
             discardStoreReview()
@@ -619,9 +623,9 @@ final class RoomViewModel {
         }
         let scopes = beginStoreReadAccess()
         #endif
-        isWorking = true
+        working = true
         defer {
-            isWorking = false
+            working = false
             #if ROOM_APP_STORE
             Self.endStoreReadAccess(scopes)
             discardStoreReview()
@@ -681,15 +685,15 @@ final class RoomViewModel {
 
     func neverSuggest(_ source: RoomSource) async -> Set<UUID> {
         guard !isScanning, !isWorking else { return [] }
-        isWorking = true
-        defer { isWorking = false }
+        working = true
+        defer { working = false }
         return await addIgnoreLocations(sourceGroups[source.id, default: []].map(\.rootURL))
     }
 
     func chooseIgnoreLocation() async {
         guard !isScanning, !isWorking else { return }
-        isWorking = true
-        defer { isWorking = false }
+        working = true
+        defer { working = false }
         let folder = await RoomNativeFolderPicker.shared.choose(title: "Never Suggest",
             message: "Choose a folder whose caches Room should keep.", prompt: "Add Folder", initialURL: nil)
         if let folder { _ = await addIgnoreLocations([folder]) }
@@ -697,8 +701,8 @@ final class RoomViewModel {
 
     func removeIgnoreRules(_ ids: Set<UUID>) async {
         guard !isScanning, !isWorking, let ignoreStore else { return }
-        isWorking = true
-        defer { isWorking = false }
+        working = true
+        defer { working = false }
         do {
             try await ignoreStore.remove(ids)
             applyIgnoreChanges()
@@ -876,13 +880,13 @@ final class RoomViewModel {
     #if ROOM_APP_STORE
     func chooseStoreFolder(scanAfterApproval: Bool = false) {
         guard !isWorking, !isScanning, !isPreparingStoreReview else { return }
-        isWorking = true
+        working = true
         Task { [weak self] in
             let selected = await RoomNativeFolderPicker.shared.choose(title: "Allow Room to inspect storage",
                 message: "Choose a cache folder or another folder to inspect. Room remembers read-only access. Supported changes require a separate review and folder approval.",
                 prompt: scanAfterApproval ? "Allow & Scan" : "Allow Folder", initialURL: RoomStoreEnvironment.userHome)
             guard let self else { return }
-            self.isWorking = false
+            self.working = false
             guard let selected else { return }
             do {
                 _ = try self.fileAccess.remember(selected)
@@ -1024,8 +1028,8 @@ final class RoomViewModel {
     func allowStoreReviewLocation(_ url: URL) async {
         guard !isWorking, !isScanning, !isPreparingStoreReview, storeReviewKey != nil else { return }
         errorMessage = nil
-        isWorking = true
-        defer { isWorking = false }
+        working = true
+        defer { working = false }
         do { try await storeReview.allow(url) }
         catch { errorMessage = error.localizedDescription }
         postStoreApprovalNeeds()

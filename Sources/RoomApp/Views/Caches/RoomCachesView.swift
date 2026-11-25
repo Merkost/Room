@@ -43,27 +43,11 @@ struct RoomCachesView: View {
     @Environment(\.roomAccent) private var accent
     @Environment(\.roomMotion) private var motion
     @Environment(\.colorSchemeContrast) private var contrast
-    @State private var filter = Filter.clearable
     @State private var undo: Undo?
-    @State private var travellingReceipt: String?
-    @State private var pillOrigin = CGPoint.zero
-    @FocusState private var focusedSource: String?
-
-    private enum Filter: String, CaseIterable {
-        case clearable = "Clearable", kept = "Kept", all = "All"
-    }
 
     private struct Undo: Equatable {
         let rules: Set<UUID>
         let name: String
-    }
-
-    private var rows: [RoomSource] {
-        switch filter {
-        case .clearable: model.hasReport && !model.isPartialScan ? model.sources.filter(\.isAvailable) : model.sources
-        case .kept: model.sources.filter { $0.bytes > $0.eligibleBytes || !$0.heldReasons.isEmpty }
-        case .all: model.sources
-        }
     }
 
     private var isStore: Bool {
@@ -94,102 +78,60 @@ struct RoomCachesView: View {
             sourceCount: model.measuredSourceCount, readableSourceCount: model.readableSourceCount))
     }
 
+    private var words: RoomCachesWords {
+        RoomCachesWords.make(.init(
+            scanning: model.isScanning, afterRestore: model.isAfterRestore, hasReport: model.hasReport,
+            partial: model.isPartialScan, totalBytes: model.totalBytes, clearableBytes: model.clearableBytes,
+            places: model.sources.filter(\.isAvailable).count, measured: model.measuredSourceCount,
+            readable: model.readableSourceCount, checked: model.scannedLocationCount, toCheck: model.scanLocationCount,
+            unreadable: model.scanIssues.count, rememberedBytes: model.cachesCheckStore.check?.bytes,
+            needsFolder: needsFolderApproval))
+    }
+
     var body: some View {
-        let presentation = hero
-        VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
-            if model.isAfterRestore {
-                headline(presentation, symbol: "arrow.clockwise") {
-                    Text("Check again after restoring").font(RoomTokens.Typography.lead)
+        let words = words
+        RoomScreenFrame(headline: words.headline, supporting: words.supporting, supportingMasked: true,
+                        note: words.note, scrollsEvidence: true) {
+            VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
+                #if ROOM_APP_STORE
+                npmBatch
+                #endif
+                if model.hasReport || model.isScanning || model.isPartialScan {
+                    RoomCachesPlaces(model: model, inspect: inspect, showKept: showKept,
+                                     neverSuggest: model.ignoreStore != nil ? { neverSuggest($0) } : nil)
+                        .opacity(model.isAfterRestore ? 0.6 : 1)
+                } else {
+                    startingPlaces
+                    lastReceipt
                 }
-            } else if model.isScanning {
-                if model.totalBytes > 0 { headline(presentation) { figures(presentation) } }
-                scanStatus
-                    .roomPanelArrival()
-            } else if model.isPartialScan && model.totalBytes == 0 {
-                RoomEmptyFeedback(title: "Check incomplete",
-                    message: "Start a new check to measure caches.", symbol: "magnifyingglass", prominent: true) {
-                    startAction
+                if let bytes = agentWorktreeBytes, let reviewWorktrees, !model.isScanning {
+                    worktreeHint(bytes, review: reviewWorktrees)
                 }
-            } else if model.hasReport && model.clearableBytes == 0 {
-                if model.movedReceipt == nil || !model.sources.isEmpty || !model.protectedSources.isEmpty {
-                    completedFeedback(presentation)
+                if !model.scanIssues.isEmpty {
+                    Button("Scan notes", action: showScanNotes).roomLink(accent)
                 }
-            } else if model.hasReport || model.isPartialScan {
-                headline(presentation) { figures(presentation) }
-            } else {
-                startPanel
-            }
-            #if ROOM_APP_STORE
-            if let batch = model.npmBatch, batch.isBatch {
-                HStack(spacing: RoomTokens.Space.inner) {
-                    Label(batch.hasMore ? "npm totals reflect this batch" : "Last npm batch",
-                          systemImage: "shippingbox")
-                        .font(RoomTokens.Typography.body)
-                    Spacer(minLength: 0)
-                    if batch.hasMore {
-                        Button(action: model.continueNPM) {
-                            Label("Next npm Batch", systemImage: "arrow.right")
-                        }
-                        .roomSecondary()
-                        .disabled(!model.canContinueNPM)
-                        .accessibilityIdentifier("RoomCachesNextNPMBatch")
+                if let undo {
+                    HStack {
+                        Text("Room won’t suggest \(undo.name) again.")
+                        Button("Undo") { restoreSuggestion(undo) }.roomLink(accent)
+                            .disabled(model.isScanning || model.isWorking)
                     }
+                    .font(RoomTokens.Typography.caption)
+                    .transition(.opacity)
                 }
-                .help("npm sizes and selections apply to the current batch.")
             }
-            #endif
-            if let receipt = model.movedReceipt {
-                let entry = model.makeRoomStore?.entry(for: receipt.id)
-                moved(receipt, entry: entry)
-                RoomReceiptView(receipt: receipt, entry: entry,
-                    restore: model.isWorking || model.isScanning ? nil : { restore(receipt) },
-                    printsOnArrival: true)
-                    .id(receipt.id)
-            }
-            if !model.sources.isEmpty {
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .top, spacing: RoomTokens.Space.group) { comparison; sources }
-                    VStack(alignment: .leading, spacing: RoomTokens.Space.group) { comparison; sources }
+        } action: {
+            HStack(spacing: RoomTokens.Space.group) {
+                if model.isScanning {
+                    Button("Stop", action: model.cancelScan).roomLink(accent).font(RoomTokens.Typography.bodyStrong)
+                } else if model.hasReport, !needsFolderApproval {
+                    Button("Check caches", action: model.scan).roomLink(accent).font(RoomTokens.Typography.bodyStrong)
+                        .disabled(!model.canScan)
                 }
-                .opacity(model.isAfterRestore ? 0.6 : 1)
-                .roomPanelChange(model.isScanning)
-            } else if !model.isScanning && !model.hasReport && !model.isPartialScan && !model.isAfterRestore {
-                startingPlaces
-                lastReceipt
-            }
-            if let bytes = agentWorktreeBytes, let reviewWorktrees, !model.isScanning {
-                worktreeHint(bytes, review: reviewWorktrees)
-            }
-            if !model.scanIssues.isEmpty {
-                Button(action: showScanNotes) {
-                    Label("Scan notes", systemImage: "list.bullet.clipboard")
-                }
-                .roomLink(accent)
-            }
-            if let undo {
-                HStack {
-                    Text("Room won’t suggest \(undo.name) again.")
-                    Button("Undo") { restoreSuggestion(undo) }.roomLink(accent)
-                        .disabled(model.isScanning || model.isWorking)
-                }
-                .font(RoomTokens.Typography.caption)
-                .roomPanelArrival()
+                if !model.isScanning { primary(hero) }
             }
         }
         .foregroundStyle(RoomTokens.Ink.graphite)
-        .overlay(alignment: .top) {
-            if let travellingReceipt {
-                RoomReceiptTravelPill(text: travellingReceipt, origin: pillOrigin) { self.travellingReceipt = nil }
-            }
-        }
-        .onGeometryChange(for: CGPoint.self) { proxy in
-            let frame = proxy.frame(in: .named(RoomScreenScaffold<EmptyView>.space))
-            return CGPoint(x: frame.midX, y: frame.minY + RoomTokens.Map.readoutHeight / 2)
-        } action: { pillOrigin = $0 }
-        .onChange(of: model.movedReceiptID) { old, new in
-            guard let new, new != old, let receipt = model.activity.first(where: { $0.id == new }) else { return }
-            travellingReceipt = "Moved \(format(receipt.bytes)) to Trash"
-        }
         .task(id: undo) {
             guard undo != nil else { return }
             do { try await Task.sleep(for: .seconds(8)) } catch { return }
@@ -197,31 +139,23 @@ struct RoomCachesView: View {
         }
     }
 
-    /// Ready state: one sentence on what the click does, the last result as a number, then the action.
-    private var startPanel: some View {
-        let check = model.cachesCheckStore.check
-        let title = check != nil ? "Check caches again" : "Find caches you can clear"
-        let message = RoomCachesReadyCopy.lead(needsFolder: needsFolderApproval)
-        return RoomStartPanel(title: title, message: message, artwork: .caches) {
-            VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
-                if let check, let result = RoomCachesReadyCopy.lastResult(check, format: format) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        // The toolbar already says when; this says what.
-                        Text("Last check")
-                            .font(RoomTokens.Typography.caption)
-                            .foregroundStyle(RoomTokens.Ink.secondary)
-                        Text(result)
-                            .font(RoomTokens.Typography.figure)
-                            .monospacedDigit()
-                            .foregroundStyle(RoomTokens.Ink.graphite)
-                    }
-                    .accessibilityElement(children: .combine)
-                    .accessibilityLabel(hidden ? "Last check, size hidden" : "Last check: \(result)")
+    #if ROOM_APP_STORE
+    @ViewBuilder private var npmBatch: some View {
+        if let batch = model.npmBatch, batch.isBatch {
+            HStack(spacing: RoomTokens.Space.inner) {
+                Text(batch.hasMore ? "npm totals reflect this batch" : "Last npm batch")
+                    .font(RoomTokens.Typography.body).foregroundStyle(RoomTokens.Ink.secondary)
+                if batch.hasMore {
+                    Button("Next npm batch", action: model.continueNPM)
+                        .roomLink(accent)
+                        .disabled(!model.canContinueNPM)
+                        .accessibilityIdentifier("RoomCachesNextNPMBatch")
                 }
-                startAction
             }
+            .help("npm sizes and selections apply to the current batch.")
         }
     }
+    #endif
 
     /// The lower half of the ready state: the last receipt, so the page answers "what happened last time".
     @ViewBuilder private var lastReceipt: some View {
@@ -237,148 +171,6 @@ struct RoomCachesView: View {
     }
 
     @ViewBuilder
-    private func completedFeedback(_ hero: RoomCachesHero) -> some View {
-        if model.measuredSourceCount > 0 && model.readableSourceCount == 0 {
-            RoomEmptyFeedback(title: "Room couldn’t read the caches",
-                message: "Check folder access and try again.", symbol: "folder.badge.questionmark", prominent: true) {
-                primary(hero)
-            }
-        } else if !model.sources.isEmpty || !model.protectedSources.isEmpty {
-            RoomEmptyFeedback(title: "Nothing ready to clear",
-                message: "The items from this check stay in place.", symbol: "shield", prominent: true) {
-                Button(action: showKept) {
-                    Label("What stays", systemImage: "shield")
-                }
-                .roomSecondary()
-            }
-        } else {
-            RoomEmptyFeedback(title: model.hasPartialMeasurements ? "No caches measured" : "No caches found",
-                message: model.hasPartialMeasurements
-                    ? "This check covered only part of the available locations."
-                    : "Room found no cache files in the locations it checked.",
-                symbol: model.hasPartialMeasurements ? "tray" : "checkmark.circle", prominent: true) {
-                startAction
-            }
-        }
-    }
-
-    private var scanStatus: some View {
-        VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
-            HStack(spacing: RoomTokens.Space.inner) {
-                cacheIcon("magnifyingglass")
-                VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
-                    Text("Checking caches…")
-                        .font(RoomTokens.Typography.title)
-                        .accessibilityHeading(.h1)
-                    if let line = RoomCachesProgress.line(completed: model.scannedLocationCount, total: model.scanLocationCount) {
-                        RoomMaskable(line)
-                            .font(RoomTokens.Typography.caption)
-                            .foregroundStyle(RoomTokens.Ink.secondary)
-                            .roomNumericTransition(model.scannedLocationCount)
-                    }
-                }
-                Spacer(minLength: 0)
-                Button(action: model.cancelScan) {
-                    Label("Stop", systemImage: "stop.fill")
-                }
-                .roomSecondary()
-            }
-            // Determinate when the engine reports places, indeterminate until it does; never a spinner.
-            if !hidden {
-                if let progress = model.scanProgress,
-                   RoomCachesProgress.isDeterminate(total: model.scanLocationCount) {
-                    ProgressView(value: progress)
-                        .tint(accent.fill)
-                        .animation(motion.animation(RoomTokens.Motion.standard, fallback: nil), value: progress)
-                        .accessibilityLabel("Cache check progress")
-                } else {
-                    ProgressView()
-                        .progressViewStyle(.linear)
-                        .tint(accent.fill)
-                        .accessibilityLabel("Checking caches")
-                }
-            }
-        }
-        .padding(RoomTokens.Space.group)
-        .background(RoomTokens.Surface.group, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.group))
-        .accessibilityIdentifier("RoomCachesScanStatus")
-    }
-
-    private func cacheIcon(_ symbol: String) -> some View {
-        Image(systemName: symbol)
-            .font(RoomTokens.Typography.lead)
-            .foregroundStyle(accent.text)
-            .frame(width: RoomTokens.Space.breath2, height: RoomTokens.Space.breath2)
-            .background(accent.wash, in: .rect(cornerRadius: RoomTokens.Radius.card))
-            .accessibilityHidden(true)
-    }
-
-    private func headline<Summary: View>(_ hero: RoomCachesHero, symbol: String = "tray.full",
-                                         @ViewBuilder summary: () -> Summary) -> some View {
-        let content = HStack(spacing: RoomTokens.Space.inner) {
-            cacheIcon(symbol)
-            summary()
-        }
-        return ViewThatFits(in: .horizontal) {
-            HStack(alignment: .center, spacing: RoomTokens.Space.group) {
-                content
-                Spacer(minLength: 0)
-                if !model.isScanning { primary(hero).fixedSize() }
-            }
-            VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
-                content
-                if !model.isScanning { primary(hero) }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(RoomTokens.Space.group)
-        .background(RoomTokens.Surface.group, in: .rect(cornerRadius: RoomTokens.Radius.group))
-    }
-
-    private func figures(_ hero: RoomCachesHero) -> some View {
-        HStack(alignment: .lastTextBaseline, spacing: RoomTokens.Space.breath1) {
-            if let bytes = hero.heroBytes {
-                VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
-                    Text(hero.heroLabel).font(RoomTokens.Typography.caption).foregroundStyle(RoomTokens.Ink.secondary)
-                    metric(format(bytes, hero: true), number: RoomTokens.Typography.hero, unit: RoomTokens.Typography.counter)
-                        .roomNumericTransition(format(bytes, hero: true)) // counts up as sources report
-                }
-            } else if !hero.lowerBound {
-                Text(hero.heroLabel).font(RoomTokens.Typography.lead)
-            }
-            if let found = hero.foundBytes, !hero.lowerBound || found > 0 {
-                statistic("Caches found", bytes: found, lowerBound: hero.lowerBound)
-            }
-            if let kept = hero.keptBytes, !hero.lowerBound || kept > 0 {
-                statistic("Kept safe", bytes: kept, lowerBound: hero.lowerBound)
-            }
-            if !model.isScanning && hero.keptBytes != nil {
-                Button(action: showKept) {
-                    Label("What stays", systemImage: "shield")
-                }
-                .roomLink(accent)
-            }
-        }
-    }
-
-    private func statistic(_ title: String, bytes: Int64, lowerBound: Bool) -> some View {
-        VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
-            Text(title).font(RoomTokens.Typography.caption).foregroundStyle(RoomTokens.Ink.secondary)
-            metric("\(lowerBound ? "≥ " : "")\(format(bytes))",
-                   number: RoomTokens.Typography.figure, unit: RoomTokens.Typography.micro)
-        }
-    }
-
-    private func metric(_ value: String, number: Font, unit: Font) -> Text {
-        guard let split = value.lastIndex(where: \.isWhitespace) else {
-            return Text(value).font(number)
-        }
-        let amount = Text(value[..<split]).font(number)
-        let suffix = Text(value[split...]).font(unit).foregroundColor(RoomTokens.Ink.secondary)
-        return Text("\(amount)\(suffix)")
-    }
-
-    @ViewBuilder
     private func primary(_ hero: RoomCachesHero) -> some View {
         if model.isAfterRestore || model.isPartialScan {
             startAction
@@ -390,9 +182,7 @@ struct RoomCachesView: View {
                 chooseFolderButton
             case .review(let bytes):
                 if model.movedReceipt == nil || bytes > 0 {
-                    Button(action: review) {
-                        Label(bytes > 0 ? "Review \(format(bytes))" : "Review", systemImage: "checklist")
-                    }
+                    Button(bytes > 0 ? "Review \(format(bytes))" : "Review", action: review)
                     .roomScreenPrimary(accent).disabled(!model.canReviewCleanup) // one-filled: exclusive with Check (hero.primary switch)
                     .help(hero.disabledReason ?? "Review the selected caches.")
                 }
@@ -510,154 +300,6 @@ struct RoomCachesView: View {
             .lineLimit(1)
             .truncationMode(.middle)
             .textSelection(.enabled)
-    }
-
-    private var comparison: some View {
-        RoomBeforeAfterView(sources: model.sources, selectedBytes: model.selectedBytes(for:), format: format)
-            .frame(minWidth: 264, maxWidth: .infinity, alignment: .topLeading)
-            .padding(RoomTokens.Space.group)
-            .background(RoomTokens.Surface.group, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.group))
-    }
-
-    private var sources: some View {
-        VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: RoomTokens.Space.inner) {
-                    sourceFilter.fixedSize()
-                    selectionCount
-                }
-                VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
-                    sourceFilter
-                    selectionCount
-                }
-            }
-            VStack(spacing: RoomTokens.Space.row) {
-                ForEach(Array(rows.enumerated()), id: \.element.id) { index, source in
-                    RoomCachesRow(source: source, displayedBytes: displayedBytes(source), selected: model.selection.contains(source.id),
-                        partiallySelected: model.partiallySelectedSource(source.id),
-                        canSelect: model.canEditSelection && source.isAvailable,
-                        focus: $focusedSource, format: format, select: { model.toggleSelection(id: source.id) },
-                        inspect: { inspect(source) }, reveal: { model.reveal(source: source) },
-                        neverSuggest: source.isAvailable && model.ignoreStore != nil ? { neverSuggest(source) } : nil)
-                        .transition(cacheRowTransition(index: index))
-                }
-            }
-            .animation(motion.isFull && !hidden && model.movedReceiptID != nil ? RoomTokens.Motion.standard : nil,
-                       value: model.movedReceiptID)
-            .transaction(value: hide) { transaction in
-                transaction.animation = nil
-                transaction.disablesAnimations = true
-            }
-            if rows.isEmpty, model.hasReport, !(filter == .clearable && model.clearableBytes == 0) {
-                RoomEmptyFeedback(title: filter == .kept ? "No kept caches in this list" : "No matching caches",
-                    message: "Show all cache sources from this check.", symbol: "line.3.horizontal.decrease.circle") {
-                    Button("Show all") { filter = .all }
-                        .roomSecondary()
-                }
-            }
-        }
-        .onKeyPress(.upArrow) { moveFocus(-1) }
-        .onKeyPress(.downArrow) { moveFocus(1) }
-        .frame(minWidth: 270, maxWidth: .infinity, alignment: .topLeading)
-        .padding(RoomTokens.Space.group)
-        .background(RoomTokens.Surface.group, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.group))
-    }
-
-    /// Results arrive in order (30 ms apart, at most 12 staggered); cleared rows lift away the same way.
-    /// Reduce Motion keeps a plain fade; Hide never animates figures.
-    private func cacheRowTransition(index: Int) -> AnyTransition {
-        guard !hidden else { return .identity }
-        let delay = RoomDS.Motion.stagger(index)
-        guard motion.isFull else { return .opacity.animation(RoomTokens.Motion.fade) }
-        return .asymmetric(
-            insertion: .offset(y: RoomTokens.Space.row).combined(with: .opacity)
-                .animation(RoomTokens.Motion.standard.delay(delay)),
-            removal: .offset(y: -RoomTokens.Space.row).combined(with: .opacity)
-                .animation(RoomTokens.Motion.standard.delay(delay)))
-    }
-
-    private func displayedBytes(_ source: RoomSource) -> Int64 {
-        switch filter {
-        case .clearable: source.isAvailable ? source.eligibleBytes : source.bytes
-        case .kept: max(0, source.bytes - source.eligibleBytes)
-        case .all: source.bytes
-        }
-    }
-
-    private var sourceFilter: some View {
-        Picker("Sources", selection: $filter) {
-            ForEach(Filter.allCases, id: \.self) { option in Text(option.rawValue).tag(option) }
-        }
-        .labelsHidden()
-        .pickerStyle(.segmented)
-    }
-
-    @ViewBuilder
-    private var selectionCount: some View {
-        if model.hasReport, model.clearableBytes > 0 {
-            let available = model.sources.filter(\.isAvailable).count
-            let text = "\(model.selection.count) of \(available) selected"
-            Text(RoomCachesVisibility.figure(text, hidden: hidden))
-                .accessibilityLabel(hidden ? "Selection count hidden" : text)
-                .font(RoomTokens.Typography.caption)
-                .foregroundStyle(RoomTokens.Ink.secondary)
-                .fixedSize(horizontal: true, vertical: false)
-        }
-    }
-
-    private func moveFocus(_ delta: Int) -> KeyPress.Result {
-        guard let focusedSource, let index = rows.firstIndex(where: { $0.id == focusedSource }) else { return .ignored }
-        var transaction = Transaction()
-        transaction.disablesAnimations = true
-        withTransaction(transaction) {
-            self.focusedSource = rows[min(max(0, index + delta), rows.count - 1)].id
-        }
-        return .handled
-    }
-
-    private func moved(_ receipt: RoomActivity, entry: RoomMakeRoomEntry?) -> some View {
-        let canRestore = RoomMakeRoomCopy.footerWord(entry, receiptCanRestore: receipt.canRestore) == nil
-        let present = entry?.stillInTrashBytes ?? receipt.bytes
-        let caption = entry.map { RoomMakeRoomCopy.headline($0, format: format) } ?? "Moved \(format(receipt.bytes)) to Trash."
-        return HStack(spacing: RoomTokens.Space.group) {
-            if present > 0, entry?.stage != .unobservable {
-                HStack(spacing: RoomTokens.Space.row) {
-                    let count = min(42, max(1, Int((Double(present) / 200_000_000).rounded())))
-                    Canvas { context, _ in
-                        let dots = Path { path in
-                            for dot in 0..<count {
-                                path.addEllipse(in: CGRect(x: (dot % 10) * 6, y: (dot / 10) * 6, width: 4, height: 4))
-                            }
-                        }
-                        context.stroke(dots, with: .color(RoomTokens.Ink.secondary), lineWidth: 1)
-                    }
-                    .frame(width: 62, height: 28)
-                    .accessibilityHidden(true)
-                    Text("In Trash \(format(present))")
-                        .accessibilityLabel(hidden ? "In Trash, size hidden" : "In Trash \(format(present))")
-                }
-                    .font(RoomTokens.Typography.section).padding(.horizontal, 12).frame(height: 30)
-                    .overlay {
-                        Capsule().stroke(RoomTokens.Surface.line2, style: StrokeStyle(lineWidth: contrast == .increased ? 1.5 : 1, dash: [4, 3]))
-                    }
-            } else if let entry, entry.stage == .emptied, entry.observedGain > 0 {
-                Image(systemName: "checkmark.circle").foregroundStyle(accent.text)
-                    .font(RoomTokens.Typography.figure).accessibilityHidden(true)
-            }
-            Text(caption).font(RoomTokens.Typography.section)
-            Spacer()
-            if canRestore {
-                Button { restore(receipt) } label: { Label("Restore", systemImage: "arrow.uturn.backward") }
-                    .roomSecondary()
-                    .disabled(model.isWorking || model.isScanning)
-            }
-            Button(action: model.openTrash) { Label("Open Trash", systemImage: "trash") }.roomSecondary()
-        }
-        .padding(RoomTokens.Space.group)
-        .overlay {
-            RoundedRectangle(cornerRadius: RoomTokens.Radius.group).strokeBorder(RoomTokens.Surface.line2)
-        }
-        .transition(.opacity)
     }
 
     /// One quiet line and one secondary button; Developer does the reviewing.
