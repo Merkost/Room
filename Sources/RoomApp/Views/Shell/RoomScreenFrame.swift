@@ -88,8 +88,7 @@ struct RoomHeadlineView: View {
         let figure = headline.figure.map { headline.masksFigure ? RoomHideMask.display($0, kind: .figure, hide: hide) : $0 }
         let words = headline.masksWords ? RoomHideMask.display(headline.words, kind: .name, hide: hide) : headline.words
         let text: Text = if let figure {
-            Text(verbatim: figure).foregroundStyle(RoomTokens.Ink.graphite)
-                + Text(verbatim: words.isEmpty ? "" : " " + words).foregroundStyle(RoomTokens.Ink.tertiary)
+            Text("\(Text(verbatim: figure).foregroundStyle(RoomTokens.Ink.graphite))\(Text(verbatim: words.isEmpty ? "" : " " + words).foregroundStyle(RoomTokens.Ink.tertiary))")
         } else {
             Text(verbatim: words).foregroundStyle(RoomTokens.Ink.graphite)
         }

@@ -212,7 +212,7 @@ struct RoomDiskMapView: View {
     }
 
     @ViewBuilder private var location: some View {
-        if showsMap, let level = model.level {
+        if showsMap, model.level != nil {
             HStack(spacing: RoomTokens.Space.row) {
                 RoomBreadcrumbs(trail: model.trail, hidden: hidden) {
                     step(to: $0, animated: NSApp.currentEvent?.type == .leftMouseUp)
