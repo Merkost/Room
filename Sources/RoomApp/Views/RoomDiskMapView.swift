@@ -36,7 +36,6 @@ struct RoomDiskMapView: View {
     @State private var pointer = RoomMapPointer()
     @State private var draftView: SavedViewDraft?
     @State private var selection = RoomMapSelection()
-    @State private var gone: Set<String> = []
     @State private var folderReview: RoomFolderTrashModel.Review?
     @State private var protectionNote: String?
     @State private var zoomAnchor = UnitPoint.center
@@ -129,6 +128,11 @@ struct RoomDiskMapView: View {
             }
         }
         .task { await insights.observeTreeChanges() }
+        .onChange(of: model.current) { _, _ in
+            // A rescan or another map: ticks only survive for rooms that are still here.
+            selection.keep(only: Set(model.level?.children.map(\.relativePath) ?? []))
+        }
+        .onChange(of: hidden) { _, _ in protectionNote = nil }
         .onChange(of: model.levelPath) { _, path in
             selection.clear()
             protectionNote = nil
@@ -161,13 +165,8 @@ struct RoomDiskMapView: View {
         .sheet(item: $folderReview) { review in
             if let folderTrash {
                 RoomFolderReviewSheet(review: review, model: folderTrash) { receipt in
-                    guard let receipt, let root = model.current?.rootID else { return }
-                    let moved = Set(receipt.items.filter { $0.status == .trashed }.map(\.originalPath))
-                    for room in selection.ticked where model.url(for: room).map({ moved.contains($0.standardizedFileURL.path) }) == true {
-                        gone.insert(root + "/" + room)
-                    }
                     selection.clear()
-                    folderMoved(receipt)
+                    if let receipt { folderMoved(receipt) }
                 }
             }
         }
@@ -474,18 +473,34 @@ struct RoomDiskMapView: View {
 
     private var ticksAvailable: Bool { RoomFolderTrashModel.isAvailable && folderTrash != nil }
 
+    /// Folders that are in Trash now and were moved after this map was made. Restore or a rescan brings them back.
+    private var trashedPaths: Set<String> {
+        guard let folderTrash, let mapped = model.current?.scannedAt else { return [] }
+        return Set(folderTrash.receipts.filter { $0.date > mapped }.flatMap(\.items)
+            .filter { $0.status == .trashed }.map(\.originalPath))
+    }
+
+    private static func holdsLibrary(_ node: RoomTreeNode) -> Bool {
+        let ext = (node.name as NSString).pathExtension.lowercased()
+        return FolderTrashEngine.libraryExtensions.contains(ext) || node.children.contains(where: holdsLibrary)
+    }
+
     private func diskRooms(_ level: RoomTreeNode) -> [RoomDiskRoom] {
-        let root = model.current?.rootID ?? ""
-        let visible = level.children.filter { $0.allocatedBytes > 0 && !gone.contains(root + "/" + $0.relativePath) }
+        let trashed = trashedPaths
+        let visible = level.children.filter { child in
+            child.allocatedBytes > 0 && !(model.url(for: child.relativePath).map { trashed.contains($0.standardizedFileURL.path) } ?? false)
+        }
             .sorted { $0.allocatedBytes > $1.allocatedBytes }
         let limit = RoomDiskRoomsLayout.maxRooms - ((level.other?.allocatedBytes ?? 0) > 0 ? 1 : 0)
         var rooms = visible.prefix(max(1, limit)).map { child -> RoomDiskRoom in
             let url = model.url(for: child.relativePath)
             let protection: FolderProtection? = !child.isDirectory ? .notAFolder
-                : child.isPartial ? .unverified : (folderTrash?.protection(for: url) ?? .unverified)
+                : child.isPartial ? .unverified
+                : (folderTrash?.protection(for: url) ?? (Self.holdsLibrary(child) ? .containsLibrary : nil))
+            let resolved = folderTrash == nil ? .unverified : protection
             let kind = child.kindBytes.max { $0.value < $1.value }.flatMap { StorageKind(rawValue: $0.key) }
             return RoomDiskRoom(room: .init(path: child.relativePath, name: child.name, bytes: child.allocatedBytes,
-                                            protection: protection),
+                                            protection: resolved),
                                 kind: kind, canStepInside: child.isDirectory && child.canStepInside, isOther: false)
         }
         let folded = visible.dropFirst(max(1, limit)).reduce(Int64(0)) { $0 + $1.allocatedBytes } + (level.other?.allocatedBytes ?? 0)
@@ -568,7 +583,7 @@ struct RoomDiskMapView: View {
                     openFolderReview(rooms)
                 }
                 .roomScreenPrimary(accent)
-                .disabled(folderTrash?.isMoving == true)
+                .disabled(folderTrash?.canMove != true)
                 .accessibilityHint("Opens a review. These are your own folders, not caches")
             }
         }
@@ -583,8 +598,13 @@ struct RoomDiskMapView: View {
         }
         if let review = folderTrash.review(chosen) {
             folderReview = review
+            // Unverifiable rooms leave the selection; the review says how many.
+            for room in rooms where selection.contains(room.id) && !review.names.contains(room.room.name) {
+                selection.toggle(room.room)
+            }
         } else {
-            protectionNote = "Room could not check these folders, so they stay"
+            protectionNote = chosen.count == 1 ? "Room could not check this folder, so it stays"
+                                               : "Room could not check these folders, so they stay"
         }
     }
 

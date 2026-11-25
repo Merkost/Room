@@ -50,10 +50,11 @@ struct RoomDiskMapRoomsTests {
                                          directory: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
         #if ROOM_APP_STORE
         #expect(!RoomFolderTrashModel.isAvailable)
-        #expect(model.protection(for: URL(fileURLWithPath: "/Users/someone/Movies")) == .unverified, "Store never offers the tick")
+        #expect(model.protection(for: URL(fileURLWithPath: "/Users/someone/Movies/Old renders")) == .unverified, "Store never offers the tick")
         #else
         #expect(RoomFolderTrashModel.isAvailable)
-        #expect(model.protection(for: URL(fileURLWithPath: "/Users/someone/Movies")) == nil)
+        #expect(model.protection(for: URL(fileURLWithPath: "/Users/someone/Movies/Old renders")) == nil)
+        #expect(model.protection(for: URL(fileURLWithPath: "/Users/someone/Movies")) == .standardFolder)
         #expect(model.protection(for: URL(fileURLWithPath: "/Users/someone/Library")) == .library)
         #endif
         #expect(model.protection(for: nil) == .unverified, "a room Room cannot locate is not movable")
@@ -64,7 +65,7 @@ struct RoomDiskMapRoomsTests {
         let base = FileManager.default.temporaryDirectory.appendingPathComponent("FolderModel-\(UUID().uuidString)").resolvingSymlinksInPath()
         let home = base.appendingPathComponent("home", isDirectory: true)
         let trash = base.appendingPathComponent("trash", isDirectory: true)
-        let movies = home.appendingPathComponent("Movies", isDirectory: true)
+        let movies = home.appendingPathComponent("Renders", isDirectory: true)
         try FileManager.default.createDirectory(at: movies, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: base) }
@@ -73,7 +74,10 @@ struct RoomDiskMapRoomsTests {
             try FileManager.default.moveItem(at: source, to: destination)
             return destination
         }
-        let review = try #require(model.review([(url: movies, name: "Movies", bytes: 88_000_000_000)]))
+        let missing = home.appendingPathComponent("Gone", isDirectory: true)
+        let review = try #require(model.review([(url: movies, name: "Renders", bytes: 88_000_000_000),
+                                                (url: missing, name: "Gone", bytes: 1)]))
+        #expect(review.dropped == ["Gone"], "a room Room cannot verify drops out and the review says so")
         #expect(review.bytes == 88_000_000_000)
         let receipt = try #require(await model.move(review))
         #expect(model.owns(receipt.id))
@@ -83,5 +87,46 @@ struct RoomDiskMapRoomsTests {
         await model.restore(receipt.id)
         #expect(FileManager.default.fileExists(atPath: movies.path))
         #endif
+    }
+
+    @Test func failedMovesNeverCountAsSpaceMade() {
+        func item(_ status: ActivityStatus, _ bytes: Int64) -> FolderTrashItem {
+            FolderTrashItem(originalPath: "/x/\(UUID())", trashPath: nil, bytes: bytes, device: 1, inode: 1, status: status, message: "Trash refused")
+        }
+        let receipt = FolderTrashReceipt(id: UUID(), date: Date(), items: [item(.trashed, 10), item(.failed, 90)])
+        #expect(receipt.movedBytes == 10 && receipt.movedCount == 1)
+        #expect(RoomFolderTrashModel.summary(receipt) == "1 folder did not move. It is where it was.")
+        let nothing = FolderTrashReceipt(id: UUID(), date: Date(), items: [item(.failed, 90)])
+        #expect(nothing.movedCount == 0 && !nothing.canRestore)
+        let partial = FolderTrashReceipt(id: UUID(), date: Date(), items: [item(.restored, 10), item(.trashed, 5)])
+        #expect(RoomFolderTrashModel.restoreOutcome(partial) == "1 of 2 put back. Trash refused")
+        let full = FolderTrashReceipt(id: UUID(), date: Date(), items: [item(.restored, 10), item(.failed, 5)])
+        #expect(RoomFolderTrashModel.restoreOutcome(full) == "Put back", "failed items were never moved, so not missing")
+    }
+
+    @Test func toastReportsWhatRestoreDid() {
+        var toast = RoomMadeToastState(receiptID: UUID(), bytes: 22_000_000_000)
+        toast.restored = true
+        #expect(toast.text == "Putting back…", "never claims success before the result")
+        toast.outcome = RoomMadeToastState.cacheOutcome(itemCount: 4, restoredCount: 3, stillRestorable: true)
+        #expect(toast.text == "3 of 4 put back. The rest stays in Trash.")
+        #expect(RoomMadeToastState.cacheOutcome(itemCount: 4, restoredCount: 4, stillRestorable: false) == "Put back")
+        #expect(RoomMadeToastState.cacheOutcome(itemCount: 4, restoredCount: 0, stillRestorable: true).hasPrefix("Nothing came back"))
+    }
+
+    @Test func oneCleanupAtATime() {
+        let folders = RoomFolderTrashModel(home: URL(fileURLWithPath: "/Users/someone", isDirectory: true),
+                                           directory: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
+        var cacheBusy = true
+        folders.otherCleanupBusy = { cacheBusy }
+        #expect(!folders.canMove, "a cache move or restore blocks folder moves")
+        cacheBusy = false
+        #expect(folders.canMove == RoomFolderTrashModel.isAvailable)
+        let caches = RoomViewModel(engine: CacheEngine(configuration: .standard, activityDirectory:
+            FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)))
+        #expect(!caches.isWorking)
+        caches.externalCleanupBusy = true
+        #expect(caches.isWorking, "a folder move blocks cache cleanups, restores and the menu bar")
+        #expect(!caches.canReviewCleanup)
     }
 }

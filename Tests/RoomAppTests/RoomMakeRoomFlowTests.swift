@@ -36,6 +36,8 @@ struct RoomMakeRoomFlowTests {
         var toast = RoomMadeToastState(receiptID: UUID(), bytes: 22_000_000_000)
         #expect(toast.text == "Made 22 GB")
         toast.restored = true
+        #expect(toast.text == "Putting back…")
+        toast.outcome = "Put back"
         #expect(toast.text == "Put back")
     }
 

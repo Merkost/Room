@@ -284,20 +284,7 @@ struct RoomRootView: View {
             insights.openDiskMap(rootURL: url, requestNavigation: false)
         }
         .task { await savedViews.load() }
-        .task { if RoomFolderTrashModel.isAvailable { await folderTrash.load() } }
-        .onChange(of: isMakingRoom) { _, moving in
-            if moving { makeRoomTotal = model.selectedBytes }
-        }
-        .onChange(of: model.movedReceiptID) { old, new in
-            guard let new, new != old, let receipt = model.activity.first(where: { $0.id == new }) else { return }
-            showToast(RoomMadeToastState(receiptID: receipt.id, bytes: receipt.bytes))
-        }
-        .onChange(of: rowSignals, initial: true) { _, signals in
-            rowActivity.update(signals, open: navigation.route.highlightedScreen)
-        }
-        .onChange(of: insights.memorySamples.values, initial: true) { _, values in
-            if destination == .memory || sidebarMemory.isEmpty { sidebarMemory = values }
-        }
+        .modifier(RoomNavObservers(observe: observeNavigation))
         .task(id: SavedViewRequest(route: navigation.route, retry: savedViewRetry)) {
             openedSavedView = nil
             guard case .savedView(let id) = navigation.route else { return }
@@ -486,6 +473,31 @@ struct RoomRootView: View {
         }
     }
 
+    /// The nav-v3 observers (row signals, Make room, toast, one cleanup at a time), split from `body` so the
+    /// type checker keeps up in both editions.
+    private func observeNavigation<Content: View>(_ content: Content) -> some View {
+        content
+            .task {
+            // One cleanup at a time: folder moves wait for cache moves and restores, and the other way round.
+            folderTrash.otherCleanupBusy = { [model] in model.working }
+            if RoomFolderTrashModel.isAvailable { await folderTrash.load() }
+        }
+            .onChange(of: folderTrash.isMoving) { _, moving in model.externalCleanupBusy = moving }
+            .onChange(of: isMakingRoom) { _, moving in
+            if moving { makeRoomTotal = model.selectedBytes }
+        }
+            .onChange(of: model.movedReceiptID) { old, new in
+            guard let new, new != old, let receipt = model.activity.first(where: { $0.id == new }) else { return }
+            showToast(RoomMadeToastState(receiptID: receipt.id, bytes: receipt.bytes))
+        }
+            .onChange(of: rowSignals, initial: true) { _, signals in
+            rowActivity.update(signals, open: navigation.route.highlightedScreen)
+        }
+            .onChange(of: insights.memorySamples.values, initial: true) { _, values in
+            if destination == .memory || sidebarMemory.isEmpty { sidebarMemory = values }
+        }
+    }
+
     /// Make room: the review sheet in front of every move, with the recommended places chosen.
     private func startMakeRoom() {
         guard !model.isScanning, !model.isWorking, model.hasReport else { return }
@@ -556,20 +568,36 @@ struct RoomRootView: View {
     /// Restore routes by owner: Disk Map folder receipts go back through their own engine, cache receipts through
     /// the cache receipt engine (Store opens its exact-item restore sheet).
     private func restoreReceipt(_ receipt: RoomActivity) {
-        if folderTrash.owns(receipt.id) {
-            Task { await folderTrash.restore(receipt.id) }
-        } else {
-            restoreFromCaches(receipt)
-        }
+        Task { _ = await restoreAndDescribe(receipt) }
+    }
+
+    /// Restores through the receipt's own engine and says what actually happened. Store hands off to its restore
+    /// sheet (exact Trash-item approval), so there is no result to report yet.
+    private func restoreAndDescribe(_ receipt: RoomActivity) async -> String? {
+        if folderTrash.owns(receipt.id) { return await folderTrash.restore(receipt.id) }
+        #if ROOM_APP_STORE
+        sheet = .restore(receipt)
+        return nil
+        #else
+        await model.restore(record: receipt)
+        guard let after = model.activity.first(where: { $0.id == receipt.id }) else { return nil }
+        return RoomMadeToastState.cacheOutcome(itemCount: after.itemCount, restoredCount: after.restoredCount,
+                                               stillRestorable: after.canRestore)
+        #endif
     }
 
     private func restoreFromToast() {
         guard let toast = madeToast, let receipt = allActivity.first(where: { $0.id == toast.receiptID }),
-              receipt.canRestore, !model.isScanning, !model.isWorking else { return }
-        restoreReceipt(receipt)
-        var restored = toast
-        restored.restored = true
-        showToast(restored, for: .milliseconds(1100))
+              receipt.canRestore, !toast.restored, !model.isScanning, !model.isWorking else { return }
+        var restoring = toast
+        restoring.restored = true
+        showToast(restoring)
+        Task {
+            let outcome = await restoreAndDescribe(receipt)
+            var done = restoring
+            done.outcome = outcome ?? "Review the restore to put it back"
+            showToast(done, for: outcome == "Put back" ? .seconds(2) : RoomTokens.Screen2.toastHold)
+        }
     }
 
     private func restoreActivity(_ id: UUID) {
@@ -628,4 +656,9 @@ private enum RoomSheet: Identifiable {
         #endif
         }
     }
+}
+
+private struct RoomNavObservers<Observed: View>: ViewModifier {
+    let observe: (AnyView) -> Observed
+    func body(content: Content) -> some View { observe(AnyView(content)) }
 }

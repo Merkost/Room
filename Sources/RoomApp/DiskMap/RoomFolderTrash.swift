@@ -51,6 +51,8 @@ final class RoomFolderTrashModel {
         let id = UUID()
         let requests: [FolderTrashRequest]
         let names: [String]
+        /// Rooms that were ticked but could not be verified, so they are not in this review.
+        var dropped: [String] = []
         var bytes: Int64 { requests.reduce(0) { $0 + $1.bytes } }
     }
 
@@ -66,6 +68,8 @@ final class RoomFolderTrashModel {
     private(set) var isMoving = false
     private(set) var lastMovedID: UUID?
     private(set) var message: String?
+    /// Cache cleanups and restores in progress elsewhere: one cleanup at a time across Room.
+    @ObservationIgnored var otherCleanupBusy: () -> Bool = { false }
     @ObservationIgnored private let engine: FolderTrashEngine
     @ObservationIgnored let home: URL
 
@@ -79,6 +83,8 @@ final class RoomFolderTrashModel {
 
     func load() async { receipts = await engine.history() }
 
+    var canMove: Bool { Self.isAvailable && !isMoving && !otherCleanupBusy() }
+
     func protection(for url: URL?) -> FolderProtection? {
         guard Self.isAvailable else { return .unverified }
         guard let url else { return .unverified }
@@ -89,43 +95,79 @@ final class RoomFolderTrashModel {
     func review(_ rooms: [(url: URL, name: String, bytes: Int64)]) -> Review? {
         var requests: [FolderTrashRequest] = []
         var names: [String] = []
-        for room in rooms where protection(for: room.url) == nil {
-            guard let identity = FolderTrashEngine.identity(of: room.url) else { continue }
+        var dropped: [String] = []
+        for room in rooms {
+            guard protection(for: room.url) == nil, let identity = FolderTrashEngine.identity(of: room.url) else {
+                dropped.append(room.name)
+                continue
+            }
             requests.append(FolderTrashRequest(url: room.url, bytes: room.bytes, device: identity.device, inode: identity.inode))
             names.append(room.name)
         }
-        return requests.isEmpty ? nil : Review(requests: requests, names: names)
+        return requests.isEmpty ? nil : Review(requests: requests, names: names, dropped: dropped)
     }
 
     func move(_ review: Review) async -> FolderTrashReceipt? {
-        guard Self.isAvailable, !isMoving else { return nil }
+        guard canMove else {
+            message = "Room is already moving or restoring something. Try again when it finishes."
+            return nil
+        }
         isMoving = true
         defer { isMoving = false }
-        let receipt = await engine.move(review.requests)
-        receipts.insert(receipt, at: 0)
-        if receipt.failedCount > 0 {
-            message = receipt.failedCount == 1 ? "1 folder could not move. It is where it was."
-                                               : "\(receipt.failedCount) folders could not move. They are where they were."
-        } else {
-            message = nil
+        let receipt: FolderTrashReceipt
+        do {
+            receipt = try await engine.move(review.requests)
+        } catch {
+            message = "Room could not save a receipt, so nothing moved."
+            return nil
         }
+        if receipt.movedCount > 0 { receipts.insert(receipt, at: 0) }
+        message = Self.summary(receipt)
         if receipt.canRestore { lastMovedID = receipt.id }
         return receipt
     }
 
-    func restore(_ id: UUID) async {
-        guard let updated = await engine.restore(receiptID: id) else { return }
+    /// One plain line about what did not go to plan, or nil when every folder moved and the receipt is safe.
+    static func summary(_ receipt: FolderTrashReceipt) -> String? {
+        var lines: [String] = []
+        let failed = receipt.failedCount
+        if failed > 0 {
+            lines.append(failed == 1 ? "1 folder did not move. It is where it was." : "\(failed) folders did not move. They are where they were.")
+        }
+        if receipt.receiptWriteFailed {
+            lines.append("Room could not finish writing the receipt. Restore works until Room quits.")
+        }
+        return lines.isEmpty ? nil : lines.joined(separator: " ")
+    }
+
+    /// Restores and says what happened: "Put back", or how many came back and why the rest stayed.
+    @discardableResult
+    func restore(_ id: UUID) async -> String {
+        guard Self.isAvailable, !isMoving, !otherCleanupBusy() else { return "Room is busy. Try again in a moment." }
+        isMoving = true
+        defer { isMoving = false }
+        guard let updated = await engine.restore(receiptID: id) else { return "Room could not read this receipt." }
         if let index = receipts.firstIndex(where: { $0.id == id }) { receipts[index] = updated }
+        return Self.restoreOutcome(updated)
+    }
+
+    static func restoreOutcome(_ receipt: FolderTrashReceipt) -> String {
+        let moved = receipt.items.filter { $0.status == .trashed || $0.status == .restored }
+        let back = moved.filter { $0.status == .restored }.count
+        if back == moved.count { return "Put back" }
+        let reason = moved.first { $0.status == .trashed }?.message ?? "The rest stays in Trash."
+        return "\(back) of \(moved.count) put back. \(reason)"
     }
 
     /// History shows folder receipts beside cache receipts.
     var activity: [RoomActivity] {
-        receipts.map { receipt in
-            RoomActivity(id: receipt.id, date: receipt.date, bytes: receipt.items.reduce(0) { $0 + $1.bytes },
-                         itemCount: receipt.items.count, restoredCount: receipt.restoredCount, errorCount: receipt.failedCount,
+        // Only folders that actually moved count; a receipt where nothing moved is not shown as space made.
+        receipts.filter { $0.movedCount > 0 }.map { receipt in
+            RoomActivity(id: receipt.id, date: receipt.date, bytes: receipt.movedBytes,
+                         itemCount: receipt.movedCount, restoredCount: receipt.restoredCount, errorCount: receipt.failedCount,
                          canRestore: receipt.canRestore,
-                         title: receipt.items.count == 1 ? "1 folder from Disk Map" : "\(receipt.items.count) folders from Disk Map",
-                         details: receipt.items.map { item in
+                         title: receipt.movedCount == 1 ? "1 folder from Disk Map" : "\(receipt.movedCount) folders from Disk Map",
+                         details: receipt.items.filter { $0.status == .trashed || $0.status == .restored }.map { item in
                              RoomActivityItem(id: UUID(), name: (item.originalPath as NSString).lastPathComponent,
                                               path: item.originalPath, message: item.message ?? "", isRestored: item.status == .restored,
                                               canRestore: item.status == .trashed, bytes: item.bytes, source: "diskMap")

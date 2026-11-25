@@ -108,6 +108,7 @@ struct RoomOverviewFloorPlanView: View {
     @Environment(\.roomMotion) private var motion
     @Environment(\.roomAccent) private var accent
     @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.roomHide) private var hide
     @State private var hovered: String?
 
     var body: some View {
@@ -168,7 +169,7 @@ struct RoomOverviewFloorPlanView: View {
         .clipShape(shape)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(room.title)
-        .accessibilityValue(RoomFormat.gb(room.bytes))
+        .accessibilityValue(hide.masksNow ? "size hidden" : RoomFormat.gb(room.bytes))
     }
 
     private func kindColor(_ raw: String) -> Color {

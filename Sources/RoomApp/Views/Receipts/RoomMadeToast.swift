@@ -6,8 +6,20 @@ nonisolated struct RoomMadeToastState: Equatable, Sendable {
     let receiptID: UUID
     let bytes: Int64
     var restored = false
+    /// What Restore actually did, once it finished ("Put back", "1 of 2 put back. …"); nil while it runs.
+    var outcome: String?
 
-    var text: String { restored ? "Put back" : "Made \(RoomFormat.gb(bytes))" }
+    var text: String {
+        if let outcome { return outcome }
+        return restored ? "Putting back…" : "Made \(RoomFormat.gb(bytes))"
+    }
+
+    /// The cache engine's restore result in words: everything back, or how much came back.
+    static func cacheOutcome(itemCount: Int, restoredCount: Int, stillRestorable: Bool) -> String {
+        if itemCount > 0, restoredCount >= itemCount { return "Put back" }
+        if restoredCount == 0 { return "Nothing came back. The items changed or are no longer in Trash." }
+        return "\(restoredCount) of \(itemCount) put back." + (stillRestorable ? " The rest stays in Trash." : "")
+    }
 }
 
 /// Make room progress, kept pure: how far the move is, from the engine's per-item statuses.

@@ -3,14 +3,16 @@ import Foundation
 
 /// Why Room will not move a folder from the Disk Map. Protected rooms have no tick.
 public enum FolderProtection: Equatable, Sendable {
-    case outsideHome, home, library, hidden, package, notAFolder, unverified
+    case outsideHome, home, library, standardFolder, cloud, hidden, package, containsLibrary, notAFolder, unverified
 
     /// One plain sentence for the note under the map.
     public func sentence(name: String) -> String {
         switch self {
         case .outsideHome: "Room only moves folders inside your home folder"
         case .home: "Room will not move your home folder"
-        case .library: "Room will not move \(name)"
+        case .library, .standardFolder: "Room will not move \(name)"
+        case .cloud: "Room will not move a synced folder"
+        case .containsLibrary: "Room will not move a folder that holds a library"
         case .hidden: "Room will not move hidden folders"
         case .package: "Room will not move app or library packages"
         case .notAFolder: "Room moves folders only"
@@ -42,11 +44,23 @@ public struct FolderTrashItem: Codable, Equatable, Sendable {
 }
 
 /// A receipt for folders moved from the Disk Map. Saved before anything moves; Restore reads it back.
+public enum FolderTrashError: Error, Equatable, Sendable {
+    /// The receipt could not be written before the first move, so nothing moved.
+    case receiptNotSaved
+}
+
 public struct FolderTrashReceipt: Codable, Identifiable, Equatable, Sendable {
     public let id: UUID
     public let date: Date
     public var items: [FolderTrashItem]
+    /// A later write of this receipt failed: what moved is known now, but may not survive a relaunch.
+    public internal(set) var receiptWriteFailed = false
 
+    private enum CodingKeys: String, CodingKey { case id, date, items }
+
+    /// Bytes that actually left their place (in Trash now or put back since); failed items never count.
+    public var movedBytes: Int64 { items.filter { $0.status == .trashed || $0.status == .restored }.reduce(0) { $0 + $1.bytes } }
+    public var movedCount: Int { items.filter { $0.status == .trashed || $0.status == .restored }.count }
     public var trashedBytes: Int64 { items.filter { $0.status == .trashed }.reduce(0) { $0 + $1.bytes } }
     public var canRestore: Bool { items.contains { $0.status == .trashed } }
     public var restoredCount: Int { items.filter { $0.status == .restored }.count }
@@ -61,6 +75,8 @@ public actor FolderTrashEngine {
     private let home: URL
     private let directory: URL
     private let trash: @Sendable (URL) throws -> URL
+    /// Receipts from this launch, so Restore works even when a write failed.
+    private var recent: [UUID: FolderTrashReceipt] = [:]
 
     public init(home: URL = FileManager.default.homeDirectoryForCurrentUser, directory: URL,
                 trash: (@Sendable (URL) throws -> URL)? = nil) {
@@ -76,20 +92,33 @@ public actor FolderTrashEngine {
 
     // MARK: Protection (pure)
 
-    private static let libraryNames: Set<String> = ["Library", "Applications", "System", ".Trash"]
+    private static let libraryNames: Set<String> = ["library", "applications", "system", ".trash"]
+    /// The standard folders at the home root: their contents stay selectable, the folders themselves never move.
+    private static let standardNames: Set<String> = ["desktop", "documents", "downloads", "movies", "music", "pictures", "public"]
+    /// Top-level synced folders (iCloud Desktop & Documents are the standard folders above; Library/CloudStorage and
+    /// Mobile Documents sit under Library).
+    private static let cloudPrefixes = ["icloud", "dropbox", "onedrive", "google drive", "googledrive", "box", "pcloud", "mega",
+                                        "sync", "nextcloud", "creative cloud files", "tresorit"]
     private static let packageExtensions: Set<String> = ["app", "photoslibrary", "musiclibrary", "tvlibrary", "bundle",
                                                          "framework", "plugin", "kext", "pkg", "sparsebundle", "xcarchive"]
+    /// Libraries holding a person's media or work: a folder that contains one never moves as a whole.
+    public static let libraryExtensions: Set<String> = ["photoslibrary", "photolibrary", "musiclibrary", "tvlibrary",
+                                                        "imovielibrary", "fcpbundle", "logicx", "band", "sparsebundle",
+                                                        "aplibrary", "migratedphotolibrary"]
 
     /// Whether a folder is protected, from its path alone (the Disk Map hides ticks with this). `home` is the real,
     /// symlink-resolved home folder.
     public nonisolated static func protection(for url: URL, home: URL) -> FolderProtection? {
-        let homeParts = home.standardizedFileURL.pathComponents
-        let parts = url.standardizedFileURL.pathComponents
+        // APFS is case-insensitive by default: "library" is Library, "/USERS/x" is /Users/x.
+        let homeParts = home.standardizedFileURL.pathComponents.map { $0.lowercased() }
+        let parts = url.standardizedFileURL.pathComponents.map { $0.lowercased() }
         guard parts.count >= homeParts.count, Array(parts.prefix(homeParts.count)) == homeParts else { return .outsideHome }
         let inside = Array(parts.dropFirst(homeParts.count))
         guard let first = inside.first else { return .home }
         if inside.contains("..") || inside.contains(".") { return .unverified }
         if libraryNames.contains(first) { return .library }
+        if inside.count == 1, standardNames.contains(first) { return .standardFolder }
+        if inside.count == 1, cloudPrefixes.contains(where: { first.hasPrefix($0) }) { return .cloud }
         if inside.contains(where: { $0.hasPrefix(".") }) { return .hidden }
         if inside.contains(where: { packageExtensions.contains(($0 as NSString).pathExtension.lowercased()) }) { return .package }
         return nil
@@ -104,16 +133,35 @@ public actor FolderTrashEngine {
         return (UInt64(info.st_dev), UInt64(info.st_ino))
     }
 
+    /// Whether a folder holds a library package anywhere inside (packages are not descended into). Nil when the walk
+    /// is too large to finish, which counts as unverified.
+    public nonisolated static func containsLibrary(_ url: URL, limit: Int = 400_000) -> Bool? {
+        guard let walker = FileManager.default.enumerator(at: url, includingPropertiesForKeys: [.isDirectoryKey],
+                                                          options: [.skipsPackageDescendants]) else { return nil }
+        var seen = 0
+        for case let item as URL in walker {
+            seen += 1
+            if seen > limit { return nil }
+            if libraryExtensions.contains(item.pathExtension.lowercased()) { return true }
+        }
+        return false
+    }
+
     // MARK: Move and restore
 
-    public func move(_ requests: [FolderTrashRequest]) -> FolderTrashReceipt {
+    public func move(_ requests: [FolderTrashRequest]) throws -> FolderTrashReceipt {
         var receipt = FolderTrashReceipt(id: UUID(), date: Date(), items: requests.map {
             FolderTrashItem(originalPath: $0.url.standardizedFileURL.path, trashPath: nil, bytes: $0.bytes,
                             device: $0.device, inode: $0.inode, status: .pending, message: nil)
         })
-        // The receipt exists before anything moves, so an interrupted move can still be traced.
-        save(receipt)
+        // The receipt exists before anything moves, so an interrupted move can still be traced. No receipt, no move.
+        do { try save(receipt) } catch { throw FolderTrashError.receiptNotSaved }
         for index in receipt.items.indices {
+            if receipt.receiptWriteFailed {
+                receipt.items[index].status = .failed
+                receipt.items[index].message = "Room could not update its receipt, so it stopped before this folder."
+                continue
+            }
             let item = receipt.items[index]
             let url = URL(fileURLWithPath: item.originalPath, isDirectory: true)
             if let problem = check(url, device: item.device, inode: item.inode) {
@@ -129,15 +177,16 @@ public actor FolderTrashEngine {
                 receipt.items[index].status = .failed
                 receipt.items[index].message = "Trash refused this folder. It is where it was."
             }
-            save(receipt)
+            do { try save(receipt) } catch { receipt.receiptWriteFailed = true }
         }
-        save(receipt)
+        do { try save(receipt) } catch { receipt.receiptWriteFailed = true }
+        recent[receipt.id] = receipt
         return receipt
     }
 
     /// Puts trashed folders back when the Trash item is still the same folder and nothing has taken its place.
     public func restore(receiptID: UUID) -> FolderTrashReceipt? {
-        guard var receipt = load(receiptID) else { return nil }
+        guard var receipt = recent[receiptID] ?? load(receiptID) else { return nil }
         for index in receipt.items.indices where receipt.items[index].status == .trashed {
             let item = receipt.items[index]
             guard let trashPath = item.trashPath else { continue }
@@ -156,6 +205,14 @@ public actor FolderTrashEngine {
                 receipt.items[index].message = "Its original folder is gone. The folder stays in Trash."
                 continue
             }
+            // The place it goes back to must still be a real folder inside home, not a link to somewhere else.
+            let parent = destination.deletingLastPathComponent().standardizedFileURL
+            let realParent = parent.resolvingSymlinksInPath()
+            guard realParent.path == parent.path,
+                  Self.protection(for: realParent, home: home) != .outsideHome else {
+                receipt.items[index].message = "Its original folder is now a link or outside home. The folder stays in Trash."
+                continue
+            }
             do {
                 try FileManager.default.moveItem(at: source, to: destination)
                 receipt.items[index].status = .restored
@@ -164,7 +221,8 @@ public actor FolderTrashEngine {
                 receipt.items[index].message = "Room could not put it back. It is still in Trash."
             }
         }
-        save(receipt)
+        do { try save(receipt) } catch { receipt.receiptWriteFailed = true }
+        recent[receipt.id] = receipt
         return receipt
     }
 
@@ -187,15 +245,19 @@ public actor FolderTrashEngine {
         }
         guard let now = Self.identity(of: resolved) else { return "Room could not check this folder, so it stays." }
         guard now.device == device, now.inode == inode else { return "The folder changed since the review. It stays." }
+        switch Self.containsLibrary(resolved) {
+        case .some(false): break
+        case .some(true): return FolderProtection.containsLibrary.sentence(name: resolved.lastPathComponent)
+        case .none: return "The folder is too large for Room to check, so it stays."
+        }
         guard !directory.standardizedFileURL.path.hasPrefix(resolved.path + "/") else { return "Room keeps its own records here." }
         return nil
     }
 
-    private func save(_ receipt: FolderTrashReceipt) {
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        if let data = try? JSONEncoder().encode(receipt) {
-            try? data.write(to: directory.appendingPathComponent(receipt.id.uuidString + ".json"), options: .atomic)
-        }
+    private func save(_ receipt: FolderTrashReceipt) throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let data = try JSONEncoder().encode(receipt)
+        try data.write(to: directory.appendingPathComponent(receipt.id.uuidString + ".json"), options: .atomic)
     }
 
     private func load(_ id: UUID) -> FolderTrashReceipt? {
