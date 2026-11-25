@@ -13,6 +13,9 @@ struct RoomDiskMapView: View {
     var inspectCacheSource: (URL) -> Void = { _ in }
     var cleanupAction: (RoomMapCleanupTarget) -> RoomMapCleanupAction? = { _ in nil }
     var activateCleanup: (RoomMapCleanupTarget) -> Void = { _ in }
+    /// Disk Map folder moves (Direct). nil: no ticks.
+    var folderTrash: RoomFolderTrashModel? = nil
+    var folderMoved: (FolderTrashReceipt) -> Void = { _ in }
     @Environment(\.openSettings) private var openSettings
     @Environment(\.roomAccent) private var accent
     @Environment(\.roomHide) private var privacy
@@ -32,6 +35,12 @@ struct RoomDiskMapView: View {
     @State private var mapStep: RoomMapStep?
     @State private var pointer = RoomMapPointer()
     @State private var draftView: SavedViewDraft?
+    @State private var selection = RoomMapSelection()
+    @State private var gone: Set<String> = []
+    @State private var folderReview: RoomFolderTrashModel.Review?
+    @State private var protectionNote: String?
+    @State private var zoomAnchor = UnitPoint.center
+    @State private var zoomInward = true
 
     private struct SavedViewDraft: Identifiable {
         let id = UUID()
@@ -81,6 +90,9 @@ struct RoomDiskMapView: View {
                 } else {
                     folderStart
                 }
+                if showsMap, layout == .map, let level = model.level, !insights.isScanningDisk {
+                    footer(level)
+                }
             }
             .padding(screenInsets)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -118,6 +130,8 @@ struct RoomDiskMapView: View {
         }
         .task { await insights.observeTreeChanges() }
         .onChange(of: model.levelPath) { _, path in
+            selection.clear()
+            protectionNote = nil
             filter = nil
             pointer.item = nil
             if mapStep?.destination != path { mapStep = nil }
@@ -142,6 +156,19 @@ struct RoomDiskMapView: View {
                 guard insights.savedViewLocation() == draft.root else { return false }
                 return savedViews?.add(name: name, root: draft.root, nodePath: draft.path, kind: draft.kind,
                                        mode: draft.mode) != nil
+            }
+        }
+        .sheet(item: $folderReview) { review in
+            if let folderTrash {
+                RoomFolderReviewSheet(review: review, model: folderTrash) { receipt in
+                    guard let receipt, let root = model.current?.rootID else { return }
+                    let moved = Set(receipt.items.filter { $0.status == .trashed }.map(\.originalPath))
+                    for room in selection.ticked where model.url(for: room).map({ moved.contains($0.standardizedFileURL.path) }) == true {
+                        gone.insert(root + "/" + room)
+                    }
+                    selection.clear()
+                    folderMoved(receipt)
+                }
             }
         }
         .sheet(isPresented: $showsIssues) {
@@ -190,12 +217,7 @@ struct RoomDiskMapView: View {
                 RoomBreadcrumbs(trail: model.trail, hidden: hidden) {
                     step(to: $0, animated: NSApp.currentEvent?.type == .leftMouseUp)
                 }
-                if !hidden {
-                    Text("\(RoomFormat.gb(level.allocatedBytes, partial: level.isPartial)) · hidden files included")
-                        .font(RoomTokens.Typography.caption)
-                        .foregroundStyle(RoomTokens.Ink.secondary)
-                        .lineLimit(1)
-                }
+                // The headline carries the size now (nav-v3); the crumb stays a crumb.
                 if insights.canGoBackToHomeMap {
                     Button { Task { await insights.showHomeMap() } } label: {
                         Label("Back to home folder", systemImage: "house")
@@ -416,20 +438,20 @@ struct RoomDiskMapView: View {
             ? visible.children.contains(where: { $0.allocatedBytes > 0 })
             : !visible.children.isEmpty)
         return VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
-            if layout != .compare, hasItems { RoomMapKindControl(node: level, hidden: hidden, filter: $filter) }
+            if layout == .largest, hasItems { RoomMapKindControl(node: level, hidden: hidden, filter: $filter) }
             HStack(alignment: .top, spacing: RoomTokens.Space.inner) {
                 VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
                     if layout != .compare, !hasItems {
                         emptyMap(level)
                         readout(visible, hint: false)
                     } else if layout == .map {
-                        RoomMapViewport(level: visible, selection: model.selectedPath, hidden: hidden,
-                                        generation: mapGeneration,
-                                        step: mapStep?.destination == level.relativePath ? mapStep : nil,
-                                        onHoverItem: { pointer.item = $0 },
-                                        activate: activate, preview: quickLook, reveal: reveal)
-                            .frame(minHeight: RoomTokens.Map.minimumHeight)
-                        readout(visible, hint: true)
+                        RoomDiskRoomsView(rooms: diskRooms(level), picked: model.selectedPath, selection: selection,
+                                          ticksAvailable: ticksAvailable, pick: { model.select($0); protectionNote = nil },
+                                          toggle: toggleTick, stepInside: { stepInside($0, from: $1) })
+                            .id(level.relativePath)
+                            .transition(RoomDiskZoom.transition(inward: zoomInward, anchor: zoomAnchor, motion: motion))
+                            .frame(minHeight: RoomTokens.Map.minimumHeight * 0.6, maxHeight: RoomTokens.Map.minimumHeight)
+                        inspectorLine(level)
                     } else if layout == .compare, let compared = model.comparison {
                         RoomCompareOverlay(earlier: compared.earlier, current: level, earlierDate: compared.date, hidden: hidden) {
                             layout = .map
@@ -443,8 +465,126 @@ struct RoomDiskMapView: View {
                     }
                 }
                 .roomPanelChange(layout)
-                if isWide && !hidesWideInspector { wideInspector }
+                if isWide && !hidesWideInspector && layout != .map { wideInspector }
             }
+        }
+    }
+
+    // MARK: Room map (nav-v3)
+
+    private var ticksAvailable: Bool { RoomFolderTrashModel.isAvailable && folderTrash != nil }
+
+    private func diskRooms(_ level: RoomTreeNode) -> [RoomDiskRoom] {
+        let root = model.current?.rootID ?? ""
+        let visible = level.children.filter { $0.allocatedBytes > 0 && !gone.contains(root + "/" + $0.relativePath) }
+            .sorted { $0.allocatedBytes > $1.allocatedBytes }
+        let limit = RoomDiskRoomsLayout.maxRooms - ((level.other?.allocatedBytes ?? 0) > 0 ? 1 : 0)
+        var rooms = visible.prefix(max(1, limit)).map { child -> RoomDiskRoom in
+            let url = model.url(for: child.relativePath)
+            let protection: FolderProtection? = !child.isDirectory ? .notAFolder
+                : child.isPartial ? .unverified : (folderTrash?.protection(for: url) ?? .unverified)
+            let kind = child.kindBytes.max { $0.value < $1.value }.flatMap { StorageKind(rawValue: $0.key) }
+            return RoomDiskRoom(room: .init(path: child.relativePath, name: child.name, bytes: child.allocatedBytes,
+                                            protection: protection),
+                                kind: kind, canStepInside: child.isDirectory && child.canStepInside, isOther: false)
+        }
+        let folded = visible.dropFirst(max(1, limit)).reduce(Int64(0)) { $0 + $1.allocatedBytes } + (level.other?.allocatedBytes ?? 0)
+        if folded > 0 {
+            rooms.append(RoomDiskRoom(room: .init(path: level.relativePath + "\u{0}other", name: "Other", bytes: folded,
+                                                  protection: .unverified),
+                                      kind: nil, canStepInside: false, isOther: true))
+        }
+        return rooms
+    }
+
+    private func toggleTick(_ room: RoomDiskRoom) {
+        if let protection = selection.toggle(room.room) {
+            protectionNote = protection.sentence(name: hidden ? "this folder" : room.room.name)
+        } else {
+            protectionNote = nil
+        }
+    }
+
+    private func stepInside(_ path: String, from anchor: UnitPoint) {
+        zoomAnchor = anchor
+        zoomInward = true
+        let pointer = RoomSelectionOrigin.controlActivation == .pointer
+        if pointer, let animation = motion.animation(RoomTokens.Motion.ui, fallback: RoomTokens.Motion.fade) {
+            withAnimation(animation) { _ = model.go(to: path) }
+        } else {
+            _ = model.go(to: path)
+        }
+    }
+
+    private func placeName(_ level: RoomTreeNode) -> String {
+        if model.levelPath.isEmpty, insights.diskMap.rootURL.map(RoomDiskMapWords.isHome) == true { return "your home" }
+        return hidden ? "this folder" : level.name
+    }
+
+    @ViewBuilder private func inspectorLine(_ level: RoomTreeNode) -> some View {
+        let rooms = diskRooms(level).map(\.room)
+        HStack(spacing: RoomTokens.Space.group) {
+            if !selection.isEmpty {
+                RoomMaskable(selection.line(in: rooms, levelBytes: level.allocatedBytes, place: placeName(level)))
+                    .foregroundStyle(RoomTokens.Ink.secondary)
+                Spacer(minLength: 0)
+                Button("Clear") { selection.clear() }.roomLink(accent)
+            } else if let path = model.selectedPath, let room = rooms.first(where: { $0.path == path }),
+                      let node = level.children.first(where: { $0.relativePath == path }) {
+                let share = level.allocatedBytes > 0 ? Int((Double(room.bytes) / Double(level.allocatedBytes) * 100).rounded()) : 0
+                HStack(spacing: 6) {
+                    RoomMaskable(room.name, kind: .name).fontWeight(.semibold).foregroundStyle(RoomTokens.Ink.graphite)
+                    RoomMaskable("\(RoomFormat.gb(room.bytes)), \(share)% of \(placeName(level))").foregroundStyle(RoomTokens.Ink.secondary)
+                }
+                Spacer(minLength: 0)
+                if node.isDirectory && node.canStepInside {
+                    Button("Step inside") { stepInside(path, from: .center) }.roomLink(accent)
+                }
+                Button("Show in Finder") { reveal(path) }.roomLink(accent).disabled(hidden)
+                if let rooms = self.rooms, let url = model.url(for: path), node.isDirectory {
+                    Button("Pin as a Room") { rooms.pin(url: url) }.roomLink(accent).disabled(!rooms.canChooseFolder)
+                }
+            } else {
+                Text("Click a room to look at it, click again to step inside")
+                    .foregroundStyle(RoomTokens.Ink.secondary)
+                Spacer(minLength: 0)
+            }
+        }
+        .font(RoomTokens.Typography.body)
+        .lineLimit(1)
+        .frame(minHeight: 24)
+    }
+
+    private func footer(_ level: RoomTreeNode) -> some View {
+        let rooms = diskRooms(level)
+        let bytes = selection.bytes(in: rooms.map(\.room))
+        let note = protectionNote ?? (!selection.isEmpty ? "Nothing moves without a review"
+            : ticksAvailable ? "Tick rooms to move them to Trash. ⌘-click works too" : "Room reads sizes only. Nothing moves from here")
+        return HStack(spacing: RoomTokens.Space.group) {
+            Text(note).font(RoomTokens.Typography.body).foregroundStyle(RoomTokens.Ink.secondary).lineLimit(1)
+            Spacer(minLength: 0)
+            if ticksAvailable, !selection.isEmpty {
+                Button("Move \(RoomCachesVisibility.figure(RoomFormat.gb(bytes), hidden: hidden)) to Trash") {
+                    openFolderReview(rooms)
+                }
+                .roomScreenPrimary(accent)
+                .disabled(folderTrash?.isMoving == true)
+                .accessibilityHint("Opens a review. These are your own folders, not caches")
+            }
+        }
+        .frame(minHeight: RoomTokens.Overview.actionHeight)
+        .padding(.top, RoomTokens.Space.row)
+    }
+
+    private func openFolderReview(_ rooms: [RoomDiskRoom]) {
+        guard let folderTrash else { return }
+        let chosen = rooms.filter { selection.contains($0.id) }.compactMap { room in
+            model.url(for: room.id).map { (url: $0, name: room.room.name, bytes: room.room.bytes) }
+        }
+        if let review = folderTrash.review(chosen) {
+            folderReview = review
+        } else {
+            protectionNote = "Room could not check these folders, so they stay"
         }
     }
 
@@ -580,6 +720,8 @@ struct RoomDiskMapView: View {
         guard animated, layout == .map, let prior = model.level, prior.relativePath != path else {
             return model.go(to: path)
         }
+        zoomInward = path.hasPrefix(prior.relativePath) && path.count > prior.relativePath.count
+        if !zoomInward { zoomAnchor = .center }
         let previous = filtered(prior)
         let selection = model.selectedPath
         let generation = mapGeneration + 1

@@ -44,11 +44,15 @@ nonisolated struct RoomHistoryPresentation: Equatable, Sendable {
 struct RoomHistoryScreen: View {
     let model: RoomViewModel
     let restore: (RoomActivity) -> Void
+    /// Folder receipts from the Disk Map (Direct), shown beside cache receipts.
+    var extraActivity: [RoomActivity] = []
+
+    private var activity: [RoomActivity] { (model.activity + extraActivity).sorted { $0.date > $1.date } }
     @Environment(\.roomAccent) private var accent
     @Environment(\.roomHide) private var hide
 
     private var presentation: RoomHistoryPresentation {
-        RoomHistoryPresentation.make(model.activity.map {
+        RoomHistoryPresentation.make(activity.map {
             (id: $0.id, date: $0.date, bytes: $0.bytes, canRestore: $0.canRestore,
              restoredAll: $0.itemCount > 0 && $0.restoredCount >= $0.itemCount)
         }, now: Date())
@@ -63,7 +67,7 @@ struct RoomHistoryScreen: View {
                 ForEach(presentation.months, id: \.start) { month in
                     RoomGroupLabel(text: month.start.formatted(.dateTime.month(.wide)))
                     ForEach(month.receiptIDs, id: \.self) { id in
-                        if let receipt = model.activity.first(where: { $0.id == id }) { row(receipt) }
+                        if let receipt = activity.first(where: { $0.id == id }) { row(receipt) }
                     }
                 }
                 if presentation.receipts > 0 {
@@ -83,7 +87,7 @@ struct RoomHistoryScreen: View {
 
     private func row(_ receipt: RoomActivity) -> some View {
         RoomEvidenceRow(name: receipt.title, meta: Self.when(receipt.date), bytes: receipt.bytes, masksName: false) {
-            RoomQuietTile(glyph: .caches)
+            RoomQuietTile(glyph: receipt.details.first?.source == "diskMap" ? .diskMap : .caches)
         } trailing: {
             Group {
                 if receipt.canRestore {

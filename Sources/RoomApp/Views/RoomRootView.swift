@@ -54,6 +54,10 @@ struct RoomRootView: View {
     /// Make room: the bytes the review chose (for "Moving 7 of 22 GB") and the toast after it lands.
     @State private var makeRoomTotal: Int64 = 0
     @State private var madeToast: RoomMadeToastState?
+    @State private var folderTrash = RoomFolderTrashModel()
+
+    /// Every receipt: cache moves and, in Direct, folders moved from the Disk Map.
+    private var allActivity: [RoomActivity] { (model.activity + folderTrash.activity).sorted { $0.date > $1.date } }
     @State private var toastTask: Task<Void, Never>?
 
     private var isMakingRoom: Bool { model.isWorking && !model.cleanupProgress.isEmpty }
@@ -99,7 +103,7 @@ struct RoomRootView: View {
                                cachesReclaimableBytes: model.clearableBytes,
                                developerBytes: developer.totalBytes,
                                memorySamples: sidebarMemory,
-                               receipts: model.activity.count)
+                               receipts: allActivity.count)
     }
 
     /// What Make room would give back: the cache moves a completed check found eligible.
@@ -170,7 +174,7 @@ struct RoomRootView: View {
             .overlay(alignment: .bottom) {
                 if let madeToast {
                     RoomMadeToast(state: madeToast,
-                                  canRestore: model.activity.first { $0.id == madeToast.receiptID }?.canRestore == true
+                                  canRestore: allActivity.first { $0.id == madeToast.receiptID }?.canRestore == true
                                     && !model.isWorking && !model.isScanning,
                                   restore: restoreFromToast)
                         .padding(.bottom, RoomTokens.Screen2.toastBottom)
@@ -267,6 +271,7 @@ struct RoomRootView: View {
             insights.openDiskMap(rootURL: url, requestNavigation: false)
         }
         .task { await savedViews.load() }
+        .task { if RoomFolderTrashModel.isAvailable { await folderTrash.load() } }
         .onChange(of: isMakingRoom) { _, moving in
             if moving { makeRoomTotal = model.selectedBytes }
         }
@@ -383,7 +388,11 @@ struct RoomRootView: View {
                 savedViewDisplay: savedViewDisplay, openSavedView: openSavedView,
                 canInspectCacheSource: { cacheSource(for: $0) != nil },
                 inspectCacheSource: inspectCacheSource, cleanupAction: mapCleanupAction,
-                activateCleanup: activateMapCleanup)
+                activateCleanup: activateMapCleanup,
+                folderTrash: RoomFolderTrashModel.isAvailable ? folderTrash : nil,
+                folderMoved: { receipt in
+                    if receipt.canRestore { showToast(RoomMadeToastState(receiptID: receipt.id, bytes: receipt.trashedBytes)) }
+                })
         case .developer:
             #if ROOM_APP_STORE
             RoomDeveloperView(model: developer)
@@ -391,7 +400,7 @@ struct RoomRootView: View {
             RoomDeveloperView(model: developer, agentWork: agentWork, memoryReport: insights.memoryReport)
             #endif
         case .history:
-            RoomHistoryScreen(model: model, restore: restoreFromCaches)
+            RoomHistoryScreen(model: model, restore: restoreReceipt, extraActivity: folderTrash.activity)
         case .settings:
             RoomSettingsScreen(openAllSettings: { openSettings() })
         }
@@ -489,10 +498,20 @@ struct RoomRootView: View {
         }
     }
 
+    /// Restore routes by owner: Disk Map folder receipts go back through their own engine, cache receipts through
+    /// the cache receipt engine (Store opens its exact-item restore sheet).
+    private func restoreReceipt(_ receipt: RoomActivity) {
+        if folderTrash.owns(receipt.id) {
+            Task { await folderTrash.restore(receipt.id) }
+        } else {
+            restoreFromCaches(receipt)
+        }
+    }
+
     private func restoreFromToast() {
-        guard let toast = madeToast, let receipt = model.activity.first(where: { $0.id == toast.receiptID }),
+        guard let toast = madeToast, let receipt = allActivity.first(where: { $0.id == toast.receiptID }),
               receipt.canRestore, !model.isScanning, !model.isWorking else { return }
-        restoreFromCaches(receipt)
+        restoreReceipt(receipt)
         var restored = toast
         restored.restored = true
         showToast(restored, for: .milliseconds(1100))
