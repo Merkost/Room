@@ -256,6 +256,15 @@ final class RoomDeveloperModel {
 
     #if DEBUG
     func debugRemember(_ url: URL, role: RoomDeveloperFolderRole) { remember(url, role: role) }
+    /// Screenshot fixture only: finished reports for every room without reading any folder.
+    func debugInstall(review: DeveloperResourcesReport?, devices: DeveloperResourcesReport?,
+                      storage: DeveloperResourcesReport?, aiTools: DeveloperResourcesReport?) {
+        if let review { applyReview(review) }
+        devicesReport = devices
+        storageReport = storage
+        aiToolsReport = aiTools
+        progress = "Review complete"
+    }
     #endif
 
     private func remember(_ selected: URL, role: RoomDeveloperFolderRole) {

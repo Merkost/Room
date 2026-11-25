@@ -6,7 +6,7 @@ if [[ ${1:-} == --help ]]; then
     print 'Scenes: overview, disk-map, caches, caches-review, developer, memory, history, settings, monitor, ai-tools'
     exit 0
 fi
-if [[ $# -lt 3 || $# -gt 5 ]]; then
+if [[ $# -lt 3 ]]; then
     print -u2 'Supply the build directory, state directory and scene. Use --help for usage.'
     exit 2
 fi

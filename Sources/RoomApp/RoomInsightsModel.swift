@@ -9,6 +9,15 @@ final class RoomInsightsModel {
     private(set) var memoryReport: MemoryReport?
     private(set) var pressureHistory: RoomPressureHistory
     private(set) var memorySamples = RoomMemorySampleRing()
+    #if DEBUG
+    /// Screenshot fixture only: a minute of earlier samples so the curve has a shape on first sight.
+    func debugSeedMemory(_ values: [Int64]) {
+        let now = Date()
+        for (index, value) in values.enumerated() {
+            memorySamples.append(value, at: now.addingTimeInterval(Double(index - values.count)))
+        }
+    }
+    #endif
     private(set) var isScanningMemory = false
     let diskMap = RoomDiskMapModel()
     @ObservationIgnored let treeStore: RoomTreeStore
