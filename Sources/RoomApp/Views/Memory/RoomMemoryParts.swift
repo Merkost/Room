@@ -46,11 +46,19 @@ struct RoomMemoryCurve: View {
 
     var body: some View {
         Canvas { context, size in
-            let points = RoomSparkline.points(samples, width: size.width, height: size.height)
+            let points = Self.points(samples, size: size)
             guard let first = points.first, let last = points.last else { return }
+            // Smoothed through the midpoints like the mockup's curve (`Q` to each midpoint), so a busy minute reads
+            // as a swell rather than a saw.
             var line = Path()
-            line.move(to: CGPoint(x: first.x, y: first.y))
-            for point in points.dropFirst() { line.addLine(to: CGPoint(x: point.x, y: point.y)) }
+            line.move(to: first)
+            if points.count > 2 {
+                for index in 1..<(points.count - 1) {
+                    let point = points[index], next = points[index + 1]
+                    line.addQuadCurve(to: CGPoint(x: (point.x + next.x) / 2, y: (point.y + next.y) / 2), control: point)
+                }
+            }
+            line.addLine(to: last)
             var area = line
             area.addLine(to: CGPoint(x: last.x, y: size.height))
             area.addLine(to: CGPoint(x: first.x, y: size.height))
@@ -66,6 +74,18 @@ struct RoomMemoryCurve: View {
         .opacity(hide.masksNow ? 0.35 : 1)
         .accessibilityElement()
         .accessibilityLabel("Memory in use over the last few minutes")
+    }
+
+    /// The mockup's scale: the samples sit in the middle third with room above and below (a 9 GB band over 16 GB).
+    static func points(_ samples: [Int64], size: CGSize) -> [CGPoint] {
+        guard samples.count >= 2, let low = samples.min(), let high = samples.max() else { return [] }
+        let range = max(Double(high - low), 3e9)
+        let bottom = Double(low) - range, top = Double(high) + range * 0.5
+        let step = size.width / CGFloat(samples.count - 1)
+        return samples.enumerated().map { index, value in
+            let y = size.height * (1 - CGFloat((Double(value) - bottom) / (top - bottom)))
+            return CGPoint(x: CGFloat(index) * step, y: y)
+        }
     }
 }
 
@@ -90,6 +110,7 @@ struct RoomMemoryFigures: View {
 /// A running app's real icon; Hide shows a blank tile; a process without an app shows a quiet tile.
 struct RoomProcessIcon: View {
     let pid: Int32
+    var name: String? = nil
     var size: CGFloat = RoomTokens.Screen2.icon
     @Environment(\.roomHide) private var hide
 
@@ -100,7 +121,7 @@ struct RoomProcessIcon: View {
             } else if let icon = NSRunningApplication(processIdentifier: pid)?.icon {
                 Image(nsImage: icon).resizable().interpolation(.high).aspectRatio(contentMode: .fit)
             } else {
-                RoomQuietTile(glyph: .window, size: size)
+                RoomThingIcon(path: nil, name: name, fallback: .window, size: size)
             }
         }
         .frame(width: size, height: size)
