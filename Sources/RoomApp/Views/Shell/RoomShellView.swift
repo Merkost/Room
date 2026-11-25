@@ -13,6 +13,7 @@ struct RoomShellView<Detail: View>: View {
     var stopPlace: (RoomDestination) -> Void = { _ in }
     var developerSection: RoomDeveloperSection = .rooms
     var selectDeveloperSection: (RoomDeveloperSection) -> Void = { _ in }
+    var openGoTo: (_ keyboard: Bool) -> Void = { _ in }
     @ViewBuilder var detail: () -> Detail
 
     @Environment(\.roomMotion) private var motion
@@ -33,7 +34,8 @@ struct RoomShellView<Detail: View>: View {
                             canOpenRooms: insights.canChooseDiskLocation, openRoom: selectRoom,
                             savedViews: savedViews, openSavedView: selectSavedView,
                             activity: rowActivity, stop: stopPlace,
-                            developerSection: developerSection, selectDeveloperSection: selectDeveloperSection)
+                            developerSection: developerSection, selectDeveloperSection: selectDeveloperSection,
+                            openGoTo: openGoTo)
                     .navigationSplitViewColumnWidth(RoomSidebarLayout.width(sidebarMode))
             } detail: {
                 detail()

@@ -55,6 +55,11 @@ struct RoomRootView: View {
     @State private var makeRoomTotal: Int64 = 0
     @State private var madeToast: RoomMadeToastState?
     @State private var folderTrash = RoomFolderTrashModel()
+    @State private var showsGoTo = false
+
+    private var commandItems: [RoomCommandBar.Item] {
+        RoomCommandBar.items(values: sidebarValues, developerRooms: RoomDeveloperSection.allCases.map(\.rawValue))
+    }
 
     /// Every receipt: cache moves and, in Direct, folders moved from the Disk Map.
     private var allActivity: [RoomActivity] { (model.activity + folderTrash.activity).sorted { $0.date > $1.date } }
@@ -117,6 +122,7 @@ struct RoomRootView: View {
     private var screenActions: RoomScreenActions {
         var commands = destinationActions
         commands.showHistory = { navigation.select(.screen(.history), origin: .controlActivation) }
+        commands.openGoTo = { openGoTo(keyboard: true) }
         return commands
     }
 
@@ -166,7 +172,8 @@ struct RoomRootView: View {
                       sidebarValues: sidebarValues, couldGoBytes: couldGoBytes,
                       rowActivity: rowActivity.rows, stopPlace: stopPlace,
                       developerSection: developer.section,
-                      selectDeveloperSection: selectDeveloperSection) {
+                      selectDeveloperSection: selectDeveloperSection,
+                      openGoTo: { openGoTo(keyboard: $0) }) {
             RoomScreenScaffold(title: screenActions.title, subtitle: screenSubtitle,
                                scrolls: !Self.framedDestinations.contains(destination)) {
                 screenContent
@@ -183,6 +190,12 @@ struct RoomRootView: View {
                 }
             }
             .animation(motion.animation(RoomTokens.Motion.ui, fallback: RoomTokens.Motion.fade), value: madeToast)
+        }
+        .overlay {
+            if showsGoTo {
+                RoomCommandBarView(items: commandItems, close: { closeGoTo(keyboard: true) }, run: runCommand)
+                    .transition(.opacity.combined(with: .scale(scale: motion.isFull ? 0.96 : 1, anchor: .top)))
+            }
         }
         .preferredColorScheme(colorScheme)
         .focusedSceneValue(\.roomScreen, screenActions)
@@ -486,6 +499,48 @@ struct RoomRootView: View {
         #else
         Task { await model.restore(record: record) }
         #endif
+    }
+
+    /// Go to opens instantly from the keyboard and with the UI spring from the pointer.
+    private func openGoTo(keyboard: Bool) {
+        let animation = keyboard ? nil : motion.animation(RoomTokens.Motion.ui, fallback: RoomTokens.Motion.fade)
+        withAnimation(animation) { showsGoTo.toggle() }
+    }
+
+    private func closeGoTo(keyboard: Bool) {
+        let animation = keyboard ? nil : motion.animation(RoomTokens.Motion.quick, fallback: RoomTokens.Motion.fade)
+        withAnimation(animation) { showsGoTo = false }
+    }
+
+    private func runCommand(_ item: RoomCommandBar.Item, keyboard: Bool) {
+        closeGoTo(keyboard: keyboard)
+        let origin: RoomSelectionOrigin = keyboard ? .keyboard : .pointer
+        func go(_ place: RoomDestination) {
+            if keyboard {
+                navigation.select(.screen(place), origin: origin)
+            } else {
+                withAnimation(RoomSidebar.selectionAnimation(origin: origin, motion: motion)) {
+                    navigation.select(.screen(place), origin: origin)
+                }
+            }
+        }
+        switch item.target {
+        case .place(let place): go(place)
+        case .developerRoom(let name):
+            go(.developer)
+            if let section = RoomDeveloperSection(rawValue: name) { developer.section = section }
+        case .action(.checkCaches):
+            go(.clean)
+            if model.canScan, !model.isScanning { model.scan() }
+        case .action(.makeRoom):
+            go(.overview)
+            startMakeRoom()
+        case .action(.scanProjects):
+            go(.developer)
+            if developer.canScan, !developer.isScanning { developer.scan() }
+        case .action(.hideSizes):
+            RoomHideControl.shared.toggle()
+        }
     }
 
     /// Six seconds, then the toast leaves; History keeps the receipt.

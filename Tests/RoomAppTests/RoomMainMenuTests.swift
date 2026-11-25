@@ -68,7 +68,7 @@ struct RoomMainMenuTests {
         #expect(view.contains { $0.title == "Customise Overview…" && $0.key == "c" && $0.enabled })
 
         let go = try menu("Go")
-        #expect(go.map(\.title) == ["Back", "Forward", "Overview", "Disk Map", "Caches", "Developer", "Memory", "History", "Settings", "Show History", "Enclosing Folder"])
+        #expect(go.map(\.title) == ["Back", "Forward", "Overview", "Disk Map", "Caches", "Developer", "Memory", "History", "Settings", "Show History", "Go to…", "Enclosing Folder"])
         #expect(go.dropFirst(2).prefix(7).map(\.key) == ["1", "2", "3", "4", "5", "6", "7"])
         #expect(go.contains { $0.title == "Show History" && $0.key == "y" && $0.enabled })
         #expect(go.first { $0.title == "Enclosing Folder" }?.enabled == false)

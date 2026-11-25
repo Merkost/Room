@@ -62,6 +62,7 @@ nonisolated enum RoomMenuModel {
         case settingsScreen
         case pinnedRooms
         case showHistory
+        case goTo
         case enclosing
         case minimize
         case minimizeAll
@@ -142,6 +143,7 @@ nonisolated enum RoomMenuModel {
             case .settingsScreen: String(localized: "menu.settingsScreen", defaultValue: "Settings", bundle: RoomCopy.bundle)
             case .pinnedRooms: String(localized: "Rooms")
             case .showHistory: String(localized: "menu.showHistory", defaultValue: "Show History", bundle: RoomCopy.bundle)
+            case .goTo: String(localized: "menu.goTo", defaultValue: "Go to…", bundle: RoomCopy.bundle)
             case .enclosing: String(localized: "menu.enclosing", defaultValue: "Enclosing Folder", bundle: RoomCopy.bundle)
             case .minimize: "Minimize"
             case .minimizeAll: "Minimize All"
@@ -365,6 +367,7 @@ nonisolated enum RoomMenuModel {
             add(.go, .pinnedRooms, enabled: canStart && input.canOpenPinnedRooms)
         }
         add(.go, .showHistory, .init("y"), enabled: main)
+        add(.go, .goTo, .init("k"), enabled: main)
         add(.go, .enclosing, .init("↑"), enabled: main && input.destination == .disk && canStart && input.canEnclose && !input.isScanning)
 
         add(.window, .minimize, .init("m"), enabled: hasKeyWindow, native: true)

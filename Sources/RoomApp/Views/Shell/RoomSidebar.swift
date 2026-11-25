@@ -27,6 +27,7 @@ struct RoomSidebar: View {
     var stop: (RoomDestination) -> Void = { _ in }
     var developerSection: RoomDeveloperSection = .rooms
     var selectDeveloperSection: (RoomDeveloperSection) -> Void = { _ in }
+    var openGoTo: (_ keyboard: Bool) -> Void = { _ in }
 
     @Environment(\.roomMotion) private var motion
     @Environment(\.roomHide) private var hide
@@ -50,6 +51,9 @@ struct RoomSidebar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            RoomGoToField(labelled: labelled) { openGoTo(RoomSelectionOrigin.controlActivation == .keyboard) }
+                .padding(.horizontal, 2)
+                .padding(.bottom, RoomTokens.Space.inner)
             ScrollView {
                 VStack(alignment: .leading, spacing: RoomTokens.Nav.rowGap) {
                     ForEach([RoomSidebarPlan.Group.yourMac, .makeRoom, .rightNow], id: \.self) { group in
@@ -130,6 +134,11 @@ struct RoomSidebar: View {
         .onKeyPress(.space) { select(place, origin: .keyboard); return .handled }
         .onKeyPress(.upArrow) { step(-1); return .handled }
         .onKeyPress(.downArrow) { step(1); return .handled }
+        .onKeyPress(characters: CharacterSet(charactersIn: "kKhH"), phases: .down) { press in
+            guard press.modifiers.isEmpty else { return .ignored }
+            if press.characters.lowercased() == "k" { openGoTo(true) } else { RoomHideControl.shared.toggle() }
+            return .handled
+        }
         .onKeyPress(characters: .decimalDigits, phases: .down) { press in
             guard press.modifiers.isEmpty, let number = Int(press.characters),
                   let target = RoomSidebarPlan.place(forShortcut: number) else { return .ignored }
