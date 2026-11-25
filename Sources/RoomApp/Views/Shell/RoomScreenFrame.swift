@@ -28,6 +28,8 @@ struct RoomScreenFrame<Evidence: View, Action: View>: View {
     var supportingMasked = false
     var note: String?
     var scrollsEvidence = false
+    /// False when the evidence staggers its own rows in (`roomEnter(2 + index)`).
+    var entersEvidence = true
     @ViewBuilder var evidence: () -> Evidence
     @ViewBuilder var action: () -> Action
 
@@ -39,6 +41,8 @@ struct RoomScreenFrame<Evidence: View, Action: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             RoomHeadlineView(headline: headline, compact: screenSize.width < RoomTokens.Screen.compactBreakpoint)
+                .animation(motion.animation(RoomTokens.Motion.ui, fallback: nil), value: headline)
+                .roomEnter(0)
                 .padding(.top, RoomTokens.Screen2.headlineTop)
             if let supporting {
                 Group {
@@ -48,6 +52,7 @@ struct RoomScreenFrame<Evidence: View, Action: View>: View {
                 .foregroundStyle(RoomTokens.Ink.secondary)
                 .padding(.top, RoomTokens.Screen2.supportingGap)
                 .fixedSize(horizontal: false, vertical: true)
+                .roomEnter(1)
             }
             Group {
                 if scrollsEvidence {
@@ -58,6 +63,7 @@ struct RoomScreenFrame<Evidence: View, Action: View>: View {
                     Spacer(minLength: 0)
                 }
             }
+            .modifier(RoomEnterIf(enabled: entersEvidence, index: 2))
             .padding(.top, RoomTokens.Screen2.evidenceGap)
             HStack(alignment: .center, spacing: RoomTokens.Space.group) {
                 if let note {
@@ -74,7 +80,7 @@ struct RoomScreenFrame<Evidence: View, Action: View>: View {
             .frame(minHeight: RoomTokens.Overview.actionHeight)
             .padding(.top, RoomTokens.Screen2.footerGap)
         }
-        .padding(EdgeInsets(top: insets.top, leading: insets.leading, bottom: RoomTokens.Space.breath1, trailing: insets.trailing))
+        .padding(EdgeInsets(top: insets.top, leading: insets.leading, bottom: insets.bottom, trailing: insets.trailing))
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
@@ -102,5 +108,13 @@ struct RoomHeadlineView: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(headline.spoken(hidden: hide.masksNow))
             .accessibilityAddTraits(.isHeader)
+    }
+}
+
+private struct RoomEnterIf: ViewModifier {
+    let enabled: Bool
+    let index: Int
+    func body(content: Content) -> some View {
+        if enabled { content.roomEnter(index) } else { content }
     }
 }
