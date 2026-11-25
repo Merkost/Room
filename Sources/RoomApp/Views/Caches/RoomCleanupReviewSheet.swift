@@ -92,7 +92,9 @@ struct RoomCleanupReviewSheet: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxHeight: 300)
+            // As tall as the list, up to 300 pt, so a short review has no empty band above the buttons.
+            .scrollBounceBehavior(.basedOnSize)
+            .frame(maxHeight: min(300, CGFloat(review.rows.count) * RoomTokens.Screen2.sheetRow + RoomTokens.Screen2.sheetNotes))
             .padding(.top, RoomTokens.Space.group)
             HStack(spacing: RoomTokens.Space.row) {
                 Spacer()

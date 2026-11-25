@@ -133,6 +133,8 @@ extension RoomTokens {
         static let sheetPad: CGFloat = 24
         static let sheetPadBottom: CGFloat = 18
         static let sheetRow: CGFloat = 30
+        /// Room under a review's list for its "before you move" lines.
+        static let sheetNotes: CGFloat = 76
         static let sheetTop: CGFloat = 104
         static let sheetTitle = Font.custom(RoomDS.displayFamilyName, fixedSize: 26).weight(.medium)
         static let commandWidth: CGFloat = 440

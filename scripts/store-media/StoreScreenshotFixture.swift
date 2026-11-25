@@ -201,7 +201,7 @@ struct StoreScreenshotFixture: View {
             .environment(\.roomActivityCenter, activity)
             .preferredColorScheme(Self.light ? .light : .dark)
             .task { await prepare() }
-            .roomSheetOverlay(isPresented: showReview, animated: false) {
+            .roomSheetOverlay(isPresented: showReview, animated: CommandLine.arguments.contains("--tour")) {
                 RoomCleanupReviewSheet(model: caches, close: { showReview = false })
             }
     }
@@ -287,7 +287,8 @@ struct StoreScreenshotFixture: View {
     }
 
     private func prepareRich() async {
-        if CommandLine.arguments.contains("--hide"), !RoomHideControl.shared.state.isOn { RoomHideControl.shared.toggle() }
+        // Hide persists in the fixture's defaults: set it to exactly what this scene asks for.
+        if CommandLine.arguments.contains("--hide") != RoomHideControl.shared.state.isOn { RoomHideControl.shared.toggle() }
         activity.setIdle(freeBytes: 64_000_000_000)
         let map = Self.homeMap()
         if let approvalID {
@@ -299,12 +300,36 @@ struct StoreScreenshotFixture: View {
         caches.debugInstall(Self.richCaches(home: workspace))
         insights.scanMemory()
         await caches.refreshHistory()
+        if CommandLine.arguments.contains("--tour") { await tour() }
         switch screen {
         case .diskMap:
-            if let inside = Self.option("--inside") { insights.diskMap.select(inside) }
+            if let inside = Self.option("--inside") { _ = insights.diskMap.go(to: inside) }
         case .cachesReview:
             showReview = true
         default: break
+        }
+    }
+
+    /// `--tour`: drives the window through the pointer motions on a fixed clock so a recording can be checked frame by
+    /// frame (pill slide and arrival, Disk Map zoom in and out, rail fold and unfold, the review card in and out).
+    private func tour() async {
+        let motion = RoomMotionPolicy(gentleMotion: true, reduceMotion: false)
+        func wait(_ seconds: Double) async { try? await Task.sleep(for: .seconds(seconds)) }
+        func go(_ place: RoomDestination) {
+            withAnimation(RoomSidebar.selectionAnimation(origin: .pointer, motion: motion)) {
+                navigation.select(.screen(place), origin: .pointer)
+            }
+        }
+        Task { @MainActor in
+            await wait(2); go(.clean)
+            await wait(2); go(.disk)
+            await wait(2); withAnimation(RoomTokens.Motion.zoom) { _ = insights.diskMap.go(to: "Developer") }
+            await wait(2); withAnimation(RoomTokens.Motion.zoom) { _ = insights.diskMap.go(to: "") }
+            await wait(2); navigation.toggleSidebarLabels()
+            await wait(2); navigation.toggleSidebarLabels()
+            await wait(2); go(.clean)
+            await wait(1.5); withAnimation(motion.animation(RoomTokens.Motion.glass, fallback: RoomTokens.Motion.fade)) { showReview = true }
+            await wait(2); withAnimation(motion.animation(RoomTokens.Motion.glass, fallback: RoomTokens.Motion.fade)) { showReview = false }
         }
     }
 
