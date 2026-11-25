@@ -39,7 +39,7 @@ struct RoomOverviewRoutingTests {
     @Test func retryCapacityReadsOnlyTheVolume() async throws {
         let fixture = try RoutingFixture()
         defer { fixture.remove() }
-        let view = RoomOverviewView(insights: fixture.insights, rooms: fixture.rooms, navigate: fixture.navigation.select,
+        let view = RoomOverviewScreen(insights: fixture.insights, navigate: fixture.navigation.select,
                                     refresh: fixture.insights.refreshDiskCapacity)
 
         view.retryCapacity()
@@ -111,7 +111,7 @@ struct RoomOverviewRoutingTests {
     @Test func overviewDiskLinkNavigatesWithoutStartingWork() async throws {
         let fixture = try RoutingFixture()
         defer { fixture.remove() }
-        let view = RoomOverviewView(insights: fixture.insights, rooms: fixture.rooms, navigate: fixture.navigation.select,
+        let view = RoomOverviewScreen(insights: fixture.insights, navigate: fixture.navigation.select,
                                     refresh: fixture.insights.refreshDiskCapacity)
 
         view.openDiskMap()
@@ -122,7 +122,7 @@ struct RoomOverviewRoutingTests {
     @Test func overviewCheckCachesNavigatesAndStartsOneReadOnlyCheck() async throws {
         let fixture = try RoutingFixture()
         defer { fixture.remove() }
-        let view = RoomOverviewView(insights: fixture.insights, rooms: fixture.rooms, navigate: fixture.navigation.select,
+        let view = RoomOverviewScreen(insights: fixture.insights, navigate: fixture.navigation.select,
                                     refresh: fixture.insights.refreshDiskCapacity, cacheModel: fixture.cache)
 
         view.openCaches()

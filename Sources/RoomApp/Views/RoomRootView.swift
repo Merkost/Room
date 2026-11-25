@@ -27,7 +27,6 @@ struct RoomRootView: View {
     @State private var sheet: RoomSheet?
     @State private var showingCustomise = false
     @State private var editingRoom: UUID?
-    @State private var leftOverviewAt: ContinuousClock.Instant?
     @State private var savedViews = RoomSavedViewsStore()
     @State private var openedSavedView: RoomSavedViewDisplay?
     @State private var savedViewRetry = UUID()
@@ -48,7 +47,7 @@ struct RoomRootView: View {
 
     private var destination: RoomDestination { navigation.destination }
     /// Screens drawn with `RoomScreenFrame` (headline, evidence, footer) manage their own scrolling.
-    static let framedDestinations: Set<RoomDestination> = [.disk, .history, .settings]
+    static let framedDestinations: Set<RoomDestination> = [.overview, .clean, .memory, .developer, .disk, .history, .settings]
     /// Memory's sidebar sparkline only takes new samples while Memory is open, so the column never moves at idle.
     @State private var sidebarMemory: [Int64] = []
     @State private var rowActivity = RoomSidebarActivity()
@@ -318,8 +317,8 @@ struct RoomRootView: View {
         switch destination {
         case .overview: nil
         case .disk: nil
-        case .clean: model.cachesStatus
-        case .memory, .developer, .history, .settings: nil
+        case .developer: developer.section.rawValue   // the mockup's crumb: Developer › Rooms
+        case .clean, .memory, .history, .settings: nil
         }
     }
 
@@ -335,12 +334,10 @@ struct RoomRootView: View {
     @ViewBuilder private var screenContent: some View {
         switch destination {
         case .overview:
-            RoomOverviewView(insights: insights, rooms: rooms,
-                             navigate: { navigation.select(.screen($0), origin: .controlActivation) }, refresh: insights.refreshDiskCapacity,
-                             cacheModel: model, editingRoom: showingCustomise ? editingRoom : nil,
-                             showAllRooms: { showingCustomise = true }, restoreRecent: restoreFromCaches,
-                             animatesArrival: overviewArrival)
-                .onDisappear { leftOverviewAt = .now }
+            RoomOverviewScreen(insights: insights,
+                               navigate: { navigation.select(.screen($0), origin: .controlActivation) },
+                               refresh: insights.refreshDiskCapacity, cacheModel: model,
+                               developerBytes: developer.totalBytes, makeRoom: startMakeRoom)
         case .clean:
             RoomCachesView(model: model, review: { sheet = .review },
                 inspect: { sheet = .source($0) }, showKept: { sheet = .protectedSources },
@@ -435,10 +432,11 @@ struct RoomRootView: View {
         }
     }
 
-    /// Arrival choreography plays once per launch, never on a revisit, never after keyboard navigation (REVIEW §4.1).
-    private var overviewArrival: Bool {
-        RoomOverviewArrival.plays(origin: navigation.selectionOrigin, needsWelcome: navigation.needsWelcome,
-                                  hasLeftOverview: leftOverviewAt != nil)
+    /// Make room: the review sheet in front of every move, with the recommended places chosen.
+    private func startMakeRoom() {
+        guard !model.isScanning, !model.isWorking, model.hasReport else { return }
+        if !model.canReviewCleanup { model.selectRecommended() }
+        if model.canReviewCleanup { sheet = .review }
     }
 
     private func restoreFromCaches(_ record: RoomActivity) {

@@ -67,12 +67,65 @@ struct RoomDeveloperView: View {
         return model.isScanning ? .firstScan : .intro
     }
 
+    private var words: RoomDeveloperWords {
+        let headline = model.headline
+        var input = RoomDeveloperWords.Input()
+        input.projectsBytes = headline.parts.first { $0.kind == .inUse }.map(\.bytes).map { $0 + headline.unreferenced } ?? headline.unreferenced
+        input.unreferencedBytes = headline.unreferenced
+        input.projects = model.report?.projects.count ?? 0
+        input.versions = model.report?.toolchains.count ?? 0
+        input.devicesBytes = headline.parts.first { $0.kind == .devices }?.bytes ?? 0
+        input.devices = (model.devicesReport?.androidDevices.count ?? 0) + (model.devicesReport?.simulatorDevices.count ?? 0)
+        input.storageBytes = headline.parts.first { $0.kind == .toolStorage }?.bytes ?? 0
+        input.aiBytes = headline.parts.first { $0.kind == .aiTools }?.bytes ?? 0
+        input.aiTools = model.aiToolsReport?.aiStorageResources.count ?? 0
+        #if !ROOM_APP_STORE
+        input.worktreesBytes = agentWork.report?.items.reduce(Int64(0)) { $0 + $1.allocatedBytes } ?? 0
+        input.worktrees = agentWork.report?.items.count ?? 0
+        #endif
+        input.partial = headline.partial
+        return RoomDeveloperWords.make(section: section.rawValue, input)
+    }
+
     var body: some View {
         Group {
             switch layoutState {
-            case .intro: intro.transition(.opacity)
-            case .firstScan: firstScan.transition(.opacity)
-            case .workspace: workspace.transition(.opacity)
+            case .intro:
+                RoomScreenFrame(headline: .words("Your build tools"),
+                                supporting: "Room finds the Gradle, Xcode and Android versions your projects use, and the ones nothing points to.",
+                                note: "Room only reads sizes and version files", scrollsEvidence: true) {
+                    VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
+                        folderControls(quiet: true)
+                        otherViews
+                    }
+                } action: {
+                    Button(model.canScan ? "Scan projects" : "Choose projects folder…") {
+                        if model.canScan { model.scan() } else { model.addFolder(role: .project) }
+                    }
+                    .roomPrimary(accent) // one-filled: exclusive intro, shown only before the first scan
+                    .disabled(model.isScanning || model.isChoosingFolder)
+                    .accessibilityIdentifier("RoomDeveloperScanButton")
+                }
+                .transition(.opacity)
+            case .firstScan:
+                RoomScreenFrame(headline: .words("Reading your folders"), supporting: model.progress,
+                                note: "Room only reads sizes and version files") {
+                    EmptyView()
+                } action: {
+                    Button("Stop") { model.stop() }.roomLink(accent).font(RoomTokens.Typography.bodyStrong)
+                        .accessibilityIdentifier("RoomDeveloperScanButton")
+                }
+                .transition(.opacity)
+            case .workspace:
+                let words = words
+                RoomScreenFrame(headline: words.headline, supporting: model.isScanning ? model.progress : words.supporting,
+                                note: section == .storage ? "Builds can always be made again" : "Room only reads sizes; nothing here moves",
+                                scrollsEvidence: true) {
+                    sectionContent.roomPanelChange(section)
+                } action: {
+                    if showsResourceActions { scanControls }
+                }
+                .transition(.opacity)
             }
         }
         .animation(motion.animation(RoomTokens.Motion.fade), value: layoutState)
@@ -105,39 +158,6 @@ struct RoomDeveloperView: View {
 
     // MARK: Before the first scan
 
-    private var intro: some View {
-        VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
-            startPrompt
-            Text("Room only reads sizes and version files. Nothing is moved or deleted.")
-                .font(RoomTokens.Typography.caption)
-                .foregroundStyle(RoomTokens.Ink.secondary)
-            folderControls(quiet: true)
-            otherViews
-        }
-        .frame(maxWidth: RoomTokens.Space.measure, alignment: .leading)
-        .padding(.top, RoomTokens.Space.breath2)
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var startPrompt: some View {
-        VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
-            Text("See which build tools are taking your disk.")
-                .font(RoomTokens.Typography.figure)
-                .accessibilityHeading(.h2)
-            Text("Room finds the Gradle, Xcode and Android versions your projects use, and the ones nothing points to.")
-                .font(RoomTokens.Typography.lead)
-                .foregroundStyle(RoomTokens.Ink.secondary)
-            Button {
-                if model.canScan { model.scan() } else { model.addFolder(role: .project) }
-            } label: {
-                Text(model.canScan ? "Scan" : "Choose projects folder…")
-            }
-            .roomPrimary(accent) // one-filled: exclusive intro, shown only before the first scan
-            .disabled(model.isScanning || model.isChoosingFolder)
-            .accessibilityIdentifier("RoomDeveloperScanButton")
-        }
-    }
-
     private var otherViews: some View {
         HStack(spacing: RoomTokens.Space.group) {
             Text("Or look at")
@@ -151,21 +171,6 @@ struct RoomDeveloperView: View {
         }
     }
 
-    private var firstScan: some View {
-        VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
-            Text("Reading your folders…")
-                .font(RoomTokens.Typography.figure)
-                .accessibilityHeading(.h2)
-            scanningRow
-            Button("Stop") { model.stop() }
-                .roomSecondary()
-                .accessibilityIdentifier("RoomDeveloperScanButton")
-        }
-        .frame(maxWidth: RoomTokens.Space.measure, alignment: .leading)
-        .padding(.top, RoomTokens.Space.breath2)
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
     private var scanningRow: some View {
         HStack(spacing: RoomTokens.Space.row) {
             ProgressView().controlSize(.small)
@@ -177,48 +182,6 @@ struct RoomDeveloperView: View {
     }
 
     // MARK: After the first scan
-
-    private var workspace: some View {
-        VStack(alignment: .leading, spacing: RoomTokens.Space.breath1) {
-            if showsResourceActions {
-                if model.headline.hasAnyData {
-                    RoomDeveloperHeader(headline: model.headline) { scanControls }
-                } else {
-                    HStack { Spacer(minLength: 0); scanControls }
-                }
-            }
-            tabs
-            sectionContent.roomPanelChange(section)
-        }
-    }
-
-    private var tabs: some View {
-        HStack(spacing: RoomTokens.Space.group) {
-            Picker("Developer view", selection: $model.section) {
-                ForEach(visibleSections, id: \.self) { tab in
-                    Label(tab.rawValue, systemImage: tab.symbol).tag(tab)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
-            .accessibilityIdentifier("RoomDeveloperSectionPicker")
-            let hidden = RoomDeveloperTabRules.hidden(availability, current: section)
-            if !hidden.isEmpty {
-                Menu("More views") {
-                    ForEach(hidden, id: \.self) { other in
-                        Button { model.section = other } label: { Label(other.startLink, systemImage: other.symbol) }
-                    }
-                }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
-                .font(RoomTokens.Typography.caption)
-            }
-            Spacer(minLength: 0)
-        }
-        .transition(.opacity)
-        .animation(motion.animation(RoomTokens.Motion.fade), value: visibleSections)
-    }
 
     private var scanControls: some View {
         HStack(spacing: RoomTokens.Space.row) {
@@ -253,8 +216,7 @@ struct RoomDeveloperView: View {
         let button = Button {
             if model.isScanning { model.stop() } else { model.scan() }
         } label: {
-            Label(model.isScanning ? "Stop" : sectionReport == nil ? "Scan" : "Rescan",
-                  systemImage: model.isScanning ? "stop.fill" : "arrow.clockwise")
+            Text(model.isScanning ? "Stop" : section == .rooms || section == .matrix ? "Scan projects" : sectionReport == nil ? "Scan" : "Scan again")
         }
         .disabled(!model.isScanning && !model.canScan)
         .accessibilityIdentifier("RoomDeveloperScanButton")
@@ -378,7 +340,10 @@ struct RoomDeveloperView: View {
         } else if section == .devices {
             deviceInventory
         } else if model.report == nil {
-            if !model.isScanning { startPrompt }
+            if !model.isScanning {
+                Text("Scan a projects folder to see what each project uses.")
+                    .font(RoomTokens.Typography.body).foregroundStyle(RoomTokens.Ink.secondary)
+            }
         } else {
             switch section {
             case .rooms:

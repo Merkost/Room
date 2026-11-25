@@ -53,6 +53,15 @@ struct RoomDiskMapView: View {
             let contentWidth = geometry.size.width - screenInsets.leading - screenInsets.trailing
             let isWide = contentWidth >= RoomTokens.Map.inspectorBreakpoint
             VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
+                if showsMap, let level = model.level, let words = diskWords(level) {
+                    RoomHeadlineView(headline: words.headline,
+                                     compact: contentWidth < RoomTokens.Screen.compactBreakpoint)
+                        .padding(.top, RoomTokens.Screen2.headlineTop)
+                    Text(words.supporting)
+                        .font(RoomTokens.Screen2.supporting)
+                        .foregroundStyle(RoomTokens.Ink.secondary)
+                        .padding(.bottom, RoomTokens.Space.row)
+                }
                 controls(isWide: isWide)
                 if let blueprint = model.blueprint,
                    insights.isScanningDisk || (blueprint.phase == .stopped && insights.diskReport?.cancelled == true &&
@@ -150,6 +159,14 @@ struct RoomDiskMapView: View {
             }
             .padding(RoomTokens.Space.breath1)
         }
+    }
+
+    private func diskWords(_ level: RoomTreeNode) -> RoomDiskMapWords? {
+        guard let current = model.current else { return nil }
+        return RoomDiskMapWords.make(levelName: level.name, atRoot: model.levelPath.isEmpty,
+                                     rootIsHome: insights.diskMap.rootURL.map(RoomDiskMapWords.isHome) ?? false,
+                                     bytes: level.allocatedBytes, partial: level.isPartial,
+                                     folders: level.children.filter(\.isDirectory).count, scannedAt: current.scannedAt, now: Date())
     }
 
     private func controls(isWide: Bool) -> some View {

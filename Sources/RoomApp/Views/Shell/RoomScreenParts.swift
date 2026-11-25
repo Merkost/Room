@@ -92,6 +92,8 @@ struct RoomEvidenceRow<Icon: View, Trailing: View>: View {
     let name: String
     var meta: String?
     let bytes: Int64
+    /// The size as shown; nil formats `bytes` as a disk size. Memory rows pass `RoomFormat.memory`.
+    var value: String? = nil
     var masksName = true
     var barColor: Color = RoomTokens.Ink.secondary
     var dimmed = false
@@ -111,6 +113,7 @@ struct RoomEvidenceRow<Icon: View, Trailing: View>: View {
                 .font(RoomTokens.Screen2.listName)
                 .foregroundStyle(dimmed ? RoomTokens.Ink.tertiary : RoomTokens.Ink.graphite)
                 .lineLimit(1)
+                .layoutPriority(1)
                 if let meta {
                     Text(meta).font(RoomTokens.Screen2.listMeta).foregroundStyle(RoomTokens.Ink.secondary).lineLimit(1)
                 }
@@ -118,7 +121,7 @@ struct RoomEvidenceRow<Icon: View, Trailing: View>: View {
             .frame(maxWidth: nameColumn, alignment: .leading)
             RoomDotBar(bytes: bytes, color: barColor, dimmed: dimmed)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            RoomMaskable(RoomFormat.gb(bytes))
+            RoomMaskable(value ?? RoomFormat.gb(bytes))
                 .font(RoomTokens.Screen2.listValue)
                 .foregroundStyle(dimmed ? RoomTokens.Ink.tertiary : RoomTokens.Ink.graphite)
                 .frame(minWidth: 56, alignment: .trailing)
@@ -130,9 +133,10 @@ struct RoomEvidenceRow<Icon: View, Trailing: View>: View {
 }
 
 extension RoomEvidenceRow where Trailing == EmptyView {
-    init(name: String, meta: String? = nil, bytes: Int64, masksName: Bool = true, barColor: Color = RoomTokens.Ink.secondary,
-         dimmed: Bool = false, nameColumn: CGFloat = RoomTokens.Screen2.listNameColumn, @ViewBuilder icon: @escaping () -> Icon) {
-        self.init(name: name, meta: meta, bytes: bytes, masksName: masksName, barColor: barColor, dimmed: dimmed,
+    init(name: String, meta: String? = nil, bytes: Int64, value: String? = nil, masksName: Bool = true,
+         barColor: Color = RoomTokens.Ink.secondary, dimmed: Bool = false,
+         nameColumn: CGFloat = RoomTokens.Screen2.listNameColumn, @ViewBuilder icon: @escaping () -> Icon) {
+        self.init(name: name, meta: meta, bytes: bytes, value: value, masksName: masksName, barColor: barColor, dimmed: dimmed,
                   nameColumn: nameColumn, icon: icon, trailing: { EmptyView() })
     }
 }

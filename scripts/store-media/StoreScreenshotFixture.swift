@@ -181,8 +181,10 @@ struct StoreScreenshotFixture: View {
         if screen == .monitor {
             RoomMenuBarView(insights: insights, cacheModel: caches, rooms: rooms, openRoom: {}, showSettings: {})
         } else if screen == .developer || screen == .aiTools {
-            RoomShellView(navigation: navigation, rooms: rooms, insights: insights, selectRoom: { _ in }) {
-                RoomScreenScaffold(title: "Developer", subtitle: nil, scrolls: true) {
+            RoomShellView(navigation: navigation, rooms: rooms, insights: insights, selectRoom: { _ in },
+                          sidebarValues: .init(freeBytes: 120_000_000_000, mappedFolders: 7, developerBytes: developer.totalBytes),
+                          developerSection: developer.section, selectDeveloperSection: { developer.section = $0 }) {
+                RoomScreenScaffold(title: "Developer", subtitle: nil, scrolls: false) {
                     RoomDeveloperView(model: developer)
                 }
             }
