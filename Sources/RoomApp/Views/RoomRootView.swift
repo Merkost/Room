@@ -51,6 +51,37 @@ struct RoomRootView: View {
     static let framedDestinations: Set<RoomDestination> = [.disk, .history, .settings]
     /// Memory's sidebar sparkline only takes new samples while Memory is open, so the column never moves at idle.
     @State private var sidebarMemory: [Int64] = []
+    @State private var rowActivity = RoomSidebarActivity()
+
+    /// What each engine is doing, for the sidebar rows (ring, sentence, counted dots, finished, failed).
+    private var rowSignals: [RoomDestination: RoomRowSignal] {
+        [.clean: RoomRowSignals.caches(isScanning: model.isScanning, checked: model.scannedLocationCount,
+                                       of: model.scanLocationCount, clearableBytes: model.clearableBytes,
+                                       unreadable: model.scanIssues.count),
+         .developer: RoomRowSignals.developer(isScanning: developer.isScanning, progress: developer.progress,
+                                              totalBytes: developer.totalBytes,
+                                              projects: developer.report?.projects.count ?? 0,
+                                              error: developer.errorMessage),
+         .disk: RoomRowSignals.diskMap(isScanning: insights.isScanningDisk,
+                                       mapped: insights.diskProgress?.completedTopLevel.count ?? 0,
+                                       of: insights.diskProgress?.topLevelTotal)]
+    }
+
+    private func stopPlace(_ place: RoomDestination) {
+        switch place {
+        case .clean: model.cancelScan()
+        case .developer: developer.stop()
+        case .disk: insights.cancelDiskScan()
+        default: return
+        }
+        rowActivity.stop(place)
+    }
+
+    private func selectDeveloperSection(_ section: RoomDeveloperSection) {
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = RoomSelectionOrigin.controlActivation == .keyboard
+        withTransaction(transaction) { developer.section = section }
+    }
 
     private var sidebarValues: RoomSidebarValue.Input {
         RoomSidebarValue.Input(freeBytes: insights.volumeCapacity?.freeBytes,
@@ -116,7 +147,10 @@ struct RoomRootView: View {
     var body: some View {
         RoomShellView(navigation: navigation, rooms: rooms, insights: insights, selectRoom: openPinnedRoom,
                       savedViews: savedViews, selectSavedView: openSavedView,
-                      sidebarValues: sidebarValues, couldGoBytes: couldGoBytes) {
+                      sidebarValues: sidebarValues, couldGoBytes: couldGoBytes,
+                      rowActivity: rowActivity.rows, stopPlace: stopPlace,
+                      developerSection: developer.section,
+                      selectDeveloperSection: selectDeveloperSection) {
             RoomScreenScaffold(title: screenActions.title, subtitle: screenSubtitle,
                                scrolls: !Self.framedDestinations.contains(destination)) {
                 screenContent
@@ -203,11 +237,15 @@ struct RoomRootView: View {
         }
         .onChange(of: navigation.route, initial: true) { _, route in
             if destination != .overview { showingCustomise = false }
+            if let place = route.highlightedScreen { rowActivity.open(place) }
             RoomHideControl.shared.cancelPeek()
             guard case .room(let id) = route, let url = rooms.url(for: id) else { return }
             insights.openDiskMap(rootURL: url, requestNavigation: false)
         }
         .task { await savedViews.load() }
+        .onChange(of: rowSignals, initial: true) { _, signals in
+            rowActivity.update(signals, open: navigation.route.highlightedScreen)
+        }
         .onChange(of: insights.memorySamples.values, initial: true) { _, values in
             if destination == .memory || sidebarMemory.isEmpty { sidebarMemory = values }
         }

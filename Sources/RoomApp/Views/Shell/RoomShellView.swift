@@ -9,6 +9,10 @@ struct RoomShellView<Detail: View>: View {
     var selectSavedView: (UUID) -> Void = { _ in }
     var sidebarValues = RoomSidebarValue.Input()
     var couldGoBytes: Int64 = 0
+    var rowActivity: [RoomDestination: RoomRowActivity] = [:]
+    var stopPlace: (RoomDestination) -> Void = { _ in }
+    var developerSection: RoomDeveloperSection = .rooms
+    var selectDeveloperSection: (RoomDeveloperSection) -> Void = { _ in }
     @ViewBuilder var detail: () -> Detail
 
     @Environment(\.roomMotion) private var motion
@@ -27,7 +31,9 @@ struct RoomShellView<Detail: View>: View {
                             mode: sidebarMode, showsLabels: showsSidebarLabels,
                             values: sidebarValues, plate: plate,
                             canOpenRooms: insights.canChooseDiskLocation, openRoom: selectRoom,
-                            savedViews: savedViews, openSavedView: selectSavedView)
+                            savedViews: savedViews, openSavedView: selectSavedView,
+                            activity: rowActivity, stop: stopPlace,
+                            developerSection: developerSection, selectDeveloperSection: selectDeveloperSection)
                     .navigationSplitViewColumnWidth(RoomSidebarLayout.width(sidebarMode))
             } detail: {
                 detail()

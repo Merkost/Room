@@ -23,8 +23,17 @@ struct RoomSidebar: View {
     let openRoom: (UUID) -> Void
     var savedViews: RoomSavedViewsStore? = nil
     var openSavedView: (UUID) -> Void = { _ in }
+    var activity: [RoomDestination: RoomRowActivity] = [:]
+    var stop: (RoomDestination) -> Void = { _ in }
+    var developerSection: RoomDeveloperSection = .rooms
+    var selectDeveloperSection: (RoomDeveloperSection) -> Void = { _ in }
 
     @Environment(\.roomMotion) private var motion
+    @Environment(\.roomHide) private var hide
+    @State private var hoveredPlace: RoomDestination?
+    @State private var peekPlace: RoomDestination?
+    @State private var peekTask: Task<Void, Never>?
+    @State private var lastPeekEnded: Date?
     @Environment(\.roomAccent) private var accent
     @FocusState private var focusedScreen: RoomDestination?
     @Namespace private var selection
@@ -45,7 +54,13 @@ struct RoomSidebar: View {
                 VStack(alignment: .leading, spacing: RoomTokens.Nav.rowGap) {
                     ForEach([RoomSidebarPlan.Group.yourMac, .makeRoom, .rightNow], id: \.self) { group in
                         groupHeading(group, first: group == .yourMac)
-                        ForEach(RoomSidebarPlan.places(in: group), id: \.self) { place in placeRow(place) }
+                        ForEach(RoomSidebarPlan.places(in: group), id: \.self) { place in
+                            placeRow(place)
+                            if place == .developer {
+                                RoomSidebarDeveloperRooms(open: labelled && navigation.route == .screen(.developer),
+                                                          selected: developerSection, select: selectDeveloperSection)
+                            }
+                        }
                     }
                     if RoomSidebarPinned.hasContent(rooms: rooms, savedViews: savedViews) {
                         RoomSidebarPinned(navigation: navigation, rooms: rooms, labelled: labelled,
@@ -83,15 +98,33 @@ struct RoomSidebar: View {
         let selected = navigation.route == route
         let value = RoomSidebarValue.make(place, values)
         let title = RoomSidebarPlan.title(place)
+        let row = activity[place] ?? RoomRowActivity()
+        let hovering = hoveredPlace == place
         return Button {
             select(place, origin: RoomSelectionOrigin.controlActivation)
         } label: {
             RoomSidebarRow(place: place, value: value, selected: selected, labelled: labelled,
-                           commandHeld: commandHeld)
+                           commandHeld: commandHeld, activity: row, hovering: hovering && row.isWorking)
                 .background { if selected { selectionPill } }
                 .contentShape(Rectangle())
         }
         .buttonStyle(RoomHoverButtonStyle(cornerRadius: RoomTokens.Nav.pillRadius, showsFeedback: !selected))
+        .overlay(alignment: .topTrailing) {
+            if labelled, hovering, row.isWorking {
+                Button("Stop") { stop(place) }
+                    .roomLink(accent)
+                    .font(RoomTokens.Nav.value.weight(.medium))
+                    .padding(.trailing, RoomTokens.Nav.rowInsetTrailing)
+                    .padding(.top, RoomTokens.Space.tight)
+                    .accessibilityLabel("Stop \(title)")
+            }
+        }
+        .onHover { inside in hover(place, inside: inside) }
+        .popover(isPresented: Binding(get: { peekPlace == place && !labelled },
+                                      set: { if !$0, peekPlace == place { peekPlace = nil } }),
+                 arrowEdge: .trailing) {
+            peek(place, value: value, row: row)
+        }
         .focused($focusedScreen, equals: place)
         .onKeyPress(.return) { select(place, origin: .keyboard); return .handled }
         .onKeyPress(.space) { select(place, origin: .keyboard); return .handled }
@@ -106,17 +139,63 @@ struct RoomSidebar: View {
         }
         .help("\(title) (⌘\(RoomSidebarPlan.shortcut(place)))")
         .accessibilityLabel(title)
-        .accessibilityValue(Self.spokenValue(value))
+        .accessibilityValue(Self.spokenValue(value, activity: row, hidden: hide.masksNow))
+        .accessibilityAction(named: "Stop") { if row.isWorking { stop(place) } }
         .accessibilityHint(Text(verbatim: "Command \(RoomSidebarPlan.shortcut(place))"))
         .accessibilityIdentifier("RoomNavigation-\(place.rawValue)")
         .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 
-    static func spokenValue(_ value: RoomSidebarValue) -> String {
+    static func spokenValue(_ value: RoomSidebarValue, activity: RoomRowActivity = RoomRowActivity(),
+                            hidden: Bool = false) -> String {
+        var parts: [String] = []
         switch value {
-        case .none, .sparkline: ""
-        case .size(let text), .words(let text): text
+        case .none, .sparkline: break
+        case .size(let text): parts.append(hidden ? "size hidden" : text)
+        case .words(let text): parts.append(text)
         }
+        if activity.showsSentence { parts.append(hidden ? "working" : activity.sentence) }
+        if activity.unseen { parts.append("new result") }
+        return parts.joined(separator: ", ")
+    }
+
+    /// Rail peek: the first one waits 350 ms; moving to the next row while one is showing (or just after) is instant.
+    private func hover(_ place: RoomDestination, inside: Bool) {
+        if inside {
+            hoveredPlace = place
+            guard !labelled else { return }
+            peekTask?.cancel()
+            let warm = peekPlace != nil || (lastPeekEnded.map { Date().timeIntervalSince($0) < RoomTokens.Nav.peekWarm } ?? false)
+            if warm {
+                peekPlace = place
+            } else {
+                peekTask = Task { @MainActor in
+                    do { try await Task.sleep(for: RoomTokens.Nav.peekDelay) } catch { return }
+                    if hoveredPlace == place { peekPlace = place }
+                }
+            }
+        } else {
+            if hoveredPlace == place { hoveredPlace = nil }
+            peekTask?.cancel()
+            if peekPlace == place {
+                lastPeekEnded = Date()
+                peekPlace = nil
+            }
+        }
+    }
+
+    private func peek(_ place: RoomDestination, value: RoomSidebarValue, row: RoomRowActivity) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: RoomTokens.Space.row) {
+                Text(RoomSidebarPlan.title(place)).font(RoomTokens.Typography.bodyStrong)
+                RoomSidebarValueView(value: value, live: false)
+            }
+            if row.showsSentence {
+                RoomMaskable(row.sentence).font(RoomTokens.Nav.sentence).foregroundStyle(accent.text)
+            }
+        }
+        .padding(.horizontal, RoomTokens.Space.row)
+        .padding(.vertical, RoomTokens.Space.inner)
     }
 
     private func select(_ place: RoomDestination, origin: RoomSelectionOrigin) {
