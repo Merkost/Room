@@ -88,6 +88,25 @@ struct RoomDeveloperFolderSuggestion: Identifiable {
     var id: String { role.rawValue }
 }
 
+nonisolated struct RoomDeveloperScanPart: Equatable, Sendable {
+    enum State: Equatable, Sendable { case waiting, reading, done, stopped }
+    let scope: DeveloperResourcesScope
+    var state: State
+}
+
+/// Agent worktrees are read by their own engine (Direct edition); Developer's one scan starts and stops them too.
+@MainActor
+protocol RoomDeveloperWorktreeScanning: AnyObject {
+    var isScanning: Bool { get }
+    /// A remote check or a move is running, so a scan would be refused.
+    var isBusy: Bool { get }
+    /// What the last read found the worktrees to hold; nil before one.
+    var measuredBytes: Int64? { get }
+    func scan()
+    func stop()
+    func waitForScan() async
+}
+
 @Observable @MainActor
 final class RoomDeveloperModel {
     private struct RoleRecord: Codable, Equatable { let role: RoomDeveloperFolderRole; let folderID: String }
@@ -98,6 +117,8 @@ final class RoomDeveloperModel {
     private let key = "RoomDeveloperFolderRoles"
     private var records: [RoleRecord]
     private var stagedRemovals: Set<String> = []
+    /// The approvals the current results were read through, as `accessRevision` entries.
+    @ObservationIgnored private var scannedAccess: Set<String> = []
     private var task: Task<Void, Never>?
     private var generation = UUID()
     var section = RoomDeveloperSection.rooms
@@ -112,9 +133,19 @@ final class RoomDeveloperModel {
     @ObservationIgnored private var unreferencedReadOnly = false
     @ObservationIgnored private let home: URL?
     @ObservationIgnored private let activityCenter: RoomActivityCenter?
-    private(set) var isScanning = false
+    var worktrees: (any RoomDeveloperWorktreeScanning)?
+    /// True while the one scan runs: the folder parts, then any worktrees still being read.
+    private var isScanningResources = false
     private(set) var isChoosingFolder = false
-    private(set) var progress = ""
+    private var resourceProgress = ""
+    /// The parts of the running (or last) scan, for the scan animation.
+    private(set) var scanParts: [RoomDeveloperScanPart] = []
+    private(set) var scanIncludedWorktrees = false
+    var isScanning: Bool { isScanningResources || worktrees?.isScanning == true }
+    var progress: String {
+        !isScanningResources && worktrees?.isScanning == true ? Self.worktreesProgress : resourceProgress
+    }
+    private static let worktreesProgress = "Reading agent worktrees…"
     var errorMessage: String?
 
     init(access: RoomFileAccess = .shared, defaults: UserDefaults = .standard,
@@ -215,19 +246,40 @@ final class RoomDeveloperModel {
             $0.url.path == $1.url.path ? $0.id < $1.id : $0.url.path < $1.url.path
         }
     }
-    private var scanLocations: [RoomDeveloperLocation] {
-        switch section {
+    private func scanLocations(for scope: DeveloperResourcesScope) -> [RoomDeveloperLocation] {
+        switch scope {
         case .devices: locations.filter { RoomDeveloperFolderRole.deviceRoles.contains($0.role) }
-        case .storage: locations.filter { RoomDeveloperFolderRole.storageRoles.contains($0.role) }
+        case .toolStorage: locations.filter { RoomDeveloperFolderRole.storageRoles.contains($0.role) }
         case .aiTools: locations.filter { $0.role.aiTool != nil }
-        default: locations.filter { $0.role != .simulators && $0.role != .simulatorRuntimes && $0.role.aiTool == nil }
+        case .review: locations.filter { $0.role != .simulators && $0.role != .simulatorRuntimes && $0.role.aiTool == nil }
         }
     }
-    var sectionLocations: [RoomDeveloperLocation] {
-        if [.devices, .storage, .aiTools].contains(section) { return scanLocations }
-        return locations.filter { $0.role != .simulatorRuntimes && $0.role.aiTool == nil }
+    /// Everything one scan reads, in order; a part with no folder is left out.
+    private var scanPlan: [(scope: DeveloperResourcesScope, locations: [RoomDeveloperLocation])] {
+        [DeveloperResourcesScope.review, .devices, .toolStorage, .aiTools]
+            .map { ($0, scanLocations(for: $0)) }.filter { !$0.1.isEmpty }
     }
-    var canScan: Bool { !isChoosingFolder && !scanLocations.isEmpty }
+    var sectionLocations: [RoomDeveloperLocation] {
+        switch section {
+        case .devices: scanLocations(for: .devices)
+        case .storage: scanLocations(for: .toolStorage)
+        case .aiTools: scanLocations(for: .aiTools)
+        default: locations.filter { $0.role != .simulatorRuntimes && $0.role.aiTool == nil }
+        }
+    }
+    var hasScannableFolders: Bool { !scanPlan.isEmpty }
+    /// The same answer from every section: one scan reads them all.
+    var canScan: Bool { !isChoosingFolder && worktrees?.isBusy != true && (hasScannableFolders || worktrees != nil) }
+    /// Whether a scan has anything to read for the open section (Simulator folders do not feed Rooms or Matrix).
+    var hasFoldersForSection: Bool {
+        let scope: DeveloperResourcesScope = switch section {
+        case .devices: .devices
+        case .storage: .toolStorage
+        case .aiTools: .aiTools
+        default: .review
+        }
+        return !scanLocations(for: scope).isEmpty
+    }
     var accessRevision: [String] { access.folders.map { $0.id + ":" + $0.url.path }.sorted() }
     var totalBytes: Int64 {
         guard let report else { return 0 }
@@ -263,7 +315,7 @@ final class RoomDeveloperModel {
         devicesReport = devices
         storageReport = storage
         aiToolsReport = aiTools
-        progress = "Review complete"
+        resourceProgress = "Review complete"
     }
     #endif
 
@@ -306,72 +358,114 @@ final class RoomDeveloperModel {
         persist()
     }
 
+    /// An approval changed. Only losing one that was read through discards the work: adding another folder (Overview's
+    /// scan approving Home, say) must not cancel it.
     func accessChanged() {
+        guard !scannedAccess.isSubset(of: Set(accessRevision)) else { return }
+        scannedAccess = []
+        scanParts = []; scanIncludedWorktrees = false
         generation = UUID()
-        task?.cancel(); task = nil; isScanning = false
+        task?.cancel(); task = nil; isScanningResources = false
         activityCenter?.clear(.developer)
-        report = nil; devicesReport = nil; storageReport = nil; aiToolsReport = nil; summary = nil; progress = ""
+        report = nil; devicesReport = nil; storageReport = nil; aiToolsReport = nil; summary = nil; resourceProgress = ""
     }
 
+    /// Reads every part that has a folder, one after another; each section fills as its part finishes.
     func scan() {
         guard canScan, !isScanning else { return }
-        let scope: DeveloperResourcesScope = switch section {
-        case .devices: .devices
-        case .storage: .toolStorage
-        case .aiTools: .aiTools
-        default: .review
+        let plan = scanPlan
+        errorMessage = nil
+        worktrees?.scan()
+        let token = UUID(); generation = token
+        scannedAccess.formUnion(plan.flatMap(\.locations).map { $0.folder.id + ":" + $0.folder.url.path })
+        scanParts = plan.map { RoomDeveloperScanPart(scope: $0.scope, state: .waiting) }
+        scanIncludedWorktrees = worktrees != nil
+        isScanningResources = true; resourceProgress = plan.isEmpty ? Self.worktreesProgress : "Preparing review…"
+        activityCenter?.reportScanLabel(.developer, label: "Developer", files: 0, bytes: 0)
+        task = Task { [weak self] in
+            var activity: DeveloperActivitySnapshot?
+            var cancelled = false
+            var partial = false
+            for part in plan {
+                self?.mark(part.scope, .reading, token: token)
+                guard let result = await self?.read(part.scope, in: part.locations, activity: &activity, token: token) else { return }
+                cancelled = result.cancelled || Task.isCancelled
+                self?.mark(part.scope, cancelled ? .stopped : .done, token: token)
+                partial = partial || result.isPartial
+                if cancelled { break }
+            }
+            // Worktrees are read alongside; the scan (and its activity pill) ends when they do.
+            if let worktrees = self?.worktrees, worktrees.isScanning {
+                self?.showWorktreesProgress(token: token)
+                await worktrees.waitForScan()
+            }
+            cancelled = cancelled || Task.isCancelled
+            self?.finishScan(token: token, progress: cancelled ? "Stopped · partial review" : (partial ? "Partial review" : "Review complete"))
         }
-        let current = scanLocations
+    }
+
+    /// One part of the scan. nil: the scan was replaced, or stopped before this part started reading.
+    private func read(_ scope: DeveloperResourcesScope, in current: [RoomDeveloperLocation],
+                      activity: inout DeveloperActivitySnapshot?, token: UUID) async -> DeveloperResourcesReport? {
         let approved = Dictionary(grouping: current.map(\.folder.url), by: \.path).compactMap { $0.value.first }
         let avdRoots = current.filter { $0.role == .android }.map(\.folder.url)
-        let token = UUID(); generation = token
-        isScanning = true; errorMessage = nil; progress = "Preparing review…"
-        activityCenter?.reportScanLabel(.developer, label: section.rawValue, files: 0, bytes: 0)
-        let scanner = scanResources
-        let activitySampler = sampleActivity
-        task = Task { [weak self] in
-            let scopes = approved.filter { $0.startAccessingSecurityScopedResource() }
-            defer { scopes.forEach { $0.stopAccessingSecurityScopedResource() } }
-            let activity = avdRoots.isEmpty ? DeveloperActivitySnapshot.unknown : await activitySampler()
-            guard let self, self.generation == token else { return }
-            guard !Task.isCancelled else {
-                self.isScanning = false
-                self.task = nil
-                self.activityCenter?.clear(.developer)
-                self.progress = "Stopped · no resource scan started"
-                return
-            }
-            let request = DeveloperResourcesRequest(approvedFolders: approved, avdRoots: avdRoots,
-                gradleHomes: current.filter { $0.role == .gradle }.map(\.folder.url),
-                projectRoots: current.filter { $0.role == .project }.map(\.folder.url),
-                sdkRoots: current.filter { $0.role == .sdk }.map(\.folder.url),
-                derivedDataRoots: current.filter { $0.role == .xcode }.map(\.folder.url),
-                konanRoots: current.filter { $0.role == .konan }.map(\.folder.url),
-                simulatorDeviceRoots: current.filter { $0.role == .simulators }.map(\.folder.url),
-                simulatorRuntimeRoots: current.filter { $0.role == .simulatorRuntimes }.map(\.folder.url),
-                aiToolRoots: current.compactMap { location in
-                    location.role.aiTool.map { DeveloperAIToolRoot(tool: $0, url: location.folder.url) }
-                }, scope: scope, activity: activity)
-            let result = await scanner(request) { [weak self] update in
-                Task { @MainActor [weak self] in
-                    guard let self, self.generation == token, self.isScanning else { return }
-                    self.progress = "\(update.phase) · \(update.inspectedCount.formatted()) items"
-                    self.activityCenter?.reportScanLabel(.developer, label: update.phase, files: update.inspectedCount, bytes: 0)
-                }
-            }
-            if scope == .review { await self.unreferencedLoad?.value }
-            guard self.generation == token else { return }
-            switch scope {
-            case .devices: self.devicesReport = result
-            case .toolStorage: self.storageReport = result
-            case .aiTools: self.aiToolsReport = result
-            case .review: self.applyReview(result)
-            }
-            self.isScanning = false
-            self.task = nil
-            self.activityCenter?.clear(.developer)
-            self.progress = result.cancelled ? "Stopped · partial review" : (result.isPartial ? "Partial review" : "Review complete")
+        let scopes = approved.filter { $0.startAccessingSecurityScopedResource() }
+        defer { scopes.forEach { $0.stopAccessingSecurityScopedResource() } }
+        // Processes are sampled once per scan, and only when Android devices are part of it.
+        if !avdRoots.isEmpty, activity == nil { activity = await sampleActivity() }
+        guard generation == token else { return nil }
+        guard !Task.isCancelled else {
+            finishScan(token: token, progress: report == nil && devicesReport == nil && storageReport == nil && aiToolsReport == nil
+                ? "Stopped · no resource scan started" : "Stopped · partial review")
+            return nil
         }
+        let request = DeveloperResourcesRequest(approvedFolders: approved, avdRoots: avdRoots,
+            gradleHomes: current.filter { $0.role == .gradle }.map(\.folder.url),
+            projectRoots: current.filter { $0.role == .project }.map(\.folder.url),
+            sdkRoots: current.filter { $0.role == .sdk }.map(\.folder.url),
+            derivedDataRoots: current.filter { $0.role == .xcode }.map(\.folder.url),
+            konanRoots: current.filter { $0.role == .konan }.map(\.folder.url),
+            simulatorDeviceRoots: current.filter { $0.role == .simulators }.map(\.folder.url),
+            simulatorRuntimeRoots: current.filter { $0.role == .simulatorRuntimes }.map(\.folder.url),
+            aiToolRoots: current.compactMap { location in
+                location.role.aiTool.map { DeveloperAIToolRoot(tool: $0, url: location.folder.url) }
+            }, scope: scope, activity: activity ?? .unknown)
+        let result = await scanResources(request) { [weak self] update in
+            Task { @MainActor [weak self] in
+                guard let self, self.generation == token, self.isScanningResources else { return }
+                self.resourceProgress = "\(update.phase) · \(update.inspectedCount.formatted()) items"
+                self.activityCenter?.reportScanLabel(.developer, label: update.phase, files: update.inspectedCount, bytes: 0)
+            }
+        }
+        if scope == .review { await unreferencedLoad?.value }
+        guard generation == token else { return nil }
+        switch scope {
+        case .devices: devicesReport = result
+        case .toolStorage: storageReport = result
+        case .aiTools: aiToolsReport = result
+        case .review: applyReview(result)
+        }
+        return result
+    }
+
+    private func mark(_ scope: DeveloperResourcesScope, _ state: RoomDeveloperScanPart.State, token: UUID) {
+        guard generation == token, let index = scanParts.firstIndex(where: { $0.scope == scope }) else { return }
+        scanParts[index].state = state
+    }
+
+    private func showWorktreesProgress(token: UUID) {
+        guard generation == token else { return }
+        resourceProgress = Self.worktreesProgress
+        activityCenter?.reportScanLabel(.developer, label: "Agent worktrees", files: 0, bytes: 0)
+    }
+
+    private func finishScan(token: UUID, progress: String) {
+        guard generation == token else { return }
+        isScanningResources = false
+        task = nil
+        for index in scanParts.indices where scanParts[index].state != .done { scanParts[index].state = .stopped }
+        activityCenter?.clear(.developer)
+        resourceProgress = progress
     }
 
     private func applyReview(_ result: DeveloperResourcesReport) {
@@ -396,7 +490,12 @@ final class RoomDeveloperModel {
         unreferenced = RoomDevUnreferenced()
     }
 
-    func stop() { task?.cancel(); progress = "Stopping…" }
+    func stop() {
+        if worktrees?.isScanning == true { worktrees?.stop() }
+        guard isScanningResources else { return }
+        task?.cancel()
+        resourceProgress = "Stopping…"
+    }
     private func persist() { if let data = try? JSONEncoder().encode(records) { defaults.set(data, forKey: key) } }
 }
 

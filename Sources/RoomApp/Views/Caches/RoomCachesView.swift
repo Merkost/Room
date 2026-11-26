@@ -97,11 +97,18 @@ struct RoomCachesView: View {
                 #if ROOM_APP_STORE
                 npmBatch
                 #endif
+                if model.isScanning, model.scanLocationCount > 0 {
+                    RoomScanSegments(done: model.scannedLocationCount, total: model.scanLocationCount)
+                        .transition(.opacity)
+                }
                 if model.hasReport || model.isScanning || model.isPartialScan {
                     RoomCachesPlaces(model: model, inspect: inspect, showKept: showKept,
                                      neverSuggest: model.ignoreStore != nil ? { neverSuggest($0) } : nil)
                         .opacity(model.isAfterRestore ? 0.6 : 1)
                 } else {
+                    startAction(hero: true)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, RoomTokens.Space.group)
                     startingPlaces
                     lastReceipt
                 }
@@ -124,12 +131,13 @@ struct RoomCachesView: View {
         } action: {
             HStack(spacing: RoomTokens.Space.group) {
                 if model.isScanning {
-                    Button("Stop", action: model.cancelScan).roomLink(accent).font(RoomTokens.Typography.bodyStrong)
+                    Button("Stop", action: model.cancelScan).roomQuiet(large: true)
                 } else if model.hasReport, !needsFolderApproval {
-                    Button("Check caches", action: model.scan).roomLink(accent).font(RoomTokens.Typography.bodyStrong)
+                    Button("Check again", action: model.scan).roomQuiet(large: true)
                         .disabled(!model.canScan)
                 }
-                if !model.isScanning { primary(hero) }
+                // Before the first check the button stands in the middle of the page, not here.
+                if !model.isScanning, model.hasReport || model.isPartialScan { primary(hero) }
             }
         }
         .foregroundStyle(RoomTokens.Ink.graphite)
@@ -174,13 +182,13 @@ struct RoomCachesView: View {
     @ViewBuilder
     private func primary(_ hero: RoomCachesHero) -> some View {
         if model.isAfterRestore || model.isPartialScan {
-            startAction
+            startAction(hero: false)
         } else {
             switch hero.primary {
             case .check, .checkAgain:
-                checkButton
+                checkButton(hero: false)
             case .chooseFolderAndCheck:
-                chooseFolderButton
+                chooseFolderButton(hero: false)
             case .review(let bytes):
                 if model.movedReceipt == nil || bytes > 0 {
                     Button(bytes > 0 ? "Review \(format(bytes))" : "Review", action: review)
@@ -193,11 +201,11 @@ struct RoomCachesView: View {
     }
 
     @ViewBuilder
-    private var startAction: some View {
-        if needsFolderApproval { chooseFolderButton } else { checkButton }
+    private func startAction(hero: Bool) -> some View {
+        if needsFolderApproval { chooseFolderButton(hero: hero) } else { checkButton(hero: hero) }
     }
 
-    private var chooseFolderButton: some View {
+    private func chooseFolderButton(hero: Bool) -> some View {
         Button {
             #if ROOM_APP_STORE
             model.chooseStoreFolder(scanAfterApproval: true)
@@ -208,16 +216,16 @@ struct RoomCachesView: View {
             Label(String(localized: "caches.action.choose", defaultValue: "Choose Folder & Check",
                 table: "Caches", bundle: RoomCopy.bundle), systemImage: "folder.badge.plus")
         }
-        .roomScreenPrimary(accent) // one-filled: exclusive with Check (Store folder approval)
+        .roomScreenPrimary(accent, hero: hero) // one-filled: exclusive with Check (Store folder approval)
         .disabled(!model.canScan)
     }
 
-    private var checkButton: some View {
+    private func checkButton(hero: Bool) -> some View {
         Button(action: model.scan) {
             Label(String(localized: "caches.action.check", defaultValue: "Check caches", table: "Caches",
                 bundle: RoomCopy.bundle), systemImage: "magnifyingglass")
         }
-        .roomScreenPrimary(accent)
+        .roomScreenPrimary(accent, hero: hero)
         .disabled(!model.canScan)
     }
 

@@ -74,6 +74,9 @@ struct RoomDiskMapView: View {
                 if let blueprint = model.blueprint,
                    insights.isScanningDisk || (blueprint.phase == .stopped && insights.diskReport?.cancelled == true &&
                        layout == .map && model.levelPath.isEmpty) {
+                    if insights.isScanningDisk, let total = blueprint.topLevelTotal, total > 0 {
+                        RoomScanSegments(done: blueprint.measuredCount, total: total)
+                    }
                     blueprintDetail(blueprint, isWide: isWide)
                 } else if let savedViewDisplay, !savedViewDisplay.showsMap {
                     savedViewPlaceholder(savedViewDisplay)
@@ -90,7 +93,7 @@ struct RoomDiskMapView: View {
                 } else {
                     folderStart
                 }
-                if showsMap, layout == .map, let level = model.level, !insights.isScanningDisk {
+                if showsMap, let level = model.level, !insights.isScanningDisk {
                     footer(level)
                 }
             }
@@ -134,6 +137,13 @@ struct RoomDiskMapView: View {
             selection.keep(only: Set(model.level?.children.map(\.relativePath) ?? []))
         }
         .onChange(of: hidden) { _, _ in protectionNote = nil }
+        .onChange(of: insights.isScanningDisk) { _, scanning in
+            // Ticks belong to the sizes on screen; a rescan, even a stopped one, starts without them.
+            if scanning {
+                selection.clear()
+                protectionNote = nil
+            }
+        }
         .onChange(of: model.levelPath) { _, path in
             selection.clear()
             protectionNote = nil
@@ -253,12 +263,13 @@ struct RoomDiskMapView: View {
         .background(RoomTokens.Surface.group, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.row))
     }
 
-    /// The mockup's crumb row carries nothing else, so the view switch, inspector, rescan, folders and saved views
-    /// share one quiet "View" menu at its right end (keyboard and menu bar commands are unchanged).
+    /// The mockup's crumb row carries nothing else, so the view switch, inspector, folders and saved views share one
+    /// quiet "View" menu at its right end (keyboard and menu bar commands are unchanged). Rescan sits in the footer.
     private func viewActions(isWide: Bool) -> some View {
         HStack(spacing: RoomTokens.Space.row) {
             if insights.isScanningDisk {
-                Button("Stop", action: insights.cancelDiskScan).roomLink(accent).font(RoomTokens.Typography.bodyStrong)
+                Button("Stop", action: insights.cancelDiskScan).roomQuiet(large: true)
+                    .accessibilityIdentifier("RoomDiskStopButton")
             }
             Menu {
                 if showsMap, model.current != nil, !insights.isScanningDisk {
@@ -270,9 +281,6 @@ struct RoomDiskMapView: View {
                     .pickerStyle(.inline)
                     let inspectorVisible = isWide ? !hidesWideInspector : showsInspector
                     Button(inspectorVisible ? "Hide Inspector" : "Show Inspector") { toggleInspector(isWide: isWide) }
-                    Button(rescanTitle, action: insights.rescanDisk)
-                        .disabled(!insights.canRescanDisk)
-                        .accessibilityIdentifier("RoomDiskScanButton")
                     Divider()
                 }
                 folders
@@ -427,7 +435,7 @@ struct RoomDiskMapView: View {
                                "Map “\(pending.lastPathComponent)” to see what takes up space.",
                            artwork: .map) {
                 Button("Map This Folder") { insights.scanDisk(url: pending) }
-                    .roomScreenPrimary(accent) // one-filled: exclusive start panel, shown only before a map exists
+                    .roomScreenPrimary(accent, hero: true) // one-filled: exclusive start panel, shown only before a map exists
                     .disabled(!insights.canChooseDiskLocation)
                     .accessibilityIdentifier("RoomDiskMapPendingFolder")
                 Button("Choose Another Folder…", action: insights.chooseDiskFolder)
@@ -439,9 +447,9 @@ struct RoomDiskMapView: View {
                            message: "Map a folder, including its hidden files. Your files stay in place.",
                            artwork: .map) {
                 Button(action: insights.chooseDiskFolder) {
-                    Label("Choose Folder…", systemImage: "folder")
+                    Label("Choose Folder & Map…", systemImage: "magnifyingglass")
                 }
-                .roomScreenPrimary(accent) // one-filled: exclusive start panel, shown only before a map exists
+                .roomScreenPrimary(accent, hero: true) // one-filled: exclusive start panel, shown only before a map exists
                 .disabled(!insights.canChooseDiskLocation)
                 .accessibilityIdentifier("RoomDiskChooseFolder")
                 if !insights.accessFolders.isEmpty {
@@ -598,14 +606,26 @@ struct RoomDiskMapView: View {
     }
 
     private func footer(_ level: RoomTreeNode) -> some View {
-        let rooms = diskRooms(level)
-        let bytes = selection.bytes(in: rooms.map(\.room))
-        let note = protectionNote ?? (!selection.isEmpty ? "Nothing moves without a review"
-            : ticksAvailable ? "Tick rooms to move them to Trash. ⌘-click works too" : "Room reads sizes only. Nothing moves from here")
-        return HStack(spacing: RoomTokens.Space.group) {
-            Text(note).font(RoomTokens.Typography.body).foregroundStyle(RoomTokens.Ink.secondary).lineLimit(1)
-            Spacer(minLength: 0)
-            if ticksAvailable, !selection.isEmpty {
+        let ticking = layout == .map && !selection.isEmpty
+        let rooms = layout == .map ? diskRooms(level) : []
+        let note = layout != .map ? "Room reads sizes only. Nothing moves from here"
+            : protectionNote ?? (ticking ? "Nothing moves without a review"
+                : ticksAvailable ? "Tick rooms to move them to Trash. ⌘-click works too" : "Room reads sizes only. Nothing moves from here")
+        let noteText = Text(note).font(RoomTokens.Typography.body).foregroundStyle(RoomTokens.Ink.secondary)
+        let actions = HStack(spacing: RoomTokens.Space.group) {
+            // A map whose folder access is gone cannot be rescanned; the access notice above carries that action.
+            if !model.hasLostAccess {
+                // While rooms are ticked the row is about them; mapping elsewhere stays in View > Folders.
+                if !ticking {
+                    Button("Map Another Folder…", action: insights.chooseDiskFolder)
+                        .roomLink(accent).font(RoomTokens.Typography.body)
+                        .disabled(!insights.canChooseDiskLocation)
+                        .accessibilityIdentifier("RoomDiskMapAnotherFolder")
+                }
+                rescanButton(quiet: ticking && ticksAvailable)
+            }
+            if ticksAvailable, ticking {
+                let bytes = selection.bytes(in: rooms.map(\.room))
                 Button("Move \(RoomCachesVisibility.figure(RoomFormat.gb(bytes), hidden: hidden)) to Trash") {
                     openFolderReview(rooms)
                 }
@@ -614,8 +634,36 @@ struct RoomDiskMapView: View {
                 .accessibilityHint("Opens a review. These are your own folders, not caches")
             }
         }
+        .fixedSize()
+        // The note is a safety line, so a narrow window moves it above the buttons rather than cutting it.
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: RoomTokens.Space.group) {
+                noteText.lineLimit(1).fixedSize()
+                Spacer(minLength: 0)
+                actions
+            }
+            VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
+                noteText.fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 0) {
+                    Spacer(minLength: 0)
+                    actions
+                }
+            }
+        }
         .frame(minHeight: RoomTokens.Overview.actionHeight)
         .padding(.top, RoomTokens.Space.row)
+    }
+
+    /// The screen's filled button, until rooms are ticked: then Move to Trash is, and this one steps back.
+    @ViewBuilder private func rescanButton(quiet: Bool) -> some View {
+        let button = Button(rescanTitle, action: insights.rescanDisk)
+            .disabled(!insights.canRescanDisk)
+            .accessibilityIdentifier("RoomDiskScanButton")
+        if quiet {
+            button.roomQuiet()
+        } else {
+            button.roomScreenPrimary(accent) // one-filled: exclusive with Move to Trash (quiet while rooms are ticked)
+        }
     }
 
     private func openFolderReview(_ rooms: [RoomDiskRoom]) {

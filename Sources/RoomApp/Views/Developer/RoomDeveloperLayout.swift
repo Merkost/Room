@@ -173,3 +173,46 @@ extension RoomDeveloperModel {
             partial: partial)
     }
 }
+
+extension RoomDeveloperModel {
+    /// One room per part of the scan, each with its size once that part has been read.
+    var scanTiles: [RoomScanTile] {
+        var tiles = scanParts.map { part in
+            let (title, glyph, section): (String, RoomGlyph, RoomDeveloperSection) = switch part.scope {
+            case .devices: ("Devices", .phone, .devices)
+            case .toolStorage: ("Storage", .box, .storage)
+            case .aiTools: ("AI tools", .spark, .aiTools)
+            default: ("Projects", .folder, .rooms)
+            }
+            let state: RoomScanTile.State = switch part.state {
+            case .waiting: .waiting
+            case .reading: .reading(fraction: nil)
+            case .done: .done
+            case .stopped: .stopped
+            }
+            var tile = RoomScanTile(id: title, title: title, glyph: glyph, state: state)
+            tile.value = RoomFormat.gb(headlineBytes(for: section))
+            tile.detail = Self.scanDetail(state)
+            return tile
+        }
+        if scanIncludedWorktrees {
+            // Worktrees are read alongside; a stopped scan marks the other parts, so it marks these too.
+            let state: RoomScanTile.State = worktrees?.isScanning == true ? .reading(fraction: nil)
+                : !isScanning && progress.hasPrefix("Stopped") ? .stopped : .done
+            var tile = RoomScanTile(id: "Worktrees", title: "Worktrees", glyph: .branch, state: state)
+            tile.value = worktrees?.measuredBytes.map { RoomFormat.gb($0) } ?? "Read"
+            tile.detail = Self.scanDetail(state)
+            tiles.append(tile)
+        }
+        return tiles
+    }
+
+    private static func scanDetail(_ state: RoomScanTile.State) -> String {
+        switch state {
+        case .waiting: "Next"
+        case .reading: "Reading"
+        case .stopped: "Stopped"
+        case .done, .skipped: ""
+        }
+    }
+}

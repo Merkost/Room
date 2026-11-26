@@ -16,8 +16,6 @@ struct RoomAgentWorkView: View {
         case all = "All", ready = "Ready", held = "Held"
     }
 
-    private var isReading: Bool { model.isScanning || model.verifyingID != nil }
-
     var body: some View {
         let items = model.items
         VStack(alignment: .leading, spacing: 18) {
@@ -35,16 +33,12 @@ struct RoomAgentWorkView: View {
                 .disabled(model.isWorking || model.isScanning || model.verifyingID != nil)
                 .accessibilityIdentifier("RoomAgentWorkAddProjectButton")
 
-                Button {
-                    if isReading { model.stop() } else { model.scan() }
-                } label: {
-                    Label(isReading ? "Stop" : model.report == nil ? "Scan Worktrees" : "Rescan Worktrees",
-                          systemImage: isReading ? "stop.fill" : model.report == nil ? "magnifyingglass" : "arrow.clockwise")
+                // Scanning belongs to Developer's one button; only a remote check keeps its own Stop here.
+                if model.verifyingID != nil {
+                    Button { model.stop() } label: { Label("Stop", systemImage: "stop.fill") }
+                        .roomSecondary()
+                        .accessibilityIdentifier("RoomAgentWorkStopButton")
                 }
-                .roomSecondary()
-                .tint(Color(red: 0.60, green: 0.79, blue: 0.91))
-                .disabled(model.isWorking)
-                .accessibilityIdentifier("RoomAgentWorkScanButton")
             }
             .font(.system(size: 13))
 
@@ -70,7 +64,7 @@ struct RoomAgentWorkView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(model.isScanning ? "Looking for local agent work." : "Bring work into view.")
                         .font(.system(size: 15, weight: .medium))
-                    Text("Scan agent worktrees or add a repository. Remote verification runs only when you request it.")
+                    Text("Scan all or add a repository. Remote verification runs only when you request it.")
                         .font(.system(size: 13)).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }

@@ -441,7 +441,7 @@ final class RoomInsightsModel {
         ["Pictures", "Music"].map { suggestedHome.appendingPathComponent($0, isDirectory: true) }
     }
 
-    private func isHomeFolder(_ url: URL) -> Bool {
+    func isHomeFolder(_ url: URL) -> Bool {
         url.standardizedFileURL.path == suggestedHome.standardizedFileURL.path
     }
 

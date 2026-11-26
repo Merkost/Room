@@ -34,7 +34,8 @@ struct RoomDeveloperModelTests {
         #expect(!model.locations.contains { $0.role == .simulators })
         model.section = .aiTools
         #expect(model.folderSuggestions.map(\.role) == RoomDeveloperFolderRole.aiRoles)
-        #expect(!model.canScan)
+        // One scan reads every section, so a folder chosen for another section is enough.
+        #expect(model.canScan == !model.locations.isEmpty)
     }
 
     @Test func unreferencedDatesPersistAndOnlyCompleteScansChangeThem() throws {

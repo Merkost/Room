@@ -101,6 +101,8 @@ final class AgentWorkModel {
 
     func stop() { scanTask?.cancel(); verifyTask?.cancel() }
 
+    func waitForScan() async { await scanTask?.value }
+
     func shutdown() {
         generation = UUID()
         scanTask?.cancel()
@@ -285,6 +287,11 @@ final class AgentWorkModel {
         return a.st_dev == b.st_dev && a.st_ino == b.st_ino && a.st_uid == getuid() && b.st_uid == getuid()
             && a.st_mode & UInt16(S_IFMT) == UInt16(S_IFDIR) && b.st_mode & UInt16(S_IFMT) == UInt16(S_IFDIR)
     }
+}
+
+extension AgentWorkModel: RoomDeveloperWorktreeScanning {
+    var isBusy: Bool { isWorking || verifyingID != nil }
+    var measuredBytes: Int64? { report?.items.reduce(Int64(0)) { $0 + $1.allocatedBytes } }
 }
 
 #endif
