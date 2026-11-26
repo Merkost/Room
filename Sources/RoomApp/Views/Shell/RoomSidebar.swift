@@ -28,6 +28,7 @@ struct RoomSidebar: View {
     var developerSection: RoomDeveloperSection = .rooms
     var selectDeveloperSection: (RoomDeveloperSection) -> Void = { _ in }
     var openGoTo: (_ keyboard: Bool) -> Void = { _ in }
+    var fold: () -> Void = {}
 
     @Environment(\.roomMotion) private var motion
     @Environment(\.roomHide) private var hide
@@ -37,6 +38,9 @@ struct RoomSidebar: View {
     @State private var lastPeekEnded: Date?
     @Environment(\.roomAccent) private var accent
     @FocusState private var focusedScreen: RoomDestination?
+    /// The panel itself holds focus when no row does, so the window always has a focused view (the menu bar's
+    /// screen commands read the scene's focused values) and 1 to 7, the arrows, K and H work from the first frame.
+    @FocusState private var panelFocused: Bool
     @Namespace private var selection
     @State private var commandHeld = false
 
@@ -51,9 +55,10 @@ struct RoomSidebar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            lightsRow
             RoomGoToField(labelled: labelled) { openGoTo(RoomSelectionOrigin.controlActivation == .keyboard) }
-                .padding(.horizontal, 2)
-                .padding(.bottom, RoomTokens.Space.inner)
+                .padding(.horizontal, labelled ? 2 : 8)
+                .padding(.bottom, RoomTokens.Nav.goBottom)
             ScrollView {
                 VStack(alignment: .leading, spacing: RoomTokens.Nav.rowGap) {
                     ForEach([RoomSidebarPlan.Group.yourMac, .makeRoom, .rightNow], id: \.self) { group in
@@ -83,18 +88,88 @@ struct RoomSidebar: View {
                                      couldGoBytes: plate.couldGoBytes, belowGoal: plate.belowGoal)
                     .padding(.top, RoomTokens.Space.inner)
                     .transition(.opacity)
+            } else if let meter = RoomNameplateMeter.make(capacityBytes: plate.capacityBytes, freeBytes: plate.freeBytes,
+                                                         couldGoBytes: plate.couldGoBytes) {
+                // The rail keeps the meter (mockup `.rail .plate`: name and line fade, the meter stays).
+                RoomNameplateMeterView(meter: meter)
+                    .padding(.horizontal, 6)
+                    .padding(.top, RoomTokens.Space.group)
+                    .padding(.bottom, RoomTokens.Space.tight)
+                    .overlay(alignment: .top) { Rectangle().fill(RoomTokens.Surface.line).frame(height: 0.5) }
+                    .transition(.opacity)
             }
         }
         .padding(.horizontal, RoomTokens.Nav.columnPadding)
-        .padding(.top, RoomTokens.Space.tight)
-        .padding(.bottom, RoomTokens.Space.inner)
+        .padding(.top, RoomTokens.Nav.panelTop)
+        .padding(.bottom, RoomTokens.Nav.panelBottom)
         .frame(maxHeight: .infinity, alignment: .top)
+        .background(RoomTrafficLights(hidden: !labelled))
+        .overlayPreferenceValue(RoomPeekAnchorKey.self) { anchor in
+            GeometryReader { geometry in
+                if let anchor, !labelled {
+                    let rect = geometry[anchor.bounds]
+                    let place = anchor.place
+                    peek(place, value: RoomSidebarValue.make(place, values), row: activity[place] ?? RoomRowActivity())
+                        .fixedSize()
+                        .background(RoomTokens.Surface.glass, in: RoundedRectangle(cornerRadius: RoomTokens.Nav.peekRadius, style: .continuous))
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: RoomTokens.Nav.peekRadius, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: RoomTokens.Nav.peekRadius, style: .continuous)
+                            .strokeBorder(RoomTokens.Surface.line, lineWidth: 0.5))
+                        .shadow(color: RoomTokens.Surface.panelShadow, radius: 14, y: 10)
+                        .frame(height: rect.height)
+                        .offset(x: geometry.size.width + RoomTokens.Nav.peekGap, y: rect.minY)
+                        .transition(.roomPeek(motion))
+                        .id(place)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+            }
+        }
+        .focusable()
+        .focusEffectDisabled()
+        .focused($panelFocused)
+        .onAppear { if focusedScreen == nil { panelFocused = true } }
+        .onKeyPress(.upArrow) { step(-1); return .handled }
+        .onKeyPress(.downArrow) { step(1); return .handled }
+        .onKeyPress(characters: CharacterSet(charactersIn: "kKhH"), phases: .down) { press in
+            guard press.modifiers.isEmpty else { return .ignored }
+            if press.characters.lowercased() == "k" { openGoTo(true) } else { RoomHideControl.shared.toggle() }
+            return .handled
+        }
+        .onKeyPress(characters: .decimalDigits, phases: .down) { press in
+            guard press.modifiers.isEmpty, let number = Int(press.characters),
+                  let target = RoomSidebarPlan.place(forShortcut: number) else { return .ignored }
+            select(target, origin: .keyboard)
+            return .handled
+        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Room places")
         .onModifierKeysChanged(mask: .command, initial: true) { _, keys in commandHeld = keys.contains(.command) }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
             commandHeld = false
         }
+    }
+
+    /// The window's traffic lights sit in this row (drawn by the system); the fold button is on its right. On the rail
+    /// the lights step aside and the fold button takes the row's centre (mockup `.rail .lights`).
+    private var lightsRow: some View {
+        HStack(spacing: 0) {
+            if labelled { Spacer(minLength: 0) }
+            Button(action: fold) {
+                RoomGlyphView(glyph: .fold, size: 16, weight: 1.3)
+                    .foregroundStyle(RoomTokens.Ink.secondary)
+                    .frame(width: RoomTokens.Nav.foldSize, height: RoomTokens.Nav.foldSize)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(RoomHoverButtonStyle(cornerRadius: RoomTokens.Nav.foldRadius))
+            .help(labelled ? "Collapse sidebar (⌃⌘S)" : "Expand sidebar (⌃⌘S)")
+            .accessibilityLabel(labelled ? "Collapse sidebar" : "Expand sidebar")
+            .padding(.trailing, labelled ? 6 : 0)
+            .offset(y: labelled ? RoomTokens.Nav.foldLift : 0)
+        }
+        .frame(maxWidth: .infinity, alignment: labelled ? .trailing : .center)
+        .frame(height: RoomTokens.Nav.lightsRow - RoomTokens.Nav.lightsBottom + RoomTokens.Nav.lightsBottom / 2)
+        .padding(.bottom, RoomTokens.Nav.lightsBottom / 2)
     }
 
     private func placeRow(_ place: RoomDestination) -> some View {
@@ -124,10 +199,8 @@ struct RoomSidebar: View {
             }
         }
         .onHover { inside in hover(place, inside: inside) }
-        .popover(isPresented: Binding(get: { peekPlace == place && !labelled },
-                                      set: { if !$0, peekPlace == place { peekPlace = nil } }),
-                 arrowEdge: .trailing) {
-            peek(place, value: value, row: row)
+        .anchorPreference(key: RoomPeekAnchorKey.self, value: .bounds) { anchor in
+            peekPlace == place && !labelled ? RoomPeekAnchor(place: place, bounds: anchor) : nil
         }
         .focused($focusedScreen, equals: place)
         .onKeyPress(.return) { select(place, origin: .keyboard); return .handled }
@@ -176,11 +249,14 @@ struct RoomSidebar: View {
             peekTask?.cancel()
             let warm = peekPlace != nil || (lastPeekEnded.map { Date().timeIntervalSince($0) < RoomTokens.Nav.peekWarm } ?? false)
             if warm {
-                peekPlace = place
+                // The rest are instant (mockup `.peek.instant`).
+                withAnimation(nil) { peekPlace = place }
             } else {
                 peekTask = Task { @MainActor in
                     do { try await Task.sleep(for: RoomTokens.Nav.peekDelay) } catch { return }
-                    if hoveredPlace == place { peekPlace = place }
+                    if hoveredPlace == place {
+                        withAnimation(motion.animation(RoomTokens.Motion.peek, fallback: RoomTokens.Motion.fade)) { peekPlace = place }
+                    }
                 }
             }
         } else {
@@ -188,7 +264,7 @@ struct RoomSidebar: View {
             peekTask?.cancel()
             if peekPlace == place {
                 lastPeekEnded = Date()
-                peekPlace = nil
+                withAnimation(motion.animation(RoomTokens.Motion.peekOut, fallback: RoomTokens.Motion.fade)) { peekPlace = nil }
             }
         }
     }
@@ -245,11 +321,11 @@ struct RoomSidebar: View {
                 .foregroundStyle(RoomTokens.Ink.tertiary)
                 .lineLimit(1)
                 .padding(.horizontal, RoomTokens.Space.inner + 2)
-                .padding(.top, first ? 0 : RoomTokens.Nav.groupTop)
+                .padding(.top, RoomTokens.Nav.groupTop)
                 .padding(.bottom, RoomTokens.Nav.groupBottom)
                 .accessibilityAddTraits(.isHeader)
         } else if !first {
-            Color.clear.frame(height: RoomTokens.Space.inner)
+            Color.clear.frame(height: RoomTokens.Nav.railGroupGap)
         }
     }
 }
@@ -261,4 +337,48 @@ nonisolated struct NavigationItem: Identifiable, Sendable {
     let shortcut: Character?
     var id: String { destination.rawValue }
     var help: String { shortcut.map { "\(title) (⌘\($0))" } ?? title }
+}
+
+/// The window's close, minimise and zoom buttons sit in the panel's top row (the shell keeps an empty unified toolbar
+/// so the title bar is 52 pt tall and centres them there); they step aside while the sidebar is a rail (mockup
+/// `.rail .lights i`).
+private struct RoomTrafficLights: NSViewRepresentable {
+    let hidden: Bool
+    func makeNSView(context: Context) -> NSView { NSView() }
+    func updateNSView(_ view: NSView, context: Context) {
+        let hidden = hidden
+        DispatchQueue.main.async {
+            guard let window = view.window else { return }
+            for kind in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
+                window.standardWindowButton(kind)?.isHidden = hidden
+            }
+        }
+    }
+}
+
+/// Where the rail's peek points: the hovered row's bounds.
+struct RoomPeekAnchor {
+    let place: RoomDestination
+    let bounds: Anchor<CGRect>
+}
+
+struct RoomPeekAnchorKey: PreferenceKey {
+    static let defaultValue: RoomPeekAnchor? = nil
+    static func reduce(value: inout RoomPeekAnchor?, nextValue: () -> RoomPeekAnchor?) {
+        value = value ?? nextValue()
+    }
+}
+
+/// The peek is glass that arrives (mockup `.peek`): from 6 pt left and 97 %, anchored on its leading edge.
+private struct RoomPeekArrival: ViewModifier {
+    let shown: Bool
+    func body(content: Content) -> some View {
+        content.offset(x: shown ? 0 : -6).scaleEffect(shown ? 1 : 0.97, anchor: .leading).opacity(shown ? 1 : 0)
+    }
+}
+
+extension AnyTransition {
+    @MainActor static func roomPeek(_ motion: RoomMotionPolicy) -> AnyTransition {
+        motion.isFull ? .modifier(active: RoomPeekArrival(shown: false), identity: RoomPeekArrival(shown: true)) : .opacity
+    }
 }

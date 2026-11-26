@@ -50,6 +50,7 @@ struct RoomDeveloperView: View {
     private var section: RoomDeveloperSection { model.section }
     @State private var showingFolders = false
     @State private var showingNotes = false
+    @State private var showingDetail = false
     private let confirmationPrefix = "developer/remove/"
 
     private var availability: RoomDeveloperAvailability {
@@ -102,7 +103,7 @@ struct RoomDeveloperView: View {
                     Button(model.canScan ? "Scan projects" : "Choose projects folder…") {
                         if model.canScan { model.scan() } else { model.addFolder(role: .project) }
                     }
-                    .roomPrimary(accent) // one-filled: exclusive intro, shown only before the first scan
+                    .roomScreenPrimary(accent) // one-filled: exclusive intro, shown only before the first scan
                     .disabled(model.isScanning || model.isChoosingFolder)
                     .accessibilityIdentifier("RoomDeveloperScanButton")
                 }
@@ -120,7 +121,7 @@ struct RoomDeveloperView: View {
                 let words = words
                 RoomScreenFrame(headline: words.headline, supporting: model.isScanning ? model.progress : words.supporting,
                                 note: section == .storage ? "Builds can always be made again" : "Room only reads sizes; nothing here moves",
-                                scrollsEvidence: true) {
+                                scrollsEvidence: true, entersEvidence: false) {
                     sectionContent.roomPanelChange(section)
                 } action: {
                     if showsResourceActions { scanControls }
@@ -221,20 +222,58 @@ struct RoomDeveloperView: View {
         .disabled(!model.isScanning && !model.canScan)
         .accessibilityIdentifier("RoomDeveloperScanButton")
         // The one filled button on the screen; while a scan runs, Stop is the quiet one.
-        if model.isScanning { button.roomSecondary() } else { button.roomPrimary(accent) }
+        if model.isScanning { button.roomQuiet() } else { button.roomScreenPrimary(accent) }
+    }
+
+    /// Each room leads with its largest things (mockup), and keeps the full review one click away in More detail.
+    private var largest: [RoomDeveloperLargestRow] {
+        switch section {
+        case .rooms: RoomDeveloperLargest.projects(model.summary)
+        case .matrix: RoomDeveloperLargest.toolchains(model.report)
+        case .devices: RoomDeveloperLargest.devices(model.devicesReport)
+        case .storage: RoomDeveloperLargest.storage(model.storageReport)
+        case .aiTools: RoomDeveloperLargest.aiTools(model.aiToolsReport)
+        #if !ROOM_APP_STORE
+        case .worktrees: RoomDeveloperLargest.worktrees(agentWork.report)
+        #endif
+        }
+    }
+
+    private var emptyLine: String {
+        switch section {
+        case .rooms: "No project builds found yet"
+        case .matrix: "No toolchains found yet"
+        case .devices: "No virtual devices in the chosen folders"
+        case .storage: "No tool storage in the chosen folders"
+        case .aiTools: "No AI tool folders chosen yet"
+        #if !ROOM_APP_STORE
+        case .worktrees: "No agent worktrees found"
+        #endif
+        }
     }
 
     @ViewBuilder private var sectionContent: some View {
-        switch section {
-        case .rooms, .matrix, .devices, .storage, .aiTools:
-            VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
-                review
-                if section != .aiTools || !model.sectionLocations.isEmpty { folderControls(quiet: false) }
+        VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
+            RoomDeveloperLargestList(rows: largest, empty: emptyLine)
+            DisclosureGroup("More detail", isExpanded: $showingDetail) {
+                Group {
+                    switch section {
+                    case .rooms, .matrix, .devices, .storage, .aiTools:
+                        VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
+                            review
+                            if section != .aiTools || !model.sectionLocations.isEmpty { folderControls(quiet: false) }
+                        }
+                    #if !ROOM_APP_STORE
+                    case .worktrees:
+                        RoomAgentWorkView(model: agentWork, memoryReport: memoryReport)
+                    #endif
+                    }
+                }
+                .padding(.top, RoomTokens.Space.row)
             }
-        #if !ROOM_APP_STORE
-        case .worktrees:
-            RoomAgentWorkView(model: agentWork, memoryReport: memoryReport)
-        #endif
+            .font(RoomTokens.Typography.body)
+            .foregroundStyle(RoomTokens.Ink.secondary)
+            .roomEnter(2 + min(largest.count, RoomDeveloperLargest.limit))
         }
     }
 
@@ -451,7 +490,7 @@ struct RoomDeveloperView: View {
     }
 }
 
-private extension DeveloperStorageKind {
+extension DeveloperStorageKind {
     var title: String {
         switch self {
         case .gradleDaemon: "Gradle Daemon Data"

@@ -130,7 +130,9 @@ struct RoomOverviewFloorPlanView: View {
             .animation(motion.animation(RoomTokens.Motion.room, fallback: nil), value: widths)
             .animation(motion.animation(RoomTokens.Motion.quick, fallback: nil), value: hovered)
         }
-        .frame(height: RoomTokens.Screen2.planHeight)
+        // At least the mockup's 226 pt; a taller window gives the plan the extra room instead of an empty band.
+        .frame(minHeight: RoomTokens.Screen2.planHeight, maxHeight: RoomTokens.Screen2.planMaxHeight)
+        .layoutPriority(1)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Floor plan of this Mac")
     }

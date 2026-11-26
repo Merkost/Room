@@ -6,7 +6,7 @@ nonisolated enum RoomSidebarMode: Equatable, Sendable { case labelled, iconsOnly
 /// icons-only automatically and comes back when wider; the person's own choice (⌃⌘S) is remembered. The divider is
 /// not draggable (D-FND-1): the column has one fixed width per mode.
 nonisolated enum RoomSidebarLayout {
-    static let labelledWidth: CGFloat = 248
+    static let labelledWidth: CGFloat = 256
     static let iconsWidth: CGFloat = 62
     static let autoCollapseBelow: CGFloat = 900
     static let rowHeight: CGFloat = 38

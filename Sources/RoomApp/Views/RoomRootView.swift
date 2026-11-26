@@ -56,6 +56,10 @@ struct RoomRootView: View {
     @State private var madeToast: RoomMadeToastState?
     @State private var folderTrash = RoomFolderTrashModel()
     @State private var showsGoTo = false
+    /// The cleanup review, drawn in the window over a scrim (mockup `.sheet`).
+    @State private var review: RoomReviewKind?
+    @State private var reviewByKeyboard = false
+    @State private var goToByKeyboard = false
 
     private var commandItems: [RoomCommandBar.Item] {
         RoomCommandBar.items(values: sidebarValues, developerRooms: RoomDeveloperSection.allCases.map(\.rawValue))
@@ -77,7 +81,7 @@ struct RoomRootView: View {
                                        of: model.scanLocationCount, clearableBytes: model.clearableBytes,
                                        unreadable: model.scanIssues.count),
          .developer: RoomRowSignals.developer(isScanning: developer.isScanning, progress: developer.progress,
-                                              totalBytes: developer.totalBytes,
+                                              totalBytes: developer.headline.total,
                                               projects: developer.report?.projects.count ?? 0,
                                               error: developer.errorMessage),
          .disk: RoomRowSignals.diskMap(isScanning: insights.isScanningDisk,
@@ -106,9 +110,19 @@ struct RoomRootView: View {
                                mappedFolders: insights.diskMap.current?.tree.children.count,
                                cachesChecked: model.hasReport && !model.isScanning,
                                cachesReclaimableBytes: model.clearableBytes,
-                               developerBytes: developer.totalBytes,
+                               developerBytes: developerHeadlineBytes,
                                memorySamples: sidebarMemory,
                                receipts: allActivity.count)
+    }
+
+    /// The Developer row shows the figure the Developer screen's headline shows for the room it opens on.
+    private var developerHeadlineBytes: Int64 {
+        #if ROOM_APP_STORE
+        developer.headlineBytes(for: developer.section)
+        #else
+        developer.headlineBytes(for: developer.section,
+                                worktreesBytes: agentWork.report?.items.reduce(Int64(0)) { $0 + $1.allocatedBytes } ?? 0)
+        #endif
     }
 
     /// What Make room would give back: the cache moves a completed check found eligible.
@@ -175,8 +189,10 @@ struct RoomRootView: View {
                       selectDeveloperSection: selectDeveloperSection,
                       openGoTo: { openGoTo(keyboard: $0) }) {
             RoomScreenScaffold(title: screenActions.title, subtitle: screenSubtitle,
-                               scrolls: !Self.framedDestinations.contains(destination)) {
+                               scrolls: !Self.framedDestinations.contains(destination), chip: AnyView(statusChip)) {
                 screenContent
+                    .environment(\.roomEnter, RoomEnterContext(animated: navigation.selectionOrigin == .pointer,
+                                                                at: navigation.changedAt))
             }
             .overlay(alignment: .bottom) {
                 if let madeToast {
@@ -185,52 +201,35 @@ struct RoomRootView: View {
                                     && !model.isWorking && !model.isScanning,
                                   restore: restoreFromToast)
                         .padding(.bottom, RoomTokens.Screen2.toastBottom)
-                        .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity),
-                                                removal: .opacity))
+                        .transition(.roomToast(motion))
                 }
             }
             .animation(motion.animation(RoomTokens.Motion.ui, fallback: RoomTokens.Motion.fade), value: madeToast)
         }
         .overlay {
             if showsGoTo {
-                RoomCommandBarView(items: commandItems, close: { closeGoTo(keyboard: true) }, run: runCommand)
-                    .transition(.opacity.combined(with: .scale(scale: motion.isFull ? 0.96 : 1, anchor: .top)))
+                RoomCommandBarView(items: commandItems, close: { closeGoTo(keyboard: true) }, run: runCommand,
+                                   animated: !goToByKeyboard)
+                    .transition(.opacity)
             }
         }
         .preferredColorScheme(colorScheme)
         .focusedSceneValue(\.roomScreen, screenActions)
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                // The pill carries status on every screen; the free-space figure lives in the hero (Overview) or the sidebar foot.
-                RoomActivityPill(stop: stopActivity, restore: restoreActivity,
-                                 showHistory: { navigation.select(.screen(.history), origin: .controlActivation) },
-                                 prefersQuietIdleLabel: true)
-            }
-            .sharedBackgroundVisibility(.hidden)
-            ToolbarItemGroup(placement: .primaryAction) {
-                if destination == .overview {
-                    Button { showingCustomise.toggle() } label: {
-                        Label("Customise", systemImage: "slider.horizontal.3")
-                            .labelStyle(.titleAndIcon)
-                    }
-                    .help("Customise Overview")
-                    .accessibilityIdentifier("RoomCustomiseOverview")
-                    .popover(isPresented: $showingCustomise) {
-                        RoomCustomisePopover(rooms: rooms, capacityBytes: insights.volumeCapacity?.capacityBytes ?? 210_000_000_000,
-                            selected: $editingRoom, hidden: hide.masksNow,
-                            canChoosePlanStyle: RoomOverviewStyle.isAvailable(homeKinds: insights.homeKinds),
-                            hasRecentReceipts: model.makeRoomStore != nil)
-                    }
-                }
+        .roomSheetOverlay(isPresented: review != nil, animated: !reviewByKeyboard) {
+            switch review {
+            case .caches:
+                RoomCleanupReviewSheet(model: model, close: closeReview)
+            case .map(let context):
+                RoomCleanupReviewSheet(model: model, mapCleanup: context.request, canAccessMapCleanup: {
+                    canAccessMapCleanup(context)
+                }, close: closeReview)
+            case nil:
+                EmptyView()
             }
         }
         .sheet(item: $sheet, onDismiss: performOnboardingFollowUp) { selected in
             switch selected {
-            case .review: RoomCleanupReviewSheet(model: model)
-            case .mapCleanup(let context):
-                RoomCleanupReviewSheet(model: model, mapCleanup: context.request, canAccessMapCleanup: {
-                    canAccessMapCleanup(context)
-                })
+            case .review, .mapCleanup: EmptyView()
             case .source(let source): RoomSourceSheet(source: source, model: model)
             case .welcome:
                 RoomOnboardingView(capacity: insights.volumeCapacity, isWorking: isOnboardingBusy(),
@@ -312,6 +311,20 @@ struct RoomRootView: View {
         }
     }
 
+    /// The bar's status chip (mockup `.chip`): "Up to date" or "Working", with its activity popover. Customise Overview
+    /// (View menu, ⌥⌘C) opens from here now that the toolbar is gone.
+    private var statusChip: some View {
+        RoomActivityPill(stop: stopActivity, restore: restoreActivity,
+                         showHistory: { navigation.select(.screen(.history), origin: .controlActivation) },
+                         prefersQuietIdleLabel: true)
+            .popover(isPresented: $showingCustomise, arrowEdge: .bottom) {
+                RoomCustomisePopover(rooms: rooms, capacityBytes: insights.volumeCapacity?.capacityBytes ?? 210_000_000_000,
+                    selected: $editingRoom, hidden: hide.masksNow,
+                    canChoosePlanStyle: RoomOverviewStyle.isAvailable(homeKinds: insights.homeKinds),
+                    hasRecentReceipts: model.makeRoomStore != nil)
+            }
+    }
+
     /// The welcome's effects (RoomOnboardingFlow). Skip always closes; a choice waits while work is running.
     private func finishWelcome(_ effects: [RoomOnboardingEffect]) -> Bool {
         guard effects == RoomOnboardingFlow.skipEffects || !isOnboardingBusy() else { return false }
@@ -374,9 +387,9 @@ struct RoomRootView: View {
             RoomOverviewScreen(insights: insights,
                                navigate: { navigation.select(.screen($0), origin: .controlActivation) },
                                refresh: insights.refreshDiskCapacity, cacheModel: model,
-                               developerBytes: developer.totalBytes, makeRoom: startMakeRoom)
+                               developerBytes: developer.headline.total, makeRoom: startMakeRoom)
         case .clean:
-            RoomCachesView(model: model, review: { sheet = .review },
+            RoomCachesView(model: model, review: { openReview(.caches) },
                 inspect: { sheet = .source($0) }, showKept: { sheet = .protectedSources },
                 showScanNotes: { sheet = .scanIssues }, restore: restoreFromCaches,
                 agentWorktreeBytes: heavyAgentWorktreeBytes, reviewWorktrees: reviewAgentWorktrees)
@@ -451,8 +464,8 @@ struct RoomRootView: View {
         case .check, .empty: model.scan()
         case .review:
             if let request = model.makeMapCleanup(at: target.url, includesContents: target.includesContents) {
-                sheet = .mapCleanup(RoomMapCleanupContext(request: request, target: target, route: navigation.route,
-                                                        approvalID: folder.id))
+                openReview(.map(RoomMapCleanupContext(request: request, target: target, route: navigation.route,
+                                                      approvalID: folder.id)))
             }
         case .checking, nil: break
         }
@@ -498,11 +511,21 @@ struct RoomRootView: View {
         }
     }
 
+    private func openReview(_ kind: RoomReviewKind) {
+        reviewByKeyboard = RoomSelectionOrigin.controlActivation == .keyboard
+        review = kind
+    }
+
+    private func closeReview() {
+        reviewByKeyboard = RoomSelectionOrigin.controlActivation == .keyboard
+        review = nil
+    }
+
     /// Make room: the review sheet in front of every move, with the recommended places chosen.
     private func startMakeRoom() {
         guard !model.isScanning, !model.isWorking, model.hasReport else { return }
         if !model.canReviewCleanup { model.selectRecommended() }
-        if model.canReviewCleanup { sheet = .review }
+        if model.canReviewCleanup { openReview(.caches) }
     }
 
     private func restoreFromCaches(_ record: RoomActivity) {
@@ -515,7 +538,8 @@ struct RoomRootView: View {
 
     /// Go to opens instantly from the keyboard and with the UI spring from the pointer.
     private func openGoTo(keyboard: Bool) {
-        let animation = keyboard ? nil : motion.animation(RoomTokens.Motion.ui, fallback: RoomTokens.Motion.fade)
+        goToByKeyboard = keyboard
+        let animation = keyboard ? nil : motion.animation(RoomTokens.Motion.scrim, fallback: RoomTokens.Motion.fade)
         withAnimation(animation) { showsGoTo.toggle() }
     }
 
@@ -622,10 +646,22 @@ struct RoomRootView: View {
         dismissAlert()
         switch action {
         case .checkAgain: model.scan()
-        case .reviewAgain: if model.canReviewCleanup { sheet = .review }
+        case .reviewAgain: if model.canReviewCleanup { openReview(.caches) }
         case .showSkipped, .showWhy: navigation.select(.screen(.history), origin: .programmatic)
         case .showInTrash: model.openTrash()
         case .ok: break
+        }
+    }
+}
+
+private enum RoomReviewKind: Equatable {
+    case caches
+    case map(RoomMapCleanupContext)
+    static func == (a: Self, b: Self) -> Bool {
+        switch (a, b) {
+        case (.caches, .caches): true
+        case (.map(let x), .map(let y)): x.request == y.request
+        default: false
         }
     }
 }

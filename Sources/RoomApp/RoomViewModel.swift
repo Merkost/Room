@@ -806,7 +806,7 @@ final class RoomViewModel {
             return RoomSource(
                 id: key,
                 name: title,
-                subtitle: familySubtitle(key),
+                subtitle: familySubtitle(key, fallback: groups.count == 1 ? groups.first?.subtitle : nil),
                 path: paths,
                 notes: ([consequences, eligibilityNote] + reasons + issues).filter { !$0.isEmpty }.joined(separator: "\n\n"),
                 symbol: groups.first?.symbol ?? "shippingbox",
@@ -852,7 +852,20 @@ final class RoomViewModel {
         selection = selection.filter { !selectedIDs(for: $0).isEmpty }
     }
 
+    #if DEBUG
+    /// Screenshot fixture only: History shows these receipts instead of the engine's.
+    var debugActivity: [RoomActivity]?
+    /// Screenshot fixture only: shows a finished check without reading any folder.
+    func debugInstall(_ result: ScanReport) {
+        apply(result, selectInitially: true)
+        selectRecommended()
+    }
+    #endif
+
     func refreshHistory() async {
+        #if DEBUG
+        if let debugActivity { activity = debugActivity; return }
+        #endif
         #if ROOM_APP_STORE
         if !usesInjectedEngine { recoveryEngine = Self.makeStoreEngine(approvedFolders: fileAccess.folders.map(\.url)) }
         #endif
@@ -1103,7 +1116,7 @@ final class RoomViewModel {
          "lmstudio-render": "LM Studio interface"][id] ?? fallback
     }
 
-    private func familySubtitle(_ id: String) -> String {
+    private func familySubtitle(_ id: String, fallback: String? = nil) -> String {
         if id == "npm-downloads" { return "Verified objects in the current batch" }
         if id.hasPrefix("store-selected-") { return "Approved folder · inspect only" }
         if let managed = Self.managedFamilies[id] { return managed.subtitle }
@@ -1124,7 +1137,7 @@ final class RoomViewModel {
          "discovered-hidden-caches": "Hidden caches, models, and tools · inspect only",
          "discovered-temporary": "Other temporary items · inspect only",
          "discovered-logs": "App diagnostics · inspect only",
-         "discovered-user-cache": "Per-user macOS caches · inspect only"][id] ?? "Measured cache data"
+         "discovered-user-cache": "Per-user macOS caches · inspect only"][id] ?? fallback.flatMap { $0.isEmpty ? nil : $0 } ?? "Measured cache data"
     }
 
     private static let managedFamilies: [String: (title: String, subtitle: String)] = [

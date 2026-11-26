@@ -6,8 +6,12 @@ struct RoomCommandBarView: View {
     let close: () -> Void
     /// Runs an item; `keyboard` is true for Return (keyboard actions never animate).
     let run: (RoomCommandBar.Item, Bool) -> Void
+    /// Opened by the pointer: the glass arrives (mockup `.pal`); from the keyboard it is simply there.
+    var animated = true
 
     @State private var bar = RoomCommandBar()
+    @State private var arrived = false
+    @Environment(\.roomMotion) private var motion
     @FocusState private var fieldFocused: Bool
     @Environment(\.roomAccent) private var accent
     @Environment(\.roomHide) private var hide
@@ -55,13 +59,26 @@ struct RoomCommandBarView: View {
             }
             .padding(8)
             .frame(width: RoomTokens.Screen2.commandWidth)
-            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.sheet))
+            .background(RoomTokens.Surface.sheetGlass, in: RoundedRectangle(cornerRadius: RoomTokens.Screen2.commandRadius, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: RoomTokens.Screen2.commandRadius, style: .continuous)
+                .strokeBorder(RoomTokens.Surface.line, lineWidth: 0.5))
+            .shadow(color: RoomTokens.Surface.panelShadow, radius: 30, y: 30)
+            .offset(y: arrived || !motion.isFull ? 0 : -10)
+            .scaleEffect(arrived || !motion.isFull ? 1 : 0.96, anchor: UnitPoint(x: 0.12, y: 0))
+            .opacity(arrived ? 1 : 0)
             .padding(.top, RoomTokens.Screen2.commandTop)
             .accessibilityElement(children: .contain)
             .accessibilityAddTraits(.isModal)
             .accessibilityLabel("Go to")
         }
-        .onAppear { fieldFocused = true }
+        .onAppear {
+            fieldFocused = true
+            if animated {
+                withAnimation(motion.animation(RoomTokens.Motion.glass, fallback: RoomTokens.Motion.fade)) { arrived = true }
+            } else {
+                arrived = true
+            }
+        }
     }
 
     private func row(_ item: RoomCommandBar.Item, highlighted: Bool) -> some View {

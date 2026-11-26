@@ -19,7 +19,10 @@ if [[ -e "$build_dir/$name" || -e "$build_dir/capture-window" ]]; then
     print -u2 'Choose a new build directory or move the previous fixture outputs before rebuilding.'
     exit 2
 fi
-ROOM_EDITION=store swift test --package-path "$repo" --scratch-path "$scratch" --build-system swiftbuild list
+edition="${ROOM_FIXTURE_EDITION:-store}"
+defines=()
+[[ $edition == store ]] && defines=(-D ROOM_APP_STORE)
+ROOM_EDITION=$edition swift test --package-path "$repo" --scratch-path "$scratch" --build-system swiftbuild list
 
 products="$scratch/out/Products/Debug"
 link_lists=("$scratch"/out/Intermediates.noindex/Room.build/Debug/RoomApp-*-testable-t.build/Objects-normal/arm64/*.LinkFileList(N))
@@ -39,7 +42,7 @@ bundle="$stage/$name"
 mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources"
 cp "$tools_dir/FixtureInfo.plist" "$bundle/Contents/Info.plist"
 ditto "$products/Room_RoomApp.bundle" "$bundle/Contents/Resources/Room_RoomApp.bundle"
-xcrun swiftc -parse-as-library -swift-version 6 -target arm64-apple-macos26.0 \
+xcrun swiftc -parse-as-library -swift-version 6 -target arm64-apple-macos26.0 "${defines[@]}" \
     -I "$app_objects" -I "$products" \
     "$tools_dir/StoreScreenshotFixture.swift" "${objects[@]}" "$products/RoomCore.o" \
     -o "$bundle/Contents/MacOS/StoreScreenshotFixture"

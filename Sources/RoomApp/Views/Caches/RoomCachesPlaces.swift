@@ -19,10 +19,12 @@ struct RoomCachesPlaces: View {
         VStack(alignment: .leading, spacing: 2) {
             ForEach(Array(places.enumerated()), id: \.element.id) { index, source in
                 row(source)
+                    .roomEnter(2 + index)
                     .transition(transition(index))
             }
             keptLine
                 .padding(.top, RoomTokens.Space.row)
+                .roomEnter(2 + places.count)
         }
         .animation(motion.animation(RoomTokens.Motion.ui, fallback: RoomTokens.Motion.fade), value: places.map(\.id))
         .onKeyPress(.upArrow) { move(-1) }
@@ -41,7 +43,7 @@ struct RoomCachesPlaces: View {
                             nameColumn: RoomTokens.Screen2.listNameColumnWide) {
                 HStack(spacing: RoomTokens.Space.row) {
                     RoomTick(on: on, partial: partial)
-                    RoomThingIcon(path: source.path, fallback: .box)
+                    RoomThingIcon(path: source.path, name: source.name, fallback: .box)
                 }
             }
             .padding(.horizontal, RoomTokens.Space.row)
@@ -63,7 +65,7 @@ struct RoomCachesPlaces: View {
     }
 
     @ViewBuilder private var keptLine: some View {
-        let held = model.heldBytes
+        let held = model.heldBytes + model.protectedSources.reduce(Int64(0)) { $0 + $1.bytes }
         let places = model.protectedSources.count + model.sources.filter { !$0.heldReasons.isEmpty }.count
         if held > 0 || places > 0 {
             Button(action: showKept) {

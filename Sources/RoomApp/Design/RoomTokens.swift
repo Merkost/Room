@@ -505,12 +505,30 @@ private struct RoomPressFeedback: ViewModifier {
         content
             .scaleEffect(pressed && motion.isFull ? RoomTokens.Motion.pressScale : 1)
             .opacity(pressed && !motion.isFull ? 0.7 : 1)
-            .animation(motion.isFull ? RoomTokens.Motion.quick : nil, value: pressed)
+            .animation(motion.isFull ? RoomTokens.Motion.press : nil, value: pressed)
     }
 }
 
 private struct RoomScreenPrimaryStyle: ButtonStyle {
     let accent: RoomTokens.Accent
+    @Environment(\.isEnabled) private var enabled
+    @State private var hovering = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(RoomTokens.Typography.bodyStrong)
+            .padding(.horizontal, RoomTokens.Space.group + 2)
+            .frame(minWidth: RoomTokens.Screen2.ctaMinWidth, minHeight: RoomTokens.Overview.actionHeight)
+            .foregroundStyle(enabled ? Color.white : RoomTokens.Ink.secondary)
+            .background(enabled ? accent.fill : RoomTokens.Surface.track, in: Capsule())
+            .brightness(hovering && enabled ? 0.05 : 0)
+            .contentShape(Capsule())
+            .onHover { inside in withAnimation(RoomTokens.Motion.hover) { hovering = inside } }
+            .modifier(RoomPressFeedback(pressed: configuration.isPressed))
+    }
+}
+
+private struct RoomQuietStyle: ButtonStyle {
     @Environment(\.isEnabled) private var enabled
 
     func makeBody(configuration: Configuration) -> some View {
@@ -518,8 +536,8 @@ private struct RoomScreenPrimaryStyle: ButtonStyle {
             .font(RoomTokens.Typography.bodyStrong)
             .padding(.horizontal, RoomTokens.Space.group)
             .frame(minHeight: RoomTokens.Overview.actionHeight)
-            .foregroundStyle(enabled ? Color.white : RoomTokens.Ink.secondary)
-            .background(enabled ? accent.fill : RoomTokens.Surface.track, in: Capsule())
+            .foregroundStyle(enabled ? RoomTokens.Ink.graphite : RoomTokens.Ink.tertiary)
+            .background(RoomTokens.Surface.tile, in: Capsule())
             .contentShape(Capsule())
             .modifier(RoomPressFeedback(pressed: configuration.isPressed))
     }
@@ -533,6 +551,8 @@ extension View {
     func roomScreenPrimary(_ accent: RoomTokens.Accent) -> some View {
         buttonStyle(RoomScreenPrimaryStyle(accent: accent))
     }
+    /// The quiet pill beside a filled button (mockup `.quiet`: Cancel in a review).
+    func roomQuiet() -> some View { buttonStyle(RoomQuietStyle()) }
     /// Secondary actions: ordinary, untinted glass. The scene root tints everything with the accent, and tinted glass
     /// reads as a second filled button, so secondary buttons drop the tint (one filled button per screen).
     func roomSecondary(_ size: ControlSize = .large) -> some View { buttonStyle(.glass).tint(nil).controlSize(size) }

@@ -91,7 +91,8 @@ struct RoomCachesView: View {
     var body: some View {
         let words = words
         RoomScreenFrame(headline: words.headline, supporting: words.supporting, supportingMasked: true,
-                        note: words.note, scrollsEvidence: true) {
+                        note: words.note, scrollsEvidence: true,
+                        entersEvidence: !(model.hasReport || model.isScanning || model.isPartialScan)) {
             VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
                 #if ROOM_APP_STORE
                 npmBatch
@@ -220,37 +221,52 @@ struct RoomCachesView: View {
         .disabled(!model.canScan)
     }
 
+    /// Before a check: the places Room will look, as the mockup's evidence rows (icon, name, where), so the screen
+    /// says what the check will cover instead of standing empty.
     @ViewBuilder
     private var startingPlaces: some View {
         let groups = model.checkLocations
         if !groups.isEmpty {
-            DisclosureGroup {
-                VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
-                    if !isStore {
-                        Text(model.isDeepScan
-                            ? "Full checks can find more locations. Full Disk Access is optional."
-                            : "Full Disk Access is optional.")
-                            .font(RoomTokens.Typography.caption)
-                            .foregroundStyle(RoomTokens.Ink.secondary)
-                    }
-                    VStack(alignment: .leading, spacing: 0) {
-                        ForEach(groups) { group in
-                            locationRow(group)
-                            if group.id != groups.last?.id { Rectangle().fill(RoomTokens.Surface.line).frame(height: 1) }
+            VStack(alignment: .leading, spacing: 2) {
+                RoomGroupLabel(text: "Where Room looks").padding(.top, -RoomTokens.Space.group)
+                ForEach(Array(groups.prefix(Self.readyRows)), id: \.id) { group in
+                    let title = hidden && group.isPersonal ? "Folder hidden" : group.title
+                    HStack(spacing: RoomTokens.Space.row) {
+                        RoomThingIcon(path: group.locations.first?.url.path, name: hidden ? nil : group.title, fallback: .box)
+                        Text(title).font(RoomTokens.Screen2.listName).foregroundStyle(RoomTokens.Ink.graphite).lineLimit(1)
+                        Group {
+                            if group.locations.count > 1 {
+                                Text(hidden ? "Locations hidden" : "\(group.locations.count) locations")
+                            } else if let location = group.locations.first {
+                                locationPath(location.url)
+                            }
                         }
+                        .font(RoomTokens.Screen2.listMeta).foregroundStyle(RoomTokens.Ink.secondary).lineLimit(1)
+                        Spacer(minLength: RoomTokens.Space.group)
+                        Text("Not checked").font(RoomTokens.Screen2.listMeta).foregroundStyle(RoomTokens.Ink.tertiary)
                     }
+                    .frame(minHeight: RoomTokens.Screen2.listRow)
+                    .padding(.horizontal, RoomTokens.Space.row)
+                    .roomRowHover()
+                    .padding(.horizontal, -RoomTokens.Space.row)
+                    .accessibilityElement(children: .combine)
                 }
-                .padding(.top, RoomTokens.Space.row)
-            } label: {
-                Label("Where Room looks", systemImage: "folder")
-                    .font(RoomTokens.Typography.section)
-                    .accessibilityHeading(.h2)
+                if groups.count > Self.readyRows {
+                    Text(groups.count - Self.readyRows == 1 ? "and 1 more place" : "and \(groups.count - Self.readyRows) more places")
+                        .font(RoomTokens.Typography.body).foregroundStyle(RoomTokens.Ink.secondary)
+                        .padding(.top, RoomTokens.Space.row)
+                }
+                if !isStore {
+                    Text(model.isDeepScan ? "Full checks can find more locations. Full Disk Access is optional."
+                                          : "Full Disk Access is optional.")
+                        .font(RoomTokens.Typography.caption).foregroundStyle(RoomTokens.Ink.tertiary)
+                        .padding(.top, RoomTokens.Space.tight)
+                }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(RoomTokens.Space.group)
-            .background(RoomTokens.Surface.group, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.group))
         }
     }
+
+    private static let readyRows = 7
 
     @ViewBuilder
     private func locationRow(_ group: RoomCacheLocationGroup) -> some View {
@@ -311,7 +327,8 @@ struct RoomCachesView: View {
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
             Button(RoomAgentWorktreeHint.actionTitle, action: review)
-                .roomSecondary(.regular)
+                .roomLink(accent)
+                .font(RoomTokens.Typography.caption.weight(.medium))
                 .accessibilityIdentifier("RoomCachesReviewWorktrees")
         }
         .frame(maxWidth: RoomTokens.Space.measure, alignment: .leading)

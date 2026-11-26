@@ -8,6 +8,10 @@ import RoomCore
 @Observable @MainActor
 final class AgentWorkModel {
     private(set) var report: AgentWorkReport?
+    #if DEBUG
+    /// Screenshot fixture only.
+    func debugInstall(_ report: AgentWorkReport) { self.report = report }
+    #endif
     private(set) var receipts: [AgentWorkReceipt] = []
     private(set) var isScanning = false
     private(set) var isWorking = false

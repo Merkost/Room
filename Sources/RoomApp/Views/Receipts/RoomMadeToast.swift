@@ -39,6 +39,21 @@ nonisolated enum RoomMakeRoomProgress {
     static func failed(_ statuses: [UUID: ActivityStatus]) -> Int { statuses.values.filter { $0 == .failed }.count }
 }
 
+/// The toast arrives and leaves the same way (mockup `.toast`): 24 pt up from below, from 96 %, on the UI spring with a
+/// 180 ms fade. Reduce Motion keeps the fade.
+struct RoomToastLift: ViewModifier {
+    let shown: Bool
+    func body(content: Content) -> some View {
+        content.offset(y: shown ? 0 : 24).scaleEffect(shown ? 1 : 0.96).opacity(shown ? 1 : 0)
+    }
+}
+
+extension AnyTransition {
+    @MainActor static func roomToast(_ motion: RoomMotionPolicy) -> AnyTransition {
+        motion.isFull ? .modifier(active: RoomToastLift(shown: false), identity: RoomToastLift(shown: true)) : .opacity
+    }
+}
+
 struct RoomMadeToast: View {
     let state: RoomMadeToastState
     let canRestore: Bool
@@ -66,7 +81,9 @@ struct RoomMadeToast: View {
         .padding(.leading, RoomTokens.Space.group)
         .padding(.trailing, RoomTokens.Space.tight + 2)
         .frame(height: RoomTokens.Screen2.toastHeight)
-        .glassEffect(.regular, in: Capsule())
+        .background(RoomTokens.Surface.toastGlass, in: Capsule())
+        .overlay(Capsule().strokeBorder(RoomTokens.Surface.line, lineWidth: 0.5))
+        .shadow(color: RoomTokens.Surface.panelShadow, radius: 15, y: 12)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(hide.masksNow ? "Moved to Trash" : state.text)
     }
