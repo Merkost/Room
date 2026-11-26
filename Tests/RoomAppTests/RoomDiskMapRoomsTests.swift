@@ -130,3 +130,21 @@ struct RoomDiskMapRoomsTests {
         #expect(!caches.canReviewCleanup)
     }
 }
+
+@MainActor
+struct RoomDiskRoomsFoldTests {
+    @Test func tinyRoomsFoldIntoOtherSoNamesFit() {
+        let gb: (Int64) -> Int64 = { $0 * 1_000_000_000 }
+        // The sample home: Desktop (5) and Music (3) are under 2.5 % of 430 GB and join Other.
+        let home = [120, 96, 88, 74, 30, 14, 5, 3].map(gb)
+        #expect(RoomDiskRoomsLayout.kept(home) == 6)
+        // A small level keeps every room, however small.
+        #expect(RoomDiskRoomsLayout.kept([40, 20, 14, 1].map(gb)) == 4)
+        // Never more than nine rooms, Other included.
+        #expect(RoomDiskRoomsLayout.kept(Array(repeating: gb(10), count: 20)) == RoomDiskRoomsLayout.maxRooms - 1)
+        #expect(RoomDiskRoomsLayout.kept(Array(repeating: gb(10), count: 9)) == 9)
+        let frames = RoomDiskRoomsLayout.frames(Array(home.prefix(6)) + [gb(8)], in: CGSize(width: 880, height: 226),
+                                                gap: 6, minimum: RoomDiskRoomsLayout.minimumTile)
+        #expect(frames.allSatisfy { $0.width >= RoomDiskRoomsLayout.minimumTile.width - 0.1 })
+    }
+}

@@ -110,9 +110,19 @@ struct RoomRootView: View {
                                mappedFolders: insights.diskMap.current?.tree.children.count,
                                cachesChecked: model.hasReport && !model.isScanning,
                                cachesReclaimableBytes: model.clearableBytes,
-                               developerBytes: developer.headline.total,
+                               developerBytes: developerHeadlineBytes,
                                memorySamples: sidebarMemory,
                                receipts: allActivity.count)
+    }
+
+    /// The Developer row shows the figure the Developer screen's headline shows for the room it opens on.
+    private var developerHeadlineBytes: Int64 {
+        #if ROOM_APP_STORE
+        developer.headlineBytes(for: developer.section)
+        #else
+        developer.headlineBytes(for: developer.section,
+                                worktreesBytes: agentWork.report?.items.reduce(Int64(0)) { $0 + $1.allocatedBytes } ?? 0)
+        #endif
     }
 
     /// What Make room would give back: the cache moves a completed check found eligible.

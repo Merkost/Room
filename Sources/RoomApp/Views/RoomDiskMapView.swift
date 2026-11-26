@@ -518,7 +518,7 @@ struct RoomDiskMapView: View {
             child.allocatedBytes > 0 && !(model.url(for: child.relativePath).map { trashed.contains($0.standardizedFileURL.path) } ?? false)
         }
             .sorted { $0.allocatedBytes > $1.allocatedBytes }
-        let limit = RoomDiskRoomsLayout.maxRooms - ((level.other?.allocatedBytes ?? 0) > 0 ? 1 : 0)
+        let limit = RoomDiskRoomsLayout.kept(visible.map(\.allocatedBytes), foldedBytes: level.other?.allocatedBytes ?? 0)
         var rooms = visible.prefix(max(1, limit)).map { child -> RoomDiskRoom in
             let url = model.url(for: child.relativePath)
             let protection: FolderProtection? = !child.isDirectory ? .notAFolder

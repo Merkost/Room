@@ -6,6 +6,25 @@ import SwiftUI
 /// heights follow bytes. Pure, so the frames (and the zoom origins taken from them) are tested.
 nonisolated enum RoomDiskRoomsLayout {
     static let maxRooms = 9
+    /// Rooms under this share of the level fold into Other once there are more than `foldAfter` rooms, so the last
+    /// column never gets so narrow that a name has to be cut (mockup: seven rooms, "Other 8 GB").
+    static let foldShare = 0.025
+    static let foldAfter = 5
+    /// The narrowest a room may be: a 14 pt glyph, a name like "Downloads" and the tile's padding.
+    static let minimumTile = CGSize(width: 124, height: 34)
+
+    /// How many of `bytes` (largest first) get a room of their own; the rest join Other.
+    static func kept(_ bytes: [Int64], foldedBytes: Int64 = 0) -> Int {
+        let total = Double(max(1, bytes.reduce(0, +) + foldedBytes))
+        var count = 0
+        for (index, value) in bytes.enumerated() {
+            if index >= maxRooms - 1 && index < bytes.count - 1 { break }
+            if index >= foldAfter && Double(value) / total < foldShare { break }
+            count = index + 1
+        }
+        if count < bytes.count || foldedBytes > 0 { count = min(count, maxRooms - 1) }
+        return max(1, count)
+    }
 
     /// Column groups of indices, like the mockup's `cols()`.
     static func columns(count: Int) -> [[Int]] {
@@ -93,7 +112,7 @@ struct RoomDiskRoomsView: View {
     var body: some View {
         GeometryReader { geometry in
             let frames = RoomDiskRoomsLayout.frames(rooms.map(\.room.bytes), in: geometry.size,
-                                                    gap: RoomTokens.Screen2.planGap, minimum: CGSize(width: 96, height: 34))
+                                                    gap: RoomTokens.Screen2.planGap, minimum: RoomDiskRoomsLayout.minimumTile)
             let total = max(1, rooms.reduce(Int64(0)) { $0 + $1.room.bytes })
             ZStack(alignment: .topLeading) {
                 ForEach(Array(rooms.enumerated()), id: \.element.id) { index, room in
@@ -177,6 +196,7 @@ struct RoomDiskRoomsView: View {
                 .font(RoomTokens.Typography.bodyStrong)
                 .foregroundStyle(RoomTokens.Ink.graphite)
                 .lineLimit(1)
+                .minimumScaleFactor(0.85)
         }
         .layoutPriority(1)
         let size = RoomMaskable(RoomFormat.gb(room.room.bytes))
@@ -184,7 +204,11 @@ struct RoomDiskRoomsView: View {
             .foregroundStyle(RoomTokens.Ink.secondary)
             .lineLimit(1)
         if small {
-            HStack(alignment: .firstTextBaseline, spacing: 6) { name; size }
+            // One line when it fits ("Other 8 GB"); otherwise the name keeps the room and the size gives way.
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) { name; size }
+                name
+            }
         } else {
             VStack(alignment: .leading, spacing: 2) { name; size }
         }
