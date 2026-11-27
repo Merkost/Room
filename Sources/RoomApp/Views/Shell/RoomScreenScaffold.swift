@@ -11,7 +11,7 @@ extension EnvironmentValues {
     }
 }
 
-/// The pane (mockup `.pane`): a 34 pt bar with the place's name, its crumb and the status chip, then the screen.
+/// The pane: a 34 pt bar with the place's name, its crumb, the status chip and the window's icons, then the screen.
 /// The bar lives in the pane rather than the window toolbar so it lines up with the content column.
 struct RoomScreenScaffold<Content: View>: View {
     /// Coordinate space of the detail column, for motion that aims at the toolbar.
@@ -29,7 +29,7 @@ struct RoomScreenScaffold<Content: View>: View {
             let extra = max(0, (width - RoomTokens.Screen.maximumColumnWidth) / 2)
             let leading = (density == .calm ? RoomTokens.Screen2.paneLeading : density.gutter) + extra
             let trailing = (density == .calm ? RoomTokens.Screen2.paneTrailing : density.gutter) + extra
-            let insets = EdgeInsets(top: 0, leading: leading, bottom: RoomTokens.Screen2.paneBottom, trailing: trailing)
+            let insets = EdgeInsets(top: 0, leading: leading, bottom: RoomTokens.Dock.reserve, trailing: trailing)
             // The bar is drawn over the screen (not above it in a stack) so a screen that hosts an inspector column
             // can never paint over it.
             ZStack(alignment: .top) {
@@ -38,7 +38,7 @@ struct RoomScreenScaffold<Content: View>: View {
                         ScrollView {
                             content().frame(maxWidth: .infinity, alignment: .topLeading)
                                 .padding(EdgeInsets(top: RoomTokens.Space.group, leading: leading,
-                                                    bottom: RoomTokens.Space.breath1, trailing: trailing))
+                                                    bottom: RoomTokens.Dock.reserve, trailing: trailing))
                         }
                         .scrollIndicators(.hidden)
                     } else {
@@ -48,7 +48,8 @@ struct RoomScreenScaffold<Content: View>: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .padding(.top, RoomTokens.Screen2.paneTop + RoomTokens.Screen2.barHeight)
                 bar
-                    .padding(.leading, leading)
+                    // The title clears the window buttons, which sit in this row now that there is no sidebar.
+                    .padding(.leading, max(leading, RoomTokens.Dock.trafficLights + RoomTokens.Space.group))
                     .padding(.trailing, trailing)
                     .padding(.top, RoomTokens.Screen2.paneTop)
             }

@@ -1,25 +1,24 @@
 import AppKit
 import SwiftUI
 
-/// Pinned Rooms and saved Disk Map views, under the places, only when the person has some (nav-v3 keeps the column
-/// short; pinning lives in the Disk Map inspector line and File › Pin Folder as a Room).
-struct RoomSidebarPinned: View {
+/// Pinned Rooms and saved Disk Map views, as a row of chips on Disk Map, only when the person has some (pinning
+/// lives in the Disk Map inspector line and File › Pin Folder as a Room).
+struct RoomPinnedChips: View {
     let navigation: RoomWindowNavigation
     let rooms: RoomRoomsModel
-    let labelled: Bool
     let canOpenRooms: Bool
     let openRoom: (UUID) -> Void
     var savedViews: RoomSavedViewsStore?
     var openSavedView: (UUID) -> Void
-    let selectionPill: AnyView
 
     @Environment(\.roomHide) private var hide
     @Environment(\.roomMotion) private var motion
     @Environment(\.roomAccent) private var accent
+    @Environment(\.roomScreenInsets) private var insets
     @State private var editingSavedView: RoomSavedView?
     @State private var editingRoom: RoomPinnedRoom?
-    private let deleteViewPrefix = "sidebar:delete-view:"
-    private let unpinPrefix = "sidebar:unpin:"
+    private let deleteViewPrefix = "pinned:delete-view:"
+    private let unpinPrefix = "pinned:unpin:"
     private let confirmation = RoomInlineConfirmCenter.shared
 
     static func hasContent(rooms: RoomRoomsModel, savedViews: RoomSavedViewsStore?) -> Bool {
@@ -27,12 +26,23 @@ struct RoomSidebarPinned: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: RoomTokens.Nav.rowGap) {
-            if !rooms.visibleRooms.isEmpty { groupHeading(Text("nav.rooms", bundle: RoomCopy.bundle)) }
-            roomRows
+        VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
+            if Self.hasContent(rooms: rooms, savedViews: savedViews) {
+                ScrollView(.horizontal) {
+                    HStack(spacing: RoomTokens.Space.inner) {
+                        roomRows
+                        savedViewRows
+                    }
+                }
+                .scrollIndicators(.hidden)
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("Pinned folders and saved views")
+            }
             RoomInlineUndoRows(prefix: unpinPrefix, hidesPrivateName: true)
-            savedViewRows
+            RoomInlineUndoRows(prefix: deleteViewPrefix, hidesPrivateName: true)
         }
+        .padding(.leading, insets.leading)
+        .padding(.trailing, insets.trailing)
         .onDisappear { finishPendingChanges() }
         .onChange(of: navigation.route) { _, _ in finishPendingChanges() }
         .sheet(item: $editingSavedView) { view in
@@ -55,21 +65,12 @@ struct RoomSidebarPinned: View {
         }
     }
 
-    @ViewBuilder private func groupHeading(_ label: Text) -> some View {
-        if labelled {
-            label
-                .font(RoomTokens.Nav.group)
-                .foregroundStyle(RoomTokens.Ink.tertiary)
-                .padding(.horizontal, RoomTokens.Space.inner + 2)
-                .padding(.top, RoomTokens.Nav.groupTop)
-                .padding(.bottom, RoomTokens.Nav.groupBottom)
-                .accessibilityAddTraits(.isHeader)
-        } else {
-            Color.clear.frame(height: RoomTokens.Space.inner)
-        }
-    }
+    private var pill: Capsule { Capsule() }
 
-    private var pill: RoundedRectangle { RoundedRectangle(cornerRadius: RoomTokens.Nav.pillRadius) }
+    private func chipBackground(selected: Bool) -> some View {
+        pill.fill(selected ? RoomTokens.Surface.pill : RoomTokens.Surface.tile)
+            .overlay(pill.strokeBorder(selected ? accent.text : RoomTokens.Surface.line, lineWidth: 0.5))
+    }
 
     @ViewBuilder private var roomRows: some View {
         ForEach(rooms.visibleRooms) { room in
@@ -89,10 +90,8 @@ struct RoomSidebarPinned: View {
 
     @ViewBuilder private var savedViewRows: some View {
         if let savedViews, !savedViews.visible.isEmpty {
-            groupHeading(Text("Saved views"))
             ForEach(savedViews.visible) { view in savedViewRow(view, in: savedViews) }
         }
-        RoomInlineUndoRows(prefix: deleteViewPrefix, hidesPrivateName: true)
     }
 
     private func savedViewRow(_ view: RoomSavedView, in store: RoomSavedViewsStore) -> some View {
@@ -105,13 +104,12 @@ struct RoomSidebarPinned: View {
             row(icon: { Image(systemName: "bookmark") },
                 iconColor: selected ? accent.text : RoomTokens.Ink.secondary) {
                 RoomMaskable(view.name, kind: .name)
-                    .font(RoomTokens.Nav.label).lineLimit(1).truncationMode(.middle)
-                Spacer(minLength: 0)
+                    .font(RoomTokens.Nav.label).lineLimit(1)
             }
-            .background { if selected { selectionPill } }
-            .contentShape(Rectangle())
+            .background { chipBackground(selected: selected) }
+            .contentShape(Capsule())
         }
-        .buttonStyle(RoomHoverButtonStyle(showsFeedback: !selected))
+        .buttonStyle(RoomPressStyle())
         .disabled(!canOpenRooms)
         .help(hide.masksNow ? "Saved view, name hidden" : view.name)
         .accessibilityLabel(hide.masksNow ? "Saved view, name hidden" : view.name)
@@ -153,7 +151,7 @@ struct RoomSidebarPinned: View {
 
         return Button {
             let origin = RoomSelectionOrigin.controlActivation
-            withAnimation(RoomSidebar.selectionAnimation(origin: origin, motion: motion)) {
+            withAnimation(RoomDock.selectionAnimation(origin: origin, motion: motion)) {
                 openRoom(room.id)
             }
         } label: {
@@ -164,15 +162,14 @@ struct RoomSidebarPinned: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(kind.fill, in: .rect(cornerRadius: RoomTokens.Radius.tile))
             }, iconColor: selected ? accent.text : RoomTokens.Ink.secondary) {
-                RoomMaskable(room.name, kind: .name).font(RoomTokens.Nav.label).lineLimit(1).truncationMode(.middle)
-                Spacer(minLength: RoomTokens.Sidebar.pitchGap)
+                RoomMaskable(room.name, kind: .name).font(RoomTokens.Nav.label).lineLimit(1)
                 RoomMaskable(size, spoken: spokenSize ?? size).font(RoomTokens.Nav.value).monospacedDigit().lineLimit(1)
                     .foregroundStyle(needsAccess ? accent.text : RoomTokens.Ink.tertiary)
             }
-            .background { if selected { selectionPill } }
-            .contentShape(Rectangle())
+            .background { chipBackground(selected: selected) }
+            .contentShape(Capsule())
         }
-        .buttonStyle(RoomHoverButtonStyle(showsFeedback: !selected))
+        .buttonStyle(RoomPressStyle())
         .disabled(!canOpenRooms)
         .help(RoomHideSpeech.labelled(room.name, value: spokenSize ?? size, labelIsName: true, hide: hide))
         .accessibilityLabel(hide.masksNow ? "Room, hidden" : String.localizedStringWithFormat(spokenFormat, room.name, spokenSize ?? size))
@@ -218,18 +215,16 @@ struct RoomSidebarPinned: View {
 
     private func row<Icon: View, Label: View>(@ViewBuilder icon: () -> Icon, iconColor: Color,
                                               @ViewBuilder label: () -> Label) -> some View {
-        HStack(spacing: labelled ? RoomTokens.Nav.rowColumnGap : 0) {
+        HStack(spacing: RoomTokens.Space.inner) {
             icon()
-                .frame(width: RoomTokens.Nav.tile - 8, height: RoomTokens.Nav.tile - 8)
-                .frame(width: RoomTokens.Nav.tile, height: RoomTokens.Nav.tile)
+                .frame(width: RoomTokens.Nav.tile - 10, height: RoomTokens.Nav.tile - 10)
                 .foregroundStyle(iconColor)
                 .accessibilityHidden(true)
-            if labelled { label() }
+            label()
         }
-        .padding(.leading, labelled ? RoomTokens.Nav.rowInsetLeading : 0)
-        .padding(.trailing, labelled ? RoomTokens.Nav.rowInsetTrailing : 0)
-        .frame(maxWidth: labelled ? .infinity : nil, minHeight: RoomTokens.Nav.rowHeight,
-               alignment: labelled ? .leading : .center)
+        .padding(.horizontal, RoomTokens.Space.row)
+        .frame(height: RoomTokens.Control.height)
+        .fixedSize()
     }
 
     private func finishPendingChanges() {

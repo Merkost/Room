@@ -56,25 +56,6 @@ struct RoomShellRoutingTests {
     }
 }
 
-struct RoomSidebarLayoutTests {
-    @Test func autoIconsBelow900() {
-        #expect(RoomSidebarLayout.mode(windowWidth: 899, userPrefersIcons: false) == .iconsOnly)
-        #expect(RoomSidebarLayout.mode(windowWidth: 900, userPrefersIcons: false) == .labelled)
-        #expect(RoomSidebarLayout.mode(windowWidth: 1000, userPrefersIcons: true) == .iconsOnly)
-    }
-
-    @Test func iconColumnDoesNotMove() {
-        #expect(RoomSidebarLayout.iconLeading == 16)
-        #expect(RoomSidebarLayout.width(.labelled) == 256)
-        #expect(RoomSidebarLayout.width(.iconsOnly) == 62)
-    }
-
-    @Test func shortcutHintsOnlyLabelled() {
-        #expect(RoomSidebarLayout.showsShortcutHints(.labelled))
-        #expect(!RoomSidebarLayout.showsShortcutHints(.iconsOnly))
-    }
-}
-
 struct RoomSidebarFootTests {
     @Test func belowGoalSpeaksShortfall() {
         let foot = RoomSidebarFoot.make(capacityBytes: 100, freeBytes: 20, goalBytes: 30,

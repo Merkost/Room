@@ -50,7 +50,6 @@ nonisolated enum RoomMenuModel {
         case refreshMemory
         case stop
         case fullScreen
-        case sidebarLabels
         case back
         case forward
         case overview
@@ -131,7 +130,6 @@ nonisolated enum RoomMenuModel {
             case .refreshMemory: String(localized: "menu.refreshMemory", defaultValue: "Refresh Memory", bundle: RoomCopy.bundle)
             case .stop: String(localized: "menu.stop", defaultValue: "Stop Scan", bundle: RoomCopy.bundle)
             case .fullScreen: "Enter Full Screen"
-            case .sidebarLabels: String(localized: "menu.sidebarLabels.hide", defaultValue: "Hide Sidebar Labels", bundle: RoomCopy.bundle)
             case .back: String(localized: "menu.back", defaultValue: "Back", bundle: RoomCopy.bundle)
             case .forward: String(localized: "menu.forward", defaultValue: "Forward", bundle: RoomCopy.bundle)
             case .overview: String(localized: "menu.overview", defaultValue: "Overview", bundle: RoomCopy.bundle)
@@ -194,7 +192,7 @@ nonisolated enum RoomMenuModel {
             }
         }
 
-        /// ⌘1 … ⌘7 in sidebar order (nav-v3).
+        /// ⌘1 … ⌘7 in dock order.
         var shortcut: Shortcut? {
             switch self {
             case .overview: .init("1")
@@ -276,7 +274,6 @@ nonisolated enum RoomMenuModel {
         var supportAvailable = true
         var privacyAvailable = true
         var debug = false
-        var sidebarIconsOnly = false
         var canGoBack = false
         var canGoForward = false
         var hasPinnedRooms = false
@@ -351,8 +348,6 @@ nonisolated enum RoomMenuModel {
                 }
             }
         }
-        add(.view, .sidebarLabels, .init("s", [.control, .command]), enabled: main,
-            title: input.sidebarIconsOnly ? String(localized: "menu.sidebarLabels.show", defaultValue: "Show Sidebar Labels", bundle: RoomCopy.bundle) : nil)
         if main && input.destination == .overview {
             add(.view, .customiseOverview, .init("c", [.option, .command]))
         }

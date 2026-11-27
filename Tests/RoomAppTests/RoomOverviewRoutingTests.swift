@@ -6,7 +6,7 @@ import Testing
 @Suite("Overview routing") @MainActor
 struct RoomOverviewRoutingTests {
     @Test func shortcutsUseSpecOrder() {
-        let numbered = RoomSidebar.items.filter { $0.shortcut != nil }
+        let numbered = RoomDock.items.filter { $0.shortcut != nil }
         #expect(numbered.map(\.destination) == [.overview, .disk, .clean, .developer, .memory, .history, .settings])
         #expect(numbered.compactMap(\.shortcut) == Array("1234567"))
         #expect(numbered.first?.id == "overview")

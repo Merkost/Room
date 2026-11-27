@@ -14,7 +14,7 @@ nonisolated struct RoomCommandBar: Equatable, Sendable {
         let target: Target
         let title: String
         let glyph: RoomGlyph
-        var value: RoomSidebarValue = .none
+        var value: RoomPlaceValue = .none
         var id: Target { target }
     }
 
@@ -24,10 +24,10 @@ nonisolated struct RoomCommandBar: Equatable, Sendable {
     var query = ""
     private(set) var highlight = 0
 
-    static func items(values: RoomSidebarValue.Input, developerRooms: [String]) -> [Item] {
-        var items = RoomSidebarPlan.places.map { place in
-            Item(target: .place(place), title: RoomSidebarPlan.title(place), glyph: RoomSidebarPlan.glyph(place),
-                 value: RoomSidebarValue.make(place, values))
+    static func items(values: RoomPlaceValue.Input, developerRooms: [String]) -> [Item] {
+        var items = RoomPlacePlan.places.map { place in
+            Item(target: .place(place), title: RoomPlacePlan.title(place), glyph: RoomPlacePlan.glyph(place),
+                 value: RoomPlaceValue.make(place, values))
         }
         items += developerRooms.map {
             Item(target: .developerRoom($0), title: "Developer, \($0)", glyph: .developer)

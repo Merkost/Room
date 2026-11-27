@@ -5,7 +5,7 @@ import Testing
 @MainActor
 struct RoomCommandBarTests {
     private var items: [RoomCommandBar.Item] {
-        var values = RoomSidebarValue.Input()
+        var values = RoomPlaceValue.Input()
         values.freeBytes = 64_000_000_000
         return RoomCommandBar.items(values: values, developerRooms: ["Rooms", "Matrix", "Devices", "Storage", "AI Tools", "Worktrees"])
     }

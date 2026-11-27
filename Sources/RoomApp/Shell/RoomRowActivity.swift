@@ -102,7 +102,7 @@ nonisolated struct RoomRowActivity: Equatable, Sendable {
 
 /// The rows' states for the window, with the 4 s settle timers. Fed by `RoomRootView` from the engines.
 @Observable @MainActor
-final class RoomSidebarActivity {
+final class RoomPlaceActivity {
     private(set) var rows: [RoomDestination: RoomRowActivity] = [:]
     @ObservationIgnored private var settles: [RoomDestination: Task<Void, Never>] = [:]
     @ObservationIgnored private let settleDelay: Duration

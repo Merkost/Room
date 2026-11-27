@@ -1,36 +1,13 @@
 import Foundation
 
-/// The sidebar's places in order, their groups, glyphs and ⌘ numbers (nav-v3: Your Mac, Make room, Right now; History
-/// and Settings at the bottom).
-nonisolated enum RoomSidebarPlan {
-    enum Group: String, CaseIterable, Sendable {
-        case yourMac, makeRoom, rightNow, bottom
-
-        /// Heading text; the bottom group has none.
-        var title: String? {
-            switch self {
-            case .yourMac: String(localized: "nav.group.yourMac", defaultValue: "Your Mac", bundle: RoomCopy.bundle)
-            case .makeRoom: String(localized: "nav.group.makeRoom", defaultValue: "Make room", bundle: RoomCopy.bundle)
-            case .rightNow: String(localized: "nav.group.rightNow", defaultValue: "Right now", bundle: RoomCopy.bundle)
-            case .bottom: nil
-            }
-        }
-    }
-
+/// Room's places in order, with their glyphs and ⌘ numbers. Five stand in the dock; History and Settings sit in the
+/// top bar.
+nonisolated enum RoomPlacePlan {
     static let places: [RoomDestination] = [.overview, .disk, .clean, .developer, .memory, .history, .settings]
 
-    static func group(_ place: RoomDestination) -> Group {
-        switch place {
-        case .overview, .disk: .yourMac
-        case .clean, .developer: .makeRoom
-        case .memory: .rightNow
-        case .history, .settings: .bottom
-        }
-    }
+    static let dock: [RoomDestination] = [.overview, .disk, .clean, .developer, .memory]
 
-    static func places(in group: Group) -> [RoomDestination] { places.filter { self.group($0) == group } }
-
-    /// ⌘1 … ⌘7, in sidebar order.
+    /// ⌘1 … ⌘7, in this order.
     static func shortcut(_ place: RoomDestination) -> Int { (places.firstIndex(of: place) ?? 0) + 1 }
 
     static func place(forShortcut number: Int) -> RoomDestination? {
@@ -61,40 +38,36 @@ nonisolated enum RoomSidebarPlan {
         }
     }
 
-    /// History and Settings read quieter (regular weight, second ink) until selected.
-    static func isQuiet(_ place: RoomDestination) -> Bool { group(place) == .bottom }
-
-    /// The next place for ↑ / ↓, clamped at the ends.
+    /// The next place for ← / →, clamped at the ends.
     static func step(from place: RoomDestination, by offset: Int) -> RoomDestination {
         let index = places.firstIndex(of: place) ?? 0
         return places[min(places.count - 1, max(0, index + offset))]
     }
 }
 
-/// The one trailing value per row. Sizes go through `RoomFormat.gb`; the view masks them with Hide.
-nonisolated enum RoomSidebarValue: Equatable, Sendable {
+/// The one figure per place. Sizes go through `RoomFormat.gb`; the view masks them with Hide.
+nonisolated enum RoomPlaceValue: Equatable, Sendable {
     case none
     case size(String)          // a size: Hide masks it
     case words(String)         // a count or a word: not a size
-    case sparkline([Int64])
 
     struct Input: Equatable, Sendable {
         var freeBytes: Int64?
-        var mappedFolders: Int?
+        var mappedBytes: Int64?
         var cachesChecked = false
         var cachesReclaimableBytes: Int64 = 0
         var developerBytes: Int64?
-        var memorySamples: [Int64] = []
+        var memoryUsedBytes: Int64?
         var receipts = 0
     }
 
-    static func make(_ place: RoomDestination, _ input: Input) -> RoomSidebarValue {
+    static func make(_ place: RoomDestination, _ input: Input) -> RoomPlaceValue {
         switch place {
         case .overview:
             return input.freeBytes.map { .size(RoomFormat.gb($0)) } ?? .none
         case .disk:
-            guard let folders = input.mappedFolders, folders > 0 else { return .none }
-            return .words(String(localized: "nav.value.folders", defaultValue: "\(folders) folders", bundle: RoomCopy.bundle))
+            guard let bytes = input.mappedBytes, bytes > 0 else { return .none }
+            return .size(RoomFormat.gb(bytes))
         case .clean:
             guard input.cachesChecked else { return .none }
             return input.cachesReclaimableBytes > 0
@@ -104,7 +77,8 @@ nonisolated enum RoomSidebarValue: Equatable, Sendable {
             guard let bytes = input.developerBytes, bytes > 0 else { return .none }
             return .size(RoomFormat.gb(bytes))
         case .memory:
-            return .sparkline(Array(input.memorySamples.suffix(RoomTokens.Nav.sparkSamples)))
+            guard let used = input.memoryUsedBytes, used > 0 else { return .none }
+            return .size(RoomFormat.memory(used))
         case .history:
             guard input.receipts > 0 else { return .none }
             return .words(input.receipts == 1

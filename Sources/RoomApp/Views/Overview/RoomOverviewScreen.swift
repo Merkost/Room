@@ -225,7 +225,7 @@ struct RoomOverviewScreen: View {
         }
         .buttonStyle(RoomHoverButtonStyle(cornerRadius: RoomTokens.Radius.card))
         .accessibilityLabel("\(fact.label), \(hide.masksNow && fact.masked ? "hidden" : fact.value)")
-        .accessibilityHint("Opens \(RoomSidebarPlan.title(fact.destination))")
+        .accessibilityHint("Opens \(RoomPlacePlan.title(fact.destination))")
     }
 
     func openDiskMap() { navigate(.disk) }
