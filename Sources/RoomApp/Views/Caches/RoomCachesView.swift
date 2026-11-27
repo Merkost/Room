@@ -36,6 +36,8 @@ nonisolated struct RoomCachesDock: Equatable, Sendable {
     struct Input: Equatable, Sendable {
         var scanning = false
         var needsFolder = false
+        /// A finished check could read none of the approved folders.
+        var unreadableFolders = false
         var hasReport = false
         var partial = false
         var afterRestore = false
@@ -46,6 +48,7 @@ nonisolated struct RoomCachesDock: Equatable, Sendable {
 
     static func make(_ input: Input) -> RoomCachesDock {
         if input.scanning { return RoomCachesDock(main: .stop) }
+        if input.unreadableFolders { return RoomCachesDock(main: .chooseFolder) }
         let start: Step = input.needsFolder ? .chooseFolder : .check
         if !input.hasReport, !input.partial { return RoomCachesDock(main: start) }
         if input.afterRestore || input.partial { return RoomCachesDock(main: start) }
@@ -201,7 +204,8 @@ struct RoomCachesView: View {
     private var dock: RoomCachesDock {
         var reviewBytes: Int64?
         if case .review(let bytes) = hero.primary { reviewBytes = bytes }
-        return .make(.init(scanning: model.isScanning, needsFolder: needsFolderApproval, hasReport: model.hasReport,
+        return .make(.init(scanning: model.isScanning, needsFolder: needsFolderApproval,
+                           unreadableFolders: hero.primary == .chooseFolderAndCheck, hasReport: model.hasReport,
                            partial: model.isPartialScan, afterRestore: model.isAfterRestore, reviewBytes: reviewBytes,
                            movedWithNothingLeft: model.movedReceipt != nil))
     }

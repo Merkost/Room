@@ -61,6 +61,7 @@ struct RoomDeveloperView: View {
     @Environment(\.roomMotion) private var motion
     private var section: RoomDeveloperSection { model.section }
     @State private var showingFolderPopover = false
+    @State private var folderListHeight: CGFloat = 200
     @State private var showingNotes = false
     @State private var showingDetail = false
     private let confirmationPrefix = "developer/remove/"
@@ -229,9 +230,14 @@ struct RoomDeveloperView: View {
         .fixedSize()
         .accessibilityIdentifier("RoomDeveloperFolders")
         .popover(isPresented: $showingFolderPopover, arrowEdge: .bottom) {
-            folderPopover
-                .padding(RoomTokens.Space.group)
-                .frame(width: 360, alignment: .leading)
+            ScrollView {
+                folderPopover
+                    .padding(RoomTokens.Space.group)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .onGeometryChange(for: CGFloat.self, of: \.size.height) { folderListHeight = $0 }
+            }
+            // As tall as the list, up to a height that fits the smallest window; beyond that it scrolls.
+            .frame(width: 360, height: min(folderListHeight, 480))
         }
     }
 

@@ -10,6 +10,11 @@ struct RoomDockPlanTests {
         #expect(RoomOverviewDock.make(scanning: false, makeRoomBytes: 5) == .init(main: .makeRoom(bytes: 5), rescan: true))
     }
 
+    @Test func cachesOfferTheFolderPickerWhenNoApprovedFolderCanBeRead() {
+        let input = RoomCachesDock.Input(unreadableFolders: true, hasReport: true)
+        #expect(RoomCachesDock.make(input) == .init(main: .chooseFolder))
+    }
+
     @Test func cachesChecksThenReviews() {
         var input = RoomCachesDock.Input()
         #expect(RoomCachesDock.make(input) == .init(main: .check))

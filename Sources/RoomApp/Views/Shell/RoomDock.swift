@@ -21,7 +21,10 @@ struct RoomDock: View {
     /// The dock itself holds focus when no item does, so the window always has a focused view (the menu bar's screen
     /// commands read the scene's focused values) and 1 to 7, the arrows, K and H work from the first frame.
     @FocusState private var dockFocused: Bool
+    @FocusState private var focusedAction: Slot?
     @Namespace private var selection
+
+    private enum Slot { case main, side }
 
     /// The places as menu items (the Go menu and its tests read titles and ⌘ numbers from here).
     static let items: [NavigationItem] = RoomPlacePlan.places.map { place in
@@ -60,6 +63,7 @@ struct RoomDock: View {
             guard press.modifiers.isEmpty, let number = Int(press.characters),
                   let target = RoomPlacePlan.place(forShortcut: number) else { return .ignored }
             select(target, origin: .keyboard)
+            focus(target)
             return .handled
         }
         .onModifierKeysChanged(mask: .command, initial: true) { _, keys in commandHeld = keys.contains(.command) }
@@ -104,6 +108,7 @@ struct RoomDock: View {
                         .matchedGeometryEffect(id: "dock-selection", in: selection)
                 }
             }
+            .overlay { if focusedPlace == place { shape.strokeBorder(accent.text, lineWidth: 2) } }
             .contentShape(shape)
         }
         .buttonStyle(RoomHoverButtonStyle(cornerRadius: RoomTokens.Dock.itemRadius, showsFeedback: !selected))
@@ -113,8 +118,10 @@ struct RoomDock: View {
         .overlay(alignment: .bottom) {
             if raised, row.showsSentence {
                 bubble(place, row: row)
-                    // The padding reaches down to the item, so the pointer can travel up to Stop without losing it.
-                    .padding(.bottom, RoomTokens.Dock.itemHeight + RoomTokens.Dock.padding)
+                    // The gap above the item takes the pointer too, so it can travel up to Stop without losing it.
+                    .padding(.bottom, RoomTokens.Dock.padding)
+                    .contentShape(Rectangle())
+                    .padding(.bottom, RoomTokens.Dock.itemHeight)
                     .transition(.opacity)
             }
         }
@@ -137,7 +144,8 @@ struct RoomDock: View {
         if commandHeld {
             caption("⌘\(RoomPlacePlan.shortcut(place))")
         } else if row.isWorking {
-            caption(row.of.map { "\(row.done)/\($0)" } ?? "…")
+            // Overview counts gigabytes while it makes room, so Hide covers its count.
+            caption(masksCount(place) ? "…" : row.of.map { "\(row.done)/\($0)" } ?? "…")
         } else if row.phase == .failed {
             Image(systemName: "exclamationmark.circle.fill")
                 .font(RoomTokens.Typography.micro)
@@ -152,6 +160,8 @@ struct RoomDock: View {
         }
     }
 
+    private func masksCount(_ place: RoomDestination) -> Bool { place == .overview && hide.masksNow }
+
     private func caption(_ text: String) -> some View {
         Text(verbatim: text).font(RoomTokens.Nav.value).foregroundStyle(RoomTokens.Ink.tertiary)
             .contentTransition(.numericText()).accessibilityHidden(true)
@@ -164,7 +174,7 @@ struct RoomDock: View {
             RoomMaskable(row.sentence)
                 .font(RoomTokens.Nav.sentence)
                 .foregroundStyle(row.showsCheck ? accent.text : RoomTokens.Ink.graphite)
-            if let dots = row.dots { RoomCountedDots(total: dots.total, filled: dots.filled) }
+            if let dots = row.dots, !masksCount(place) { RoomCountedDots(total: dots.total, filled: dots.filled) }
             if row.isWorking, Self.canStop(place) {
                 Button("Stop") { stop(place) }
                     .roomLink(accent)
@@ -211,11 +221,15 @@ struct RoomDock: View {
         .help(action.hint ?? action.title)
         .accessibilityHint(action.hint ?? "")
         .accessibilityIdentifier(action.identifier)
-        if action.filled {
-            button.roomScreenPrimary(accent) // one-filled: the dock's, the window's only filled button
-        } else {
-            button.roomQuiet(large: true)
+        Group {
+            if action.filled {
+                button.roomScreenPrimary(accent) // one-filled: the dock's, the window's only filled button
+            } else {
+                button.roomQuiet(large: true)
+            }
         }
+        .focused($focusedAction, equals: .main)
+        .overlay { if focusedAction == .main { Capsule().strokeBorder(RoomTokens.Ink.graphite, lineWidth: 2).padding(-3) } }
     }
 
     private func sideButton(_ action: RoomDockAction) -> some View {
@@ -227,6 +241,8 @@ struct RoomDock: View {
                 .contentShape(Circle())
         }
         .buttonStyle(RoomPressStyle())
+        .focused($focusedAction, equals: .side)
+        .overlay { if focusedAction == .side { Circle().strokeBorder(accent.text, lineWidth: 2) } }
         .foregroundStyle(action.enabled ? RoomTokens.Ink.graphite : RoomTokens.Ink.tertiary)
         .disabled(!action.enabled)
         .help(action.title)
@@ -265,10 +281,19 @@ struct RoomDock: View {
     }
 
     private func step(_ offset: Int) {
-        let from = focusedPlace ?? navigation.route.highlightedScreen ?? .disk
-        let target = RoomPlacePlan.step(from: from, by: offset)
+        // From the open screen, not the focused item: History and Settings have no item to hold focus.
+        let target = RoomPlacePlan.step(from: navigation.route.highlightedScreen ?? .disk, by: offset)
         select(target, origin: .keyboard)
-        if RoomPlacePlan.dock.contains(target) { focusedPlace = target }
+        focus(target)
+    }
+
+    private func focus(_ place: RoomDestination) {
+        if RoomPlacePlan.dock.contains(place) {
+            focusedPlace = place
+        } else {
+            focusedPlace = nil
+            dockFocused = true
+        }
     }
 }
 

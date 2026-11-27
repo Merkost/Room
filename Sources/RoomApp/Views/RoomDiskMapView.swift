@@ -525,7 +525,7 @@ struct RoomDiskMapView: View {
                             .id(level.relativePath)
                             .transition(RoomDiskZoom.transition(inward: zoomInward, anchor: zoomAnchor, motion: motion))
                             // The map takes the room the window has (no dead band under it at any height).
-                            .frame(minHeight: RoomTokens.Screen2.planHeight, maxHeight: .infinity)
+                            .frame(minHeight: RoomTokens.Screen2.mapMinHeight, maxHeight: .infinity)
                             .layoutPriority(1)
                         inspectorLine(level)
                     } else if layout == .compare, let compared = model.comparison {

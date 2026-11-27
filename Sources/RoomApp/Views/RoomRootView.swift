@@ -316,8 +316,7 @@ struct RoomRootView: View {
             statusChip
             RoomTopBarActions(model: model, destination: destination,
                               openGoTo: { openGoTo(keyboard: RoomSelectionOrigin.controlActivation == .keyboard) },
-                              show: { navigation.select(.screen($0), origin: RoomSelectionOrigin.controlActivation) },
-                              restore: restoreFromCaches)
+                              show: { navigation.select(.screen($0), origin: RoomSelectionOrigin.controlActivation) })
         }
     }
 

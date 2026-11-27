@@ -7,7 +7,6 @@ struct RoomTopBarActions: View {
     let destination: RoomDestination
     let openGoTo: () -> Void
     let show: (RoomDestination) -> Void
-    let restore: (RoomActivity) -> Void
 
     @Environment(\.roomAccent) private var accent
 
@@ -20,8 +19,7 @@ struct RoomTopBarActions: View {
             .accessibilityLabel("Go to")
             .accessibilityHint("Command K")
             .accessibilityIdentifier("RoomGoTo")
-            RoomHistoryButton(model: model, show: { show(.history) }, restore: restore)
-                .frame(width: RoomTokens.Dock.barIcon, height: RoomTokens.Dock.barIcon)
+            RoomHistoryButton(model: model) { show(.history) }
                 .background { if destination == .history { Circle().fill(accent.wash) } }
                 .foregroundStyle(destination == .history ? accent.text : RoomTokens.Ink.secondary)
                 .accessibilityAddTraits(destination == .history ? [.isSelected] : [])
