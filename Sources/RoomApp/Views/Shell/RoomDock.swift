@@ -90,6 +90,10 @@ struct RoomDock: View {
                     .lineLimit(1)
                 figure(place, value: value, row: row)
                     .frame(height: RoomTokens.Dock.figureHeight)
+                    // A finished scan bumps its figure once.
+                    .phaseAnimator([false, true, false], trigger: row.finishedAt) { figure, bumped in
+                        figure.scaleEffect(bumped && row.finishedAt != nil && motion.isFull ? 1.25 : 1)
+                    } animation: { _ in RoomTokens.Motion.check }
             }
             .offset(y: raised && !selected && motion.isFull ? -RoomTokens.Dock.hoverLift : 0)
             .frame(width: RoomTokens.Dock.itemWidth, height: RoomTokens.Dock.itemHeight)

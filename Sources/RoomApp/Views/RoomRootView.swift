@@ -183,6 +183,11 @@ struct RoomRootView: View {
                     .environment(\.roomEnter, RoomEnterContext(animated: navigation.selectionOrigin == .pointer,
                                                                 at: navigation.changedAt))
             }
+            .overlay {
+                if let madeToast, !madeToast.restored {
+                    RoomReceiptDots().id(madeToast.receiptID)
+                }
+            }
             .overlay(alignment: .bottom) {
                 if let madeToast {
                     RoomMadeToast(state: madeToast,
