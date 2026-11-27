@@ -36,6 +36,8 @@ struct RoomMemoryPageTests {
         #expect(runs.last?.last?.x == 300)
         let short = RoomMemoryPage.runs([sample(20), sample(0)], range: .now, size: CGSize(width: 300, height: 100))
         #expect(short.first?.first?.x == 280, "unmeasured time stays empty")
+        let longer = RoomMemoryPage.runs([sample(320), sample(280), sample(0)], range: .now, size: CGSize(width: 300, height: 100))
+        #expect(abs((longer.first?.first?.x ?? 0) + 20) < 0.001, "the reading before the range carries the line to the edge")
     }
 
     @Test func backgroundIsEverythingThatCannotBeQuitHere() {

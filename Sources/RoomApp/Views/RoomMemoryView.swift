@@ -167,7 +167,7 @@ struct RoomMemoryView: View {
             if expandable > 0 {
                 Button(showingAllBackground ? "Show fewer" : "\(expandable) more") { showingAllBackground.toggle() }
                     .roomLink(accent).font(RoomTokens.Typography.caption)
-                    .padding(.top, RoomTokens.Space.breath1)
+                    .padding(.top, RoomTokens.Space.tight)
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -230,7 +230,7 @@ struct RoomMemoryView: View {
             if expandable > 0 {
                 Button(showingAllApps ? "Show fewer" : "\(expandable) more") { showingAllApps.toggle() }
                     .roomLink(accent).font(RoomTokens.Typography.caption)
-                    .padding(.top, RoomTokens.Space.breath1)
+                    .padding(.top, RoomTokens.Space.tight)
             }
             if let message = memoryActions.statusMessage {
                 Text(message).font(RoomTokens.Typography.caption).foregroundStyle(.secondary)

@@ -90,14 +90,14 @@ struct RoomDeveloperView: View {
             case .workspace:
                 let page = page
                 RoomScreenFrame(headline: page.headline, supporting: model.isScanning ? model.progress : page.supporting,
-                                note: note, scrollsEvidence: true, entersEvidence: false) {
+                                note: note, noteAccessory: AnyView(foldersLine), scrollsEvidence: true,
+                                entersEvidence: false) {
                     VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
                         if model.isScanning, !model.scanTiles.isEmpty {
                             RoomScanStrip(tiles: model.scanTiles).transition(.opacity)
                         }
                         if !page.parts.isEmpty { composition(page) }
                         columns(page)
-                        foldersLine
                     }
                     .onGeometryChange(for: CGFloat.self, of: \.size.width) { width = $0 }
                     .animation(motion.animation(RoomTokens.Motion.ui, fallback: RoomTokens.Motion.fade), value: model.isScanning)
@@ -117,9 +117,8 @@ struct RoomDeveloperView: View {
         #endif
     }
 
-    private var note: String {
-        if model.headline.partial || model.projectSearchPartial { return "Sizes marked ≥ are lower bounds. Nothing here moves." }
-        return "Room only reads sizes; nothing here moves"
+    private var note: String? {
+        model.headline.partial || model.projectSearchPartial ? "Sizes marked ≥ are lower bounds." : nil
     }
 
     /// One button for the whole screen.
@@ -252,7 +251,8 @@ struct RoomDeveloperView: View {
             }
             ForEach(shown.shown) { row in
                 RoomEvidenceRow(name: row.name, meta: row.meta, bytes: row.bytes, barColor: color(kind),
-                                nameColumn: RoomTokens.Developer.nameColumn) {
+                                nameColumn: RoomTokens.Developer.nameColumn,
+                                showsBar: width < Self.twoColumnWidth || width >= RoomTokens.Developer.barsBreak) {
                     RoomThingIcon(path: row.path, name: row.name, fallback: row.glyph, project: row.project)
                 }
                 .padding(.horizontal, RoomTokens.Space.row)

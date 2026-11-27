@@ -32,7 +32,7 @@ nonisolated struct RoomMemoryWords: Equatable, Sendable {
 
 extension RoomTokens {
     enum Memory2 {
-        static let curveHeight: CGFloat = 130
+        static let curveHeight: CGFloat = 80
         static let curveStroke: CGFloat = 1.6
         static let nowDot: CGFloat = 9
         static let nowHalo: CGFloat = 4

@@ -7,12 +7,14 @@ struct RoomMemoryColumnHeader<Trailing: View>: View {
     @ViewBuilder let trailing: Trailing
 
     var body: some View {
-        VStack(spacing: RoomTokens.Space.breath1) {
+        VStack(spacing: RoomTokens.Space.tight) {
             HStack(alignment: .firstTextBaseline, spacing: RoomTokens.Space.row) {
                 Text(title).font(RoomTokens.Typography.section).accessibilityHeading(.h2)
                 Spacer(minLength: 0)
                 trailing.font(RoomTokens.Typography.caption).foregroundStyle(RoomTokens.Ink.secondary)
             }
+            // A link in one heading must not push its column lower than the other.
+            .frame(height: RoomTokens.Memory2.rowIcon)
             Divider()
         }
     }

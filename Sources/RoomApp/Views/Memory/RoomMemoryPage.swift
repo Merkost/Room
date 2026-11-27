@@ -32,7 +32,12 @@ nonisolated enum RoomMemoryPage {
 
     /// Curve points placed by time, newest at the right edge, split where readings are missing.
     static func runs(_ samples: [RoomMemorySampleRing.Sample], range: RoomMemoryRange, size: CGSize) -> [[CGPoint]] {
-        let shown = window(samples, range: range)
+        var shown = window(samples, range: range)
+        // One reading from just before the range lets the line reach the left edge; the canvas clips the rest.
+        if let first = shown.first, let before = samples.last(where: { $0.at < first.at }),
+           first.at.timeIntervalSince(before.at) <= gapSeconds {
+            shown.insert(before, at: 0)
+        }
         guard let end = shown.last?.at, let low = shown.map(\.bytes).min(), let high = shown.map(\.bytes).max() else { return [] }
         // The samples sit in the middle of the height, with at least a 3 GB band so a flat minute looks flat.
         let span = max(Double(high - low), 3e9)

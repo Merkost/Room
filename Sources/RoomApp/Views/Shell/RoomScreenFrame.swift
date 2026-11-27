@@ -27,6 +27,8 @@ struct RoomScreenFrame<Evidence: View, Action: View>: View {
     var supporting: String?
     var supportingMasked = false
     var note: String?
+    /// A quiet line with a control, after the note (Developer's "Folders…").
+    var noteAccessory: AnyView? = nil
     var scrollsEvidence = false
     /// False when the evidence staggers its own rows in (`roomEnter(2 + index)`).
     var entersEvidence = true
@@ -82,6 +84,7 @@ struct RoomScreenFrame<Evidence: View, Action: View>: View {
                         .contentTransition(.opacity)
                         .animation(motion.animation(RoomTokens.Motion.quick, fallback: RoomTokens.Motion.fade), value: note)
                 }
+                noteAccessory
                 Spacer(minLength: 0)
                 action()
             }

@@ -354,8 +354,21 @@ struct StoreScreenshotFixture: View {
                     CacheEntry(id: UUID(), url: root.appendingPathComponent("b"), name: title, byteCount: gb(size * 0.3),
                                modifiedAt: old, eligibility: .eligible, fileCount: 300)], issues: [])
         }
+        // One group used this week and one whose app is open, so all three sections show.
+        let waiting: [(String, String, String, Double, String, Eligibility)] = [
+            ("demo-yarn", "Yarn cache", "downloads again", 3, "Library/Caches/Yarn", .recent("Used within the last 7 days.")),
+            ("demo-jetbrains", "JetBrains caches", "rebuilds", 2, "Library/Caches/JetBrains", .inUse("Android Studio is running."))]
+        let later = waiting.map { id, title, subtitle, size, path, eligibility in
+            let root = home.appendingPathComponent(path, isDirectory: true)
+            try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            return CacheGroup(id: id, title: title, subtitle: subtitle, symbol: "shippingbox", category: "developer",
+                rootURL: root, consequence: "Rebuilds on next use.", entries: [
+                    CacheEntry(id: UUID(), url: root.appendingPathComponent("a"), name: title, byteCount: gb(size),
+                               modifiedAt: Date().addingTimeInterval(-2 * 86_400), eligibility: eligibility, fileCount: 400)],
+                issues: [])
+        }
         let kept: [(String, Double)] = [("Photos caches", 4), ("Mail downloads", 3), ("iCloud Drive cache", 1)]
-        return ScanReport(id: UUID(), scannedAt: Date(), groups: groups,
+        return ScanReport(id: UUID(), scannedAt: Date(), groups: groups + later,
             protectedData: kept.map { ProtectedData(id: $0.0, title: $0.0, url: home.appendingPathComponent($0.0),
                 byteCount: gb($0.1), reason: "Room never moves this", isPartial: false) },
             issues: [], volume: VolumeInfo(totalBytes: 494_000_000_000, availableBytes: 64_000_000_000), cancelled: false)
