@@ -143,6 +143,12 @@ enum RoomTokens {
     }
 
     // MARK: Spacing (pt). Calm is the default density; Compact is v2's spacing.
+    /// Dropdowns and expand rows share one height and one chevron column.
+    enum Control {
+        static let height: CGFloat = 30
+        static let chevronColumn: CGFloat = 10
+    }
+
     enum Space {
         static let tight: CGFloat = 6
         static let row: CGFloat = RoomDS.Space.row
@@ -600,6 +606,6 @@ extension EnvironmentValues {
 struct RoomAccentRoot: ViewModifier {
     @AppStorage("RoomAccent") private var accent = RoomTokens.Accent.teal
     func body(content: Content) -> some View {
-        content.environment(\.roomAccent, accent).tint(accent.fill)
+        content.environment(\.roomAccent, accent).tint(accent.fill).disclosureGroupStyle(RoomDisclosureStyle())
     }
 }

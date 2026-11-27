@@ -234,19 +234,13 @@ struct RoomDeveloperView: View {
                 } label: {
                     Label(section == .aiTools ? "Choose Tool Folder…" : "Choose Device Folder…", systemImage: "folder.badge.plus")
                 }
-                .roomLink(accent)
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .fixedSize()
+                .roomDropdown()
                 .disabled(model.isScanning || model.isChoosingFolder)
                 .accessibilityIdentifier(section == .aiTools ? "RoomDeveloperChooseAITool" : "RoomDeveloperChooseDeviceFolder")
             } else if section != .storage && !isWorktrees {
                 // Saved-folder reuse (#1) with the redesign's quiet link style; the menu form keeps the same look.
                 folderChoice(.project, title: "Projects Folder…", symbol: "folder.badge.plus")
-                    .roomLink(accent)
-                    .menuStyle(.borderlessButton)
-                    .menuIndicator(.hidden)
-                    .fixedSize()
+                    .roomDropdown(chevron: !model.reusableFolders(for: .project).isEmpty)
                     .disabled(model.isScanning || model.isChoosingFolder)
                     .accessibilityIdentifier("RoomDeveloperAddFolder")
             }
@@ -355,6 +349,7 @@ struct RoomDeveloperView: View {
                                 folderChoice(role)
                             }
                         }
+                        .roomDropdown()
                         .disabled(model.isScanning || model.isChoosingFolder)
                     }
                 }
@@ -507,8 +502,8 @@ struct RoomDeveloperView: View {
                 } label: {
                     Label("Choose Folder…", systemImage: "folder.badge.plus")
                 }
+                .roomDropdown()
                 .disabled(model.isScanning || model.isChoosingFolder)
-                .fixedSize()
             }, content: {
             if let report = model.storageReport, !report.storageResources.isEmpty {
                 RoomDeveloperRowList(items: RoomDeveloperList.bySize(report.storageResources,

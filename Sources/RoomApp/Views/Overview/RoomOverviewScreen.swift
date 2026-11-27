@@ -69,7 +69,6 @@ struct RoomOverviewScreen: View {
     @Environment(\.roomAccent) private var accent
     @Environment(\.roomHide) private var hide
     @Environment(\.roomMotion) private var motion
-    @State private var hoverNote: String?
     @Namespace private var scanSpace
 
     private var capacity: RoomVolumeCapacity? { insights.volumeCapacity }
@@ -103,7 +102,7 @@ struct RoomOverviewScreen: View {
         RoomScreenFrame(headline: isScanShowing ? .words(running ? "Reading your Mac" : "Scan finished") : words.headline,
                         supporting: isScanShowing ? RoomScanTile.progress(tiles) : words.supporting,
                         supportingMasked: !isScanShowing,
-                        note: isScanShowing ? "A scan only reads. Nothing moves." : hoverNote ?? words.note) {
+                        note: isScanShowing ? "A scan only reads. Nothing moves." : words.note) {
             VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
                 if isScanShowing {
                     RoomScanBoard(tiles: tiles) { id in
@@ -167,25 +166,21 @@ struct RoomOverviewScreen: View {
     private func plan(centred: Bool) -> some View {
         VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
             ZStack {
-                RoomOverviewFloorPlanView(plan: plan) { room in
-                    guard let room else { hoverNote = nil; return }
-                    let name = room.isFree ? "Free space" : room.title
-                    hoverNote = hide.masksNow ? name : "\(name) is \(plan.percent(of: room))% of this Mac"
-                }
+                RoomOverviewFloorPlanView(plan: plan, prompt: centred ? nil : mapPrompt)
                 .opacity(centred ? RoomTokens.Scan.restingDots : 1)
                 if centred {
                     primaryButton("Scan everything", hero: true, action: scanEverything)
                         .matchedGeometryEffect(id: "scan", in: scanSpace)
                 }
             }
-            if !centred, insights.homeKinds == nil {
-                Button(insights.isScanningDisk ? "Mapping your home folder…" : "Map your home folder to see what fills it") {
-                    insights.scanHome()
-                }
-                .roomLink(accent)
-                .disabled(insights.isScanningDisk || insights.isChoosingDiskFolder)
-            }
         }
+    }
+
+    /// The Used room, unmapped, holds the way to fill it.
+    private var mapPrompt: RoomOverviewFloorPlanView.Prompt? {
+        guard insights.homeKinds == nil else { return nil }
+        return .init(title: insights.isScanningDisk ? "Mapping your home folder…" : "Map your home folder to see what fills it",
+                     disabled: insights.isScanningDisk || insights.isChoosingDiskFolder) { insights.scanHome() }
     }
 
     /// The screen's one filled button, wherever it stands.

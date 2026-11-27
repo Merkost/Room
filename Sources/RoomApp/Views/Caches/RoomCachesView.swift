@@ -105,11 +105,12 @@ struct RoomCachesView: View {
                     RoomCachesPlaces(model: model, inspect: inspect, showKept: showKept,
                                      neverSuggest: model.ignoreStore != nil ? { neverSuggest($0) } : nil)
                         .opacity(model.isAfterRestore ? 0.6 : 1)
+                    if allClear { startingPlaces(checked: true) }
                 } else {
                     startAction(hero: true)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, RoomTokens.Space.group)
-                    startingPlaces
+                    startingPlaces(checked: false)
                     lastReceipt
                 }
                 if let bytes = agentWorktreeBytes, let reviewWorktrees, !model.isScanning {
@@ -231,12 +232,19 @@ struct RoomCachesView: View {
 
     /// Before a check: the places Room will look, as the mockup's evidence rows (icon, name, where), so the screen
     /// says what the check will cover instead of standing empty.
+    /// A finished check that found nothing: the page says where Room looked instead of standing empty.
+    private var allClear: Bool {
+        model.hasReport && !model.isScanning && !model.isPartialScan && model.scanIssues.isEmpty
+            && !model.sources.contains(where: \.isAvailable)
+    }
+
     @ViewBuilder
-    private var startingPlaces: some View {
+    private func startingPlaces(checked: Bool) -> some View {
         let groups = model.checkLocations
         if !groups.isEmpty {
             VStack(alignment: .leading, spacing: 2) {
-                RoomGroupLabel(text: "Where Room looks").padding(.top, -RoomTokens.Space.group)
+                RoomGroupLabel(text: checked ? "Where Room looked" : "Where Room looks")
+                    .padding(.top, checked ? 0 : -RoomTokens.Space.group)
                 ForEach(Array(groups.prefix(Self.readyRows)), id: \.id) { group in
                     let title = hidden && group.isPersonal ? "Folder hidden" : group.title
                     HStack(spacing: RoomTokens.Space.row) {
@@ -251,7 +259,7 @@ struct RoomCachesView: View {
                         }
                         .font(RoomTokens.Screen2.listMeta).foregroundStyle(RoomTokens.Ink.secondary).lineLimit(1)
                         Spacer(minLength: RoomTokens.Space.group)
-                        Text("Not checked").font(RoomTokens.Screen2.listMeta).foregroundStyle(RoomTokens.Ink.tertiary)
+                        Text(checked ? "Nothing to move" : "Not checked").font(RoomTokens.Screen2.listMeta).foregroundStyle(RoomTokens.Ink.tertiary)
                     }
                     .frame(minHeight: RoomTokens.Screen2.listRow)
                     .padding(.horizontal, RoomTokens.Space.row)

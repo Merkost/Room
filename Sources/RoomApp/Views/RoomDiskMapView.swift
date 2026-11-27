@@ -288,15 +288,9 @@ struct RoomDiskMapView: View {
                     viewsMenu(savedViews)
                 }
             } label: {
-                HStack(spacing: 6) {
-                    Text(layout == .map ? "View" : layout.rawValue)
-                    Text(verbatim: "›").foregroundStyle(RoomTokens.Ink.tertiary)
-                }
-                .font(RoomTokens.Typography.body)
-                .foregroundStyle(RoomTokens.Ink.secondary)
-                .contentShape(Rectangle())
+                Text(layout == .map ? "View" : layout.rawValue)
             }
-            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
+            .roomDropdown()
             .accessibilityLabel("Disk Map view options")
         }
         .fixedSize(horizontal: true, vertical: false)
@@ -430,10 +424,9 @@ struct RoomDiskMapView: View {
 
     @ViewBuilder private var folderStart: some View {
         if let pending = model.pendingFolder {
-            RoomStartPanel(title: "This folder has no map yet",
-                           message: hidden ? "Map this folder to see what takes up space." :
-                               "Map “\(pending.lastPathComponent)” to see what takes up space.",
-                           artwork: .map) {
+            startScreen(title: "This folder has no map yet",
+                        message: hidden ? "Map this folder to see what takes up space." :
+                            "Map “\(pending.lastPathComponent)” to see what takes up space.") {
                 Button("Map This Folder") { insights.scanDisk(url: pending) }
                     .roomScreenPrimary(accent, hero: true) // one-filled: exclusive start panel, shown only before a map exists
                     .disabled(!insights.canChooseDiskLocation)
@@ -443,9 +436,8 @@ struct RoomDiskMapView: View {
                     .disabled(!insights.canChooseDiskLocation)
             }
         } else {
-            RoomStartPanel(title: "See what’s taking up space",
-                           message: "Map a folder, including its hidden files. Your files stay in place.",
-                           artwork: .map) {
+            startScreen(title: "See what’s taking up space",
+                        message: "Map a folder, including its hidden files. Your files stay in place.") {
                 Button(action: insights.chooseDiskFolder) {
                     Label("Choose Folder & Map…", systemImage: "magnifyingglass")
                 }
@@ -454,12 +446,29 @@ struct RoomDiskMapView: View {
                 .accessibilityIdentifier("RoomDiskChooseFolder")
                 if !insights.accessFolders.isEmpty {
                     Menu("Approved Folders") { approvedFolderButtons }
-                        .controlSize(.large)
+                        .roomDropdown()
                         .disabled(!insights.canChooseDiskLocation)
                         .accessibilityIdentifier("RoomDiskApprovedFolders")
                 }
             }
         }
+    }
+
+    /// The empty screen speaks like the others: serif headline, one supporting line, the one main button in the middle.
+    private func startScreen<Actions: View>(title: String, message: String,
+                                            @ViewBuilder actions: () -> Actions) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            RoomHeadlineView(headline: .words(title), compact: false)
+                .padding(.top, RoomTokens.Screen2.headlineTop)
+            Text(message)
+                .font(RoomTokens.Screen2.supporting)
+                .foregroundStyle(RoomTokens.Ink.secondary)
+                .padding(.top, RoomTokens.Screen2.supportingGap)
+                .fixedSize(horizontal: false, vertical: true)
+            VStack(spacing: RoomTokens.Space.group) { actions() }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private func details(_ level: RoomTreeNode, isWide: Bool) -> some View {

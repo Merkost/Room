@@ -52,6 +52,8 @@ struct RoomDeveloperAIStorageView: View {
             }
         }
         .pickerStyle(.menu)
+        .buttonStyle(.bordered)
+        .buttonBorderShape(.capsule)
         .fixedSize()
     }
 
