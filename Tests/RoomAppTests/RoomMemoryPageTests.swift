@@ -20,9 +20,13 @@ struct RoomMemoryPageTests {
     }
 
     @Test func pressureSentenceNamesTheWorstLevelAndTheTimeReallyCovered() {
-        #expect(RoomMemoryPage.pressureSentence([sample(720), sample(0)]) == "Pressure stayed normal over the last 12 min")
-        #expect(RoomMemoryPage.pressureSentence([sample(120, .critical), sample(0)])
-                == "Pressure reached critical over the last 2 min")
+        let twelve = (0...36).reversed().map { sample(Double($0) * 20) }
+        #expect(RoomMemoryPage.pressureSentence(twelve) == "Pressure stayed normal over the last 12 min")
+        let hot = [sample(120, .critical)] + (0...5).reversed().map { sample(Double($0) * 20) }
+        #expect(RoomMemoryPage.pressureSentence(hot) == "Pressure reached critical over the last 2 min")
+        let asleep = [sample(2_460), sample(2_440), sample(2_420), sample(2_400), sample(20), sample(0)]
+        #expect(RoomMemoryPage.pressureSentence(asleep) == "Pressure stayed normal in 1 min of readings",
+                "forty minutes without a reading are not claimed")
         #expect(RoomMemoryPage.pressureSentence([sample(0)]) == "Pressure is normal so far")
         #expect(RoomMemoryPage.pressureSentence([sample(40, nil), sample(0, nil)]) == "macOS didn’t report pressure")
         #expect(RoomMemoryPage.pressureSentence([]) == "Waiting for the first reading")

@@ -111,7 +111,9 @@ nonisolated struct RoomCachesWords: Equatable, Sendable {
                 return RoomCachesWords(headline: .words("Check incomplete"),
                                        supporting: "Start a new check to measure caches.", note: note)
             }
-            return RoomCachesWords(headline: .words("All clear"), supporting: "No caches are taking space", note: note)
+            return RoomCachesWords(headline: .words("All clear"),
+                                   supporting: i.totalBytes > 0 ? "Nothing here can be removed" : "No caches are taking space",
+                                   note: note)
         }
         if let remembered = i.rememberedBytes, remembered > 0 {
             return RoomCachesWords(headline: RoomHeadline(figure: RoomFormat.gb(remembered), words: "at the last check"),

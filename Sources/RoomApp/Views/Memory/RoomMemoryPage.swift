@@ -20,14 +20,28 @@ nonisolated enum RoomMemoryPage {
         return samples.filter { end.timeIntervalSince($0.at) <= range.seconds }
     }
 
-    /// One sentence about the samples on screen; it names only the time they really cover.
+    /// One sentence about the samples on screen. Only the time between neighbouring readings that carry a
+    /// pressure level counts; a sleep or a closed screen is never claimed.
     static func pressureSentence(_ window: [RoomMemorySampleRing.Sample]) -> String {
-        guard let first = window.first, let last = window.last else { return "Waiting for the first reading" }
+        guard !window.isEmpty else { return "Waiting for the first reading" }
         guard let worst = window.compactMap(\.level).max() else { return "macOS didn’t report pressure" }
-        let minutes = Int((last.at.timeIntervalSince(first.at) / 60).rounded())
+        var covered: TimeInterval = 0
+        var broken = false
+        for (first, second) in zip(window, window.dropFirst()) {
+            if first.level != nil, second.level != nil, second.at.timeIntervalSince(first.at) <= gapSeconds {
+                covered += second.at.timeIntervalSince(first.at)
+            } else {
+                broken = true
+            }
+        }
         let word = worst.word.lowercased()
-        guard minutes >= 1 else { return "Pressure is \(word) so far" }
-        return "Pressure \(worst == .normal ? "stayed" : "reached") \(word) over the last \(minutes) min"
+        let verb = worst == .normal ? "stayed" : "reached"
+        let minutes = Int((covered / 60).rounded())
+        guard minutes >= 1 else {
+            return broken ? "Pressure \(verb) \(word) in the readings so far" : "Pressure is \(word) so far"
+        }
+        return broken ? "Pressure \(verb) \(word) in \(minutes) min of readings"
+            : "Pressure \(verb) \(word) over the last \(minutes) min"
     }
 
     /// Curve points placed by time, newest at the right edge, split where readings are missing.

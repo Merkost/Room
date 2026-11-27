@@ -22,10 +22,17 @@ import Testing
         model.toggleSelection(id: row.id)
         #expect(model.selectedBytes == model.foundBytes)
         #expect(model.cleanupRows.contains { $0.id == row.id && !$0.entryIDs.isEmpty })
+        #expect(model.cleanupRows.first { $0.id == row.id }?.consequence
+                == "Used recently. You ticked it yourself.\nRebuilt", "the review says what a recent item costs")
         await model.cleanSelected()
         #expect(!FileManager.default.fileExists(atPath: fixture.fresh.path))
         #expect(!FileManager.default.fileExists(atPath: fixture.old.path))
         #expect(model.recentRows.isEmpty && model.foundBytes == 0)
+    }
+
+    @Test func recentConsequencesMakeNoAgeClaim() {
+        #expect(RoomViewModel.withoutAgeRule("Diagnostic logs older than 30 days move to Trash.")
+                == "Diagnostic logs move to Trash.")
     }
 
     @Test func recentCachesStayWhenNotTicked() async throws {

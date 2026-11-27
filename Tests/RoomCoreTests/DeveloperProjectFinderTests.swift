@@ -49,6 +49,17 @@ struct DeveloperProjectFinderTests {
         #expect(home.names(result.projects) == ["code", "other/solo"])
     }
 
+    @Test func collapsingNeverReopensASkippedFolder() throws {
+        let home = try Home()
+        defer { home.remove() }
+        for index in 0..<6 { try home.file("code/p\(index)/settings.gradle") }
+        try home.file("code/huge/settings.gradle")
+        let result = DeveloperProjectFinder.find(home: home.url,
+            excluding: [home.url.appendingPathComponent("code/huge").path], limit: 3)
+        #expect(!home.names(result.projects).contains("code"))
+        #expect(result.projects.count == 3 && result.partial)
+    }
+
     @Test func aLimitedWalkSaysSo() throws {
         let home = try Home()
         defer { home.remove() }

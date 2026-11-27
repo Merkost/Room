@@ -58,6 +58,8 @@ struct RoomSource: Identifiable, Sendable {
     let isInspectionOnly: Bool
     /// Explicit impacts for eligible cleanup units, separate from mixed notes.
     var cleanupConsequences: [String] = []
+    /// What moving this source's recently used items costs.
+    var recentConsequences: [String] = []
     var isAvailable: Bool { eligibleBytes > 0 && selectableCount > 0 }
 }
 

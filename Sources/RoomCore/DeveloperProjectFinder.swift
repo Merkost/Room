@@ -43,6 +43,7 @@ public enum DeveloperProjectFinder {
             }
             guard depth < maximumDepth else { continue }
             for child in children.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+                if Date() >= deadline || Task.isCancelled { partial = true; break }
                 let name = child.lastPathComponent
                 guard !name.hasPrefix("."), !skipped.contains(name), !packages.contains(child.pathExtension.lowercased()),
                       let values = try? child.resourceValues(forKeys: Set(keys)),
@@ -52,7 +53,7 @@ public enum DeveloperProjectFinder {
                 queue.append((path, depth + 1))
             }
         }
-        let (paths, cut) = collapse(found, home: home.path, limit: max(1, limit))
+        let (paths, cut) = collapse(found, home: home.path, excluding: excluding, limit: max(1, limit))
         return Result(projects: paths.sorted().map { URL(fileURLWithPath: $0, isDirectory: true) },
                       partial: partial || cut)
     }
@@ -65,12 +66,17 @@ public enum DeveloperProjectFinder {
             atPath: folder.appendingPathComponent("gradle/wrapper/gradle-wrapper.properties").path)
     }
 
-    /// Replaces the busiest sibling group with its parent until the list fits. The home itself is never used.
-    private static func collapse(_ paths: [String], home: String, limit: Int) -> ([String], Bool) {
+    /// Replaces the busiest sibling group with its parent until the list fits. Neither the home nor a folder
+    /// holding a skipped path is used, since reading it would read what was skipped.
+    private static func collapse(_ paths: [String], home: String, excluding: Set<String>,
+                                 limit: Int) -> ([String], Bool) {
         var paths = Set(paths)
         while paths.count > limit {
             let groups = Dictionary(grouping: paths) { ($0 as NSString).deletingLastPathComponent }
-                .filter { $0.key != home && $0.value.count > 1 }
+                .filter { group in
+                    group.key != home && group.value.count > 1
+                        && !excluding.contains { $0 == group.key || $0.hasPrefix(group.key + "/") }
+                }
             guard let busiest = groups.max(by: { ($0.value.count, $1.key) < ($1.value.count, $0.key) }) else {
                 return (Array(paths.sorted().prefix(limit)), true)
             }

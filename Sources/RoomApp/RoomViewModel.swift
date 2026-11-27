@@ -219,8 +219,18 @@ final class RoomViewModel {
         } + recentRows.map { row in
             let source = sources.first { $0.id == row.sourceID }
             return cleanupRow(row.id, name: "\(row.name), \(row.note)", bytes: row.bytes,
-                              consequence: source?.cleanupConsequences.joined(separator: "\n") ?? "")
+                              consequence: Self.recentConsequence(source?.recentConsequences ?? []))
         }
+    }
+
+    /// "Logs older than 30 days move to Trash" is untrue of a recent item ticked by hand.
+    nonisolated static func withoutAgeRule(_ consequence: String) -> String {
+        consequence.replacingOccurrences(of: #" older than \d+ days"#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    nonisolated static func recentConsequence(_ consequences: [String]) -> String {
+        (["Used recently. You ticked it yourself."] + consequences).joined(separator: "\n")
     }
 
     private func cleanupRow(_ key: String, name: String, bytes: Int64, consequence: String) -> RoomCleanupReview.Row {
@@ -827,6 +837,9 @@ final class RoomViewModel {
                 group.eligibleEntries.contains { !ignoredEntryIDs.contains($0.id) && !movedEntryIDs.contains($0.id) }
             }
                 .map(\.consequence).filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })).sorted()
+            let recentConsequences = Array(Set(groups.filter { group in
+                group.recentEntries.contains { !ignoredEntryIDs.contains($0.id) && !movedEntryIDs.contains($0.id) }
+            }.map { Self.withoutAgeRule($0.consequence) }.filter { !$0.isEmpty })).sorted()
             let issues = groups.flatMap(\.issues).map(\.message)
             let held = Dictionary(grouping: entries.filter { !allowsCleanup || !$0.eligibility.isEligible || ignoredEntryIDs.contains($0.id) }) {
                 if ignoredEntryIDs.contains($0.id) { return "You asked Room not to suggest this" }
@@ -858,7 +871,8 @@ final class RoomViewModel {
                         reason: ignoredEntryIDs.contains($0.id) ? "You asked Room not to suggest this" : $0.eligibility.reason)
                 },
                 isInspectionOnly: inspectionOnly,
-                cleanupConsequences: cleanupConsequences
+                cleanupConsequences: cleanupConsequences,
+                recentConsequences: recentConsequences
             )
         }.filter { $0.entryCount > 0 || $0.isPartial || $0.blockedReason != nil && movedEntryIDs.isEmpty }.sorted {
             Self.listsBefore((agents: $0.category == .agents, bytes: $0.eligibleBytes, name: $0.name, id: $0.id),

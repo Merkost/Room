@@ -1,6 +1,12 @@
 import Foundation
 
 extension CacheConfiguration {
+    /// Every launcher that writes under Caches/JetBrains or Android Studio's folder. A missing name would let a
+    /// running IDE's index be ticked.
+    static let jetBrainsProcesses = ["java", "studio", "idea", "intellij idea", "pycharm", "webstorm", "clion", "goland",
+                                     "rider", "phpstorm", "rubymine", "datagrip", "dataspell", "rustrover", "appcode",
+                                     "aqua", "writerside", "mps", "fleet"]
+
     /// id, title, path under home, and the executables whose presence holds the cache.
     static let toolCaches: [(String, String, String, [String])] = [
         ("cocoapods", "CocoaPods", "Library/Caches/CocoaPods", ["pod", "ruby", "xcode", "xcodebuild"]),
@@ -10,7 +16,8 @@ extension CacheConfiguration {
         ("simulator-caches", "Simulator", "Library/Developer/CoreSimulator/Caches", ["simulator", "xcode", "xcodebuild", "launchd_sim"]),
         ("electron-downloads", "Electron downloads", "Library/Caches/electron", ["node", "npm", "electron"]),
         ("electron-builder", "Electron Builder", "Library/Caches/electron-builder", ["node", "npm", "electron", "app-builder"]),
-        ("typescript", "TypeScript types", "Library/Caches/typescript", ["node", "code", "code helper"]),
+        ("typescript", "TypeScript types", "Library/Caches/typescript",
+         ["node", "code", "code helper", "cursor", "cursor helper", "codium", "windsurf"]),
         ("composer", "Composer", "Library/Caches/composer", ["php", "composer"]),
         ("ccache", "ccache", "Library/Caches/ccache", ["ccache", "clang", "xcodebuild"]),
         ("sccache", "sccache", "Library/Caches/Mozilla.sccache", ["sccache", "cargo", "rustc"]),
@@ -120,7 +127,7 @@ extension CacheConfiguration {
             for version in folders(parent) where prefix.isEmpty || version.hasPrefix(prefix) {
                 for cache in ["index", "caches", "compiler", "compile-server", "ModuleCache", "kotlin-native-forward-declarations", "vcs-log"] {
                     add("\(prefix.isEmpty ? "jetbrains" : "androidstudio")-\(slug(version))-\(slug(cache))", title,
-                        "\(parent)/\(version)/\(cache)", "developer", "hammer", ["java", "studio", "idea", "pycharm", "webstorm", "clion"],
+                        "\(parent)/\(version)/\(cache)", "developer", "hammer", jetBrainsProcesses,
                         "Indexes and compiler caches rebuild on the next IDE launch. Local History, installed plugins, terminal state and project metadata stay protected.")
                 }
                 keep("ide-history-\(slug(parent))-\(slug(version))", "\(title) Local History", "\(parent)/\(version)/LocalHistory",

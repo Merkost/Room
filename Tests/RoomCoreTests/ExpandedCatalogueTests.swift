@@ -47,6 +47,12 @@ struct ExpandedCatalogueTests {
             || $0 == ".pub-cache" || $0.hasPrefix(".pub-cache/global_packages") || $0.hasPrefix(".pub-cache/git") })
     }
 
+    @Test func everyJetBrainsIDEHoldsItsOwnCaches() {
+        for name in ["goland", "rider", "phpstorm", "rubymine", "datagrip", "rustrover", "intellij idea", "studio"] {
+            #expect(CacheConfiguration.jetBrainsProcesses.contains(name), "\(name)")
+        }
+    }
+
     @Test func discoverySkipsLinkedIDEVersions() throws {
         let home = URL(fileURLWithPath: "/private/tmp/RoomCatalogue-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: home) }

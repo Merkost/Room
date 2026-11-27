@@ -215,6 +215,23 @@ final class RoomDeveloperModel {
         }
     }
 
+    /// Holds the approval that covers `url` open while `body` runs. Only the resolved bookmark URL carries it,
+    /// so a plain path to the same folder would open nothing after a relaunch.
+    private func openScope(containing url: URL) -> () -> Void {
+        #if ROOM_APP_STORE
+        guard let scope = grant(containing: url)?.url, scope.startAccessingSecurityScopedResource() else { return {} }
+        return { scope.stopAccessingSecurityScopedResource() }
+        #else
+        return {}
+        #endif
+    }
+
+    private func findProjects(in home: URL, skipped: Set<String>) async -> DeveloperProjectFinder.Result? {
+        let close = openScope(containing: home)
+        defer { close() }
+        return await discovery?.projects(home, skipped)
+    }
+
     private func isSkipped(_ url: URL) -> Bool {
         let path = url.standardizedFileURL.path
         return skippedPaths.contains { path == $0 || path.hasPrefix($0 + "/") }
@@ -225,7 +242,10 @@ final class RoomDeveloperModel {
         func readable(_ url: URL) -> Bool {
             #if ROOM_APP_STORE
             // Existence cannot be checked outside a grant; the engine reports a missing folder quietly.
-            grant(containing: url) != nil && FileManager.default.fileExists(atPath: url.path)
+            guard grant(containing: url) != nil else { return false }
+            let close = openScope(containing: url)
+            defer { close() }
+            return FileManager.default.fileExists(atPath: url.path)
             #else
             var directory: ObjCBool = false
             return FileManager.default.fileExists(atPath: url.path, isDirectory: &directory) && directory.boolValue
@@ -421,7 +441,7 @@ final class RoomDeveloperModel {
         if search == nil { plan(token: token) }
         task = Task { [weak self] in
             if let search {
-                guard let found = await self?.discovery?.projects(search, skipped) else { return }
+                guard let found = await self?.findProjects(in: search, skipped: skipped) else { return }
                 guard let self, self.generation == token else { return }
                 self.foundProjects = found.projects
                 self.projectSearchPartial = found.partial

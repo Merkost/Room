@@ -7,12 +7,10 @@ nonisolated struct RoomDeveloperDiscovery: Sendable {
     let projects: @Sendable (URL, Set<String>) async -> DeveloperProjectFinder.Result
 
     static let standard = RoomDeveloperDiscovery { home, skipped in
-        await Task.detached(priority: .userInitiated) {
-            #if ROOM_APP_STORE
-            let scoped = home.startAccessingSecurityScopedResource()
-            defer { if scoped { home.stopAccessingSecurityScopedResource() } }
-            #endif
-            return DeveloperProjectFinder.find(home: home, excluding: skipped)
-        }.value
+        let walk = Task.detached(priority: .userInitiated) {
+            DeveloperProjectFinder.find(home: home, excluding: skipped)
+        }
+        // A detached task does not inherit cancellation, and Stop must reach the walk.
+        return await withTaskCancellationHandler { await walk.value } onCancel: { walk.cancel() }
     }
 }
