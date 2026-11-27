@@ -70,7 +70,11 @@ struct StoreScreenshotFixture: View {
     private let workspace: URL
     private let approvalID: String?
     private let treeStore: RoomTreeStore
+    #if ROOM_APP_STORE
     private let memoryActions = MemoryActionsModel()
+    #else
+    private let memoryActions = StoreScreenshotFixture.sampleApps()
+    #endif
     #if !ROOM_APP_STORE
     private let agentWork = AgentWorkModel()
     #endif
@@ -380,7 +384,7 @@ struct StoreScreenshotFixture: View {
             cancelled: false, volumeUUID: "sample-volume", issueCount: 0, tree: tree)
     }
 
-    /// Sixty seconds of memory between 9 and 12 GB, so the curve has a shape.
+    /// Thirteen minutes of memory between 9 and 12 GB, so the curve has a shape.
     private static func memoryCurve() -> [Int64] {
         let shape: [Double] = [9, 9, 10, 10, 9, 9, 10, 11, 11, 10, 10, 9, 10, 10, 11, 12, 12, 11, 10, 10, 9, 9, 10, 10, 11,
                                10, 10, 9, 10, 9, 11, 10, 10, 12, 11, 10, 9, 10, 11, 10]
@@ -529,6 +533,20 @@ struct StoreScreenshotFixture: View {
         return history
     }
 
+    #if !ROOM_APP_STORE
+    /// Sample apps, so a render never lists what is really running on this Mac.
+    private static func sampleApps() -> MemoryActionsModel {
+        let apps = [(101, "Xcode"), (102, "Safari"), (103, "Simulator")].map { pid, name in
+            MemoryRunningApplication(pid: Int32(pid), name: name, bundleIdentifier: "sample.\(name)",
+                bundleURL: URL(fileURLWithPath: "/Applications/\(name).app"), launchDate: .distantPast,
+                bundleIdentity: MemoryBundleIdentity(device: 1, inode: UInt64(pid), modifiedSeconds: 0,
+                    modifiedNanoseconds: 0, changedSeconds: 0, changedNanoseconds: 0),
+                isRegular: true, isTerminated: false, icon: nil)
+        }
+        return MemoryActionsModel(applicationProvider: { apps }, quitRequester: { _ in .refused })
+    }
+    #endif
+
     private static func memoryReport() -> MemoryReport {
         MemoryReport(id: UUID(), scannedAt: .now, totalBytes: 17_179_869_184, usedBytes: 9_400_000_000,
             availableBytes: 5_200_000_000, compressedBytes: 1_220_000_000, swapUsedBytes: 391_000_000,
@@ -536,7 +554,10 @@ struct StoreScreenshotFixture: View {
                 .init(id: 101, name: "Xcode", residentBytes: 3_100_000_000),
                 .init(id: 102, name: "Safari", residentBytes: 2_200_000_000),
                 .init(id: 103, name: "Simulator", residentBytes: 1_300_000_000),
-                .init(id: 104, name: "Finder", residentBytes: 350_000_000)
+                .init(id: 201, name: "java", residentBytes: 1_100_000_000),
+                .init(id: 202, name: "WindowServer", residentBytes: 600_000_000),
+                .init(id: 104, name: "Finder", residentBytes: 350_000_000),
+                .init(id: 203, name: "node", residentBytes: 300_000_000)
             ], recommendations: [], issues: [], wiredBytes: 2_570_000_000)
     }
 

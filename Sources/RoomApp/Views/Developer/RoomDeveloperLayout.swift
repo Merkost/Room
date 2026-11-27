@@ -51,48 +51,9 @@ enum RoomDeveloperFormat {
 enum RoomDeveloperList {
     static let collapsedLimit = 8
 
-    /// Largest first; ties fall back to the name so the order never jumps between scans.
-    static func bySize<T>(_ items: [T], bytes: (T) -> Int64, name: (T) -> String) -> [T] {
-        items.sorted {
-            let (a, b) = (bytes($0), bytes($1))
-            return a == b ? name($0).localizedStandardCompare(name($1)) == .orderedAscending : a > b
-        }
-    }
-
-    static func byName<T>(_ items: [T], name: (T) -> String) -> [T] {
-        items.sorted { name($0).localizedStandardCompare(name($1)) == .orderedAscending }
-    }
-
     static func visible<T>(_ items: [T], expanded: Bool, limit: Int = collapsedLimit) -> (shown: [T], hidden: Int) {
         guard !expanded, items.count > limit + 1 else { return (items, 0) }
         return (Array(items.prefix(limit)), items.count - limit)
-    }
-
-    struct Group<Item> {
-        let key: String
-        let bytes: Int64
-        let items: [Item]
-    }
-
-    /// Groups keep their items largest first and sit largest group first.
-    static func grouped<T>(_ items: [T], key: (T) -> String, bytes: (T) -> Int64, name: (T) -> String) -> [Group<T>] {
-        Dictionary(grouping: items, by: key).map { key, values in
-            Group(key: key, bytes: RoomDeveloperPresentation.sum(values.map(bytes)),
-                  items: bySize(values, bytes: bytes, name: name))
-        }.sorted { $0.bytes == $1.bytes ? $0.key < $1.key : $0.bytes > $1.bytes }
-    }
-
-    /// Bar widths as a share of the full width: the largest item fills it, the rest are proportional, and
-    /// anything with data keeps a visible sliver. Zero or negative sizes stay empty; no item gives no fractions.
-    static func barFractions(_ sizes: [Int64], minimum: Double = 0.03) -> [Double] {
-        let largest = sizes.max() ?? 0
-        guard largest > 0 else { return sizes.map { _ in 0 } }
-        return sizes.map { $0 > 0 ? max(minimum, Double($0) / Double(largest)) : 0 }
-    }
-
-    /// Rows arrive in order as results appear; the stagger stops growing after `maxStaggered`.
-    static func staggerDelay(index: Int) -> TimeInterval {
-        Double(min(max(0, index), RoomTokens.Motion.maxStaggered)) * RoomTokens.Motion.stagger
     }
 }
 

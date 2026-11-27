@@ -73,68 +73,6 @@ nonisolated struct RoomPressureHistory: Codable, Equatable, Sendable {
     }
 }
 
-// MARK: - Finding sentence (ME-6) and episodes
-
-nonisolated enum RoomPressureFinding {
-    nonisolated struct Episodes: Equatable, Sendable { let elevated: Int; let critical: Int }
-
-    /// A run is consecutive measured buckets at or above the level; a gap ends a run (we cannot say it continued).
-    static func episodes(_ columns: [RoomPressureBucket?]) -> Episodes {
-        var elevated = 0, critical = 0, inE = false, inC = false
-        for c in columns {
-            let lvl = c?.worst
-            let e = lvl == .elevated, k = lvl == .critical
-            if e && !inE { elevated += 1 }
-            if k && !inC { critical += 1 }
-            inE = e; inC = k
-        }
-        return .init(elevated: elevated, critical: critical)
-    }
-
-    /// Start of the current level's run. `boundedByRecord` is true when the bucket before is a gap or outside the
-    /// record: Room only knows "since it started looking", and must say so rather than imply a change.
-    static func currentRun(_ columns: [RoomPressureBucket?]) -> (level: RoomPressureLevel, startIndex: Int64, boundedByRecord: Bool)? {
-        guard let last = columns.last ?? nil else { return nil }
-        var start = last.index, bounded = true
-        for c in columns.reversed().dropFirst() {
-            guard let c else { bounded = true; break }
-            if c.worst != last.worst { bounded = false; break }
-            start = c.index
-        }
-        if columns.first.flatMap({ $0 })?.index == start { bounded = true }
-        return (last.worst, start, bounded)
-    }
-
-    static func sentence(_ series: RoomPressureSeries, now: Date, rangeName: String, time: (Date) -> String) -> String {
-        let cols = series.columns(now: now)
-        guard let run = currentRun(cols) else {
-            return cols.allSatisfy({ $0 == nil }) ? "Room starts keeping a 24-hour record now." : "Room can't read memory pressure right now. Activity Monitor can."
-        }
-        let at = time(series.start(of: run.startIndex))
-        let lead = run.boundedByRecord ? "\(run.level.word) since \(at), when this record starts." : "\(run.level.word) since \(at)."
-        let ep = episodes(cols)
-        let tail: String
-        switch (ep.elevated, ep.critical) {
-        case (0, 0): tail = "No Elevated or Critical episodes in the \(rangeName)."
-        case (let e, 0): tail = "\(e) Elevated episode\(e == 1 ? "" : "s") in the \(rangeName), none Critical."
-        case (0, let k): tail = "No Elevated episodes in the \(rangeName), \(k) Critical."
-        case (let e, let k): tail = "\(e) Elevated episode\(e == 1 ? "" : "s") and \(k) Critical in the \(rangeName)."
-        }
-        return lead + " " + tail + " High use is normal on a Mac; pressure is what tells you when to act."
-    }
-
-    /// Scrub readout (ME-3 timeline): "Thu 16:20 · Elevated for 45 min" or "Thu 03:00 · Room wasn't running".
-    static func readout(_ columns: [RoomPressureBucket?], at i: Int, bucketSeconds: Int64, label: String) -> String {
-        guard columns.indices.contains(i) else { return label }
-        guard let b = columns[i] else { return "\(label) · Room wasn't running" }
-        var j = i
-        while j > 0, let p = columns[j - 1], p.worst == b.worst { j -= 1 }
-        let minutes = Int64(i - j + 1) * bucketSeconds / 60
-        let span = minutes >= 120 ? "\(minutes / 60) h" : "\(minutes) min"
-        return "\(label) · \(b.worst.word) for \(span)"
-    }
-}
-
 // MARK: - In use: Current and Average with an honest window (ME-9)
 
 nonisolated enum RoomMemoryInUse {
