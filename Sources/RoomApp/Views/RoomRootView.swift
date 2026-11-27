@@ -60,6 +60,7 @@ struct RoomRootView: View {
     @State private var review: RoomReviewKind?
     @State private var reviewByKeyboard = false
     @State private var goToByKeyboard = false
+    @State private var scanEverything = RoomScanEverything()
 
     private var commandItems: [RoomCommandBar.Item] {
         RoomCommandBar.items(values: sidebarValues, developerRooms: RoomDeveloperSection.allCases.map(\.rawValue))
@@ -85,7 +86,7 @@ struct RoomRootView: View {
                                               projects: developer.report?.projects.count ?? 0,
                                               error: developer.errorMessage),
          .disk: RoomRowSignals.diskMap(isScanning: insights.isScanningDisk,
-                                       mapped: insights.diskProgress?.completedTopLevel.count ?? 0,
+                                       mapped: insights.diskMap.blueprint?.measuredCount ?? 0,
                                        of: insights.diskProgress?.topLevelTotal)]
     }
 
@@ -97,12 +98,6 @@ struct RoomRootView: View {
         default: return
         }
         rowActivity.stop(place)
-    }
-
-    private func selectDeveloperSection(_ section: RoomDeveloperSection) {
-        var transaction = Transaction(animation: nil)
-        transaction.disablesAnimations = RoomSelectionOrigin.controlActivation == .keyboard
-        withTransaction(transaction) { developer.section = section }
     }
 
     private var sidebarValues: RoomSidebarValue.Input {
@@ -185,8 +180,6 @@ struct RoomRootView: View {
                       savedViews: savedViews, selectSavedView: openSavedView,
                       sidebarValues: sidebarValues, couldGoBytes: couldGoBytes,
                       rowActivity: rowActivity.rows, stopPlace: stopPlace,
-                      developerSection: developer.section,
-                      selectDeveloperSection: selectDeveloperSection,
                       openGoTo: { openGoTo(keyboard: $0) }) {
             RoomScreenScaffold(title: screenActions.title, subtitle: screenSubtitle,
                                scrolls: !Self.framedDestinations.contains(destination), chip: AnyView(statusChip)) {
@@ -253,7 +246,13 @@ struct RoomRootView: View {
                 Button("OK", action: dismissAlert)
             }
         } message: { Text(model.operationAlert?.message ?? model.errorMessage ?? "") }
-        .onAppear { if navigation.needsWelcome { sheet = .welcome } }
+        .onAppear { scanEverything.sources = RoomScanEverything.sources(cache: model, insights: insights, developer: developer) }
+        .onAppear {
+            #if !ROOM_APP_STORE
+            developer.worktrees = agentWork
+            #endif
+            if navigation.needsWelcome { sheet = .welcome }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .roomSavedHistoryForgotten)) { _ in
             developer.clearUnreferencedHistory()
         }
@@ -387,7 +386,7 @@ struct RoomRootView: View {
             RoomOverviewScreen(insights: insights,
                                navigate: { navigation.select(.screen($0), origin: .controlActivation) },
                                refresh: insights.refreshDiskCapacity, cacheModel: model,
-                               developerBytes: developer.headline.total, makeRoom: startMakeRoom)
+                               developerBytes: developer.headline.total, makeRoom: startMakeRoom, scan: scanEverything)
         case .clean:
             RoomCachesView(model: model, review: { openReview(.caches) },
                 inspect: { sheet = .source($0) }, showKept: { sheet = .protectedSources },

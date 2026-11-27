@@ -147,6 +147,24 @@ struct RoomDiskRoomsView: View {
                 .padding(.horizontal, RoomTokens.Space.row)
                 .padding(.vertical, small ? 0 : 10)
                 .frame(maxHeight: small ? .infinity : nil, alignment: .leading)
+            // A room Room will not move says so where its tick would be; pressing it puts the reason under the map.
+            if ticksAvailable, let protection = room.room.protection, !room.isOther,
+               hovered == room.id || !selection.isEmpty {
+                let reason = protection.sentence(name: hide.masksNow ? "this folder" : room.room.name)
+                Button { toggle(room) } label: {
+                    Image(systemName: "lock.fill")
+                        .font(RoomTokens.Typography.roomGlyph)
+                        .foregroundStyle(RoomTokens.Ink.tertiary)
+                        .frame(width: RoomTokens.Control.height, height: RoomTokens.Control.height)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(reason)
+                .padding(2)
+                .frame(maxWidth: .infinity, maxHeight: small ? .infinity : nil,
+                       alignment: small ? .trailing : .topTrailing)
+                .accessibilityLabel("\(spokenName(room)) stays. \(reason)")
+            }
             if showsTick {
                 Button { toggle(room) } label: { RoomTick(on: isTicked) }
                     .buttonStyle(.plain)
@@ -166,6 +184,7 @@ struct RoomDiskRoomsView: View {
         .accessibilityValue(hide.masksNow ? "size hidden" : RoomFormat.gb(room.room.bytes))
         .accessibilityAddTraits(isTicked || isPicked ? [.isButton, .isSelected] : [.isButton])
         .accessibilityAction { tap(room, anchor: anchor) }
+        .help(room.room.protection.map { room.isOther ? "" : $0.sentence(name: hide.masksNow ? "this folder" : room.room.name) } ?? "")
         .accessibilityActions {
             if room.canStepInside { Button("Step inside") { stepInside(room.id, anchor) } }
             if ticksAvailable, room.room.protection == nil, !room.isOther {

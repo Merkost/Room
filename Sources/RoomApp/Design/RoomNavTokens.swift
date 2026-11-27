@@ -45,13 +45,6 @@ extension RoomTokens {
         static let group = Font.system(size: 11.5, weight: .regular)
         static let groupTop: CGFloat = 10
         static let groupBottom: CGFloat = 5
-        // Developer rooms under the row
-        static let kidHeight: CGFloat = 27
-        static let kidLeading: CGFloat = 43
-        static let kidDot: CGFloat = 5
-        static let kid = Font.system(size: 12.5, weight: .regular)
-        static let kidSelected = Font.system(size: 12.5, weight: .semibold)
-        static let kidStagger: TimeInterval = 0.028
         // Counted dots
         static let dot: CGFloat = 5
         static let dotGap: CGFloat = 3

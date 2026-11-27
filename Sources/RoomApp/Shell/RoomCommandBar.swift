@@ -36,7 +36,7 @@ nonisolated struct RoomCommandBar: Equatable, Sendable {
             switch action {
             case .checkCaches: Item(target: .action(action), title: "Check caches", glyph: .caches, value: .words("Action"))
             case .makeRoom: Item(target: .action(action), title: "Make room", glyph: .overview, value: .words("Action"))
-            case .scanProjects: Item(target: .action(action), title: "Scan projects", glyph: .developer, value: .words("Action"))
+            case .scanProjects: Item(target: .action(action), title: "Scan Developer", glyph: .developer, value: .words("Action"))
             case .hideSizes: Item(target: .action(action), title: "Hide sizes", glyph: .eye, value: .words("Action"))
             }
         }

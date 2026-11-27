@@ -102,8 +102,15 @@ nonisolated struct RoomOverviewFloorPlan: Equatable, Sendable {
 /// The plan drawn: kind rooms with dots in their data colour, Free as rings. No motion at rest; a change in size
 /// eases on the slow room spring.
 struct RoomOverviewFloorPlanView: View {
+    /// What the unmapped Used room offers instead of standing empty.
+    struct Prompt {
+        let title: String
+        var disabled = false
+        let action: () -> Void
+    }
+
     let plan: RoomOverviewFloorPlan
-    var hover: (RoomOverviewFloorPlan.Room?) -> Void = { _ in }
+    var prompt: Prompt?
 
     @Environment(\.roomMotion) private var motion
     @Environment(\.roomAccent) private var accent
@@ -120,21 +127,29 @@ struct RoomOverviewFloorPlanView: View {
                 ForEach(Array(plan.rooms.enumerated()), id: \.element.id) { index, room in
                     roomView(room)
                         .frame(width: widths.indices.contains(index) ? widths[index] : 0)
-                        .opacity(hovered == nil || hovered == room.id ? 1 : 0.45)
-                        .onHover { inside in
-                            hovered = inside ? room.id : (hovered == room.id ? nil : hovered)
-                            hover(inside ? room : nil)
+                        // Pointing at a room tints that room and nothing else, so the page never shifts or flashes.
+                        .overlay {
+                            RoundedRectangle(cornerRadius: RoomTokens.Screen2.planRadius)
+                                .fill(RoomTokens.Surface.hover)
+                                .opacity(hovered == room.id ? 1 : 0)
+                                .allowsHitTesting(false)
                         }
+                        .onHover { inside in hovered = inside ? room.id : (hovered == room.id ? nil : hovered) }
+                        .help(share(room))
                 }
             }
             .animation(motion.animation(RoomTokens.Motion.room, fallback: nil), value: widths)
-            .animation(motion.animation(RoomTokens.Motion.quick, fallback: nil), value: hovered)
         }
         // At least the mockup's 226 pt; a taller window gives the plan the extra room instead of an empty band.
         .frame(minHeight: RoomTokens.Screen2.planHeight, maxHeight: RoomTokens.Screen2.planMaxHeight)
         .layoutPriority(1)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Floor plan of this Mac")
+    }
+
+    private func share(_ room: RoomOverviewFloorPlan.Room) -> String {
+        let name = room.isFree ? "Free space" : room.title
+        return hide.masksNow ? name : "\(name) is \(plan.percent(of: room))% of this Mac"
     }
 
     private func roomView(_ room: RoomOverviewFloorPlan.Room) -> some View {
@@ -167,6 +182,14 @@ struct RoomOverviewFloorPlanView: View {
                     .lineLimit(1)
             }
             .padding(RoomTokens.Screen2.planPad)
+            if room.fill == .notMapped, let prompt {
+                Button(prompt.title, action: prompt.action)
+                    .roomLink(accent)
+                    .disabled(prompt.disabled)
+                    .multilineTextAlignment(.center)
+                    .padding(RoomTokens.Screen2.planPad)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
         .clipShape(shape)
         .accessibilityElement(children: .ignore)

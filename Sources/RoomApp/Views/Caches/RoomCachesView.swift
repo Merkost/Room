@@ -97,12 +97,20 @@ struct RoomCachesView: View {
                 #if ROOM_APP_STORE
                 npmBatch
                 #endif
+                if model.isScanning, model.scanLocationCount > 0 {
+                    RoomScanSegments(done: model.scannedLocationCount, total: model.scanLocationCount)
+                        .transition(.opacity)
+                }
                 if model.hasReport || model.isScanning || model.isPartialScan {
                     RoomCachesPlaces(model: model, inspect: inspect, showKept: showKept,
                                      neverSuggest: model.ignoreStore != nil ? { neverSuggest($0) } : nil)
                         .opacity(model.isAfterRestore ? 0.6 : 1)
+                    if allClear { startingPlaces(checked: true) }
                 } else {
-                    startingPlaces
+                    startAction(hero: true)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, RoomTokens.Space.group)
+                    startingPlaces(checked: false)
                     lastReceipt
                 }
                 if let bytes = agentWorktreeBytes, let reviewWorktrees, !model.isScanning {
@@ -124,12 +132,13 @@ struct RoomCachesView: View {
         } action: {
             HStack(spacing: RoomTokens.Space.group) {
                 if model.isScanning {
-                    Button("Stop", action: model.cancelScan).roomLink(accent).font(RoomTokens.Typography.bodyStrong)
+                    Button("Stop", action: model.cancelScan).roomQuiet(large: true)
                 } else if model.hasReport, !needsFolderApproval {
-                    Button("Check caches", action: model.scan).roomLink(accent).font(RoomTokens.Typography.bodyStrong)
+                    Button("Check again", action: model.scan).roomQuiet(large: true)
                         .disabled(!model.canScan)
                 }
-                if !model.isScanning { primary(hero) }
+                // Before the first check the button stands in the middle of the page, not here.
+                if !model.isScanning, model.hasReport || model.isPartialScan { primary(hero) }
             }
         }
         .foregroundStyle(RoomTokens.Ink.graphite)
@@ -174,13 +183,13 @@ struct RoomCachesView: View {
     @ViewBuilder
     private func primary(_ hero: RoomCachesHero) -> some View {
         if model.isAfterRestore || model.isPartialScan {
-            startAction
+            startAction(hero: false)
         } else {
             switch hero.primary {
             case .check, .checkAgain:
-                checkButton
+                checkButton(hero: false)
             case .chooseFolderAndCheck:
-                chooseFolderButton
+                chooseFolderButton(hero: false)
             case .review(let bytes):
                 if model.movedReceipt == nil || bytes > 0 {
                     Button(bytes > 0 ? "Review \(format(bytes))" : "Review", action: review)
@@ -193,11 +202,11 @@ struct RoomCachesView: View {
     }
 
     @ViewBuilder
-    private var startAction: some View {
-        if needsFolderApproval { chooseFolderButton } else { checkButton }
+    private func startAction(hero: Bool) -> some View {
+        if needsFolderApproval { chooseFolderButton(hero: hero) } else { checkButton(hero: hero) }
     }
 
-    private var chooseFolderButton: some View {
+    private func chooseFolderButton(hero: Bool) -> some View {
         Button {
             #if ROOM_APP_STORE
             model.chooseStoreFolder(scanAfterApproval: true)
@@ -208,27 +217,34 @@ struct RoomCachesView: View {
             Label(String(localized: "caches.action.choose", defaultValue: "Choose Folder & Check",
                 table: "Caches", bundle: RoomCopy.bundle), systemImage: "folder.badge.plus")
         }
-        .roomScreenPrimary(accent) // one-filled: exclusive with Check (Store folder approval)
+        .roomScreenPrimary(accent, hero: hero) // one-filled: exclusive with Check (Store folder approval)
         .disabled(!model.canScan)
     }
 
-    private var checkButton: some View {
+    private func checkButton(hero: Bool) -> some View {
         Button(action: model.scan) {
             Label(String(localized: "caches.action.check", defaultValue: "Check caches", table: "Caches",
                 bundle: RoomCopy.bundle), systemImage: "magnifyingglass")
         }
-        .roomScreenPrimary(accent)
+        .roomScreenPrimary(accent, hero: hero)
         .disabled(!model.canScan)
     }
 
     /// Before a check: the places Room will look, as the mockup's evidence rows (icon, name, where), so the screen
     /// says what the check will cover instead of standing empty.
+    /// A finished check that found nothing: the page says where Room looked instead of standing empty.
+    private var allClear: Bool {
+        model.hasReport && !model.isScanning && !model.isPartialScan && model.scanIssues.isEmpty
+            && !model.sources.contains(where: \.isAvailable)
+    }
+
     @ViewBuilder
-    private var startingPlaces: some View {
+    private func startingPlaces(checked: Bool) -> some View {
         let groups = model.checkLocations
         if !groups.isEmpty {
             VStack(alignment: .leading, spacing: 2) {
-                RoomGroupLabel(text: "Where Room looks").padding(.top, -RoomTokens.Space.group)
+                RoomGroupLabel(text: checked ? "Where Room looked" : "Where Room looks")
+                    .padding(.top, checked ? 0 : -RoomTokens.Space.group)
                 ForEach(Array(groups.prefix(Self.readyRows)), id: \.id) { group in
                     let title = hidden && group.isPersonal ? "Folder hidden" : group.title
                     HStack(spacing: RoomTokens.Space.row) {
@@ -243,7 +259,7 @@ struct RoomCachesView: View {
                         }
                         .font(RoomTokens.Screen2.listMeta).foregroundStyle(RoomTokens.Ink.secondary).lineLimit(1)
                         Spacer(minLength: RoomTokens.Space.group)
-                        Text("Not checked").font(RoomTokens.Screen2.listMeta).foregroundStyle(RoomTokens.Ink.tertiary)
+                        Text(checked ? "Nothing to move" : "Not checked").font(RoomTokens.Screen2.listMeta).foregroundStyle(RoomTokens.Ink.tertiary)
                     }
                     .frame(minHeight: RoomTokens.Screen2.listRow)
                     .padding(.horizontal, RoomTokens.Space.row)

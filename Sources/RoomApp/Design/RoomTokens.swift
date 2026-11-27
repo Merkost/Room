@@ -143,6 +143,12 @@ enum RoomTokens {
     }
 
     // MARK: Spacing (pt). Calm is the default density; Compact is v2's spacing.
+    /// Dropdowns and expand rows share one height and one chevron column.
+    enum Control {
+        static let height: CGFloat = 30
+        static let chevronColumn: CGFloat = 10
+    }
+
     enum Space {
         static let tight: CGFloat = 6
         static let row: CGFloat = RoomDS.Space.row
@@ -352,6 +358,23 @@ enum RoomTokens {
         static let tileInk2 = Color.room(RoomDS.Product.tileInk2, name: "room.tile.ink2")
     }
 
+    /// The scan buttons and the scan animation.
+    enum Scan {
+        static let buttonHeight: CGFloat = 44
+        static let buttonMinWidth: CGFloat = 150
+        static let heroHeight: CGFloat = 60
+        static let heroMinWidth: CGFloat = 240
+        static let heroFont = Font.system(size: 17, weight: .semibold)
+        static let boardMinHeight: CGFloat = 300
+        static let stripHeight: CGFloat = 58
+        static let segmentHeight: CGFloat = 10
+        static let maxSegments = 24
+        /// A finished room's dots step back so the figure leads.
+        static let restingDots = 0.45
+        /// How long finished rooms stay before the page shows the result. A dwell time, not motion.
+        static let settle: TimeInterval = 1.6
+    }
+
     enum Developer {
         static let rowMinHeight: CGFloat = 44
         static let breakdownHeight: CGFloat = 8
@@ -511,14 +534,16 @@ private struct RoomPressFeedback: ViewModifier {
 
 private struct RoomScreenPrimaryStyle: ButtonStyle {
     let accent: RoomTokens.Accent
+    var hero = false
     @Environment(\.isEnabled) private var enabled
     @State private var hovering = false
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(RoomTokens.Typography.bodyStrong)
-            .padding(.horizontal, RoomTokens.Space.group + 2)
-            .frame(minWidth: RoomTokens.Screen2.ctaMinWidth, minHeight: RoomTokens.Overview.actionHeight)
+            .font(hero ? RoomTokens.Scan.heroFont : RoomTokens.Typography.bodyStrong)
+            .padding(.horizontal, hero ? RoomTokens.Space.breath1 : RoomTokens.Space.group + 2)
+            .frame(minWidth: hero ? RoomTokens.Scan.heroMinWidth : RoomTokens.Scan.buttonMinWidth,
+                   minHeight: hero ? RoomTokens.Scan.heroHeight : RoomTokens.Scan.buttonHeight)
             .foregroundStyle(enabled ? Color.white : RoomTokens.Ink.secondary)
             .background(enabled ? accent.fill : RoomTokens.Surface.track, in: Capsule())
             .brightness(hovering && enabled ? 0.05 : 0)
@@ -529,13 +554,15 @@ private struct RoomScreenPrimaryStyle: ButtonStyle {
 }
 
 private struct RoomQuietStyle: ButtonStyle {
+    var hero = false
     @Environment(\.isEnabled) private var enabled
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(RoomTokens.Typography.bodyStrong)
             .padding(.horizontal, RoomTokens.Space.group)
-            .frame(minHeight: RoomTokens.Overview.actionHeight)
+            .frame(minWidth: hero ? RoomTokens.Scan.buttonMinWidth : nil,
+                   minHeight: hero ? RoomTokens.Scan.buttonHeight : RoomTokens.Overview.actionHeight)
             .foregroundStyle(enabled ? RoomTokens.Ink.graphite : RoomTokens.Ink.tertiary)
             .background(RoomTokens.Surface.tile, in: Capsule())
             .contentShape(Capsule())
@@ -548,11 +575,12 @@ extension View {
     func roomPrimary(_ accent: RoomTokens.Accent) -> some View {
         buttonStyle(.glassProminent).tint(accent.fill).controlSize(.large)
     }
-    func roomScreenPrimary(_ accent: RoomTokens.Accent) -> some View {
-        buttonStyle(RoomScreenPrimaryStyle(accent: accent))
+    /// `hero`: the large centre-stage form a scan button takes before a screen has anything to show.
+    func roomScreenPrimary(_ accent: RoomTokens.Accent, hero: Bool = false) -> some View {
+        buttonStyle(RoomScreenPrimaryStyle(accent: accent, hero: hero))
     }
     /// The quiet pill beside a filled button (mockup `.quiet`: Cancel in a review).
-    func roomQuiet() -> some View { buttonStyle(RoomQuietStyle()) }
+    func roomQuiet(large: Bool = false) -> some View { buttonStyle(RoomQuietStyle(hero: large)) }
     /// Secondary actions: ordinary, untinted glass. The scene root tints everything with the accent, and tinted glass
     /// reads as a second filled button, so secondary buttons drop the tint (one filled button per screen).
     func roomSecondary(_ size: ControlSize = .large) -> some View { buttonStyle(.glass).tint(nil).controlSize(size) }
@@ -578,6 +606,6 @@ extension EnvironmentValues {
 struct RoomAccentRoot: ViewModifier {
     @AppStorage("RoomAccent") private var accent = RoomTokens.Accent.teal
     func body(content: Content) -> some View {
-        content.environment(\.roomAccent, accent).tint(accent.fill)
+        content.environment(\.roomAccent, accent).tint(accent.fill).disclosureGroupStyle(RoomDisclosureStyle())
     }
 }

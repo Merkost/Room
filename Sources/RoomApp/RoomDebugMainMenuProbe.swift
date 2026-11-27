@@ -30,8 +30,7 @@ enum RoomDebugMainMenuProbe {
                    let window = NSApp.windows.first(where: { $0.identifier == RoomApplicationDelegate.primaryWindowID }) {
                     NSRunningApplication.current.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
                     NSApp.activate()
-                    window.makeMain()
-                    window.makeKeyAndOrderFront(nil)
+                    bringForward(window)
                 }
                 menus = readMainMenu()
             } while !menus.contains(where: { menu in
@@ -53,6 +52,13 @@ enum RoomDebugMainMenuProbe {
             }
             NSApp.terminate(nil)
         }
+    }
+
+    /// On screen first: `makeMain()` raises for a window that is not visible yet. Raised inside the probe's task, that
+    /// exception is swallowed and leaves Swift's executor tracking dangling, so a later main-actor check crashes.
+    static func bringForward(_ window: NSWindow) {
+        window.makeKeyAndOrderFront(nil)
+        if window.canBecomeMain { window.makeMain() }
     }
 
     private static func readMainMenu() -> [Menu] {

@@ -100,6 +100,9 @@ final class RoomStatusMonitor: NSObject, NSPopoverDelegate {
         isEnabled = enabled
         observationGeneration = UUID()
         if enabled {
+            #if !ROOM_APP_STORE
+            RoomStatusItemPlacement.seed(name: "RoomMemoryMonitor")
+            #endif
             let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
             item.autosaveName = "RoomMemoryMonitor"
             item.isVisible = true

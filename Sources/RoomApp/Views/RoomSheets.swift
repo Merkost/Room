@@ -23,16 +23,16 @@ struct RoomSourceSheet: View {
                     Text(RoomCachesVisibility.bytes(source.eligibleBytes, hidden: hidden))
                         .font(RoomType.figure(34))
                         .tracking(-1)
-                    Text("Clearable").font(.system(size: 13)).foregroundStyle(.secondary)
+                    Text("Clearable").font(RoomTokens.Typography.body).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
                 VStack(alignment: .trailing, spacing: 5) {
                     Text(measured(source.bytes)).font(RoomType.figure(22))
-                    Text("Found").font(.system(size: 13)).foregroundStyle(.secondary)
+                    Text("Found").font(RoomTokens.Typography.body).foregroundStyle(.secondary)
                 }
                 VStack(alignment: .trailing, spacing: 5) {
                     Text(measured(heldBytes)).font(RoomType.figure(22))
-                    Text("Held").font(.system(size: 13)).foregroundStyle(.secondary)
+                    Text("Held").font(RoomTokens.Typography.body).foregroundStyle(.secondary)
                 }
             }
             .monospacedDigit()
@@ -42,7 +42,7 @@ struct RoomSourceSheet: View {
                 VStack(alignment: .leading, spacing: 20) {
                     if source.isPartial {
                         Label("Partial measurement. Unverified items stay held.", systemImage: "info.circle")
-                            .font(.system(size: 13))
+                            .font(RoomTokens.Typography.body)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -54,28 +54,28 @@ struct RoomSourceSheet: View {
                     if !source.largestEntries.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                             HStack {
-                                Text("Largest measured items").font(.system(size: 14, weight: .medium))
+                                Text("Largest measured items").font(RoomTokens.Typography.bodyStrong)
                                 Spacer()
                                 if source.entryCount > source.largestEntries.count {
                                     Text("\(source.largestEntries.count) of \(source.entryCount)")
-                                        .font(.system(size: 12)).foregroundStyle(.secondary)
+                                        .font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
                                 }
                             }
                             ForEach(source.largestEntries, id: \.path) { entry in
                                 VStack(alignment: .leading, spacing: 4) {
                                     HStack(alignment: .firstTextBaseline, spacing: 16) {
                                         Text(hidden ? "Item name hidden" : entry.name)
-                                            .font(.system(size: 13, weight: .medium))
+                                            .font(RoomTokens.Typography.bodyStrong)
                                             .lineLimit(1)
                                             .truncationMode(.middle)
                                         Spacer(minLength: 0)
                                         Text(RoomCachesVisibility.bytes(entry.bytes, hidden: hidden))
-                                            .font(.system(size: 13)).monospacedDigit()
+                                            .font(RoomTokens.Typography.body).monospacedDigit()
                                             .foregroundStyle(.secondary)
                                             .fixedSize()
                                     }
                                     Text(entry.reason ?? (source.isPartial ? "Measured; verification incomplete" : "Clearable after review"))
-                                        .font(.system(size: 12)).foregroundStyle(.secondary)
+                                        .font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
                                         .lineLimit(1)
                                 }
                                 .help(hidden ? "Location hidden" : entry.path + (entry.reason.map { "\n" + $0 } ?? ""))
@@ -90,42 +90,42 @@ struct RoomSourceSheet: View {
                                 ForEach(source.heldReasons, id: \.reason) { held in
                                     HStack(alignment: .top, spacing: 16) {
                                         Text(held.reason)
-                                            .font(.system(size: 13))
+                                            .font(RoomTokens.Typography.body)
                                             .fixedSize(horizontal: false, vertical: true)
                                         Spacer(minLength: 0)
                                         VStack(alignment: .trailing, spacing: 3) {
                                             Text(RoomCachesVisibility.bytes(held.bytes, hidden: hidden)).monospacedDigit()
                                             Text("\(held.count) \(held.count == 1 ? "item" : "items")").foregroundStyle(.secondary)
                                         }
-                                        .font(.system(size: 12))
+                                        .font(RoomTokens.Typography.caption)
                                         .fixedSize()
                                     }
                                 }
                             }
                             .padding(.top, 10)
                         }
-                        .font(.system(size: 13, weight: .medium))
+                        .font(RoomTokens.Typography.bodyStrong)
                     }
 
                     DisclosureGroup("Locations") {
                         Text(hidden ? "Location hidden" : source.path)
-                            .font(.system(size: 12))
+                            .font(RoomTokens.Typography.caption)
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.top, 10)
                     }
-                    .font(.system(size: 13, weight: .medium))
+                    .font(RoomTokens.Typography.bodyStrong)
 
                     DisclosureGroup("Cleanup rules") {
                         Text(hidden ? "Review details hidden" : source.notes)
-                            .font(.system(size: 13))
+                            .font(RoomTokens.Typography.body)
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
                             .padding(.top, 10)
                     }
-                    .font(.system(size: 13, weight: .medium))
+                    .font(RoomTokens.Typography.bodyStrong)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(16)
@@ -199,7 +199,7 @@ struct RoomScanIssuesSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     ForEach(Array(issues.enumerated()), id: \.offset) { _, issue in
-                        Text(issue).font(.system(size: 13)).textSelection(.enabled)
+                        Text(issue).font(RoomTokens.Typography.body).textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
@@ -220,7 +220,7 @@ struct RoomSheetHeading: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
             Text(title).font(RoomType.heading(24))
-            Text(subtitle).font(.system(size: 14)).foregroundStyle(.secondary)
+            Text(subtitle).font(RoomTokens.Typography.body).foregroundStyle(.secondary)
         }
     }
 }

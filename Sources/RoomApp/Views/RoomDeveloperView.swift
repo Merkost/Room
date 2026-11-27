@@ -96,25 +96,27 @@ struct RoomDeveloperView: View {
                                 supporting: "Room finds the Gradle, Xcode and Android versions your projects use, and the ones nothing points to.",
                                 note: "Room only reads sizes and version files", scrollsEvidence: true) {
                     VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
+                        introButton
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, RoomTokens.Space.breath1)
                         folderControls(quiet: true)
                         otherViews
                     }
                 } action: {
-                    Button(model.canScan ? "Scan projects" : "Choose projects folder…") {
-                        if model.canScan { model.scan() } else { model.addFolder(role: .project) }
-                    }
-                    .roomScreenPrimary(accent) // one-filled: exclusive intro, shown only before the first scan
-                    .disabled(model.isScanning || model.isChoosingFolder)
-                    .accessibilityIdentifier("RoomDeveloperScanButton")
+                    EmptyView()
                 }
                 .transition(.opacity)
             case .firstScan:
                 RoomScreenFrame(headline: .words("Reading your folders"), supporting: model.progress,
                                 note: "Room only reads sizes and version files") {
-                    EmptyView()
+                    VStack(spacing: RoomTokens.Space.breath1) {
+                        RoomScanStrip(tiles: model.scanTiles)
+                        Button("Stop") { model.stop() }.roomQuiet(large: true)
+                            .accessibilityIdentifier("RoomDeveloperScanButton")
+                    }
+                    .padding(.top, RoomTokens.Space.breath2)
                 } action: {
-                    Button("Stop") { model.stop() }.roomLink(accent).font(RoomTokens.Typography.bodyStrong)
-                        .accessibilityIdentifier("RoomDeveloperScanButton")
+                    EmptyView()
                 }
                 .transition(.opacity)
             case .workspace:
@@ -122,9 +124,16 @@ struct RoomDeveloperView: View {
                 RoomScreenFrame(headline: words.headline, supporting: model.isScanning ? model.progress : words.supporting,
                                 note: section == .storage ? "Builds can always be made again" : "Room only reads sizes; nothing here moves",
                                 scrollsEvidence: true, entersEvidence: false) {
-                    sectionContent.roomPanelChange(section)
+                    VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
+                        if model.isScanning, !model.scanTiles.isEmpty {
+                            RoomScanStrip(tiles: model.scanTiles).transition(.opacity)
+                        }
+                        RoomDeveloperTabs(selected: section, values: tabValues) { model.section = $0 }
+                        sectionContent.roomPanelChange(section)
+                    }
+                    .animation(motion.animation(RoomTokens.Motion.ui, fallback: RoomTokens.Motion.fade), value: model.isScanning)
                 } action: {
-                    if showsResourceActions { scanControls }
+                    scanControls
                 }
                 .transition(.opacity)
             }
@@ -140,6 +149,17 @@ struct RoomDeveloperView: View {
         }
     }
 
+    /// Each room's size once it has been read (the same figure the headline shows for it).
+    private var tabValues: [RoomDeveloperSection: String] {
+        var worktreesBytes: Int64 = 0
+        #if !ROOM_APP_STORE
+        worktreesBytes = agentWork.report?.items.reduce(Int64(0)) { $0 + $1.allocatedBytes } ?? 0
+        #endif
+        return Dictionary(uniqueKeysWithValues: availability.sectionsWithData.map {
+            ($0, RoomDeveloperFormat.whole(model.headlineBytes(for: $0, worktreesBytes: worktreesBytes)))
+        })
+    }
+
     private var sectionReport: DeveloperResourcesReport? {
         switch section {
         case .devices: model.devicesReport
@@ -149,15 +169,35 @@ struct RoomDeveloperView: View {
         }
     }
 
-    private var showsResourceActions: Bool {
+    /// Worktrees are read from saved folders and agent locations, so that page has no folder choice of its own.
+    private var isWorktrees: Bool {
         #if ROOM_APP_STORE
-        true
+        false
         #else
-        section != .worktrees
+        section == .worktrees
         #endif
     }
 
+    private var hasResults: Bool { !availability.sectionsWithData.isEmpty }
+
+    /// One button for the whole screen, worded the same on every section.
+    static func scanTitle(isScanning: Bool, hasResults: Bool) -> String {
+        isScanning ? "Stop" : hasResults ? "Rescan all" : "Scan all"
+    }
+
     // MARK: Before the first scan
+
+    private var introButton: some View {
+        Button {
+            if model.hasScannableFolders { model.scan() } else { model.addFolder(role: .project) }
+        } label: {
+            Label(model.hasScannableFolders ? Self.scanTitle(isScanning: false, hasResults: false) : "Choose projects folder…",
+                  systemImage: model.hasScannableFolders ? "magnifyingglass" : "folder.badge.plus")
+        }
+        .roomScreenPrimary(accent, hero: true) // one-filled: exclusive intro, shown only before the first scan
+        .disabled(model.isScanning || model.isChoosingFolder)
+        .accessibilityIdentifier("RoomDeveloperScanButton")
+    }
 
     private var otherViews: some View {
         HStack(spacing: RoomTokens.Space.group) {
@@ -194,17 +234,13 @@ struct RoomDeveloperView: View {
                 } label: {
                     Label(section == .aiTools ? "Choose Tool Folder…" : "Choose Device Folder…", systemImage: "folder.badge.plus")
                 }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
-                .foregroundStyle(accent.text)
+                .roomDropdown()
                 .disabled(model.isScanning || model.isChoosingFolder)
                 .accessibilityIdentifier(section == .aiTools ? "RoomDeveloperChooseAITool" : "RoomDeveloperChooseDeviceFolder")
-            } else if section != .storage {
+            } else if section != .storage && !isWorktrees {
                 // Saved-folder reuse (#1) with the redesign's quiet link style; the menu form keeps the same look.
                 folderChoice(.project, title: "Projects Folder…", symbol: "folder.badge.plus")
-                    .roomLink(accent)
-                    .menuStyle(.borderlessButton)
-                    .fixedSize()
+                    .roomDropdown(chevron: !model.reusableFolders(for: .project).isEmpty)
                     .disabled(model.isScanning || model.isChoosingFolder)
                     .accessibilityIdentifier("RoomDeveloperAddFolder")
             }
@@ -217,12 +253,12 @@ struct RoomDeveloperView: View {
         let button = Button {
             if model.isScanning { model.stop() } else { model.scan() }
         } label: {
-            Text(model.isScanning ? "Stop" : section == .rooms || section == .matrix ? "Scan projects" : sectionReport == nil ? "Scan" : "Scan again")
+            Text(Self.scanTitle(isScanning: model.isScanning, hasResults: hasResults))
         }
         .disabled(!model.isScanning && !model.canScan)
         .accessibilityIdentifier("RoomDeveloperScanButton")
         // The one filled button on the screen; while a scan runs, Stop is the quiet one.
-        if model.isScanning { button.roomQuiet() } else { button.roomScreenPrimary(accent) }
+        if model.isScanning { button.roomQuiet(large: true) } else { button.roomScreenPrimary(accent) }
     }
 
     /// Each room leads with its largest things (mockup), and keeps the full review one click away in More detail.
@@ -240,12 +276,27 @@ struct RoomDeveloperView: View {
     }
 
     private var emptyLine: String {
-        switch section {
+        #if !ROOM_APP_STORE
+        if section == .worktrees {
+            if agentWork.report == nil { return model.isScanning ? "Not read yet" : "Scan all to look for agent worktrees" }
+            return "No agent worktrees found"
+        }
+        #endif
+        if !model.hasFoldersForSection {
+            switch section {
+            case .rooms, .matrix: return "Choose a projects folder to fill this page"
+            case .devices: return "Choose a device folder to fill this page"
+            case .storage: return "Choose a tool folder to fill this page"
+            default: return "Choose an AI tool folder to fill this page"
+            }
+        }
+        if sectionReport == nil { return model.isScanning ? "Not read yet" : "Scan all to fill this page" }
+        return switch section {
         case .rooms: "No project builds found yet"
         case .matrix: "No toolchains found yet"
         case .devices: "No virtual devices in the chosen folders"
         case .storage: "No tool storage in the chosen folders"
-        case .aiTools: "No AI tool folders chosen yet"
+        case .aiTools: "No recognised AI tool storage found"
         #if !ROOM_APP_STORE
         case .worktrees: "No agent worktrees found"
         #endif
@@ -298,6 +349,7 @@ struct RoomDeveloperView: View {
                                 folderChoice(role)
                             }
                         }
+                        .roomDropdown()
                         .disabled(model.isScanning || model.isChoosingFolder)
                     }
                 }
@@ -380,7 +432,7 @@ struct RoomDeveloperView: View {
             deviceInventory
         } else if model.report == nil {
             if !model.isScanning {
-                Text("Scan a projects folder to see what each project uses.")
+                Text("Choose a projects folder, then Scan all to see what each project uses.")
                     .font(RoomTokens.Typography.body).foregroundStyle(RoomTokens.Ink.secondary)
             }
         } else {
@@ -432,7 +484,7 @@ struct RoomDeveloperView: View {
             RoomDeveloperGroup(title: "Virtual devices") {
                 Text(model.sectionLocations.isEmpty
                     ? "Choose an Android virtual device folder or a Simulator Devices folder."
-                    : "Scan your chosen folders to see their virtual devices.")
+                    : "Scan all to see the virtual devices in your chosen folders.")
                     .font(RoomTokens.Typography.body)
                     .foregroundStyle(RoomTokens.Ink.secondary)
             }
@@ -450,8 +502,8 @@ struct RoomDeveloperView: View {
                 } label: {
                     Label("Choose Folder…", systemImage: "folder.badge.plus")
                 }
+                .roomDropdown()
                 .disabled(model.isScanning || model.isChoosingFolder)
-                .fixedSize()
             }, content: {
             if let report = model.storageReport, !report.storageResources.isEmpty {
                 RoomDeveloperRowList(items: RoomDeveloperList.bySize(report.storageResources,
@@ -460,7 +512,7 @@ struct RoomDeveloperView: View {
                 }
             } else if !model.isScanning {
                 Text(model.storageReport == nil
-                    ? "Choose a tool folder, then scan it."
+                    ? "Choose a tool folder, then Scan all."
                     : "No tool storage found in the chosen folders.")
                     .font(RoomTokens.Typography.body)
                     .foregroundStyle(RoomTokens.Ink.secondary)

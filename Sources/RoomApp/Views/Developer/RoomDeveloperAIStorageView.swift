@@ -31,7 +31,7 @@ struct RoomDeveloperAIStorageView: View {
     private var emptyState: some View {
         RoomDeveloperGroup(title: report == nil ? "AI tool storage" : "No recognised storage found") {
             Text(report != nil ? "Check that you chose the tool’s data folder."
-                : hasFolders ? "Scan to see caches, history, and local models."
+                : hasFolders ? "Scan all to see caches, history, and local models."
                 : "Choose a tool folder to see what occupies disk space.")
                 .font(RoomTokens.Typography.body)
                 .foregroundStyle(RoomTokens.Ink.secondary)
@@ -52,6 +52,8 @@ struct RoomDeveloperAIStorageView: View {
             }
         }
         .pickerStyle(.menu)
+        .buttonStyle(.bordered)
+        .buttonBorderShape(.capsule)
         .fixedSize()
     }
 

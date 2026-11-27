@@ -119,20 +119,25 @@ struct RoomOverviewRoutingTests {
         try await fixture.expectIdle()
     }
 
-    @Test func overviewCheckCachesNavigatesAndStartsOneReadOnlyCheck() async throws {
+    @Test func overviewScanEverythingStartsOneReadOnlyCheckAndStaysOnOverview() async throws {
         let fixture = try RoutingFixture()
         defer { fixture.remove() }
+        let scan = RoomScanEverything()
+        let cache = fixture.cache
+        scan.sources = [.caches: .init(unavailable: { nil }, start: cache.scan, stop: cache.cancelScan,
+                                       read: { _ in .init(running: cache.isScanning, finished: cache.hasReport) })]
         let view = RoomOverviewScreen(insights: fixture.insights, navigate: fixture.navigation.select,
-                                    refresh: fixture.insights.refreshDiskCapacity, cacheModel: fixture.cache)
+                                    refresh: fixture.insights.refreshDiskCapacity, cacheModel: cache, scan: scan)
 
-        view.openCaches()
-        view.openCaches()
+        view.scanEverything()
+        view.scanEverything()
 
-        #expect(fixture.navigation.destination == .clean)
-        #expect(fixture.cache.isScanning)
-        #expect(!fixture.cache.isWorking && !fixture.cache.canReviewCleanup)
-        #expect(await RoomTestWait.until(timeout: .seconds(10)) { !fixture.cache.isScanning })
-        #expect(fixture.cache.lastScanned != nil)
+        #expect(fixture.navigation.destination == .overview)
+        #expect(scan.isRunning)
+        #expect(!cache.isWorking && !cache.canReviewCleanup)
+        #expect(await RoomTestWait.until(timeout: .seconds(10)) { !cache.isScanning })
+        #expect(cache.lastScanned != nil)
+        #expect(scan.tiles.map(\.state) == [.done])
     }
 }
 

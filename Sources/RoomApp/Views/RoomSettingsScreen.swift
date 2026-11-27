@@ -34,7 +34,7 @@ struct RoomSettingsScreen: View {
                     } label: {
                         valueLabel(openOn == RoomOpenOn.overview.rawValue ? "Overview" : "Last place")
                     }
-                    .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+                    .roomDropdown()
                     .accessibilityLabel("Open on")
                 }
                 row(.target, "Free space goal", "Overview measures against it") {
@@ -52,7 +52,7 @@ struct RoomSettingsScreen: View {
                     } label: {
                         valueLabel(RoomFormat.gb(goalBytes), masked: true)
                     }
-                    .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+                    .roomDropdown()
                     .accessibilityLabel("Free space goal")
                     .accessibilityValue(hide.masksNow ? "size hidden" : RoomFormat.gb(goalBytes))
                 }
@@ -93,15 +93,9 @@ struct RoomSettingsScreen: View {
 
     static let goalChoices: [Int64] = [20, 30, 40, 50, 75, 100]
 
-    /// The mockup's quiet value with a chevron ("Overview  ›"), standing in for a pop-up button.
-    private func valueLabel(_ text: String, masked: Bool = false) -> some View {
-        HStack(spacing: 6) {
-            if masked { RoomMaskable(text) } else { Text(text) }
-            Text(verbatim: "›").foregroundStyle(RoomTokens.Ink.tertiary)
-        }
-        .font(RoomTokens.Typography.body.monospacedDigit())
-        .foregroundStyle(RoomTokens.Ink.secondary)
-        .contentShape(Rectangle())
+    /// A dropdown's current value; the shared dropdown style draws the capsule and chevron.
+    @ViewBuilder private func valueLabel(_ text: String, masked: Bool = false) -> some View {
+        if masked { RoomMaskable(text).monospacedDigit() } else { Text(text).monospacedDigit() }
     }
 
     private func step(_ steps: Int) -> (() -> Void)? {

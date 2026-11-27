@@ -252,6 +252,7 @@ struct RoomOverviewStorageMap: View {
         } label: {
             Label("Map again", systemImage: "arrow.clockwise")
         }
+        .roomDropdown()
         .disabled(isMapping || isChoosingFolder)
         .accessibilityIdentifier("RoomOverviewMapAgain")
     }

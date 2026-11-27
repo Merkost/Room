@@ -33,7 +33,7 @@ nonisolated struct RoomOverviewWords: Equatable, Sendable {
         }
         let note = cachesChecked
             ? (cachesBytes > 0 ? "\(RoomFormat.gb(cachesBytes)) of caches are safe to move" : "Nothing else is safe to move today")
-            : "Check caches to see what can safely go"
+            : "Scan everything to see what can safely go"
 
         let caches = Fact(label: "Caches",
                           value: cachesChecked ? (cachesBytes > 0 ? "\(RoomFormat.gb(cachesBytes)) could go" : "All clear") : "Not checked yet",
@@ -53,7 +53,7 @@ nonisolated struct RoomOverviewWords: Equatable, Sendable {
     }
 }
 
-/// Overview (nav-v3): "64 GB free", the goal distance, a floor plan of kinds, three next steps, and Make room.
+/// Overview (nav-v3): "64 GB free", the goal distance, a floor plan of kinds, three next steps, Scan everything and Make room.
 struct RoomOverviewScreen: View {
     let insights: RoomInsightsModel
     let navigate: (RoomDestination) -> Void
@@ -61,13 +61,15 @@ struct RoomOverviewScreen: View {
     var cacheModel: RoomViewModel? = nil
     var developerBytes: Int64? = nil
     var makeRoom: () -> Void = {}
+    var scan: RoomScanEverything? = nil
 
     @AppStorage(RoomMenuBarSettings.goalBytesKey) private var storedGoal = Int(RoomMenuBarSettings.defaultGoalBytes)
     @AppStorage("RoomGoalEnabled") private var goalEnabled = true
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.roomAccent) private var accent
     @Environment(\.roomHide) private var hide
-    @State private var hoverNote: String?
+    @Environment(\.roomMotion) private var motion
+    @Namespace private var scanSpace
 
     private var capacity: RoomVolumeCapacity? { insights.volumeCapacity }
     private var cachesChecked: Bool { cacheModel?.hasReport == true }
@@ -86,45 +88,66 @@ struct RoomOverviewScreen: View {
                                           freeBytes: capacity?.freeBytes ?? 0, capacityBytes: capacity?.capacityBytes ?? 0)
     }
 
+    private var isScanShowing: Bool { scan?.isPresented == true }
+    /// Nothing has been read yet, so the scan button takes the centre of the plan.
+    private var neverScanned: Bool {
+        capacity != nil && insights.homeKinds == nil && !cachesChecked && (developerBytes ?? 0) == 0
+    }
+    private var stage: Int { isScanShowing ? 1 : neverScanned ? 0 : 2 }
+
     var body: some View {
         let words = words
-        RoomScreenFrame(headline: words.headline, supporting: words.supporting, supportingMasked: true,
-                        note: hoverNote ?? words.note) {
+        let tiles = isScanShowing ? scan?.tiles ?? [] : []
+        let running = scan?.isRunning == true
+        RoomScreenFrame(headline: isScanShowing ? .words(running ? "Reading your Mac" : "Scan finished") : words.headline,
+                        supporting: isScanShowing ? RoomScanTile.progress(tiles) : words.supporting,
+                        supportingMasked: !isScanShowing,
+                        note: isScanShowing ? "A scan only reads. Nothing moves." : words.note) {
             VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
-                if capacity != nil {
-                    RoomOverviewFloorPlanView(plan: plan) { room in
-                        guard let room else { hoverNote = nil; return }
-                        let name = room.isFree ? "Free space" : room.title
-                        hoverNote = hide.masksNow ? name : "\(name) is \(plan.percent(of: room))% of this Mac"
+                if isScanShowing {
+                    RoomScanBoard(tiles: tiles) { id in
+                        if let destination = Self.destination(id) { navigate(destination) }
                     }
-                    if insights.homeKinds == nil {
-                        Button(insights.isScanningDisk ? "Mapping your home folder…" : "Map your home folder to see what fills it") {
-                            insights.scanHome()
-                        }
-                        .roomLink(accent)
-                        .disabled(insights.isScanningDisk || insights.isChoosingDiskFolder)
+                    .transition(.opacity)
+                    if running {
+                        Button("Stop") { scan?.stop() }
+                            .roomQuiet(large: true)
+                            .matchedGeometryEffect(id: "scan", in: scanSpace)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, RoomTokens.Space.row)
                     }
+                } else if capacity != nil {
+                    plan(centred: neverScanned)
                 } else {
                     Button("Read free space again", action: retryCapacity).roomLink(accent)
                 }
-                HStack(alignment: .top, spacing: 4) {
-                    ForEach(words.facts, id: \.label) { fact in factButton(fact) }
+                if !isScanShowing {
+                    HStack(alignment: .top, spacing: 4) {
+                        ForEach(words.facts, id: \.label) { fact in factButton(fact) }
+                    }
+                    .padding(.horizontal, -RoomTokens.Space.row)
+                    .padding(.top, RoomTokens.Space.row)
                 }
-                .padding(.horizontal, -RoomTokens.Space.row)
-                .padding(.top, RoomTokens.Space.row)
             }
         } action: {
-            if !cachesChecked {
-                Button("Check caches", action: openCaches)
-                    .roomScreenPrimary(accent)
-                    .disabled(cacheModel?.isScanning == true || cacheModel?.canScan == false)
-            } else if cachesBytes > 0 {
-                Button("Make room", action: makeRoom)
-                    .roomScreenPrimary(accent) // one-filled: exclusive with Check caches above (never both)
-                    .disabled(cacheModel?.isScanning == true || cacheModel?.isWorking == true)
-                    .accessibilityHint("Opens a review before anything moves")
+            if !isScanShowing, !neverScanned {
+                HStack(spacing: RoomTokens.Space.group) {
+                    if cachesBytes > 0 {
+                        Button("Scan everything", action: scanEverything)
+                            .roomQuiet(large: true)
+                            .matchedGeometryEffect(id: "scan", in: scanSpace)
+                        primaryButton("Make room", action: makeRoom)
+                            .disabled(cacheModel?.isScanning == true || cacheModel?.isWorking == true)
+                            .accessibilityHint("Opens a review before anything moves")
+                    } else {
+                        primaryButton("Scan everything", action: scanEverything)
+                            .matchedGeometryEffect(id: "scan", in: scanSpace)
+                    }
+                }
             }
         }
+        .animation(motion.animation(RoomTokens.Motion.page, fallback: RoomTokens.Motion.fade), value: stage)
+        .animation(motion.animation(RoomTokens.Motion.fade), value: running)
         .onAppear { updateCapacityMonitoring() }
         .task {
             await insights.refreshHomeMap()
@@ -138,6 +161,48 @@ struct RoomOverviewScreen: View {
         }
         .onDisappear { insights.setOverviewActive(false) }
     }
+
+    /// The floor plan of this Mac. Before the first scan it steps back and the scan button stands in front of it.
+    private func plan(centred: Bool) -> some View {
+        VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
+            ZStack {
+                RoomOverviewFloorPlanView(plan: plan, prompt: centred ? nil : mapPrompt)
+                .opacity(centred ? RoomTokens.Scan.restingDots : 1)
+                if centred {
+                    primaryButton("Scan everything", hero: true, action: scanEverything)
+                        .matchedGeometryEffect(id: "scan", in: scanSpace)
+                }
+            }
+        }
+    }
+
+    /// The Used room, unmapped, holds the way to fill it.
+    private var mapPrompt: RoomOverviewFloorPlanView.Prompt? {
+        guard insights.homeKinds == nil else { return nil }
+        return .init(title: insights.isScanningDisk ? "Mapping your home folder…" : "Map your home folder to see what fills it",
+                     disabled: insights.isScanningDisk || insights.isChoosingDiskFolder) { insights.scanHome() }
+    }
+
+    /// The screen's one filled button, wherever it stands.
+    private func primaryButton(_ title: String, hero: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            if title == "Scan everything" { Label(title, systemImage: "magnifyingglass") } else { Text(title) }
+        }
+        .roomScreenPrimary(accent, hero: hero)
+        .accessibilityIdentifier(title == "Scan everything" ? "RoomOverviewScanButton" : "RoomOverviewMakeRoom")
+    }
+
+    static func destination(_ tile: String) -> RoomDestination? {
+        switch RoomScanEverything.Part(rawValue: tile) {
+        case .caches: .clean
+        case .disk: .disk
+        case .developer: .developer
+        case .memory: .memory
+        case nil: nil
+        }
+    }
+
+    func scanEverything() { scan?.start() }
 
     private func factButton(_ fact: RoomOverviewWords.Fact) -> some View {
         Button { navigate(fact.destination) } label: {
@@ -161,11 +226,6 @@ struct RoomOverviewScreen: View {
         .buttonStyle(RoomHoverButtonStyle(cornerRadius: RoomTokens.Radius.card))
         .accessibilityLabel("\(fact.label), \(hide.masksNow && fact.masked ? "hidden" : fact.value)")
         .accessibilityHint("Opens \(RoomSidebarPlan.title(fact.destination))")
-    }
-
-    func openCaches() {
-        navigate(.clean)
-        cacheModel?.scan()
     }
 
     func openDiskMap() { navigate(.disk) }

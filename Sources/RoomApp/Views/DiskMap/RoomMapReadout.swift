@@ -240,6 +240,7 @@ struct RoomMapKindControl: View {
                         Button(kindLabel(item.kind, totals: totals)) { toggle(item.kind) }
                     }
                 }
+                .roomDropdown()
                 .accessibilityLabel("\(legend.more) more storage kinds")
             }
             if let filter {

@@ -29,10 +29,12 @@ struct RoomDeveloperAccessReuseTests {
         defer { fixture.remove() }
         let before = fixture.defaults.data(forKey: "RoomApprovedFolderBookmarks")
         let request = Mutex<DeveloperResourcesRequest?>(nil)
+        let requests = Mutex<[DeveloperResourcesRequest]>([])
         let engine = DeveloperResourcesEngine()
         let model = RoomDeveloperModel(access: fixture.access, defaults: fixture.defaults,
             unreferencedStore: .init(directory: fixture.root), scanner: { value, progress in
-            request.withLock { $0 = value }
+            requests.withLock { $0.append(value) }
+            if value.scope == .review { request.withLock { $0 = value } }
             return await engine.scan(request: value, progress: progress)
         })
 
@@ -41,6 +43,9 @@ struct RoomDeveloperAccessReuseTests {
         model.scan()
         try await waitForScan(model)
 
+        // The one scan covers each section these roles feed, with the same single approved scope.
+        #expect(requests.withLock { $0.map(\.scope) } == [.review, .devices, .toolStorage])
+        #expect(requests.withLock { $0.allSatisfy { $0.approvedFolders == [fixture.alpha] } })
         let actual = try #require(request.withLock { $0 })
         #expect(actual.approvedFolders == [fixture.alpha])
         #expect(actual.avdRoots == [fixture.alpha])

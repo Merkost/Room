@@ -23,3 +23,16 @@
 - Per-project bars scale to the largest project via `RoomDeveloperList.barFractions` (largest = full width, others proportional, 3% minimum sliver, zero stays empty).
 - Scan progress stays indeterminate: `DeveloperResourcesProgress` carries only a phase, an inspected-node count and the current path; the engine never knows a total in advance (it walks trees), so a determinate bar would be invented. The row shows the phase and a running item count.
 - Screenshots (sample data in a throwaway folder, `after2-*.png` in shots/developer-ux): results, scanning, empty, partial (an oversize build script forces lower-bound sizes), badfolder (a file chosen as the projects folder: Room accepts it and reports notes, so no error alert could be provoked). The error alert, the DerivedData legend entry and a fully complete (non-partial) result were not captured.
+
+## One scan for every section
+- "Scan all" / "Rescan all" is the same button on every section. One press reads projects, devices, tool storage, AI tools and (Direct) agent worktrees; a part with no folder is skipped, and Stop ends all of it.
+- The scan, sidebar row and activity pill last until the worktrees are read too. A running remote check or move holds the button back.
+- Disk Map keeps a visible Rescan (or Map Again) at the bottom right in every view; it turns quiet while rooms are ticked.
+
+## Scan buttons and scan animation
+
+- Before a screen has anything to show, its scan button is large and in the middle. Once there are results it moves to the bottom right.
+- Overview's "Scan everything" runs the same read-only Caches, Home folder, Developer and Memory reads their own screens run. Each is a room: its walls trace while it is read, its dots rise only as far as the engine has counted (whole rows, rounded down), and its figure appears when done. A part that cannot start says why.
+- Smaller forms: Developer shows one short room per part; Caches and Disk Map show one wall segment per counted place or folder.
+- The trace runs only while a scan runs. Reduce Motion keeps a still accent wall.
+
