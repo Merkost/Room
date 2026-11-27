@@ -79,14 +79,14 @@ struct RoomScreenHierarchyTests {
     @Test func cachesSayWhatCanGoOrAllClear() {
         var input = RoomCachesWords.Input()
         input.hasReport = true
-        input.clearableBytes = 22_400_000_000
-        input.places = 6
+        input.foundBytes = 31_400_000_000
+        input.selectedBytes = 22_400_000_000
         let found = RoomCachesWords.make(input)
-        #expect(found.headline == RoomHeadline(figure: "22 GB", words: "could go"))
-        #expect(found.supporting == "Rebuildable, in 6 places")
-        #expect(found.note == "Nothing moves without a review")
+        #expect(found.headline == RoomHeadline(figure: "31 GB", words: "of caches found"))
+        #expect(found.supporting == "22 GB ticked")
+        #expect(found.note == "Nothing moves without a review. Everything goes to Trash.")
 
-        input.clearableBytes = 0
+        input.foundBytes = 0
         #expect(RoomCachesWords.make(input).headline == .words("All clear"))
 
         input.unreadable = 2

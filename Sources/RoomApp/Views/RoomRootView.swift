@@ -233,7 +233,6 @@ struct RoomRootView: View {
                     .modifier(RoomAccentRoot())
                     .preferredColorScheme(colorScheme)
             case .protectedSources: RoomWhatStaysSheet(model: model)
-            case .scanIssues: RoomScanIssuesSheet(issues: model.scanIssues)
             #if ROOM_APP_STORE
             case .restore(let record): RoomStoreRestoreSheet(model: model, record: record)
             #endif
@@ -391,8 +390,8 @@ struct RoomRootView: View {
                                developerBytes: developer.headline.total, makeRoom: startMakeRoom, scan: scanEverything)
         case .clean:
             RoomCachesView(model: model, review: { openReview(.caches) },
-                inspect: { sheet = .source($0) }, showKept: { sheet = .protectedSources },
-                showScanNotes: { sheet = .scanIssues }, restore: restoreFromCaches,
+                inspect: { sheet = .source($0) }, showHidden: { sheet = .protectedSources },
+                restore: restoreFromCaches,
                 agentWorktreeBytes: heavyAgentWorktreeBytes, reviewWorktrees: reviewAgentWorktrees)
                 .roomPanelArrival(enabled: navigation.selectionOrigin == .pointer, from: RoomTokens.Space.tight)
         case .memory:
@@ -677,7 +676,7 @@ private struct RoomMapCleanupContext {
 }
 
 private enum RoomSheet: Identifiable {
-    case review, source(RoomSource), welcome, protectedSources, scanIssues
+    case review, source(RoomSource), welcome, protectedSources
     case mapCleanup(RoomMapCleanupContext)
     #if ROOM_APP_STORE
     case restore(RoomActivity)
@@ -689,7 +688,6 @@ private enum RoomSheet: Identifiable {
         case .source(let source): "source-\(source.id)"
         case .welcome: "welcome"
         case .protectedSources: "protected"
-        case .scanIssues: "issues"
         #if ROOM_APP_STORE
         case .restore(let record): "restore-\(record.id)"
         #endif

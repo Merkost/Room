@@ -65,8 +65,7 @@ struct RoomCachesView: View {
     let model: RoomViewModel
     let review: () -> Void
     let inspect: (RoomSource) -> Void
-    let showKept: () -> Void
-    let showScanNotes: () -> Void
+    let showHidden: () -> Void
     let restore: (RoomActivity) -> Void
     /// Heavy agent worktrees (already over the threshold), or nil. Never cleaned here.
     var agentWorktreeBytes: Int64? = nil
@@ -107,14 +106,15 @@ struct RoomCachesView: View {
         return .make(.init(hasReport: model.hasReport, remembered: !model.hasReport && model.cachesCheckStore.check != nil,
             partial: model.isPartialScan || model.isScanning, store: store, storeHasFolders: hasFolders,
             totalBytes: model.totalBytes, clearableBytes: model.clearableBytes, selectedBytes: model.selectedBytes,
-            sourceCount: model.measuredSourceCount, readableSourceCount: model.readableSourceCount))
+            sourceCount: model.measuredSourceCount, readableSourceCount: model.readableSourceCount,
+            recentBytes: model.recentBytes))
     }
 
     private var words: RoomCachesWords {
         RoomCachesWords.make(.init(
             scanning: model.isScanning, afterRestore: model.isAfterRestore, hasReport: model.hasReport,
-            partial: model.isPartialScan, totalBytes: model.totalBytes, clearableBytes: model.clearableBytes,
-            places: model.sources.filter(\.isAvailable).count, measured: model.measuredSourceCount,
+            partial: model.isPartialScan, totalBytes: model.totalBytes, foundBytes: model.foundBytes,
+            selectedBytes: model.selectedBytes, measured: model.measuredSourceCount,
             readable: model.readableSourceCount, checked: model.scannedLocationCount, toCheck: model.scanLocationCount,
             unreadable: model.scanIssues.count, rememberedBytes: model.cachesCheckStore.check?.bytes,
             needsFolder: needsFolderApproval))
@@ -134,7 +134,7 @@ struct RoomCachesView: View {
                         .transition(.opacity)
                 }
                 if model.hasReport || model.isScanning || model.isPartialScan {
-                    RoomCachesPlaces(model: model, inspect: inspect, showKept: showKept,
+                    RoomCachesPlaces(model: model, inspect: inspect,
                                      neverSuggest: model.ignoreStore != nil ? { neverSuggest($0) } : nil)
                         .opacity(model.isAfterRestore ? 0.6 : 1)
                     if allClear { startingPlaces(checked: true) }
@@ -145,8 +145,11 @@ struct RoomCachesView: View {
                 if let bytes = agentWorktreeBytes, let reviewWorktrees, !model.isScanning {
                     worktreeHint(bytes, review: reviewWorktrees)
                 }
-                if !model.scanIssues.isEmpty {
-                    Button("Scan notes", action: showScanNotes).roomLink(accent)
+                if let store = model.ignoreStore, !store.rules.isEmpty {
+                    Button(store.rules.count == 1 ? "1 place you hid" : "\(store.rules.count) places you hid",
+                           action: showHidden)
+                        .roomLink(accent)
+                        .font(RoomTokens.Typography.caption)
                 }
                 if let undo {
                     HStack {
@@ -255,7 +258,7 @@ struct RoomCachesView: View {
     /// A finished check that found nothing: the page says where Room looked instead of standing empty.
     private var allClear: Bool {
         model.hasReport && !model.isScanning && !model.isPartialScan && model.scanIssues.isEmpty
-            && !model.sources.contains(where: \.isAvailable)
+            && model.foundBytes == 0
     }
 
     @ViewBuilder

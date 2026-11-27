@@ -61,6 +61,33 @@ struct RoomSource: Identifiable, Sendable {
     var isAvailable: Bool { eligibleBytes > 0 && selectableCount > 0 }
 }
 
+/// A place on Caches that is not ticked for you: used recently (tickable) or open right now (not yet).
+struct RoomCacheRow: Identifiable, Sendable, Equatable {
+    /// A selection key for recent rows, so a place's old and recent parts are ticked separately.
+    let id: String
+    let sourceID: String
+    let name: String
+    let path: String
+    let note: String
+    let bytes: Int64
+
+    static func recentKey(_ sourceID: String) -> String { "recent:" + sourceID }
+    static func isRecentKey(_ key: String) -> Bool { key.hasPrefix("recent:") }
+
+    static func recentNote(newest: Date, now: Date) -> String {
+        switch max(0, Int(now.timeIntervalSince(newest) / 86_400)) {
+        case 0: "used today"
+        case 1: "used yesterday"
+        case let days: "used \(days) days ago"
+        }
+    }
+
+    /// The engine's first sentence: "Xcode is running".
+    static func inUseNote(_ reason: String) -> String {
+        String(reason.prefix { $0 != "." })
+    }
+}
+
 struct RoomProtectedSource: Identifiable, Sendable {
     let id: String
     let name: String

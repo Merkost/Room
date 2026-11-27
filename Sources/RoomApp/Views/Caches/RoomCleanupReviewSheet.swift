@@ -62,8 +62,7 @@ struct RoomCleanupReviewSheet: View {
                                   && model.canEditSelection && mapIssue == nil)
                     }
                     VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
-                        ForEach(review.beforeYouMove(keptBytes: model.heldBytes,
-                            keptExample: hidden ? nil : model.protectedSources.first?.name, format: format), id: \.self) { line in
+                        ForEach(review.beforeYouMove(keptBytes: nil, keptExample: nil, format: format), id: \.self) { line in
                             Text(line).font(RoomTokens.Typography.caption).foregroundStyle(RoomTokens.Ink.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
