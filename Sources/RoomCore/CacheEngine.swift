@@ -222,7 +222,7 @@ public actor CacheEngine {
                                 name: relative, byteCount: measured.byteCount,
                                 modifiedAt: measured.latestModification, eligibility: eligibility, fileCount: measured.fileCount)
                             entries.append(entry)
-                            if eligibility.isEligible {
+                            if eligibility.isSelectable {
                                 pendingCandidates[entry.id] = Candidate(entry: entry, root: root,
                                     anchorIdentity: anchorIdentity, parentIdentity: parentIdentity, snapshot: measured)
                             }
@@ -295,7 +295,7 @@ public actor CacheEngine {
             guard let candidate = candidates[id] else {
                 throw EngineError.message("The selection belongs to an older or incomplete scan. Scan again.")
             }
-            try validate(candidate, contentBudget: contentBudget)
+            try validate(candidate, contentBudget: contentBudget, allowingRecent: true)
             let parent = candidate.entry.url.deletingLastPathComponent()
             locations[parent.path] = parent
         }
@@ -356,7 +356,9 @@ public actor CacheEngine {
         #endif
     }
 
-    public func clean(entryIDs: Set<UUID>, progress: (@Sendable (UUID, ActivityStatus) async -> Void)? = nil) async -> ActivityReceipt {
+    /// `includingRecent` names the recently used items the person ticked by hand. Any other item
+    /// still inside its age rule stays, and every other check applies to both.
+    public func clean(entryIDs: Set<UUID>, includingRecent: Set<UUID> = [], progress: (@Sendable (UUID, ActivityStatus) async -> Void)? = nil) async -> ActivityReceipt {
         var receipt = ActivityReceipt(id: UUID(), date: Date(), items: [], issues: [])
         guard activeCleanup == nil else {
             receipt.issues.append(ScanIssue(url: activityDirectory, message: "Wait for the current cleanup to finish."))
@@ -404,7 +406,8 @@ public actor CacheEngine {
             let id = receipt.items[index].id
             guard let candidate = candidates[id] else { continue }
             do {
-                try validate(candidate, contentBudget: contentBudget, verifyContent: false)
+                try validate(candidate, contentBudget: contentBudget, verifyContent: false,
+                             allowingRecent: includingRecent.contains(id))
                 // Re-check live tools after walking the tree, immediately before the move.
                 try requireInactive(candidate.root)
                 try Self.validateAncestors(candidate.entry.url)
@@ -619,25 +622,31 @@ public actor CacheEngine {
         if snapshot.hasMultipleLinks { return .blocked("Contains shared hard links. Reclaimed space cannot be guaranteed; review in Finder.") }
         if snapshot.hasUnsupportedType { return .blocked("Contains a special filesystem item. Review this item in Finder.") }
         let minimumAge = root.contentValidation == nil ? root.minimumAge : max(root.minimumAge, NPMContentPolicy.minimumAge)
-        if now.timeIntervalSince(snapshot.latestModification) < minimumAge {
-            let days = max(1, Int(minimumAge / 86_400))
-            if root.contentValidation != nil { return .blocked("Modified within the last \(days) days. This npm object stays in place.") }
+        let isRecent = now.timeIntervalSince(snapshot.latestModification) < minimumAge
+        let days = max(1, Int(minimumAge / 86_400))
+        if isRecent, root.contentValidation != nil {
+            return .blocked("Modified within the last \(days) days. This npm object stays in place.")
+        }
+        // With no owner to watch for, a fresh file could be in use right now.
+        if isRecent, root.guardedProcesses.isEmpty {
             return .blocked("Used within the last \(days) days. Kept until every file is older.")
         }
+        // A running owner outranks age: its caches cannot be ticked at all.
         if !root.guardedProcesses.isEmpty {
             switch processes {
             case .failure:
                 #if ROOM_APP_STORE
-                return .blocked("Background-tool activity is unavailable in the App Store sandbox. This cache stays held; review it with its owning app.")
+                return .inUse("Background-tool activity is unavailable in the App Store sandbox. This cache stays held; review it with its owning app.")
                 #else
-                return .blocked("Running tools could not be checked. Try scanning again.")
+                return .inUse("Running tools could not be checked. Try scanning again.")
                 #endif
             case .success(let names):
                 if let process = Self.activeProcess(for: root, in: names) {
-                    return .blocked("\(process) is running. Quit it and scan again.")
+                    return .inUse("\(process) is running. Quit it and scan again.")
                 }
             }
         }
+        if isRecent { return .recent("Used within the last \(days) days.") }
         return .eligible
     }
 
@@ -654,7 +663,8 @@ public actor CacheEngine {
         }
     }
 
-    private func validate(_ candidate: Candidate, contentBudget: NPMContentBudget? = nil, verifyContent: Bool = true) throws {
+    private func validate(_ candidate: Candidate, contentBudget: NPMContentBudget? = nil, verifyContent: Bool = true,
+                          allowingRecent: Bool = false) throws {
         if case .inspectOnly = candidate.root.cleanupPolicy { throw EngineError.message("This discovered location is inspect-only. Nothing moved.") }
         guard !intersectsProtected(candidate.entry.url) else { throw EngineError.message("Protected user work intersects this item. Nothing moved.") }
         try Self.validateCandidatePath(candidate.entry.url, root: candidate.root)
@@ -679,7 +689,8 @@ public actor CacheEngine {
             throw EngineError.move(.changed, "The item or its contents changed after scanning. Scan again.")
         }
         let minimumAge = candidate.root.contentValidation == nil ? candidate.root.minimumAge : max(candidate.root.minimumAge, NPMContentPolicy.minimumAge)
-        guard Date().timeIntervalSince(current.latestModification) >= minimumAge else {
+        let ownerCanBeChecked = candidate.root.contentValidation == nil && !candidate.root.guardedProcesses.isEmpty
+        guard allowingRecent && ownerCanBeChecked || Date().timeIntervalSince(current.latestModification) >= minimumAge else {
             throw EngineError.move(.changed, "The item was recently modified. It will stay in place.")
         }
         try requireInactive(candidate.root)
