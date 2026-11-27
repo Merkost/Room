@@ -36,6 +36,18 @@ enum RoomDeveloperSection: String, CaseIterable {
     }
 }
 
+/// What the dock offers on Developer.
+nonisolated struct RoomDeveloperDock: Equatable, Sendable {
+    enum Step: Equatable, Sendable { case stop, chooseProjects, scan(again: Bool) }
+    let main: Step
+
+    static func make(scanning: Bool, hasFolders: Bool, hasResults: Bool) -> RoomDeveloperDock {
+        if scanning { return RoomDeveloperDock(main: .stop) }
+        if !hasFolders, !hasResults { return RoomDeveloperDock(main: .chooseProjects) }
+        return RoomDeveloperDock(main: .scan(again: hasResults))
+    }
+}
+
 private enum RoomDeveloperLayoutState: Equatable { case intro, firstScan, workspace }
 
 struct RoomDeveloperView: View {
@@ -48,7 +60,7 @@ struct RoomDeveloperView: View {
     @Environment(\.roomAccent) private var accent
     @Environment(\.roomMotion) private var motion
     private var section: RoomDeveloperSection { model.section }
-    @State private var showingFolders = false
+    @State private var showingFolderPopover = false
     @State private var showingNotes = false
     @State private var showingDetail = false
     private let confirmationPrefix = "developer/remove/"
@@ -96,10 +108,7 @@ struct RoomDeveloperView: View {
                                 supporting: "Room finds the Gradle, Xcode and Android versions your projects use, and the ones nothing points to.",
                                 note: "Room only reads sizes and version files", scrollsEvidence: true) {
                     VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
-                        introButton
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, RoomTokens.Space.breath1)
-                        folderControls(quiet: true)
+                        foldersButton
                         otherViews
                     }
                 } action: {
@@ -109,12 +118,8 @@ struct RoomDeveloperView: View {
             case .firstScan:
                 RoomScreenFrame(headline: .words("Reading your folders"), supporting: model.progress,
                                 note: "Room only reads sizes and version files") {
-                    VStack(spacing: RoomTokens.Space.breath1) {
-                        RoomScanStrip(tiles: model.scanTiles)
-                        Button("Stop") { model.stop() }.roomQuiet(large: true)
-                            .accessibilityIdentifier("RoomDeveloperScanButton")
-                    }
-                    .padding(.top, RoomTokens.Space.breath2)
+                    RoomScanStrip(tiles: model.scanTiles)
+                        .padding(.top, RoomTokens.Space.breath2)
                 } action: {
                     EmptyView()
                 }
@@ -128,17 +133,21 @@ struct RoomDeveloperView: View {
                         if model.isScanning, !model.scanTiles.isEmpty {
                             RoomScanStrip(tiles: model.scanTiles).transition(.opacity)
                         }
-                        RoomDeveloperTabs(selected: section, values: tabValues) { model.section = $0 }
+                        HStack(alignment: .top, spacing: RoomTokens.Space.group) {
+                            RoomDeveloperTabs(selected: section, values: tabValues) { model.section = $0 }
+                            if !isWorktrees { foldersButton }
+                        }
                         sectionContent.roomPanelChange(section)
                     }
                     .animation(motion.animation(RoomTokens.Motion.ui, fallback: RoomTokens.Motion.fade), value: model.isScanning)
                 } action: {
-                    scanControls
+                    EmptyView()
                 }
                 .transition(.opacity)
             }
         }
         .animation(motion.animation(RoomTokens.Motion.fade), value: layoutState)
+        .roomDock(dockMain)
         .alert("Couldn’t add that folder", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) {
             Button("OK") { model.errorMessage = nil }
         } message: { Text(hide.masksNow ? "Choose the folder again." : model.errorMessage ?? "") }
@@ -187,16 +196,89 @@ struct RoomDeveloperView: View {
 
     // MARK: Before the first scan
 
-    private var introButton: some View {
-        Button {
-            if model.hasScannableFolders { model.scan() } else { model.addFolder(role: .project) }
-        } label: {
-            Label(model.hasScannableFolders ? Self.scanTitle(isScanning: false, hasResults: false) : "Choose projects folder…",
-                  systemImage: model.hasScannableFolders ? "magnifyingglass" : "folder.badge.plus")
+    private var dockMain: RoomDockAction {
+        let dock = RoomDeveloperDock.make(scanning: model.isScanning, hasFolders: model.hasScannableFolders, hasResults: hasResults)
+        let id = "RoomDeveloperScanButton"
+        switch dock.main {
+        case .stop:
+            return RoomDockAction(title: Self.scanTitle(isScanning: true, hasResults: hasResults), filled: false,
+                                  identifier: id) { model.stop() }
+        case .chooseProjects:
+            return RoomDockAction(title: "Choose projects folder…", symbol: "folder.badge.plus",
+                                  enabled: !model.isChoosingFolder, identifier: id) { model.addFolder(role: .project) }
+        case .scan(let again):
+            return RoomDockAction(title: Self.scanTitle(isScanning: false, hasResults: again),
+                                  symbol: again ? "arrow.clockwise" : "magnifyingglass",
+                                  enabled: model.canScan && !model.isChoosingFolder, identifier: id) { model.scan() }
         }
-        .roomScreenPrimary(accent, hero: true) // one-filled: exclusive intro, shown only before the first scan
-        .disabled(model.isScanning || model.isChoosingFolder)
-        .accessibilityIdentifier("RoomDeveloperScanButton")
+    }
+
+    /// Every folder control in one place: what Developer reads, and how to add to or remove from it.
+    private var foldersButton: some View {
+        Button { showingFolderPopover.toggle() } label: {
+            HStack(spacing: RoomTokens.Space.tight) {
+                Image(systemName: "folder")
+                Text("Folders")
+                if !model.sectionLocations.isEmpty {
+                    RoomMaskable(model.sectionLocations.count.formatted()).foregroundStyle(RoomTokens.Ink.secondary)
+                }
+                Image(systemName: "chevron.down").font(RoomTokens.Typography.micro).foregroundStyle(RoomTokens.Ink.secondary)
+            }
+        }
+        .buttonStyle(RoomDropdownStyle(chevron: false))
+        .fixedSize()
+        .accessibilityIdentifier("RoomDeveloperFolders")
+        .popover(isPresented: $showingFolderPopover, arrowEdge: .bottom) {
+            folderPopover
+                .padding(RoomTokens.Space.group)
+                .frame(width: 360, alignment: .leading)
+        }
+    }
+
+    private var folderPopover: some View {
+        VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
+            Text("Folders Room reads").font(RoomTokens.Typography.section).accessibilityHeading(.h2)
+            if section == .aiTools || section == .devices {
+                Menu {
+                    ForEach(section == .aiTools ? RoomDeveloperFolderRole.aiRoles : RoomDeveloperFolderRole.deviceRoles) { role in
+                        folderChoice(role)
+                    }
+                } label: {
+                    Label(section == .aiTools ? "Choose Tool Folder…" : "Choose Device Folder…", systemImage: "folder.badge.plus")
+                }
+                .roomDropdown()
+                .disabled(model.isScanning || model.isChoosingFolder)
+                .accessibilityIdentifier(section == .aiTools ? "RoomDeveloperChooseAITool" : "RoomDeveloperChooseDeviceFolder")
+            } else if section != .storage {
+                // Saved-folder reuse (#1): a menu when there is a saved folder to pick, else a button.
+                folderChoice(.project, title: "Projects Folder…", symbol: "folder.badge.plus")
+                    .roomDropdown(chevron: !model.reusableFolders(for: .project).isEmpty)
+                    .disabled(model.isScanning || model.isChoosingFolder)
+                    .accessibilityIdentifier("RoomDeveloperAddFolder")
+            }
+            ForEach(model.sectionLocations, content: folderRow)
+            if section != .aiTools {
+                ForEach(model.folderSuggestions) { suggestion in
+                    let action = Self.suggestionAction(for: suggestion.role)
+                    HStack {
+                        Label(suggestion.role.title, systemImage: suggestion.role.symbol)
+                        Spacer()
+                        Button(action) { model.useSuggestion(suggestion) }
+                            .disabled(model.isScanning || model.isChoosingFolder)
+                            .accessibilityLabel("\(action) \(suggestion.role.title)")
+                    }
+                }
+                Menu("Choose another folder…") {
+                    ForEach(model.selectableFolderRoles) { role in
+                        folderChoice(role)
+                    }
+                }
+                .roomDropdown()
+                .disabled(model.isScanning || model.isChoosingFolder)
+            }
+            RoomInlineUndoRows(prefix: confirmationPrefix)
+        }
+        .font(RoomTokens.Typography.body)
     }
 
     private var otherViews: some View {
@@ -223,43 +305,6 @@ struct RoomDeveloperView: View {
     }
 
     // MARK: After the first scan
-
-    private var scanControls: some View {
-        HStack(spacing: RoomTokens.Space.row) {
-            if section == .aiTools || section == .devices {
-                Menu {
-                    ForEach(section == .aiTools ? RoomDeveloperFolderRole.aiRoles : RoomDeveloperFolderRole.deviceRoles) { role in
-                        folderChoice(role)
-                    }
-                } label: {
-                    Label(section == .aiTools ? "Choose Tool Folder…" : "Choose Device Folder…", systemImage: "folder.badge.plus")
-                }
-                .roomDropdown()
-                .disabled(model.isScanning || model.isChoosingFolder)
-                .accessibilityIdentifier(section == .aiTools ? "RoomDeveloperChooseAITool" : "RoomDeveloperChooseDeviceFolder")
-            } else if section != .storage && !isWorktrees {
-                // Saved-folder reuse (#1) with the redesign's quiet link style; the menu form keeps the same look.
-                folderChoice(.project, title: "Projects Folder…", symbol: "folder.badge.plus")
-                    .roomDropdown(chevron: !model.reusableFolders(for: .project).isEmpty)
-                    .disabled(model.isScanning || model.isChoosingFolder)
-                    .accessibilityIdentifier("RoomDeveloperAddFolder")
-            }
-
-            scanButton
-        }
-    }
-
-    @ViewBuilder private var scanButton: some View {
-        let button = Button {
-            if model.isScanning { model.stop() } else { model.scan() }
-        } label: {
-            Text(Self.scanTitle(isScanning: model.isScanning, hasResults: hasResults))
-        }
-        .disabled(!model.isScanning && !model.canScan)
-        .accessibilityIdentifier("RoomDeveloperScanButton")
-        // The one filled button on the screen; while a scan runs, Stop is the quiet one.
-        if model.isScanning { button.roomQuiet(large: true) } else { button.roomScreenPrimary(accent) }
-    }
 
     /// Each room leads with its largest things (mockup), and keeps the full review one click away in More detail.
     private var largest: [RoomDeveloperLargestRow] {
@@ -310,10 +355,7 @@ struct RoomDeveloperView: View {
                 Group {
                     switch section {
                     case .rooms, .matrix, .devices, .storage, .aiTools:
-                        VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
-                            review
-                            if section != .aiTools || !model.sectionLocations.isEmpty { folderControls(quiet: false) }
-                        }
+                        review
                     #if !ROOM_APP_STORE
                     case .worktrees:
                         RoomAgentWorkView(model: agentWork, memoryReport: memoryReport)
@@ -326,51 +368,6 @@ struct RoomDeveloperView: View {
             .foregroundStyle(RoomTokens.Ink.secondary)
             .roomEnter(2 + min(largest.count, RoomDeveloperLargest.limit))
         }
-    }
-
-    private func folderControls(quiet: Bool) -> some View {
-        VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
-            DisclosureGroup(isExpanded: $showingFolders) {
-                VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
-                    ForEach(model.sectionLocations, content: folderRow)
-                    if section != .aiTools {
-                        ForEach(model.folderSuggestions) { suggestion in
-                            let action = Self.suggestionAction(for: suggestion.role)
-                            HStack {
-                                Label(suggestion.role.title, systemImage: suggestion.role.symbol)
-                                Spacer()
-                                Button(action) { model.useSuggestion(suggestion) }
-                                    .disabled(model.isScanning || model.isChoosingFolder)
-                                    .accessibilityLabel("\(action) \(suggestion.role.title)")
-                            }
-                        }
-                        Menu("Choose another folder…") {
-                            ForEach(model.selectableFolderRoles) { role in
-                                folderChoice(role)
-                            }
-                        }
-                        .roomDropdown()
-                        .disabled(model.isScanning || model.isChoosingFolder)
-                    }
-                }
-                .padding(.top, RoomTokens.Space.inner)
-            } label: {
-                HStack(spacing: RoomTokens.Space.row) {
-                    Label("Folders Room reads", systemImage: "folder")
-                        .font(RoomTokens.Typography.section)
-                    if !model.sectionLocations.isEmpty {
-                        RoomMaskable(model.sectionLocations.count.formatted())
-                            .font(RoomTokens.Typography.caption)
-                            .foregroundStyle(RoomTokens.Ink.secondary)
-                    }
-                }
-            }
-            RoomInlineUndoRows(prefix: confirmationPrefix)
-        }
-        .font(RoomTokens.Typography.body)
-        .padding(quiet ? 0 : RoomTokens.Space.group)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(quiet ? Color.clear : RoomTokens.Surface.group, in: .rect(cornerRadius: RoomTokens.Radius.group))
     }
 
     @ViewBuilder private func folderChoice(_ role: RoomDeveloperFolderRole, title: String? = nil, symbol: String? = nil) -> some View {

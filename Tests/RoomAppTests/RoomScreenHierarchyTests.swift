@@ -8,27 +8,21 @@ import Testing
 struct RoomScreenHierarchyTests {
     @Test func overviewLeadsWithFreeSpaceAndTheGoalDistance() {
         let above = RoomOverviewWords.make(freeBytes: 64_000_000_000, capacityBytes: 494_000_000_000, goalBytes: 50_000_000_000,
-                                           cachesChecked: true, cachesBytes: 22_000_000_000, developerBytes: 120_000_000_000,
-                                           change: .since(label: "Monday", usedBytes: -8_000_000_000))
+                                           cachesChecked: true, change: .since(label: "Monday", usedBytes: -8_000_000_000))
         #expect(above.headline == RoomHeadline(figure: "64 GB", words: "free"))
         #expect(above.supporting == "of 494 GB, 14 GB above your goal")
-        #expect(above.note == "22 GB of caches are safe to move")
-        #expect(above.facts.map(\.label) == ["Caches", "Developer", "Since Monday"])
-        #expect(above.facts.map(\.value) == ["22 GB could go", "120 GB in your tools", "8 GB more free"])
-        #expect(above.facts.map(\.destination) == [.clean, .developer, .history])
+        #expect(above.note == "8 GB more free than Monday")
 
         let below = RoomOverviewWords.make(freeBytes: 30_000_000_000, capacityBytes: 494_000_000_000, goalBytes: 50_000_000_000,
-                                           cachesChecked: true, cachesBytes: 0, developerBytes: nil, change: .tracking)
+                                           cachesChecked: true, change: .tracking)
         #expect(below.supporting == "of 494 GB, 20 GB below your goal")
-        #expect(below.note == "Nothing else is safe to move today")
-        #expect(below.facts[0].value == "All clear")
-        #expect(below.facts[1].value == "Not scanned yet")
-        #expect(below.facts[2].label == "This week")
+        #expect(below.note == "Nothing moves without a review")
 
         let unread = RoomOverviewWords.make(freeBytes: nil, capacityBytes: nil, goalBytes: nil, cachesChecked: false,
-                                            cachesBytes: 0, developerBytes: nil, change: .tracking)
+                                            change: .tracking)
         #expect(unread.headline.figure == nil, "a missing measurement is never a zero")
         #expect(unread.supporting == nil)
+        #expect(unread.note == "A scan only reads. Nothing moves.")
     }
 
     @Test func floorPlanSortsKindsAndKeepsFreeLast() {

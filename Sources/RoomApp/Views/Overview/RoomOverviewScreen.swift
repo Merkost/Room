@@ -3,20 +3,12 @@ import SwiftUI
 
 /// Overview's words, kept pure: the headline, the goal distance and the three next steps.
 nonisolated struct RoomOverviewWords: Equatable, Sendable {
-    struct Fact: Equatable, Sendable {
-        let label: String
-        let value: String
-        let destination: RoomDestination
-        var masked = true
-    }
-
     let headline: RoomHeadline
     let supporting: String?
     let note: String
-    let facts: [Fact]
 
-    static func make(freeBytes: Int64?, capacityBytes: Int64?, goalBytes: Int64?, cachesChecked: Bool, cachesBytes: Int64,
-                     developerBytes: Int64?, change: RoomVolumeChange) -> RoomOverviewWords {
+    static func make(freeBytes: Int64?, capacityBytes: Int64?, goalBytes: Int64?, cachesChecked: Bool,
+                     change: RoomVolumeChange) -> RoomOverviewWords {
         let headline: RoomHeadline = freeBytes.map { RoomHeadline(figure: RoomFormat.gb($0), words: "free") }
             ?? .words("Free space unavailable")
         var supporting: String?
@@ -31,29 +23,33 @@ nonisolated struct RoomOverviewWords: Equatable, Sendable {
             }
             supporting = line
         }
-        let note = cachesChecked
-            ? (cachesBytes > 0 ? "\(RoomFormat.gb(cachesBytes)) of caches are safe to move" : "Nothing else is safe to move today")
-            : "Scan everything to see what can safely go"
-
-        let caches = Fact(label: "Caches",
-                          value: cachesChecked ? (cachesBytes > 0 ? "\(RoomFormat.gb(cachesBytes)) could go" : "All clear") : "Not checked yet",
-                          destination: .clean)
-        let developer = Fact(label: "Developer",
-                             value: (developerBytes ?? 0) > 0 ? "\(RoomFormat.gb(developerBytes!)) in your tools" : "Not scanned yet",
-                             destination: .developer)
-        let since: Fact = switch change {
-        case .since(let label, let used):
-            Fact(label: "Since \(label)",
-                 value: abs(used) < 1_000_000_000 ? "About the same" : used < 0 ? "\(RoomFormat.gb(-used)) more free" : "\(RoomFormat.gb(used)) less free",
-                 destination: .history)
+        let note: String = switch change {
+        case .since(let label, let used) where abs(used) >= 1_000_000_000:
+            used < 0 ? "\(RoomFormat.gb(-used)) more free than \(label)" : "\(RoomFormat.gb(used)) less free than \(label)"
+        case .since(let label, _):
+            "About the same as \(label)"
         case .tracking, .volumeChanged:
-            Fact(label: "This week", value: "Counting from today", destination: .history, masked: false)
+            cachesChecked ? "Nothing moves without a review" : "A scan only reads. Nothing moves."
         }
-        return RoomOverviewWords(headline: headline, supporting: supporting, note: note, facts: [caches, developer, since])
+        return RoomOverviewWords(headline: headline, supporting: supporting, note: note)
     }
 }
 
-/// Overview (nav-v3): "64 GB free", the goal distance, a floor plan of kinds, three next steps, Scan everything and Make room.
+/// What the dock offers on Overview: scan everything, stop the scan, or make room with a second way to scan again.
+nonisolated struct RoomOverviewDock: Equatable, Sendable {
+    enum Step: Equatable, Sendable { case scan, stop, makeRoom(bytes: Int64) }
+    let main: Step
+    var rescan = false
+
+    /// `makeRoomBytes` is what the review will open with.
+    static func make(scanning: Bool, makeRoomBytes: Int64) -> RoomOverviewDock {
+        if scanning { return RoomOverviewDock(main: .stop) }
+        guard makeRoomBytes > 0 else { return RoomOverviewDock(main: .scan) }
+        return RoomOverviewDock(main: .makeRoom(bytes: makeRoomBytes), rescan: true)
+    }
+}
+
+/// Overview: "64 GB free", the goal distance, this Mac's meter and a floor plan of kinds.
 struct RoomOverviewScreen: View {
     let insights: RoomInsightsModel
     let navigate: (RoomDestination) -> Void
@@ -69,16 +65,19 @@ struct RoomOverviewScreen: View {
     @Environment(\.roomAccent) private var accent
     @Environment(\.roomHide) private var hide
     @Environment(\.roomMotion) private var motion
-    @Namespace private var scanSpace
 
     private var capacity: RoomVolumeCapacity? { insights.volumeCapacity }
     private var cachesChecked: Bool { cacheModel?.hasReport == true }
     private var cachesBytes: Int64 { cachesChecked ? (cacheModel?.clearableBytes ?? 0) : 0 }
+    private var makeRoomBytes: Int64 {
+        guard cachesBytes > 0, let model = cacheModel else { return 0 }
+        return model.selectedBytes > 0 ? model.selectedBytes : cachesBytes
+    }
 
     private var words: RoomOverviewWords {
         RoomOverviewWords.make(freeBytes: capacity?.freeBytes, capacityBytes: capacity?.capacityBytes,
                                goalBytes: goalEnabled ? RoomMenuBarSettings.clampGoalBytes(Int64(storedGoal)) : nil,
-                               cachesChecked: cachesChecked, cachesBytes: cachesBytes, developerBytes: developerBytes,
+                               cachesChecked: cachesChecked,
                                change: insights.volumeHistory.log.change(now: Date(), calendar: .current))
     }
 
@@ -89,12 +88,6 @@ struct RoomOverviewScreen: View {
     }
 
     private var isScanShowing: Bool { scan?.isPresented == true }
-    /// Nothing has been read yet, so the scan button takes the centre of the plan.
-    private var neverScanned: Bool {
-        capacity != nil && insights.homeKinds == nil && !cachesChecked && (developerBytes ?? 0) == 0
-    }
-    private var stage: Int { isScanShowing ? 1 : neverScanned ? 0 : 2 }
-
     var body: some View {
         let words = words
         let tiles = isScanShowing ? scan?.tiles ?? [] : []
@@ -103,50 +96,25 @@ struct RoomOverviewScreen: View {
                         supporting: isScanShowing ? RoomScanTile.progress(tiles) : words.supporting,
                         supportingMasked: !isScanShowing,
                         note: isScanShowing ? "A scan only reads. Nothing moves." : words.note) {
-            VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
+            VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
                 if isScanShowing {
                     RoomScanBoard(tiles: tiles) { id in
                         if let destination = Self.destination(id) { navigate(destination) }
                     }
                     .transition(.opacity)
-                    if running {
-                        Button("Stop") { scan?.stop() }
-                            .roomQuiet(large: true)
-                            .matchedGeometryEffect(id: "scan", in: scanSpace)
-                            .frame(maxWidth: .infinity)
-                            .padding(.top, RoomTokens.Space.row)
-                    }
-                } else if capacity != nil {
-                    plan(centred: neverScanned)
+                } else if let capacity {
+                    RoomVolumeMeter(freeBytes: capacity.freeBytes, capacityBytes: capacity.capacityBytes,
+                                    couldGoBytes: cachesBytes)
+                    RoomOverviewFloorPlanView(plan: plan, prompt: mapPrompt)
                 } else {
                     Button("Read free space again", action: retryCapacity).roomLink(accent)
                 }
-                if !isScanShowing {
-                    HStack(alignment: .top, spacing: 4) {
-                        ForEach(words.facts, id: \.label) { fact in factButton(fact) }
-                    }
-                    .padding(.horizontal, -RoomTokens.Space.row)
-                    .padding(.top, RoomTokens.Space.row)
-                }
             }
         } action: {
-            if !isScanShowing, !neverScanned {
-                HStack(spacing: RoomTokens.Space.group) {
-                    if cachesBytes > 0 {
-                        Button("Scan everything", action: scanEverything)
-                            .roomQuiet(large: true)
-                            .matchedGeometryEffect(id: "scan", in: scanSpace)
-                        primaryButton("Make room", action: makeRoom)
-                            .disabled(cacheModel?.isScanning == true || cacheModel?.isWorking == true)
-                            .accessibilityHint("Opens a review before anything moves")
-                    } else {
-                        primaryButton("Scan everything", action: scanEverything)
-                            .matchedGeometryEffect(id: "scan", in: scanSpace)
-                    }
-                }
-            }
+            EmptyView()
         }
-        .animation(motion.animation(RoomTokens.Motion.page, fallback: RoomTokens.Motion.fade), value: stage)
+        .roomDock(dockMain(running: running), side: dockSide(running: running))
+        .animation(motion.animation(RoomTokens.Motion.page, fallback: RoomTokens.Motion.fade), value: isScanShowing)
         .animation(motion.animation(RoomTokens.Motion.fade), value: running)
         .onAppear { updateCapacityMonitoring() }
         .task {
@@ -162,20 +130,6 @@ struct RoomOverviewScreen: View {
         .onDisappear { insights.setOverviewActive(false) }
     }
 
-    /// The floor plan of this Mac. Before the first scan it steps back and the scan button stands in front of it.
-    private func plan(centred: Bool) -> some View {
-        VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
-            ZStack {
-                RoomOverviewFloorPlanView(plan: plan, prompt: centred ? nil : mapPrompt)
-                .opacity(centred ? RoomTokens.Scan.restingDots : 1)
-                if centred {
-                    primaryButton("Scan everything", hero: true, action: scanEverything)
-                        .matchedGeometryEffect(id: "scan", in: scanSpace)
-                }
-            }
-        }
-    }
-
     /// The Used room, unmapped, holds the way to fill it.
     private var mapPrompt: RoomOverviewFloorPlanView.Prompt? {
         guard insights.homeKinds == nil else { return nil }
@@ -183,13 +137,24 @@ struct RoomOverviewScreen: View {
                      disabled: insights.isScanningDisk || insights.isChoosingDiskFolder) { insights.scanHome() }
     }
 
-    /// The screen's one filled button, wherever it stands.
-    private func primaryButton(_ title: String, hero: Bool = false, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            if title == "Scan everything" { Label(title, systemImage: "magnifyingglass") } else { Text(title) }
+    private func dockMain(running: Bool) -> RoomDockAction {
+        switch RoomOverviewDock.make(scanning: running, makeRoomBytes: isScanShowing ? 0 : makeRoomBytes).main {
+        case .stop:
+            return RoomDockAction(title: "Stop", filled: false, identifier: "RoomOverviewScanButton") { scan?.stop() }
+        case .scan:
+            return RoomDockAction(title: "Scan everything", symbol: "magnifyingglass", hint: "A scan only reads",
+                                  identifier: "RoomOverviewScanButton", perform: scanEverything)
+        case .makeRoom(let bytes):
+            return RoomDockAction(title: "Make room \(RoomCachesVisibility.figure(RoomFormat.gb(bytes), hidden: hide.masksNow))",
+                                  enabled: cacheModel?.isScanning != true && cacheModel?.isWorking != true,
+                                  hint: "Opens a review before anything moves",
+                                  identifier: "RoomOverviewMakeRoom", perform: makeRoom)
         }
-        .roomScreenPrimary(accent, hero: hero)
-        .accessibilityIdentifier(title == "Scan everything" ? "RoomOverviewScanButton" : "RoomOverviewMakeRoom")
+    }
+
+    private func dockSide(running: Bool) -> RoomDockAction? {
+        guard RoomOverviewDock.make(scanning: running, makeRoomBytes: isScanShowing ? 0 : makeRoomBytes).rescan else { return nil }
+        return RoomDockAction(title: "Scan everything", identifier: "RoomOverviewScanButton", perform: scanEverything)
     }
 
     static func destination(_ tile: String) -> RoomDestination? {
@@ -203,30 +168,6 @@ struct RoomOverviewScreen: View {
     }
 
     func scanEverything() { scan?.start() }
-
-    private func factButton(_ fact: RoomOverviewWords.Fact) -> some View {
-        Button { navigate(fact.destination) } label: {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(fact.label).font(RoomTokens.Screen2.factLabel).foregroundStyle(RoomTokens.Ink.secondary)
-                HStack(spacing: 4) {
-                    Group {
-                        if fact.masked { RoomMaskable(fact.value) } else { Text(fact.value) }
-                    }
-                    .font(RoomTokens.Screen2.factValue)
-                    .foregroundStyle(RoomTokens.Ink.graphite)
-                    Text(verbatim: "›").font(RoomTokens.Screen2.factValue).foregroundStyle(RoomTokens.Ink.tertiary)
-                }
-                .lineLimit(1)
-            }
-            .padding(.horizontal, RoomTokens.Space.row)
-            .padding(.vertical, 9)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(RoomHoverButtonStyle(cornerRadius: RoomTokens.Radius.card))
-        .accessibilityLabel("\(fact.label), \(hide.masksNow && fact.masked ? "hidden" : fact.value)")
-        .accessibilityHint("Opens \(RoomPlacePlan.title(fact.destination))")
-    }
 
     func openDiskMap() { navigate(.disk) }
 
