@@ -128,6 +128,7 @@ struct RoomDeveloperView: View {
                         if model.isScanning, !model.scanTiles.isEmpty {
                             RoomScanStrip(tiles: model.scanTiles).transition(.opacity)
                         }
+                        RoomDeveloperTabs(selected: section, values: tabValues) { model.section = $0 }
                         sectionContent.roomPanelChange(section)
                     }
                     .animation(motion.animation(RoomTokens.Motion.ui, fallback: RoomTokens.Motion.fade), value: model.isScanning)
@@ -146,6 +147,17 @@ struct RoomDeveloperView: View {
                 hide.masksNow ? "A resource could not be read." : "\($0.url.path): \($0.message)"
             } ?? [])
         }
+    }
+
+    /// Each room's size once it has been read (the same figure the headline shows for it).
+    private var tabValues: [RoomDeveloperSection: String] {
+        var worktreesBytes: Int64 = 0
+        #if !ROOM_APP_STORE
+        worktreesBytes = agentWork.report?.items.reduce(Int64(0)) { $0 + $1.allocatedBytes } ?? 0
+        #endif
+        return Dictionary(uniqueKeysWithValues: availability.sectionsWithData.map {
+            ($0, RoomDeveloperFormat.whole(model.headlineBytes(for: $0, worktreesBytes: worktreesBytes)))
+        })
     }
 
     private var sectionReport: DeveloperResourcesReport? {
@@ -222,9 +234,10 @@ struct RoomDeveloperView: View {
                 } label: {
                     Label(section == .aiTools ? "Choose Tool Folder…" : "Choose Device Folder…", systemImage: "folder.badge.plus")
                 }
+                .roomLink(accent)
                 .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
                 .fixedSize()
-                .foregroundStyle(accent.text)
                 .disabled(model.isScanning || model.isChoosingFolder)
                 .accessibilityIdentifier(section == .aiTools ? "RoomDeveloperChooseAITool" : "RoomDeveloperChooseDeviceFolder")
             } else if section != .storage && !isWorktrees {
@@ -232,6 +245,7 @@ struct RoomDeveloperView: View {
                 folderChoice(.project, title: "Projects Folder…", symbol: "folder.badge.plus")
                     .roomLink(accent)
                     .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
                     .fixedSize()
                     .disabled(model.isScanning || model.isChoosingFolder)
                     .accessibilityIdentifier("RoomDeveloperAddFolder")

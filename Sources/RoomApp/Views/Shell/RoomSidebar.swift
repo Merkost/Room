@@ -25,8 +25,6 @@ struct RoomSidebar: View {
     var openSavedView: (UUID) -> Void = { _ in }
     var activity: [RoomDestination: RoomRowActivity] = [:]
     var stop: (RoomDestination) -> Void = { _ in }
-    var developerSection: RoomDeveloperSection = .rooms
-    var selectDeveloperSection: (RoomDeveloperSection) -> Void = { _ in }
     var openGoTo: (_ keyboard: Bool) -> Void = { _ in }
     var fold: () -> Void = {}
 
@@ -65,10 +63,6 @@ struct RoomSidebar: View {
                         groupHeading(group, first: group == .yourMac)
                         ForEach(RoomSidebarPlan.places(in: group), id: \.self) { place in
                             placeRow(place)
-                            if place == .developer {
-                                RoomSidebarDeveloperRooms(open: labelled && navigation.route == .screen(.developer),
-                                                          selected: developerSection, select: selectDeveloperSection)
-                            }
                         }
                     }
                     if RoomSidebarPinned.hasContent(rooms: rooms, savedViews: savedViews) {

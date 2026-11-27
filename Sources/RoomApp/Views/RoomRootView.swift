@@ -100,12 +100,6 @@ struct RoomRootView: View {
         rowActivity.stop(place)
     }
 
-    private func selectDeveloperSection(_ section: RoomDeveloperSection) {
-        var transaction = Transaction(animation: nil)
-        transaction.disablesAnimations = RoomSelectionOrigin.controlActivation == .keyboard
-        withTransaction(transaction) { developer.section = section }
-    }
-
     private var sidebarValues: RoomSidebarValue.Input {
         RoomSidebarValue.Input(freeBytes: insights.volumeCapacity?.freeBytes,
                                mappedFolders: insights.diskMap.current?.tree.children.count,
@@ -186,8 +180,6 @@ struct RoomRootView: View {
                       savedViews: savedViews, selectSavedView: openSavedView,
                       sidebarValues: sidebarValues, couldGoBytes: couldGoBytes,
                       rowActivity: rowActivity.rows, stopPlace: stopPlace,
-                      developerSection: developer.section,
-                      selectDeveloperSection: selectDeveloperSection,
                       openGoTo: { openGoTo(keyboard: $0) }) {
             RoomScreenScaffold(title: screenActions.title, subtitle: screenSubtitle,
                                scrolls: !Self.framedDestinations.contains(destination), chip: AnyView(statusChip)) {
