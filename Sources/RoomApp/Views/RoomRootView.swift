@@ -20,9 +20,9 @@ struct RoomRootView: View {
     @Environment(\.roomMotion) private var motion
     #if DEBUG
     @State private var developer = RoomDeveloperModel.debugFixture()
-        ?? RoomDeveloperModel(unreferencedStore: .init(writer: .shared), activityCenter: .shared)
+        ?? RoomDeveloperModel(unreferencedStore: .init(writer: .shared), activityCenter: .shared, discovery: .standard)
     #else
-    @State private var developer = RoomDeveloperModel(unreferencedStore: .init(writer: .shared), activityCenter: .shared)
+    @State private var developer = RoomDeveloperModel(unreferencedStore: .init(writer: .shared), activityCenter: .shared, discovery: .standard)
     #endif
     @State private var sheet: RoomSheet?
     @State private var showingCustomise = false
@@ -61,7 +61,7 @@ struct RoomRootView: View {
     @State private var scanEverything = RoomScanEverything()
 
     private var commandItems: [RoomCommandBar.Item] {
-        RoomCommandBar.items(values: dockValues, developerRooms: RoomDeveloperSection.allCases.map(\.rawValue))
+        RoomCommandBar.items(values: dockValues)
     }
 
     /// Every receipt: cache moves and, in Direct, folders moved from the Disk Map.
@@ -109,13 +109,13 @@ struct RoomRootView: View {
                                receipts: allActivity.count)
     }
 
-    /// The Developer row shows the figure the Developer screen's headline shows for the room it opens on.
+    /// The Developer row shows the figure the Developer screen's headline shows.
     private var developerHeadlineBytes: Int64 {
         #if ROOM_APP_STORE
-        developer.headlineBytes(for: developer.section)
+        developer.headline.total
         #else
-        developer.headlineBytes(for: developer.section,
-                                worktreesBytes: agentWork.report?.items.reduce(Int64(0)) { $0 + $1.allocatedBytes } ?? 0)
+        RoomDeveloperPresentation.sum([developer.headline.total,
+            agentWork.report?.items.reduce(Int64(0)) { $0 + $1.allocatedBytes } ?? 0])
         #endif
     }
 
@@ -439,7 +439,7 @@ struct RoomRootView: View {
         nil
         #else
         {
-            developer.section = .worktrees
+            developer.showingWorktrees = true
             navigation.select(.screen(.developer), origin: .controlActivation)
         }
         #endif
@@ -564,9 +564,6 @@ struct RoomRootView: View {
         }
         switch item.target {
         case .place(let place): go(place)
-        case .developerRoom(let name):
-            go(.developer)
-            if let section = RoomDeveloperSection(rawValue: name) { developer.section = section }
         case .action(.checkCaches):
             go(.clean)
             if model.canScan, !model.isScanning { model.scan() }

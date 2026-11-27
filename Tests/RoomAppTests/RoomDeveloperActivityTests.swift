@@ -25,7 +25,6 @@ struct RoomDeveloperActivityTests {
             activitySampler: {
             calls.withLock { $0 += 1 }; return evidence
         })
-        model.section = .devices
         model.attach(role: .android, to: folder.id)
         model.scan()
         for _ in 0..<1000 where model.isScanning { try await Task.sleep(for: .milliseconds(5)) }
@@ -54,7 +53,6 @@ struct RoomDeveloperActivityTests {
             return DeveloperResourcesReport(id: UUID(), scannedAt: Date(), androidDevices: [], gradleResources: [],
                 projectWrappers: [], issues: [], cancelled: false, isPartial: false)
         }, activitySampler: { await gate.sample() })
-        model.section = .devices
         model.attach(role: .android, to: folder.id)
         model.scan()
         for _ in 0..<1000 { if await gate.started { break }; await Task.yield() }

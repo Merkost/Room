@@ -7,7 +7,7 @@ struct RoomCommandBarTests {
     private var items: [RoomCommandBar.Item] {
         var values = RoomPlaceValue.Input()
         values.freeBytes = 64_000_000_000
-        return RoomCommandBar.items(values: values, developerRooms: ["Rooms", "Matrix", "Devices", "Storage", "AI Tools", "Worktrees"])
+        return RoomCommandBar.items(values: values)
     }
 
     @Test func emptyQueryShowsTheSevenPlaces() {
@@ -21,7 +21,6 @@ struct RoomCommandBarTests {
         bar.type("dev")
         let titles = bar.results(in: items).map(\.title)
         #expect(titles.first == "Developer")
-        #expect(titles.contains("Developer, Matrix"))
         #expect(titles.count <= RoomCommandBar.maxResults)
         bar.type("make")
         #expect(bar.results(in: items).map(\.title) == ["Make room"])

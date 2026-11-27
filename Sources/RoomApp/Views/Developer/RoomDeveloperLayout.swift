@@ -1,46 +1,6 @@
 import Foundation
 import RoomCore
 
-/// Which Developer views have something to show. Rooms and Matrix share one review scan.
-struct RoomDeveloperAvailability: Equatable {
-    var review = false
-    var devices = false
-    var storage = false
-    var aiTools = false
-    var worktrees = false
-
-    var sectionsWithData: Set<RoomDeveloperSection> {
-        var result: Set<RoomDeveloperSection> = []
-        if review { result.formUnion([.rooms, .matrix]) }
-        if devices { result.insert(.devices) }
-        if storage { result.insert(.storage) }
-        if aiTools { result.insert(.aiTools) }
-        #if !ROOM_APP_STORE
-        if worktrees { result.insert(.worktrees) }
-        #endif
-        return result
-    }
-}
-
-/// Tabs appear only once there is data to switch between (the first scan decides).
-enum RoomDeveloperTabRules {
-    static func visible(_ availability: RoomDeveloperAvailability, current: RoomDeveloperSection) -> [RoomDeveloperSection] {
-        let withData = availability.sectionsWithData
-        if withData.isEmpty { return current == .rooms ? [] : RoomDeveloperSection.allCases }
-        return RoomDeveloperSection.allCases.filter { withData.contains($0) || $0 == current }
-    }
-
-    static func hidden(_ availability: RoomDeveloperAvailability, current: RoomDeveloperSection) -> [RoomDeveloperSection] {
-        let shown = visible(availability, current: current)
-        return shown.isEmpty ? [] : RoomDeveloperSection.allCases.filter { !shown.contains($0) }
-    }
-
-    /// Before any data and while on the default view the screen is the quiet start page.
-    static func showsIntro(_ availability: RoomDeveloperAvailability, current: RoomDeveloperSection, isScanning: Bool) -> Bool {
-        visible(availability, current: current).isEmpty && !isScanning
-    }
-}
-
 /// The one number that matters, and the parts it is made of.
 struct RoomDeveloperHeadline: Equatable {
     enum Kind: CaseIterable { case inUse, unreferenced, devices, toolStorage, aiTools }
@@ -137,27 +97,6 @@ enum RoomDeveloperList {
 }
 
 extension RoomDeveloperModel {
-    var availability: RoomDeveloperAvailability {
-        RoomDeveloperAvailability(review: report != nil, devices: devicesReport != nil,
-                                  storage: storageReport != nil, aiTools: aiToolsReport != nil)
-    }
-
-    /// The figure the Developer screen's headline shows for a room, so the sidebar value matches the screen it opens
-    /// ("120 GB in projects" on Rooms and Matrix, the devices, storage, AI tools or worktrees total elsewhere).
-    func headlineBytes(for section: RoomDeveloperSection, worktreesBytes: Int64 = 0) -> Int64 {
-        let headline = headline
-        func part(_ kind: RoomDeveloperHeadline.Kind) -> Int64 { headline.parts.first { $0.kind == kind }?.bytes ?? 0 }
-        switch section {
-        case .rooms, .matrix: return part(.inUse) + part(.unreferenced)
-        case .devices: return part(.devices)
-        case .storage: return part(.toolStorage)
-        case .aiTools: return part(.aiTools)
-        #if !ROOM_APP_STORE
-        case .worktrees: return worktreesBytes
-        #endif
-        }
-    }
-
     var headline: RoomDeveloperHeadline {
         let reports = [report, devicesReport, storageReport, aiToolsReport].compactMap { $0 }
         let partial = (summary?.partial ?? false) || reports.contains { $0.isPartial || $0.cancelled }
@@ -178,11 +117,11 @@ extension RoomDeveloperModel {
     /// One room per part of the scan, each with its size once that part has been read.
     var scanTiles: [RoomScanTile] {
         var tiles = scanParts.map { part in
-            let (title, glyph, section): (String, RoomGlyph, RoomDeveloperSection) = switch part.scope {
-            case .devices: ("Devices", .phone, .devices)
-            case .toolStorage: ("Storage", .box, .storage)
-            case .aiTools: ("AI tools", .spark, .aiTools)
-            default: ("Projects", .folder, .rooms)
+            let (title, glyph, kinds): (String, RoomGlyph, Set<RoomDeveloperHeadline.Kind>) = switch part.scope {
+            case .devices: ("Devices", .phone, [.devices])
+            case .toolStorage: ("Storage", .box, [.toolStorage])
+            case .aiTools: ("AI tools", .spark, [.aiTools])
+            default: ("Projects", .folder, [.inUse, .unreferenced])
             }
             let state: RoomScanTile.State = switch part.state {
             case .waiting: .waiting
@@ -191,7 +130,7 @@ extension RoomDeveloperModel {
             case .stopped: .stopped
             }
             var tile = RoomScanTile(id: title, title: title, glyph: glyph, state: state)
-            tile.value = RoomFormat.gb(headlineBytes(for: section))
+            tile.value = RoomFormat.gb(RoomDeveloperPresentation.sum(headline.parts.filter { kinds.contains($0.kind) }.map(\.bytes)))
             tile.detail = Self.scanDetail(state)
             return tile
         }

@@ -4,40 +4,6 @@ import Testing
 
 @Suite("Developer folder roles and unreferenced dates") @MainActor
 struct RoomDeveloperModelTests {
-    @Test func editionSpecificFolderSuggestions() throws {
-        let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
-        let gradle = home.appendingPathComponent(".gradle", isDirectory: true)
-        try FileManager.default.createDirectory(at: gradle, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: home) }
-        let suite = "RoomDeveloperModel-" + UUID().uuidString
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
-        let access = RoomFileAccess(defaults: defaults)
-        let model = RoomDeveloperModel(access: access, defaults: defaults,
-            unreferencedStore: RoomDeveloperUnreferencedStore(directory: home), home: home)
-        #if ROOM_APP_STORE
-        #expect(model.folderSuggestions.map(\.role) == [.android, .gradle, .sdk, .xcode, .konan, .simulators])
-        #expect(RoomDeveloperSection.allCases.map(\.rawValue) == ["Rooms", "Matrix", "Devices", "Storage", "AI Tools"])
-        #expect(RoomDeveloperView.suggestionAction == "Choose…")
-        #else
-        #expect(model.folderSuggestions.map(\.role) == [.gradle, .simulators])
-        #expect(RoomDeveloperSection.allCases.map(\.rawValue) == ["Rooms", "Matrix", "Devices", "Storage", "AI Tools", "Worktrees"])
-        #expect(RoomDeveloperView.suggestionAction == "Use")
-        let gradleSuggestion = try #require(model.folderSuggestions.first)
-        model.useSuggestion(gradleSuggestion)
-        #expect(model.locations.map(\.role) == [.gradle])
-        #expect(access.folders.count == 1)
-        #endif
-        let simulatorSuggestion = try #require(model.folderSuggestions.first { $0.role == .simulators })
-        #expect(simulatorSuggestion.url == home.appendingPathComponent("Library/Developer/CoreSimulator/Devices", isDirectory: true))
-        #expect(RoomDeveloperView.suggestionAction(for: .simulators) == "Choose…")
-        #expect(!model.locations.contains { $0.role == .simulators })
-        model.section = .aiTools
-        #expect(model.folderSuggestions.map(\.role) == RoomDeveloperFolderRole.aiRoles)
-        // One scan reads every section, so a folder chosen for another section is enough.
-        #expect(model.canScan == !model.locations.isEmpty)
-    }
-
     @Test func unreferencedDatesPersistAndOnlyCompleteScansChangeThem() throws {
         let key = "gradle:7.6.4-bin"
         let first = Date(timeIntervalSince1970: 1_780_000_000)

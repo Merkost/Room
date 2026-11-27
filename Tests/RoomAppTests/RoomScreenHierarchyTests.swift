@@ -108,27 +108,6 @@ struct RoomScreenHierarchyTests {
         #expect(RoomMemoryWords.make(usedBytes: nil, totalBytes: nil, pressureRaw: nil).headline.figure == nil)
     }
 
-    @Test func developerHasAHeadlinePerRoom() {
-        var input = RoomDeveloperWords.Input()
-        input.projectsBytes = 120_000_000_000
-        input.projects = 48
-        input.devicesBytes = 20_000_000_000
-        input.devices = 3
-        input.storageBytes = 67_000_000_000
-        input.aiBytes = 27_000_000_000
-        input.worktreesBytes = 6_000_000_000
-        input.worktrees = 3
-        let rooms = RoomDeveloperWords.make(section: "Rooms", input)
-        #expect(rooms.headline == RoomHeadline(figure: "120 GB", words: "in projects"))
-        #expect(rooms.supporting == "48 projects")
-        #expect(RoomDeveloperWords.make(section: "Matrix", input).headline.words == "of toolchains")
-        #expect(RoomDeveloperWords.make(section: "Devices", input).headline == RoomHeadline(figure: "20 GB", words: "of simulators"))
-        #expect(RoomDeveloperWords.make(section: "Storage", input).supporting == "All of it can be made again")
-        #expect(RoomDeveloperWords.make(section: "AI Tools", input).headline.words == "of AI tools")
-        #expect(RoomDeveloperWords.make(section: "Worktrees", input).headline.words == "in worktrees")
-        #expect(RoomDeveloperWords.make(section: "Devices", RoomDeveloperWords.Input()).headline.figure == nil)
-    }
-
     @Test func diskMapNamesTheLevel() {
         let now = Date(timeIntervalSince1970: 2_000_000)
         let home = RoomDiskMapWords.make(levelName: "kosta", atRoot: true, rootIsHome: true, bytes: 430_000_000_000,

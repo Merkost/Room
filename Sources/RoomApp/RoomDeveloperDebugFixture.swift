@@ -4,8 +4,7 @@ import Foundation
 extension RoomDeveloperModel {
     /// Debug launch hook for screenshots: `ROOM_DEBUG_DEVELOPER_ROOT` names a throwaway folder holding
     /// `projects`, `gradle`, `sdk`, `derived`, `konan` (and optionally `avd`, `simulators`, `ai-codex`). It runs against isolated defaults
-    /// and bookmarks so the real app state is never touched. `ROOM_DEBUG_DEVELOPER_SCAN=1` scans on launch and
-    /// `ROOM_DEBUG_DEVELOPER_SECTION` picks the tab.
+    /// and bookmarks so the real app state is never touched. `ROOM_DEBUG_DEVELOPER_SCAN=1` scans on launch.
     /// The screenshot fixture hands its own model to the window this way.
     static var debugInjected: RoomDeveloperModel?
 
@@ -16,8 +15,10 @@ extension RoomDeveloperModel {
         let root = URL(fileURLWithPath: path, isDirectory: true)
         guard let defaults = UserDefaults(suiteName: "RoomDeveloperDebugFixture") else { return nil }
         defaults.removePersistentDomain(forName: "RoomDeveloperDebugFixture")
+        // No home: the fixture reads only its own folder, never this Mac's.
         let model = RoomDeveloperModel(access: RoomFileAccess(defaults: defaults), defaults: defaults,
                                        unreferencedStore: RoomDeveloperUnreferencedStore(directory: root.appendingPathComponent("state", isDirectory: true)),
+                                       home: nil,
                                        activityCenter: nil)
         if environment["ROOM_DEBUG_DEVELOPER_EMPTY"] == nil {
             let roles: [(String, RoomDeveloperFolderRole)] = [
@@ -27,9 +28,6 @@ extension RoomDeveloperModel {
                 let url = root.appendingPathComponent(folder, isDirectory: true)
                 if FileManager.default.fileExists(atPath: url.path) { model.debugRemember(url, role: role) }
             }
-        }
-        if let raw = environment["ROOM_DEBUG_DEVELOPER_SECTION"], let section = RoomDeveloperSection(rawValue: raw) {
-            model.section = section
         }
         if environment["ROOM_DEBUG_DEVELOPER_SCAN"] != nil { Task { @MainActor in model.scan() } }
         return model

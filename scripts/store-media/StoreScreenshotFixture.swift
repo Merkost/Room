@@ -154,7 +154,6 @@ struct StoreScreenshotFixture: View {
         if Self.rich {
             developer.debugInstall(review: Self.richReview(workspace: workspace), devices: Self.richDevices(home: sampleHome),
                                    storage: Self.richStorage(home: sampleHome), aiTools: Self.richAI(home: sampleHome))
-            if let raw = Self.option("--section"), let section = RoomDeveloperSection(rawValue: raw) { developer.section = section }
             developer.debugRemember(workspace, role: .project)
             RoomDeveloperModel.debugInjected = developer
             caches.debugActivity = Self.richReceipts()
@@ -180,7 +179,6 @@ struct StoreScreenshotFixture: View {
                     developer.attach(role: role, to: record.id)
                 }
             }
-            developer.section = .aiTools
         }
     }
 

@@ -6,7 +6,6 @@ nonisolated struct RoomCommandBar: Equatable, Sendable {
 
     enum Target: Equatable, Hashable, Sendable {
         case place(RoomDestination)
-        case developerRoom(String)
         case action(Action)
     }
 
@@ -24,13 +23,10 @@ nonisolated struct RoomCommandBar: Equatable, Sendable {
     var query = ""
     private(set) var highlight = 0
 
-    static func items(values: RoomPlaceValue.Input, developerRooms: [String]) -> [Item] {
+    static func items(values: RoomPlaceValue.Input) -> [Item] {
         var items = RoomPlacePlan.places.map { place in
             Item(target: .place(place), title: RoomPlacePlan.title(place), glyph: RoomPlacePlan.glyph(place),
                  value: RoomPlaceValue.make(place, values))
-        }
-        items += developerRooms.map {
-            Item(target: .developerRoom($0), title: "Developer, \($0)", glyph: .developer)
         }
         items += Action.allCases.map { action in
             switch action {

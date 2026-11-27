@@ -6,27 +6,6 @@ import RoomCore
 @Suite("Developer layout rules")
 @MainActor
 struct RoomDeveloperLayoutTests {
-    @Test func noTabsBeforeAnyData() {
-        let none = RoomDeveloperAvailability()
-        #expect(RoomDeveloperTabRules.visible(none, current: .rooms).isEmpty)
-        #expect(RoomDeveloperTabRules.showsIntro(none, current: .rooms, isScanning: false))
-        #expect(!RoomDeveloperTabRules.showsIntro(none, current: .rooms, isScanning: true))
-        // Exploring another view from the start page keeps every tab so the person can move around.
-        #expect(RoomDeveloperTabRules.visible(none, current: .devices) == RoomDeveloperSection.allCases)
-        #expect(!RoomDeveloperTabRules.showsIntro(none, current: .devices, isScanning: false))
-    }
-
-    @Test func reviewDataRevealsRoomsAndMatrixOnly() {
-        let data = RoomDeveloperAvailability(review: true)
-        #expect(RoomDeveloperTabRules.visible(data, current: .rooms) == [.rooms, .matrix])
-        #expect(RoomDeveloperTabRules.hidden(data, current: .rooms) == [.devices, .storage, .aiTools] + RoomDeveloperSection.allCases.filter { ![.rooms, .matrix, .devices, .storage, .aiTools].contains($0) })
-    }
-
-    @Test func currentViewStaysVisibleWithoutData() {
-        let data = RoomDeveloperAvailability(review: true)
-        #expect(RoomDeveloperTabRules.visible(data, current: .storage) == [.rooms, .matrix, .storage])
-    }
-
     @Test func headlineSumsSortsAndMarksPartial() {
         let headline = RoomDeveloperHeadline(inUse: 4_000_000_000, unreferenced: 9_000_000_000, devices: 0, toolStorage: 1_000_000_000, partial: true)
         #expect(headline.parts.map(\.kind) == [.unreferenced, .inUse, .toolStorage])
