@@ -140,7 +140,11 @@ struct RoomOverviewScreen: View {
     private func dockMain(running: Bool) -> RoomDockAction {
         switch RoomOverviewDock.make(scanning: running, makeRoomBytes: isScanShowing ? 0 : makeRoomBytes).main {
         case .stop:
-            return RoomDockAction(title: "Stop", filled: false, identifier: "RoomOverviewScanButton") { scan?.stop() }
+            let asked = (scan?.tiles ?? []).filter { $0.state != .skipped }
+            return RoomDockAction(title: "Stop", filled: false, identifier: "RoomOverviewScanButton",
+                                  progress: .init(done: asked.filter { $0.state == .done }.count, total: asked.count)) {
+                scan?.stop()
+            }
         case .scan:
             return RoomDockAction(title: "Scan everything", symbol: "magnifyingglass", hint: "A scan only reads",
                                   identifier: "RoomOverviewScanButton", perform: scanEverything)

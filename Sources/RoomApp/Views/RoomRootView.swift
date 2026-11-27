@@ -100,6 +100,7 @@ struct RoomRootView: View {
 
     private var dockValues: RoomPlaceValue.Input {
         RoomPlaceValue.Input(freeBytes: insights.volumeCapacity?.freeBytes,
+                               capacityBytes: insights.volumeCapacity?.capacityBytes,
                                mappedBytes: insights.diskMap.current?.tree.allocatedBytes,
                                cachesChecked: model.hasReport && !model.isScanning,
                                cachesReclaimableBytes: model.clearableBytes,
@@ -177,7 +178,7 @@ struct RoomRootView: View {
         RoomShellView(navigation: navigation, insights: insights, dockValues: dockValues,
                       activity: rowActivity.rows, stopPlace: stopPlace,
                       openGoTo: { openGoTo(keyboard: $0) }) {
-            RoomScreenScaffold(title: screenActions.title, subtitle: screenSubtitle,
+            RoomScreenScaffold(title: screenActions.title, subtitle: nil,
                                scrolls: !Self.framedDestinations.contains(destination), chip: AnyView(topBar)) {
                 screenContent
                     .environment(\.roomEnter, RoomEnterContext(animated: navigation.selectionOrigin == .pointer,
@@ -370,15 +371,6 @@ struct RoomRootView: View {
         guard let date = insights.diskMap.comparison?.date else { return nil }
         let day = date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))
         return String(localized: "menu.disk.compareDate", defaultValue: "Compare with \(day)")
-    }
-
-    private var screenSubtitle: String? {
-        switch destination {
-        case .overview: nil
-        case .disk: nil
-        case .developer: developer.section.rawValue   // the mockup's crumb: Developer › Rooms
-        case .clean, .memory, .history, .settings: nil
-        }
     }
 
     private func openPinnedRoom(_ id: UUID) {

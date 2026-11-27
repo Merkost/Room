@@ -22,6 +22,8 @@ struct RoomDock: View {
     /// commands read the scene's focused values) and 1 to 7, the arrows, K and H work from the first frame.
     @FocusState private var dockFocused: Bool
     @FocusState private var focusedAction: Slot?
+    /// The place whose summary is showing: the one pointed at or focused, after a short rest.
+    @State private var peekPlace: RoomDestination?
     @Namespace private var selection
 
     private enum Slot { case main, side }
@@ -70,6 +72,15 @@ struct RoomDock: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
             commandHeld = false
         }
+        .task(id: hoveredPlace ?? focusedPlace) {
+            let target = hoveredPlace ?? focusedPlace
+            // Moving along an open peek follows at once; the first one waits, so crossing the dock stays calm.
+            if peekPlace != nil, target != nil { peekPlace = target; return }
+            peekPlace = nil
+            guard target != nil else { return }
+            do { try await Task.sleep(for: RoomTokens.Dock.peekDelay) } catch { return }
+            withAnimation(motion.animation(RoomTokens.Motion.hover, fallback: RoomTokens.Motion.fade)) { peekPlace = target }
+        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Room places")
     }
@@ -116,8 +127,10 @@ struct RoomDock: View {
         .onKeyPress(.return) { select(place, origin: .keyboard); return .handled }
         .onKeyPress(.space) { select(place, origin: .keyboard); return .handled }
         .overlay(alignment: .bottom) {
-            if raised, row.showsSentence {
-                bubble(place, row: row)
+            if raised && row.showsSentence || peekPlace == place {
+                Group {
+                    if row.showsSentence { bubble(place, row: row) } else { peek(place) }
+                }
                     // The gap above the item takes the pointer too, so it can travel up to Stop without losing it.
                     .padding(.bottom, RoomTokens.Dock.padding)
                     .contentShape(Rectangle())
@@ -130,7 +143,6 @@ struct RoomDock: View {
                 if inside { hoveredPlace = place } else if hoveredPlace == place { hoveredPlace = nil }
             }
         }
-        .help("\(title) (⌘\(RoomPlacePlan.shortcut(place)))")
         .accessibilityLabel(title)
         .accessibilityValue(Self.spokenValue(value, activity: row, hidden: hide.masksNow)
             + (place == .overview && belowGoal ? ", under your goal" : ""))
@@ -155,7 +167,8 @@ struct RoomDock: View {
         } else if value == .none {
             caption("—")
         } else {
-            RoomPlaceValueView(value: value, emphasised: row.unseen)
+            // What can go is the one figure that asks for something, so it carries the accent.
+            RoomPlaceValueView(value: value, emphasised: row.unseen || place == .clean && value.isSize)
                 .contentTransition(.numericText())
         }
     }
@@ -167,10 +180,24 @@ struct RoomDock: View {
             .contentTransition(.numericText()).accessibilityHidden(true)
     }
 
+    private func peek(_ place: RoomDestination) -> some View {
+        let sentence = RoomPlacePeek.sentence(place, values, belowGoal: place == .overview && belowGoal) {
+            RoomHideMask.display(RoomFormat.gb($0), kind: .figure, hide: hide)
+        }
+        return HStack(spacing: RoomTokens.Space.row) {
+            Text(verbatim: sentence).foregroundStyle(RoomTokens.Ink.graphite)
+            Text(verbatim: "⌘\(RoomPlacePlan.shortcut(place))").foregroundStyle(RoomTokens.Ink.tertiary)
+        }
+        .font(RoomTokens.Nav.sentence)
+        .padding(.horizontal, RoomTokens.Space.row)
+        .padding(.vertical, RoomTokens.Space.inner)
+        .modifier(DockBubble())
+        .accessibilityHidden(true)
+    }
+
     /// What the place's engine is doing, with Stop where it can stop.
     private func bubble(_ place: RoomDestination, row: RoomRowActivity) -> some View {
-        let shape = RoundedRectangle(cornerRadius: RoomTokens.Nav.peekRadius, style: .continuous)
-        return VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
+        VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
             RoomMaskable(row.sentence)
                 .font(RoomTokens.Nav.sentence)
                 .foregroundStyle(row.showsCheck ? accent.text : RoomTokens.Ink.graphite)
@@ -184,10 +211,7 @@ struct RoomDock: View {
         }
         .padding(.horizontal, RoomTokens.Space.row)
         .padding(.vertical, RoomTokens.Space.inner)
-        .background(RoomTokens.Surface.toastGlass, in: shape)
-        .overlay(shape.strokeBorder(RoomTokens.Surface.line, lineWidth: 0.5))
-        .shadow(color: RoomTokens.Surface.panelShadow, radius: 14, y: 8)
-        .fixedSize()
+        .modifier(DockBubble())
     }
 
     // MARK: The action slot
@@ -212,6 +236,10 @@ struct RoomDock: View {
             HStack(spacing: RoomTokens.Space.inner) {
                 if let symbol = action.symbol { Image(systemName: symbol) }
                 Text(action.title).contentTransition(.numericText())
+                if let words = action.progress?.words {
+                    Text(verbatim: words).monospacedDigit().foregroundStyle(RoomTokens.Ink.secondary)
+                        .contentTransition(.numericText())
+                }
             }
             .lineLimit(1)
             .minimumScaleFactor(0.75)
@@ -226,6 +254,19 @@ struct RoomDock: View {
                 button.roomScreenPrimary(accent) // one-filled: the dock's, the window's only filled button
             } else {
                 button.roomQuiet(large: true)
+            }
+        }
+        // The button fills as parts are counted; work that is not counted is never drawn as progress.
+        .overlay {
+            if let fraction = action.progress?.fraction {
+                GeometryReader { geometry in
+                    Rectangle().fill(accent.wash)
+                        .frame(width: geometry.size.width * fraction)
+                        .animation(motion.animation(RoomTokens.Motion.ring, fallback: nil), value: fraction)
+                }
+                .clipShape(Capsule())
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
             }
         }
         .focused($focusedAction, equals: .main)
@@ -294,6 +335,18 @@ struct RoomDock: View {
             focusedPlace = nil
             dockFocused = true
         }
+    }
+}
+
+/// The small panel above a dock item.
+private struct DockBubble: ViewModifier {
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: RoomTokens.Nav.peekRadius, style: .continuous)
+        content
+            .background(RoomTokens.Surface.toastGlass, in: shape)
+            .overlay(shape.strokeBorder(RoomTokens.Surface.line, lineWidth: 0.5))
+            .shadow(color: RoomTokens.Surface.panelShadow, radius: 14, y: 8)
+            .fixedSize()
     }
 }
 

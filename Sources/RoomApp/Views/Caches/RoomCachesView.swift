@@ -213,7 +213,9 @@ struct RoomCachesView: View {
     private var dockMain: RoomDockAction? {
         switch dock.main {
         case .stop:
-            return RoomDockAction(title: "Stop", filled: false, identifier: "RoomCachesCheck", perform: model.cancelScan)
+            return RoomDockAction(title: "Stop", filled: false, identifier: "RoomCachesCheck",
+                                  progress: .init(done: model.scannedLocationCount, total: model.scanLocationCount),
+                                  perform: model.cancelScan)
         case .check:
             let again = model.hasReport && !model.isPartialScan
             return RoomDockAction(title: again ? "Check again" : String(localized: "caches.action.check",
@@ -354,18 +356,17 @@ struct RoomCachesView: View {
 
     /// One quiet line and one secondary button; Developer does the reviewing.
     private func worktreeHint(_ bytes: Int64, review: @escaping () -> Void) -> some View {
-        HStack(spacing: RoomTokens.Space.inner) {
+        HStack(alignment: .firstTextBaseline, spacing: RoomTokens.Space.inner) {
             Text(RoomAgentWorktreeHint.line(bytes: bytes, hidden: hidden))
                 .font(RoomTokens.Typography.caption)
                 .foregroundStyle(RoomTokens.Ink.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 0)
             Button(RoomAgentWorktreeHint.actionTitle, action: review)
                 .roomLink(accent)
                 .font(RoomTokens.Typography.caption.weight(.medium))
                 .accessibilityIdentifier("RoomCachesReviewWorktrees")
         }
-        .frame(maxWidth: RoomTokens.Space.measure, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .transition(.opacity)
     }
 

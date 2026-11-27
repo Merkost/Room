@@ -47,6 +47,16 @@ struct RoomScreenHierarchyTests {
         #expect(widths[0] > widths[2])
     }
 
+    @Test func leftoverKindsGetTheirOwnRoomBesideSystem() {
+        let kinds: [(String, Double)] = [("developer", 120), ("system", 100), ("documents", 90), ("apps", 80),
+                                         ("media", 70), ("archives", 14), ("hidden", 6)]
+        let plan = RoomOverviewFloorPlan.make(kinds: kinds, notMappedBytes: 0, freeBytes: 64_000_000_000,
+                                              capacityBytes: 544_000_000_000)
+        #expect(Set(plan.rooms.map(\.id)).count == plan.rooms.count, "a shared identity draws one room twice")
+        #expect(plan.rooms.filter { $0.title == "Other" }.map(\.bytes) == [20_000_000_000])
+        #expect(plan.rooms.filter { $0.title == "System" }.count == 1)
+    }
+
     @Test func narrowPlanNeverDrawsASmallerRoomWider() {
         let gigabytes: [Int64] = [120, 109, 96, 91, 14]
         let kinds = gigabytes.enumerated().map { index, size in

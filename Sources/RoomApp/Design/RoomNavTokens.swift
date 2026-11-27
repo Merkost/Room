@@ -89,6 +89,8 @@ extension RoomTokens {
         static let dividerHeight: CGFloat = 36
         static let figureHeight: CGFloat = 15
         static let hoverLift: CGFloat = 3
+        /// How long the pointer rests on a place before its summary shows.
+        static let peekDelay: Duration = .milliseconds(400)
         static let sideSize: CGFloat = 36
         static let mainWidth: CGFloat = 196
         /// The label's width inside the filled capsule's padding.

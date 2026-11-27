@@ -12,12 +12,12 @@ struct RoomPlaceValueView: View {
         case .size(let text):
             RoomMaskable(text)
                 .font(emphasised ? RoomTokens.Nav.valueUnseen : RoomTokens.Nav.value)
-                .foregroundStyle(emphasised ? accent.text : RoomTokens.Ink.tertiary)
+                .foregroundStyle(emphasised ? accent.text : RoomTokens.Ink.secondary)
                 .lineLimit(1).fixedSize()
         case .words(let text):
             Text(text)
                 .font(emphasised ? RoomTokens.Nav.valueUnseen : RoomTokens.Nav.value)
-                .foregroundStyle(emphasised ? accent.text : RoomTokens.Ink.tertiary)
+                .foregroundStyle(emphasised ? accent.text : RoomTokens.Ink.secondary)
                 .lineLimit(1).fixedSize()
         }
     }

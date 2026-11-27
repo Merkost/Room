@@ -51,8 +51,11 @@ nonisolated enum RoomPlaceValue: Equatable, Sendable {
     case size(String)          // a size: Hide masks it
     case words(String)         // a count or a word: not a size
 
+    var isSize: Bool { if case .size = self { true } else { false } }
+
     struct Input: Equatable, Sendable {
         var freeBytes: Int64?
+        var capacityBytes: Int64?
         var mappedBytes: Int64?
         var cachesChecked = false
         var cachesReclaimableBytes: Int64 = 0
@@ -86,6 +89,33 @@ nonisolated enum RoomPlaceValue: Equatable, Sendable {
                 : String(localized: "nav.value.receipts", defaultValue: "\(input.receipts) receipts", bundle: RoomCopy.bundle))
         case .settings:
             return .none
+        }
+    }
+}
+
+/// One plain sentence per place, shown above its dock item, so a figure is never left to be guessed at.
+nonisolated enum RoomPlacePeek {
+    static func sentence(_ place: RoomDestination, _ input: RoomPlaceValue.Input, belowGoal: Bool = false,
+                         size: (Int64) -> String) -> String {
+        switch place {
+        case .overview:
+            guard let free = input.freeBytes else { return "Free space not read yet" }
+            let whole = input.capacityBytes.map { " of \(size($0))" } ?? ""
+            return "\(size(free)) free\(whole)\(belowGoal ? ", under your goal" : "")"
+        case .disk:
+            guard let mapped = input.mappedBytes, mapped > 0 else { return "Nothing mapped yet" }
+            return "\(size(mapped)) in the folder you mapped"
+        case .clean:
+            guard input.cachesChecked else { return "Not checked yet" }
+            return input.cachesReclaimableBytes > 0 ? "\(size(input.cachesReclaimableBytes)) could go" : "All clear"
+        case .developer:
+            guard let bytes = input.developerBytes, bytes > 0 else { return "Not scanned yet" }
+            return "\(size(bytes)) found by the last scan"
+        case .memory:
+            guard let used = input.memoryUsedBytes, used > 0 else { return "Open to read memory" }
+            return "\(RoomFormat.memory(used)) of memory in use"
+        case .history, .settings:
+            return RoomPlacePlan.title(place)
         }
     }
 }
