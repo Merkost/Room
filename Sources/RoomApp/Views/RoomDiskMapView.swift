@@ -94,13 +94,15 @@ struct RoomDiskMapView: View {
             let isWide = contentWidth >= RoomTokens.Map.inspectorBreakpoint
             VStack(alignment: .leading, spacing: RoomTokens.Space.inner) {
                 if showsMap, let level = model.level, let words = diskWords(level) {
-                    RoomHeadlineView(headline: words.headline,
-                                     compact: contentWidth < RoomTokens.Screen.compactBreakpoint)
-                        .padding(.top, RoomTokens.Screen2.headlineTop)
-                    Text(words.supporting)
-                        .font(RoomTokens.Screen2.supporting)
-                        .foregroundStyle(RoomTokens.Ink.secondary)
-                        .padding(.bottom, RoomTokens.Space.row)
+                    VStack(alignment: .leading, spacing: RoomTokens.Screen2.supportingGap) {
+                        RoomHeadlineView(headline: words.headline,
+                                         compact: contentWidth < RoomTokens.Screen.compactBreakpoint)
+                        Text(words.supporting)
+                            .font(RoomTokens.Screen2.supporting)
+                            .foregroundStyle(RoomTokens.Ink.secondary)
+                    }
+                    .padding(.top, RoomTokens.Screen2.headlineTop)
+                    .padding(.bottom, RoomTokens.Space.row)
                 }
                 controls(isWide: isWide)
                 if let blueprint = model.blueprint,
@@ -130,7 +132,13 @@ struct RoomDiskMapView: View {
                 }
             }
             .padding(screenInsets)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            // The inspector offers its content more height than the window has; hold the screen to the height it was given.
+            .frame(height: geometry.size.height, alignment: .topLeading)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .inspector(isPresented: $showsInspector) {
+                inspector
+                    .inspectorColumnWidth(RoomTokens.Map.inspectorWidth)
+            }
             .onChange(of: insights.diskInspectorRequest) { _, _ in
                 toggleInspector(isWide: isWide)
             }
@@ -140,10 +148,6 @@ struct RoomDiskMapView: View {
             .onChange(of: isWide) { _, wide in if wide { showsInspector = false } }
             .onChange(of: insights.diskComparisonRequest) { _, _ in
                 if model.canCompare { layout = .compare }
-            }
-            .inspector(isPresented: $showsInspector) {
-                inspector
-                    .inspectorColumnWidth(RoomTokens.Map.inspectorWidth)
             }
         }
         .background(RoomTokens.Surface.canvas)
@@ -653,8 +657,7 @@ struct RoomDiskMapView: View {
             .font(RoomTokens.Typography.body)
             .foregroundStyle(RoomTokens.Ink.secondary)
             .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, RoomTokens.Space.row)
+            .frame(maxWidth: .infinity, minHeight: RoomTokens.Overview.actionHeight, alignment: .leading)
     }
 
     private var tickedRooms: [RoomDiskRoom] {

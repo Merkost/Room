@@ -132,7 +132,6 @@ extension RoomTokens {
         static let factValue = Font.system(size: 13.5, weight: .medium)
         static let figure = Font.custom(RoomDS.displayFamilyName, fixedSize: 22).weight(.medium)
         static let planHeight: CGFloat = 226
-        static let planMaxHeight: CGFloat = 340
         static let planGap: CGFloat = 6
         static let planRadius: CGFloat = 14
         static let planPad: CGFloat = 12

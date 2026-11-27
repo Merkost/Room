@@ -47,6 +47,25 @@ struct RoomScreenHierarchyTests {
         #expect(widths[0] > widths[2])
     }
 
+    @Test func narrowPlanNeverDrawsASmallerRoomWider() {
+        let gigabytes: [Int64] = [120, 109, 96, 91, 14]
+        let kinds = gigabytes.enumerated().map { index, size in
+            RoomOverviewFloorPlan.Room(fill: .kind("kind-\(index)"), title: "Kind \(index)", bytes: size * 1_000_000_000)
+        }
+        let rooms = kinds + [RoomOverviewFloorPlan.Room(fill: .free, title: "Free", bytes: 64_000_000_000)]
+        for total: CGFloat in [650, 726, 800, 1046] {
+            let widths = RoomOverviewFloorPlan.widths(rooms, total: total, gap: 6, minimum: 104, freeBoostGB: 26)
+            #expect(zip(widths, widths.dropFirst()).prefix(4).allSatisfy { $0 >= $1 }, "at \(total): \(widths)")
+        }
+    }
+
+    @Test func equalSizedCacheRowsKeepOneOrder() {
+        let browser = (agents: false, bytes: Int64(2), name: "Browser caches", id: "b")
+        let homebrew = (agents: false, bytes: Int64(2), name: "Homebrew downloads", id: "a")
+        #expect(RoomViewModel.listsBefore(browser, homebrew))
+        #expect(!RoomViewModel.listsBefore(homebrew, browser))
+    }
+
     @Test func cachesSayWhatCanGoOrAllClear() {
         var input = RoomCachesWords.Input()
         input.hasReport = true

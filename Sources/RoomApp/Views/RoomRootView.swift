@@ -407,17 +407,20 @@ struct RoomRootView: View {
         case .memory:
             RoomMemoryView(insights: insights, memoryActions: memoryActions)
         case .disk:
-            RoomPinnedChips(navigation: navigation, rooms: rooms, canOpenRooms: insights.canChooseDiskLocation,
-                            openRoom: openPinnedRoom, savedViews: savedViews, openSavedView: openSavedView)
-            RoomDiskMapView(insights: insights, rooms: rooms, savedViews: savedViews,
-                savedViewDisplay: savedViewDisplay, openSavedView: openSavedView,
-                canInspectCacheSource: { cacheSource(for: $0) != nil },
-                inspectCacheSource: inspectCacheSource, cleanupAction: mapCleanupAction,
-                activateCleanup: activateMapCleanup,
-                folderTrash: RoomFolderTrashModel.isAvailable ? folderTrash : nil,
-                folderMoved: { receipt in
-                    if receipt.canRestore { showToast(RoomMadeToastState(receiptID: receipt.id, bytes: receipt.trashedBytes)) }
-                })
+            // One column: the scaffold would lay two sibling views on top of each other.
+            VStack(spacing: 0) {
+                RoomPinnedChips(navigation: navigation, rooms: rooms, canOpenRooms: insights.canChooseDiskLocation,
+                                openRoom: openPinnedRoom, savedViews: savedViews, openSavedView: openSavedView)
+                RoomDiskMapView(insights: insights, rooms: rooms, savedViews: savedViews,
+                    savedViewDisplay: savedViewDisplay, openSavedView: openSavedView,
+                    canInspectCacheSource: { cacheSource(for: $0) != nil },
+                    inspectCacheSource: inspectCacheSource, cleanupAction: mapCleanupAction,
+                    activateCleanup: activateMapCleanup,
+                    folderTrash: RoomFolderTrashModel.isAvailable ? folderTrash : nil,
+                    folderMoved: { receipt in
+                        if receipt.canRestore { showToast(RoomMadeToastState(receiptID: receipt.id, bytes: receipt.trashedBytes)) }
+                    })
+            }
         case .developer:
             #if ROOM_APP_STORE
             RoomDeveloperView(model: developer)

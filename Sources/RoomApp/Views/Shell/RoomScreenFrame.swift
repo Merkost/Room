@@ -58,9 +58,17 @@ struct RoomScreenFrame<Evidence: View, Action: View>: View {
                 if scrollsEvidence {
                     ScrollView { evidence().frame(maxWidth: .infinity, alignment: .topLeading) }
                         .scrollIndicators(.automatic)
+                        // A row cut by the bottom edge fades out, so it reads as "scroll for more", not as broken.
+                        .mask {
+                            VStack(spacing: 0) {
+                                Color.black
+                                LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
+                                    .frame(height: RoomTokens.Space.group)
+                            }
+                        }
                 } else {
-                    evidence().frame(maxWidth: .infinity, alignment: .topLeading)
-                    Spacer(minLength: 0)
+                    // The evidence takes all the height left, so one that can grow (the floor plan) fills the screen.
+                    evidence().frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }
             }
             .modifier(RoomEnterIf(enabled: entersEvidence, index: 2))
