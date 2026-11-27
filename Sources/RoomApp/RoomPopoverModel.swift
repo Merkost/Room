@@ -11,13 +11,15 @@ nonisolated struct RoomMemorySampleRing: Equatable, Sendable {
     struct Sample: Equatable, Sendable {
         let at: Date
         let bytes: Int64
+        /// Pressure read with this sample; nil when macOS didn’t report one.
+        var level: RoomPressureLevel? = nil
     }
 
     private(set) var samples: [Sample] = []
     var values: [Int64] { samples.map(\.bytes) }
 
-    mutating func append(_ bytes: Int64, at: Date = Date()) {
-        samples.append(Sample(at: at, bytes: bytes))
+    mutating func append(_ bytes: Int64, at: Date = Date(), level: RoomPressureLevel? = nil) {
+        samples.append(Sample(at: at, bytes: bytes, level: level))
         if samples.count > Self.capacity { samples.removeFirst(samples.count - Self.capacity) }
     }
 }

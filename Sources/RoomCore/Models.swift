@@ -2,6 +2,10 @@ import Foundation
 
 public enum Eligibility: Codable, Equatable, Sendable {
     case eligible
+    /// Used within the cache's own age rule. Never chosen for the person; moves only when ticked by hand.
+    case recent(String)
+    /// Its app is running, or Room cannot tell. Stays until a check finds the app closed.
+    case inUse(String)
     case blocked(String)
 
     public var isEligible: Bool {
@@ -9,9 +13,24 @@ public enum Eligibility: Codable, Equatable, Sendable {
         return false
     }
 
+    public var isRecent: Bool {
+        if case .recent = self { return true }
+        return false
+    }
+
+    public var isInUse: Bool {
+        if case .inUse = self { return true }
+        return false
+    }
+
+    /// May be ticked: `eligible` is ticked for the person, `recent` is offered unticked.
+    public var isSelectable: Bool { isEligible || isRecent }
+
     public var reason: String? {
-        if case .blocked(let reason) = self { return reason }
-        return nil
+        switch self {
+        case .eligible: nil
+        case .recent(let reason), .inUse(let reason), .blocked(let reason): reason
+        }
     }
 }
 
@@ -40,6 +59,7 @@ public struct CacheGroup: Identifiable, Codable, Equatable, Sendable {
     public var totalBytes: Int64 { entries.reduce(0) { $0 + $1.byteCount } }
     public var eligibleBytes: Int64 { entries.filter(\.eligibility.isEligible).reduce(0) { $0 + $1.byteCount } }
     public var eligibleEntries: [CacheEntry] { entries.filter(\.eligibility.isEligible) }
+    public var recentEntries: [CacheEntry] { entries.filter(\.eligibility.isRecent) }
 }
 
 public struct ProtectedData: Identifiable, Codable, Equatable, Sendable {

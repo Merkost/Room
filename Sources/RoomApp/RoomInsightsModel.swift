@@ -10,11 +10,11 @@ final class RoomInsightsModel {
     private(set) var pressureHistory: RoomPressureHistory
     private(set) var memorySamples = RoomMemorySampleRing()
     #if DEBUG
-    /// Screenshot fixture only: a minute of earlier samples so the curve has a shape on first sight.
+    /// Screenshot fixture only: earlier samples, 20 s apart, so the curve has a shape on first sight.
     func debugSeedMemory(_ values: [Int64]) {
         let now = Date()
         for (index, value) in values.enumerated() {
-            memorySamples.append(value, at: now.addingTimeInterval(Double(index - values.count)))
+            memorySamples.append(value, at: now.addingTimeInterval(Double(index - values.count) * 20), level: .normal)
         }
     }
     #endif
@@ -247,7 +247,8 @@ final class RoomInsightsModel {
             self.memoryReport = result
             if !Task.isCancelled, result.totalBytes > 0,
                result.usedBytes > 0 || result.availableBytes > 0 {
-                self.memorySamples.append(result.usedBytes, at: result.scannedAt)
+                self.memorySamples.append(result.usedBytes, at: result.scannedAt,
+                                          level: RoomPressureLevel(memoryPressureRaw: result.pressure.rawValue))
             }
             if !Task.isCancelled { self.recordPressure(result) }
             self.isScanningMemory = false

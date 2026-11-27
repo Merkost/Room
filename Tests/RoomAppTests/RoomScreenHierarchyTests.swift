@@ -47,6 +47,16 @@ struct RoomScreenHierarchyTests {
         #expect(widths[0] > widths[2])
     }
 
+    @Test func leftoverKindsGetTheirOwnRoomBesideSystem() {
+        let kinds: [(String, Double)] = [("developer", 120), ("system", 100), ("documents", 90), ("apps", 80),
+                                         ("media", 70), ("archives", 14), ("hidden", 6)]
+        let plan = RoomOverviewFloorPlan.make(kinds: kinds, notMappedBytes: 0, freeBytes: 64_000_000_000,
+                                              capacityBytes: 544_000_000_000)
+        #expect(Set(plan.rooms.map(\.id)).count == plan.rooms.count, "a shared identity draws one room twice")
+        #expect(plan.rooms.filter { $0.title == "Other" }.map(\.bytes) == [20_000_000_000])
+        #expect(plan.rooms.filter { $0.title == "System" }.count == 1)
+    }
+
     @Test func narrowPlanNeverDrawsASmallerRoomWider() {
         let gigabytes: [Int64] = [120, 109, 96, 91, 14]
         let kinds = gigabytes.enumerated().map { index, size in
@@ -69,14 +79,14 @@ struct RoomScreenHierarchyTests {
     @Test func cachesSayWhatCanGoOrAllClear() {
         var input = RoomCachesWords.Input()
         input.hasReport = true
-        input.clearableBytes = 22_400_000_000
-        input.places = 6
+        input.foundBytes = 31_400_000_000
+        input.selectedBytes = 22_400_000_000
         let found = RoomCachesWords.make(input)
-        #expect(found.headline == RoomHeadline(figure: "22 GB", words: "could go"))
-        #expect(found.supporting == "Rebuildable, in 6 places")
-        #expect(found.note == "Nothing moves without a review")
+        #expect(found.headline == RoomHeadline(figure: "31 GB", words: "of caches found"))
+        #expect(found.supporting == "22 GB ticked")
+        #expect(found.note == "Nothing moves without a review. Everything goes to Trash.")
 
-        input.clearableBytes = 0
+        input.foundBytes = 0
         #expect(RoomCachesWords.make(input).headline == .words("All clear"))
 
         input.unreadable = 2
@@ -96,27 +106,6 @@ struct RoomScreenHierarchyTests {
         #expect(words.headline == RoomHeadline(figure: "9", words: "of 16 GB in use"))
         #expect(words.supporting == "Pressure is normal")
         #expect(RoomMemoryWords.make(usedBytes: nil, totalBytes: nil, pressureRaw: nil).headline.figure == nil)
-    }
-
-    @Test func developerHasAHeadlinePerRoom() {
-        var input = RoomDeveloperWords.Input()
-        input.projectsBytes = 120_000_000_000
-        input.projects = 48
-        input.devicesBytes = 20_000_000_000
-        input.devices = 3
-        input.storageBytes = 67_000_000_000
-        input.aiBytes = 27_000_000_000
-        input.worktreesBytes = 6_000_000_000
-        input.worktrees = 3
-        let rooms = RoomDeveloperWords.make(section: "Rooms", input)
-        #expect(rooms.headline == RoomHeadline(figure: "120 GB", words: "in projects"))
-        #expect(rooms.supporting == "48 projects")
-        #expect(RoomDeveloperWords.make(section: "Matrix", input).headline.words == "of toolchains")
-        #expect(RoomDeveloperWords.make(section: "Devices", input).headline == RoomHeadline(figure: "20 GB", words: "of simulators"))
-        #expect(RoomDeveloperWords.make(section: "Storage", input).supporting == "All of it can be made again")
-        #expect(RoomDeveloperWords.make(section: "AI Tools", input).headline.words == "of AI tools")
-        #expect(RoomDeveloperWords.make(section: "Worktrees", input).headline.words == "in worktrees")
-        #expect(RoomDeveloperWords.make(section: "Devices", RoomDeveloperWords.Input()).headline.figure == nil)
     }
 
     @Test func diskMapNamesTheLevel() {

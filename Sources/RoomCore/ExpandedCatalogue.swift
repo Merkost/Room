@@ -1,6 +1,29 @@
 import Foundation
 
 extension CacheConfiguration {
+    /// Every launcher that writes under Caches/JetBrains or Android Studio's folder. A missing name would let a
+    /// running IDE's index be ticked.
+    static let jetBrainsProcesses = ["java", "studio", "idea", "intellij idea", "pycharm", "webstorm", "clion", "goland",
+                                     "rider", "phpstorm", "rubymine", "datagrip", "dataspell", "rustrover", "appcode",
+                                     "aqua", "writerside", "mps", "fleet"]
+
+    /// id, title, path under home, and the executables whose presence holds the cache.
+    static let toolCaches: [(String, String, String, [String])] = [
+        ("cocoapods", "CocoaPods", "Library/Caches/CocoaPods", ["pod", "ruby", "xcode", "xcodebuild"]),
+        ("pnpm-cache", "pnpm downloads", "Library/Caches/pnpm", ["node", "npm", "pnpm", "yarn"]),
+        ("dart-pub", "Dart and Flutter packages", ".pub-cache/hosted", ["dart", "dartaotruntime", "flutter", "studio"]),
+        ("xcode-app-cache", "Xcode", "Library/Caches/com.apple.dt.Xcode", ["xcode", "xcodebuild"]),
+        ("simulator-caches", "Simulator", "Library/Developer/CoreSimulator/Caches", ["simulator", "xcode", "xcodebuild", "launchd_sim"]),
+        ("electron-downloads", "Electron downloads", "Library/Caches/electron", ["node", "npm", "electron"]),
+        ("electron-builder", "Electron Builder", "Library/Caches/electron-builder", ["node", "npm", "electron", "app-builder"]),
+        ("typescript", "TypeScript types", "Library/Caches/typescript",
+         ["node", "code", "code helper", "cursor", "cursor helper", "codium", "windsurf"]),
+        ("composer", "Composer", "Library/Caches/composer", ["php", "composer"]),
+        ("ccache", "ccache", "Library/Caches/ccache", ["ccache", "clang", "xcodebuild"]),
+        ("sccache", "sccache", "Library/Caches/Mozilla.sccache", ["sccache", "cargo", "rustc"]),
+        ("android-user-cache", "Android tools", ".android/cache", ["studio", "java"])
+    ]
+
     /// A deeper catalogue still names individual, regenerable locations. A folder
     /// being hidden, temporary, or named Caches does not establish disposability.
     public static var deep: CacheConfiguration { addingDeepSources(to: .standard) }
@@ -87,6 +110,12 @@ extension CacheConfiguration {
             add(id, title, path, "developer", "shippingbox", processes,
                 "Downloaded packages or generated build data may need to be downloaded or compiled again. Installed toolchains and project source stay protected.")
         }
+        // Tool caches that download or build again by themselves. Maven's repository and Playwright's
+        // browsers are not here: they can hold locally published work or installed tools.
+        for (id, title, path, processes) in CacheConfiguration.toolCaches {
+            add(id, title, path, "developer", "shippingbox", processes,
+                "Downloaded packages or generated data are fetched or built again when needed. Project source and installed tools stay in place.")
+        }
         for folder in ["gen", "npm", "remote"] {
             add("deno-\(folder)", "Deno", "Library/Caches/deno/\(folder)", "developer", "shippingbox", ["deno"],
                 "Cached remote modules, generated code and package downloads are fetched or built again.")
@@ -98,7 +127,7 @@ extension CacheConfiguration {
             for version in folders(parent) where prefix.isEmpty || version.hasPrefix(prefix) {
                 for cache in ["index", "caches", "compiler", "compile-server", "ModuleCache", "kotlin-native-forward-declarations", "vcs-log"] {
                     add("\(prefix.isEmpty ? "jetbrains" : "androidstudio")-\(slug(version))-\(slug(cache))", title,
-                        "\(parent)/\(version)/\(cache)", "developer", "hammer", ["java", "studio", "idea", "pycharm", "webstorm", "clion"],
+                        "\(parent)/\(version)/\(cache)", "developer", "hammer", jetBrainsProcesses,
                         "Indexes and compiler caches rebuild on the next IDE launch. Local History, installed plugins, terminal state and project metadata stay protected.")
                 }
                 keep("ide-history-\(slug(parent))-\(slug(version))", "\(title) Local History", "\(parent)/\(version)/LocalHistory",

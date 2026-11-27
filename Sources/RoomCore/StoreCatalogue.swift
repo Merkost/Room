@@ -62,6 +62,7 @@ extension CacheConfiguration {
             add("swiftpm-\(folder)", "Swift packages", "Library/Caches/org.swift.swiftpm/\(folder)", ["swift", "swift-build", "xcode", "xcodebuild", "sourcekit"])
         }
         add("swiftpm-prebuilts", "Swift prebuilt downloads", "Library/Caches/org.swift.swiftpm/prebuilts/swift-syntax", ["swift", "xcode", "xcodebuild", "sourcekit"])
+        for (id, title, path, processes) in toolCaches { add(id, title, path, processes) }
         add("go-build", "Go build cache", "Library/Caches/go-build", ["go", "gopls"])
         add("go-downloads", "Go module downloads", "go/pkg/mod/cache/download", ["go", "gopls"])
         add("cargo", "Rust packages", ".cargo/registry/cache", ["cargo", "rustc", "rust-analyzer"])

@@ -677,7 +677,10 @@ struct RoomDiskMapView: View {
         let canChoose = insights.canChooseDiskLocation
         switch dock.main {
         case .stop:
-            return RoomDockAction(title: "Stop", filled: false, identifier: "RoomDiskStopButton", perform: insights.cancelDiskScan)
+            return RoomDockAction(title: "Stop", filled: false, identifier: "RoomDiskStopButton",
+                                  progress: model.blueprint.flatMap { map in
+                                      map.topLevelTotal.map { .init(done: map.measuredCount, total: $0) }
+                                  }, perform: insights.cancelDiskScan)
         case .chooseFolder:
             return RoomDockAction(title: "Choose Folder & Map…", symbol: "magnifyingglass", enabled: canChoose,
                                   identifier: "RoomDiskChooseFolder", perform: insights.chooseDiskFolder)

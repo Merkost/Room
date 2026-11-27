@@ -4,12 +4,12 @@ import SwiftUI
 /// rings. Pure, so the numbers and order are tested.
 nonisolated struct RoomOverviewFloorPlan: Equatable, Sendable {
     struct Room: Equatable, Sendable, Identifiable {
-        enum Fill: Equatable, Sendable { case kind(String), notMapped, free }
+        enum Fill: Equatable, Sendable { case kind(String), other, notMapped, free }
         let fill: Fill
         let title: String
         let bytes: Int64
         var id: String {
-            switch fill { case .kind(let raw): raw; case .notMapped: "not-mapped"; case .free: "free" }
+            switch fill { case .kind(let raw): raw; case .other: "other"; case .notMapped: "not-mapped"; case .free: "free" }
         }
         var isFree: Bool { fill == .free }
     }
@@ -29,7 +29,7 @@ nonisolated struct RoomOverviewFloorPlan: Equatable, Sendable {
                 rooms.append(Room(fill: .kind(kind.raw), title: title(kind.raw), bytes: kind.bytes))
             }
             let rest = sorted.dropFirst(maxKinds).reduce(Int64(0)) { $0 + $1.bytes }
-            if rest > 0 { rooms.append(Room(fill: .kind("system"), title: "Other", bytes: rest)) }
+            if rest > 0 { rooms.append(Room(fill: .other, title: "Other", bytes: rest)) }
             if capacityBytes > 0, Double(notMappedBytes) / Double(capacityBytes) >= 0.05 {
                 rooms.append(Room(fill: .notMapped, title: "Not mapped", bytes: notMappedBytes))
             }
@@ -163,6 +163,8 @@ struct RoomOverviewFloorPlanView: View {
                     if case .kind(let raw) = room.fill {
                         RoomGlyphView(glyph: RoomOverviewFloorPlan.glyph(raw), size: 14, weight: 1.5)
                             .foregroundStyle(kindColor(raw))
+                    } else if room.fill == .other {
+                        RoomGlyphView(glyph: .box, size: 14, weight: 1.5).foregroundStyle(RoomTokens.Ink.secondary)
                     }
                     Text(room.title)
                         .font(RoomTokens.Typography.bodyStrong)
@@ -198,8 +200,7 @@ struct RoomOverviewFloorPlanView: View {
     private func dotColor(_ room: RoomOverviewFloorPlan.Room) -> Color {
         switch room.fill {
         case .kind(let raw): kindColor(raw)
-        case .notMapped: RoomTokens.Ink.tertiary
-        case .free: RoomTokens.Ink.tertiary
+        case .other, .notMapped, .free: RoomTokens.Ink.tertiary
         }
     }
 }

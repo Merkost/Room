@@ -70,7 +70,11 @@ struct StoreScreenshotFixture: View {
     private let workspace: URL
     private let approvalID: String?
     private let treeStore: RoomTreeStore
+    #if ROOM_APP_STORE
     private let memoryActions = MemoryActionsModel()
+    #else
+    private let memoryActions = StoreScreenshotFixture.sampleApps()
+    #endif
     #if !ROOM_APP_STORE
     private let agentWork = AgentWorkModel()
     #endif
@@ -154,7 +158,6 @@ struct StoreScreenshotFixture: View {
         if Self.rich {
             developer.debugInstall(review: Self.richReview(workspace: workspace), devices: Self.richDevices(home: sampleHome),
                                    storage: Self.richStorage(home: sampleHome), aiTools: Self.richAI(home: sampleHome))
-            if let raw = Self.option("--section"), let section = RoomDeveloperSection(rawValue: raw) { developer.section = section }
             developer.debugRemember(workspace, role: .project)
             RoomDeveloperModel.debugInjected = developer
             caches.debugActivity = Self.richReceipts()
@@ -180,7 +183,6 @@ struct StoreScreenshotFixture: View {
                     developer.attach(role: role, to: record.id)
                 }
             }
-            developer.section = .aiTools
         }
     }
 
@@ -352,8 +354,21 @@ struct StoreScreenshotFixture: View {
                     CacheEntry(id: UUID(), url: root.appendingPathComponent("b"), name: title, byteCount: gb(size * 0.3),
                                modifiedAt: old, eligibility: .eligible, fileCount: 300)], issues: [])
         }
+        // One group used this week and one whose app is open, so all three sections show.
+        let waiting: [(String, String, String, Double, String, Eligibility)] = [
+            ("demo-yarn", "Yarn cache", "downloads again", 3, "Library/Caches/Yarn", .recent("Used within the last 7 days.")),
+            ("demo-jetbrains", "JetBrains caches", "rebuilds", 2, "Library/Caches/JetBrains", .inUse("Android Studio is running."))]
+        let later = waiting.map { id, title, subtitle, size, path, eligibility in
+            let root = home.appendingPathComponent(path, isDirectory: true)
+            try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            return CacheGroup(id: id, title: title, subtitle: subtitle, symbol: "shippingbox", category: "developer",
+                rootURL: root, consequence: "Rebuilds on next use.", entries: [
+                    CacheEntry(id: UUID(), url: root.appendingPathComponent("a"), name: title, byteCount: gb(size),
+                               modifiedAt: Date().addingTimeInterval(-2 * 86_400), eligibility: eligibility, fileCount: 400)],
+                issues: [])
+        }
         let kept: [(String, Double)] = [("Photos caches", 4), ("Mail downloads", 3), ("iCloud Drive cache", 1)]
-        return ScanReport(id: UUID(), scannedAt: Date(), groups: groups,
+        return ScanReport(id: UUID(), scannedAt: Date(), groups: groups + later,
             protectedData: kept.map { ProtectedData(id: $0.0, title: $0.0, url: home.appendingPathComponent($0.0),
                 byteCount: gb($0.1), reason: "Room never moves this", isPartial: false) },
             issues: [], volume: VolumeInfo(totalBytes: 494_000_000_000, availableBytes: 64_000_000_000), cancelled: false)
@@ -382,7 +397,7 @@ struct StoreScreenshotFixture: View {
             cancelled: false, volumeUUID: "sample-volume", issueCount: 0, tree: tree)
     }
 
-    /// Sixty seconds of memory between 9 and 12 GB, so the curve has a shape.
+    /// Thirteen minutes of memory between 9 and 12 GB, so the curve has a shape.
     private static func memoryCurve() -> [Int64] {
         let shape: [Double] = [9, 9, 10, 10, 9, 9, 10, 11, 11, 10, 10, 9, 10, 10, 11, 12, 12, 11, 10, 10, 9, 9, 10, 10, 11,
                                10, 10, 9, 10, 9, 11, 10, 10, 12, 11, 10, 9, 10, 11, 10]
@@ -531,6 +546,20 @@ struct StoreScreenshotFixture: View {
         return history
     }
 
+    #if !ROOM_APP_STORE
+    /// Sample apps, so a render never lists what is really running on this Mac.
+    private static func sampleApps() -> MemoryActionsModel {
+        let apps = [(101, "Xcode"), (102, "Safari"), (103, "Simulator")].map { pid, name in
+            MemoryRunningApplication(pid: Int32(pid), name: name, bundleIdentifier: "sample.\(name)",
+                bundleURL: URL(fileURLWithPath: "/Applications/\(name).app"), launchDate: .distantPast,
+                bundleIdentity: MemoryBundleIdentity(device: 1, inode: UInt64(pid), modifiedSeconds: 0,
+                    modifiedNanoseconds: 0, changedSeconds: 0, changedNanoseconds: 0),
+                isRegular: true, isTerminated: false, icon: nil)
+        }
+        return MemoryActionsModel(applicationProvider: { apps }, quitRequester: { _ in .refused })
+    }
+    #endif
+
     private static func memoryReport() -> MemoryReport {
         MemoryReport(id: UUID(), scannedAt: .now, totalBytes: 17_179_869_184, usedBytes: 9_400_000_000,
             availableBytes: 5_200_000_000, compressedBytes: 1_220_000_000, swapUsedBytes: 391_000_000,
@@ -538,7 +567,10 @@ struct StoreScreenshotFixture: View {
                 .init(id: 101, name: "Xcode", residentBytes: 3_100_000_000),
                 .init(id: 102, name: "Safari", residentBytes: 2_200_000_000),
                 .init(id: 103, name: "Simulator", residentBytes: 1_300_000_000),
-                .init(id: 104, name: "Finder", residentBytes: 350_000_000)
+                .init(id: 201, name: "java", residentBytes: 1_100_000_000),
+                .init(id: 202, name: "WindowServer", residentBytes: 600_000_000),
+                .init(id: 104, name: "Finder", residentBytes: 350_000_000),
+                .init(id: 203, name: "node", residentBytes: 300_000_000)
             ], recommendations: [], issues: [], wiredBytes: 2_570_000_000)
     }
 

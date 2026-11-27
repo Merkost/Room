@@ -134,6 +134,8 @@ struct RoomEvidenceRow<Icon: View, Trailing: View>: View {
     var barColor: Color = RoomTokens.Ink.secondary
     var dimmed = false
     var nameColumn: CGFloat = RoomTokens.Screen2.listNameColumn
+    /// Off where there is no room for both a readable name and an honest bar.
+    var showsBar = true
     @ViewBuilder var icon: () -> Icon
     @ViewBuilder var trailing: () -> Trailing
 
@@ -154,9 +156,11 @@ struct RoomEvidenceRow<Icon: View, Trailing: View>: View {
                     Text(meta).font(RoomTokens.Screen2.listMeta).foregroundStyle(RoomTokens.Ink.secondary).lineLimit(1)
                 }
             }
-            .frame(maxWidth: nameColumn, alignment: .leading)
-            RoomDotBar(bytes: bytes, color: barColor, dimmed: dimmed)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: showsBar ? nameColumn : .infinity, alignment: .leading)
+            if showsBar {
+                RoomDotBar(bytes: bytes, color: barColor, dimmed: dimmed)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
             RoomMaskable(value ?? RoomFormat.gb(bytes))
                 .font(RoomTokens.Screen2.listValue)
                 .foregroundStyle(dimmed ? RoomTokens.Ink.tertiary : RoomTokens.Ink.graphite)
@@ -171,9 +175,10 @@ struct RoomEvidenceRow<Icon: View, Trailing: View>: View {
 extension RoomEvidenceRow where Trailing == EmptyView {
     init(name: String, meta: String? = nil, bytes: Int64, value: String? = nil, masksName: Bool = true,
          barColor: Color = RoomTokens.Ink.secondary, dimmed: Bool = false,
-         nameColumn: CGFloat = RoomTokens.Screen2.listNameColumn, @ViewBuilder icon: @escaping () -> Icon) {
+         nameColumn: CGFloat = RoomTokens.Screen2.listNameColumn, showsBar: Bool = true,
+         @ViewBuilder icon: @escaping () -> Icon) {
         self.init(name: name, meta: meta, bytes: bytes, value: value, masksName: masksName, barColor: barColor, dimmed: dimmed,
-                  nameColumn: nameColumn, icon: icon, trailing: { EmptyView() })
+                  nameColumn: nameColumn, showsBar: showsBar, icon: icon, trailing: { EmptyView() })
     }
 }
 

@@ -25,6 +25,7 @@ nonisolated struct RoomCachesHero: Equatable, Sendable {
         var selectedBytes: Int64
         var sourceCount: Int
         var readableSourceCount: Int
+        var recentBytes: Int64 = 0     // used recently: nothing ticked, still reviewable
     }
 
     static func make(_ i: Input) -> RoomCachesHero {
@@ -45,7 +46,7 @@ nonisolated struct RoomCachesHero: Equatable, Sendable {
             return RoomCachesHero(heroLabel: "Clearable", heroBytes: i.clearableBytes, foundBytes: i.totalBytes, keptBytes: kept,
                 lowerBound: false, primary: .checkAgain, disabledReason: nil)
         }
-        if i.clearableBytes <= 0 {
+        if i.clearableBytes <= 0 && i.recentBytes <= 0 {
             return RoomCachesHero(heroLabel: "Nothing is safe to clear right now.", heroBytes: nil, foundBytes: i.totalBytes,
                 keptBytes: kept, lowerBound: false, primary: .none, disabledReason: nil)
         }
@@ -57,7 +58,7 @@ nonisolated struct RoomCachesHero: Equatable, Sendable {
     }
 }
 
-/// Caches' headline, supporting line and note (nav-v3): "22 GB could go" or "All clear".
+/// Caches' headline, supporting line and note: "31 GB of caches found", "22 GB ticked", or "All clear".
 nonisolated struct RoomCachesWords: Equatable, Sendable {
     struct Input: Equatable, Sendable {
         var scanning = false
@@ -65,8 +66,8 @@ nonisolated struct RoomCachesWords: Equatable, Sendable {
         var hasReport = false
         var partial = false
         var totalBytes: Int64 = 0
-        var clearableBytes: Int64 = 0
-        var places = 0
+        var foundBytes: Int64 = 0
+        var selectedBytes: Int64 = 0
         var measured = 0
         var readable = 0
         var checked = 0
@@ -83,12 +84,12 @@ nonisolated struct RoomCachesWords: Equatable, Sendable {
     static func make(_ i: Input) -> RoomCachesWords {
         let note = i.unreadable > 0
             ? "\(i.unreadable == 1 ? "1 place" : "\(i.unreadable) places") could not be read. Room left \(i.unreadable == 1 ? "it" : "them") alone."
-            : "Nothing moves without a review"
-        let placesWord = i.places == 1 ? "1 place" : "\(i.places) places"
+            : "Nothing moves without a review. Everything goes to Trash."
+        let ticked = i.selectedBytes > 0 ? "\(RoomFormat.gb(i.selectedBytes)) ticked" : "Nothing ticked"
         if i.scanning {
             let line = i.toCheck > 0 ? "Checking \(min(i.checked + 1, i.toCheck)) of \(i.toCheck) places" : "Checking caches"
-            let headline: RoomHeadline = i.clearableBytes > 0
-                ? RoomHeadline(figure: RoomFormat.gb(i.clearableBytes), words: "could go")
+            let headline: RoomHeadline = i.foundBytes > 0
+                ? RoomHeadline(figure: RoomFormat.gb(i.foundBytes), words: "of caches found")
                 : .words("Checking")
             return RoomCachesWords(headline: headline, supporting: line, note: note)
         }
@@ -101,16 +102,18 @@ nonisolated struct RoomCachesWords: Equatable, Sendable {
                 return RoomCachesWords(headline: .words("Could not read"),
                                        supporting: "Room could not read the caches. Check folder access and try again.", note: note)
             }
-            if i.clearableBytes > 0 {
-                let figure = i.partial ? RoomFormat.lowerBound(i.clearableBytes) : RoomFormat.gb(i.clearableBytes)
-                return RoomCachesWords(headline: RoomHeadline(figure: figure, words: "could go"),
-                                       supporting: "Rebuildable, in \(placesWord)", note: note)
+            if i.foundBytes > 0 {
+                let figure = i.partial ? RoomFormat.lowerBound(i.foundBytes) : RoomFormat.gb(i.foundBytes)
+                return RoomCachesWords(headline: RoomHeadline(figure: figure, words: "of caches found"),
+                                       supporting: i.partial ? "Finish the check to review" : ticked, note: note)
             }
             if i.partial && i.totalBytes == 0 {
                 return RoomCachesWords(headline: .words("Check incomplete"),
                                        supporting: "Start a new check to measure caches.", note: note)
             }
-            return RoomCachesWords(headline: .words("All clear"), supporting: "Nothing rebuildable is taking space", note: note)
+            return RoomCachesWords(headline: .words("All clear"),
+                                   supporting: i.totalBytes > 0 ? "Nothing here can be removed" : "No caches are taking space",
+                                   note: note)
         }
         if let remembered = i.rememberedBytes, remembered > 0 {
             return RoomCachesWords(headline: RoomHeadline(figure: RoomFormat.gb(remembered), words: "at the last check"),

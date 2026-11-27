@@ -21,7 +21,11 @@ Use native Liquid Glass for navigation, buttons, menus, and transient surfaces. 
 
 Clean starts with the next useful action. Before a scan, show an honest ready state; after a scan, show measured, clearable, and held amounts from the same report. A Store user with no approved folders can choose a folder and start scanning from the primary action.
 
-Memory leads with measured usage, actual pressure, and the refresh action. Compression, available memory, and swap have distinct labels. Suggestions precede long process lists. Resident process sizes never imply a guaranteed RAM saving.
+Caches lists everything it found and nothing it merely looked at: Safe to remove (ticked), Used recently (unticked, selectable), and Open right now (waits until the app quits). Everything selected still goes through review into Trash.
+
+Developer is one screen with no tabs and no folder step: projects and tool folders are found automatically, shown as a composition strip over two columns (one when narrow). Choosing folders only adds to or skips what was found.
+
+Memory is one screen with nothing behind a disclosure: a Now / 15 min / 1 hour range with one pressure sentence, the curve, App memory, Wired, Compressed and Swap, then apps that can be quit beside background processes that are view only. Curve time without a reading stays empty. Advice appears only when pressure asks for it, before the lists. Resident process sizes include shared pages, are never totalled, and never imply a guaranteed RAM saving.
 
 Disk Map gives the largest area to the actual folder map. Keep one clear folder context, labeled Scan/Rescan/Stop, category evidence, and hidden-file controls. Developer resources group related rows, align sizes to one trailing edge, and expose uncertainty about use and project references.
 

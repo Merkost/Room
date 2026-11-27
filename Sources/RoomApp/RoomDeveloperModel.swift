@@ -79,13 +79,9 @@ enum RoomDeveloperFolderRole: String, CaseIterable, Codable, Identifiable {
 struct RoomDeveloperLocation: Identifiable {
     let role: RoomDeveloperFolderRole
     let folder: RoomAccessFolder
+    /// Found by Room rather than chosen; it can be skipped, and no access is stored for it.
+    var isAutomatic = false
     var id: String { role.rawValue + ":" + folder.id }
-}
-
-struct RoomDeveloperFolderSuggestion: Identifiable {
-    let role: RoomDeveloperFolderRole
-    let url: URL?
-    var id: String { role.rawValue }
 }
 
 nonisolated struct RoomDeveloperScanPart: Equatable, Sendable {
@@ -121,7 +117,14 @@ final class RoomDeveloperModel {
     @ObservationIgnored private var scannedAccess: Set<String> = []
     private var task: Task<Void, Never>?
     private var generation = UUID()
-    var section = RoomDeveloperSection.rooms
+    @ObservationIgnored private let discovery: RoomDeveloperDiscovery?
+    private let skippedKey = "RoomDeveloperSkipped"
+    /// Folders the person told Room to leave out.
+    private(set) var skippedPaths: [String]
+    private var foundProjects: [URL] = []
+    private(set) var automaticLocations: [RoomDeveloperLocation] = []
+    /// The project walk reached a limit, so some projects may be missing.
+    private(set) var projectSearchPartial = false
     private(set) var report: DeveloperResourcesReport?
     private(set) var devicesReport: DeveloperResourcesReport?
     private(set) var storageReport: DeveloperResourcesReport?
@@ -137,6 +140,8 @@ final class RoomDeveloperModel {
     /// True while the one scan runs: the folder parts, then any worktrees still being read.
     private var isScanningResources = false
     private(set) var isChoosingFolder = false
+    /// The agent worktree review (Direct edition), also opened from Caches' worktree line.
+    var showingWorktrees = false
     private var resourceProgress = ""
     /// The parts of the running (or last) scan, for the scan animation.
     private(set) var scanParts: [RoomDeveloperScanPart] = []
@@ -152,6 +157,7 @@ final class RoomDeveloperModel {
          unreferencedStore: RoomDeveloperUnreferencedStore = .init(),
          home: URL? = RoomDeveloperModel.standardHome,
          activityCenter: RoomActivityCenter? = nil,
+         discovery: RoomDeveloperDiscovery? = nil,
          scanner: (@Sendable (DeveloperResourcesRequest, (@Sendable (DeveloperResourcesProgress) -> Void)?) async -> DeveloperResourcesReport)? = nil,
          activitySampler: (@Sendable () async -> DeveloperActivitySnapshot)? = nil) {
         self.access = access
@@ -163,6 +169,9 @@ final class RoomDeveloperModel {
         if let activitySampler { self.sampleActivity = activitySampler }
         else if scanner != nil { self.sampleActivity = { .unknown } }
         else { self.sampleActivity = { await DeveloperResourcesEngine.activitySnapshot() } }
+        // Only the app passes this: without it a model reads just the folders attached to it.
+        self.discovery = discovery
+        skippedPaths = defaults.stringArray(forKey: "RoomDeveloperSkipped") ?? []
         let engine = DeveloperResourcesEngine()
         self.scanResources = scanner ?? { request, progress in await engine.scan(request: request, progress: progress) }
         records = defaults.data(forKey: key).flatMap { try? JSONDecoder().decode([RoleRecord].self, from: $0) } ?? []
@@ -174,6 +183,7 @@ final class RoomDeveloperModel {
                 self.unreferencedReadOnly = saved.isReadOnly
             }
         }
+        refreshAutomaticLocations()
     }
 
     static var standardHome: URL? {
@@ -184,57 +194,119 @@ final class RoomDeveloperModel {
         #endif
     }
 
-    var projectRootLabel: String? {
-        guard let root = locations.first(where: { $0.role == .project })?.folder.url else { return nil }
-        let path = root.standardizedFileURL.path
-        guard let home else { return path }
-        let homePath = home.standardizedFileURL.path
-        if path == homePath { return "~" }
-        guard path.hasPrefix(homePath + "/") else { return path }
-        return "~" + path.dropFirst(homePath.count)
-    }
-
-    var folderSuggestions: [RoomDeveloperFolderSuggestion] {
-        let configured = Set(locations.map(\.role))
-        return selectableFolderRoles.filter { !configured.contains($0) }.compactMap { role in
-            let url = role.suggestedURL(in: home)
-            #if ROOM_APP_STORE
-            return RoomDeveloperFolderSuggestion(role: role, url: url)
-            #else
-            if role.requiresFolderPicker { return RoomDeveloperFolderSuggestion(role: role, url: url) }
-            var directory: ObjCBool = false
-            guard let url, FileManager.default.fileExists(atPath: url.path, isDirectory: &directory),
-                  directory.boolValue else { return nil }
-            return RoomDeveloperFolderSuggestion(role: role, url: url)
-            #endif
-        }
-    }
-
-    func useSuggestion(_ suggestion: RoomDeveloperFolderSuggestion) {
+    /// The home Room searches by itself. The App Store edition needs it allowed first.
+    var searchableHome: URL? {
+        guard discovery != nil, let home else { return nil }
         #if ROOM_APP_STORE
-        addFolder(role: suggestion.role)
+        return grant(containing: home) == nil ? nil : home
         #else
-        if suggestion.role.requiresFolderPicker {
-            addFolder(role: suggestion.role)
-            return
-        }
-        guard !isScanning, !isChoosingFolder,
-              folderSuggestions.contains(where: { $0.role == suggestion.role && $0.url == suggestion.url }),
-              let url = suggestion.url else { return }
-        remember(url, role: suggestion.role)
+        return home
         #endif
     }
 
-    var selectableFolderRoles: [RoomDeveloperFolderRole] {
-        switch section {
-        case .devices: RoomDeveloperFolderRole.deviceRoles
-        case .storage: RoomDeveloperFolderRole.storageRoles
-        case .aiTools: RoomDeveloperFolderRole.aiRoles
-        default: RoomDeveloperFolderRole.allCases.filter { $0 != .project && $0 != .simulatorRuntimes && $0.aiTool == nil }
+    /// Automatic search is on, but the App Store edition has not been allowed to read the home yet.
+    var needsHomeAccess: Bool { discovery != nil && home != nil && searchableHome == nil }
+
+    private func grant(containing url: URL) -> RoomAccessFolder? {
+        let path = url.standardizedFileURL.path
+        return access.folders.first {
+            let parent = $0.url.standardizedFileURL.path
+            return path == parent || path.hasPrefix(parent == "/" ? "/" : parent + "/")
         }
     }
 
-    var locations: [RoomDeveloperLocation] {
+    /// Holds the approval that covers `url` open while `body` runs. Only the resolved bookmark URL carries it,
+    /// so a plain path to the same folder would open nothing after a relaunch.
+    private func openScope(containing url: URL) -> () -> Void {
+        #if ROOM_APP_STORE
+        guard let scope = grant(containing: url)?.url, scope.startAccessingSecurityScopedResource() else { return {} }
+        return { scope.stopAccessingSecurityScopedResource() }
+        #else
+        return {}
+        #endif
+    }
+
+    private func findProjects(in home: URL, skipped: Set<String>) async -> DeveloperProjectFinder.Result? {
+        let close = openScope(containing: home)
+        defer { close() }
+        return await discovery?.projects(home, skipped)
+    }
+
+    private func isSkipped(_ url: URL) -> Bool {
+        let path = url.standardizedFileURL.path
+        return skippedPaths.contains { path == $0 || path.hasPrefix($0 + "/") }
+    }
+
+    private func refreshAutomaticLocations() {
+        guard discovery != nil, let home else { automaticLocations = []; return }
+        func readable(_ url: URL) -> Bool {
+            #if ROOM_APP_STORE
+            // Existence cannot be checked outside a grant; the engine reports a missing folder quietly.
+            guard grant(containing: url) != nil else { return false }
+            let close = openScope(containing: url)
+            defer { close() }
+            return FileManager.default.fileExists(atPath: url.path)
+            #else
+            var directory: ObjCBool = false
+            return FileManager.default.fileExists(atPath: url.path, isDirectory: &directory) && directory.boolValue
+            #endif
+        }
+        let known: [(RoomDeveloperFolderRole, URL)] = RoomDeveloperFolderRole.allCases.compactMap { role in
+            guard role != .project, let url = role.suggestedURL(in: home), readable(url) else { return nil }
+            return (role, url)
+        } + foundProjects.map { (.project, $0) }
+        let chosen = Set(manualLocations.map { $0.role.rawValue + $0.folder.url.standardizedFileURL.path })
+        automaticLocations = known.filter {
+            !isSkipped($0.1) && !chosen.contains($0.0.rawValue + $0.1.standardizedFileURL.path)
+        }.map { role, url in
+            RoomDeveloperLocation(role: role,
+                folder: RoomAccessFolder(id: "auto:" + url.path, name: url.lastPathComponent, url: url), isAutomatic: true)
+        }
+    }
+
+    /// Leaves a found folder out of every later scan. Nothing in it changes.
+    func skip(_ location: RoomDeveloperLocation) {
+        guard !isScanning, location.isAutomatic else { return }
+        let path = location.folder.url.standardizedFileURL.path
+        guard !skippedPaths.contains(path) else { return }
+        skippedPaths.append(path)
+        defaults.set(skippedPaths, forKey: skippedKey)
+        refreshAutomaticLocations()
+        discardResults()
+    }
+
+    func include(_ path: String) {
+        guard !isScanning else { return }
+        skippedPaths.removeAll { $0 == path }
+        defaults.set(skippedPaths, forKey: skippedKey)
+        refreshAutomaticLocations()
+        discardResults()
+    }
+
+    /// App Store edition: one approval of the home folder lets Room find the rest itself.
+    func allowHome() {
+        guard !isChoosingFolder, !isScanning, let home else { return }
+        isChoosingFolder = true
+        Task { [weak self] in
+            defer { self?.isChoosingFolder = false }
+            guard let selected = await RoomNativeFolderPicker.shared.choose(title: "Allow your home folder",
+                message: "Room finds your projects and build tools inside it. It only reads sizes and version files.",
+                prompt: "Allow", initialURL: home) else { return }
+            guard let self else { return }
+            do { _ = try self.access.remember(selected) } catch { self.errorMessage = error.localizedDescription; return }
+            self.refreshAutomaticLocations()
+            self.isChoosingFolder = false
+            self.scan()
+        }
+    }
+
+    private func discardResults() {
+        report = nil; devicesReport = nil; storageReport = nil; aiToolsReport = nil; summary = nil
+    }
+
+    var locations: [RoomDeveloperLocation] { manualLocations + automaticLocations }
+
+    var manualLocations: [RoomDeveloperLocation] {
         records.compactMap { record in
             access.folders.first(where: { $0.id == record.folderID }).map { RoomDeveloperLocation(role: record.role, folder: $0) }
         }.filter { !stagedRemovals.contains($0.id) }
@@ -259,27 +331,8 @@ final class RoomDeveloperModel {
         [DeveloperResourcesScope.review, .devices, .toolStorage, .aiTools]
             .map { ($0, scanLocations(for: $0)) }.filter { !$0.1.isEmpty }
     }
-    var sectionLocations: [RoomDeveloperLocation] {
-        switch section {
-        case .devices: scanLocations(for: .devices)
-        case .storage: scanLocations(for: .toolStorage)
-        case .aiTools: scanLocations(for: .aiTools)
-        default: locations.filter { $0.role != .simulatorRuntimes && $0.role.aiTool == nil }
-        }
-    }
-    var hasScannableFolders: Bool { !scanPlan.isEmpty }
-    /// The same answer from every section: one scan reads them all.
+    var hasScannableFolders: Bool { !scanPlan.isEmpty || searchableHome != nil }
     var canScan: Bool { !isChoosingFolder && worktrees?.isBusy != true && (hasScannableFolders || worktrees != nil) }
-    /// Whether a scan has anything to read for the open section (Simulator folders do not feed Rooms or Matrix).
-    var hasFoldersForSection: Bool {
-        let scope: DeveloperResourcesScope = switch section {
-        case .devices: .devices
-        case .storage: .toolStorage
-        case .aiTools: .aiTools
-        default: .review
-        }
-        return !scanLocations(for: scope).isEmpty
-    }
     var accessRevision: [String] { access.folders.map { $0.id + ":" + $0.url.path }.sorted() }
     var totalBytes: Int64 {
         guard let report else { return 0 }
@@ -334,17 +387,15 @@ final class RoomDeveloperModel {
         guard !records.contains(record) else { return }
         records.append(record)
         persist()
-        report = nil; devicesReport = nil; storageReport = nil; aiToolsReport = nil; summary = nil
+        refreshAutomaticLocations()
+        discardResults()
     }
 
     func stageRemoval(_ location: RoomDeveloperLocation) {
         guard !isScanning else { return }
         stagedRemovals.insert(location.id)
-        report = nil
-        devicesReport = nil
-        storageReport = nil
-        aiToolsReport = nil
-        summary = nil
+        refreshAutomaticLocations()
+        discardResults()
     }
 
     func undoRemoval(_ location: RoomDeveloperLocation) {
@@ -361,6 +412,7 @@ final class RoomDeveloperModel {
     /// An approval changed. Only losing one that was read through discards the work: adding another folder (Overview's
     /// scan approving Home, say) must not cancel it.
     func accessChanged() {
+        refreshAutomaticLocations()
         guard !scannedAccess.isSubset(of: Set(accessRevision)) else { return }
         scannedAccess = []
         scanParts = []; scanIncludedWorktrees = false
@@ -373,16 +425,32 @@ final class RoomDeveloperModel {
     /// Reads every part that has a folder, one after another; each section fills as its part finishes.
     func scan() {
         guard canScan, !isScanning else { return }
-        let plan = scanPlan
+        let search = searchableHome
+        refreshAutomaticLocations()
         errorMessage = nil
         worktrees?.scan()
         let token = UUID(); generation = token
-        scannedAccess.formUnion(plan.flatMap(\.locations).map { $0.folder.id + ":" + $0.folder.url.path })
-        scanParts = plan.map { RoomDeveloperScanPart(scope: $0.scope, state: .waiting) }
+        scanParts = []
         scanIncludedWorktrees = worktrees != nil
-        isScanningResources = true; resourceProgress = plan.isEmpty ? Self.worktreesProgress : "Preparing review…"
+        isScanningResources = true
+        resourceProgress = search != nil ? "Looking for projects…"
+            : scanPlan.isEmpty ? Self.worktreesProgress : "Preparing review…"
         activityCenter?.reportScanLabel(.developer, label: "Developer", files: 0, bytes: 0)
+        let skipped = Set(skippedPaths)
+        // Known now, so the parts appear at once; projects found below join the first of them.
+        if search == nil { plan(token: token) }
         task = Task { [weak self] in
+            if let search {
+                guard let found = await self?.findProjects(in: search, skipped: skipped) else { return }
+                guard let self, self.generation == token else { return }
+                self.foundProjects = found.projects
+                self.projectSearchPartial = found.partial
+                self.refreshAutomaticLocations()
+                if Task.isCancelled { self.finishScan(token: token, progress: "Stopped · no resource scan started"); return }
+                self.resourceProgress = "Preparing review…"
+                self.plan(token: token)
+            }
+            let plan = self?.scanPlan ?? []
             var activity: DeveloperActivitySnapshot?
             var cancelled = false
             var partial = false
@@ -404,12 +472,30 @@ final class RoomDeveloperModel {
         }
     }
 
+    /// Records what this scan will read: its parts, and the approvals it reads them through.
+    private func plan(token: UUID) {
+        guard generation == token else { return }
+        let plan = scanPlan
+        let read = plan.flatMap(\.locations)
+        #if ROOM_APP_STORE
+        // A found folder is read through the grant that contains it, so losing that grant discards the results.
+        let approvals = read.compactMap { $0.isAutomatic ? grant(containing: $0.folder.url) : $0.folder }
+        #else
+        // Found folders need no approval, so only chosen ones can be taken away.
+        let approvals = read.filter { !$0.isAutomatic }.map(\.folder)
+        #endif
+        scannedAccess.formUnion(approvals.map { $0.id + ":" + $0.url.path })
+        scanParts = plan.map { RoomDeveloperScanPart(scope: $0.scope, state: .waiting) }
+    }
+
     /// One part of the scan. nil: the scan was replaced, or stopped before this part started reading.
     private func read(_ scope: DeveloperResourcesScope, in current: [RoomDeveloperLocation],
                       activity: inout DeveloperActivitySnapshot?, token: UUID) async -> DeveloperResourcesReport? {
         let approved = Dictionary(grouping: current.map(\.folder.url), by: \.path).compactMap { $0.value.first }
         let avdRoots = current.filter { $0.role == .android }.map(\.folder.url)
-        let scopes = approved.filter { $0.startAccessingSecurityScopedResource() }
+        // A found folder is read through the grant that contains it.
+        let grants = current.filter(\.isAutomatic).compactMap { grant(containing: $0.folder.url)?.url }
+        let scopes = (approved + Set(grants)).filter { $0.startAccessingSecurityScopedResource() }
         defer { scopes.forEach { $0.stopAccessingSecurityScopedResource() } }
         // Processes are sampled once per scan, and only when Android devices are part of it.
         if !avdRoots.isEmpty, activity == nil { activity = await sampleActivity() }
@@ -429,7 +515,10 @@ final class RoomDeveloperModel {
             simulatorRuntimeRoots: current.filter { $0.role == .simulatorRuntimes }.map(\.folder.url),
             aiToolRoots: current.compactMap { location in
                 location.role.aiTool.map { DeveloperAIToolRoot(tool: $0, url: location.folder.url) }
-            }, scope: scope, activity: activity ?? .unknown)
+            }, scope: scope, activity: activity ?? .unknown,
+            // Found projects add up to more than one chosen folder did, so the walk gets longer.
+            limits: current.contains(where: \.isAutomatic)
+                ? DeveloperResourcesLimits(maximumNodes: 400_000, timeLimit: 45) : DeveloperResourcesLimits())
         let result = await scanResources(request) { [weak self] update in
             Task { @MainActor [weak self] in
                 guard let self, self.generation == token, self.isScanningResources else { return }

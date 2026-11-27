@@ -74,7 +74,8 @@ final class RoomViewModel {
     @ObservationIgnored private var mapCleanupPaths = RoomMapCleanupPathIndex([])
     @ObservationIgnored private var candidateIndex: [String: CandidateIndex] = [:] {
         didSet {
-            mapCleanupPaths = RoomMapCleanupPathIndex(candidateIndex.values.flatMap { index in
+            // Disk Map offers only what is ticked for you; recent items are chosen on Caches.
+            mapCleanupPaths = RoomMapCleanupPathIndex(candidateIndex.filter { !RoomCacheRow.isRecentKey($0.key) }.values.flatMap { index in
                 index.items.compactMap { $0.bytes > 0 ? $0.url.path : nil }
             })
         }
@@ -135,6 +136,11 @@ final class RoomViewModel {
 
     var isDeepScan: Bool { scanScope == .full }
     var clearableBytes: Int64 { sources.reduce(0) { $0 + $1.eligibleBytes } }
+    private(set) var recentRows: [RoomCacheRow] = []
+    private(set) var inUseRows: [RoomCacheRow] = []
+    /// Everything Caches lists: ticked for you, used recently and open right now.
+    var foundBytes: Int64 { clearableBytes + (recentRows + inUseRows).reduce(0) { $0 + $1.bytes } }
+    var recentBytes: Int64 { recentRows.reduce(0) { $0 + $1.bytes } }
     var heldBytes: Int64 { max(0, totalBytes - clearableBytes) }
     var hasPartialMeasurements: Bool {
         isPartialScan || report?.npmDiscovery?.isBatch == true || !scanIssues.isEmpty || sources.contains(where: \.isPartial)
@@ -208,17 +214,34 @@ final class RoomViewModel {
     var canReviewCleanup: Bool { canEditSelection && selectedBytes > 0 }
     var cleanupRows: [RoomCleanupReview.Row] {
         sources.filter(\.isAvailable).map { source in
-            #if ROOM_APP_STORE
-            let parents = Set(cleanupCandidates(for: source.id).filter { isEntrySelected($0.id, sourceID: source.id) }
-                .map { $0.url.deletingLastPathComponent().path })
-            #else
-            let parents = Set<String>()
-            #endif
-            return .init(id: source.id, name: source.name, bytes: source.eligibleBytes,
-                         consequence: source.cleanupConsequences.joined(separator: "\n"),
-                         entryIDs: selectedIDs(for: source.id), parentFolders: parents,
-                         pickedBytes: selectedBytes(for: source.id))
+            cleanupRow(source.id, name: source.name, bytes: source.eligibleBytes,
+                       consequence: source.cleanupConsequences.joined(separator: "\n"))
+        } + recentRows.map { row in
+            let source = sources.first { $0.id == row.sourceID }
+            return cleanupRow(row.id, name: "\(row.name), \(row.note)", bytes: row.bytes,
+                              consequence: Self.recentConsequence(source?.recentConsequences ?? []))
         }
+    }
+
+    /// "Logs older than 30 days move to Trash" is untrue of a recent item ticked by hand.
+    nonisolated static func withoutAgeRule(_ consequence: String) -> String {
+        consequence.replacingOccurrences(of: #" older than \d+ days"#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    nonisolated static func recentConsequence(_ consequences: [String]) -> String {
+        (["Used recently. You ticked it yourself."] + consequences).joined(separator: "\n")
+    }
+
+    private func cleanupRow(_ key: String, name: String, bytes: Int64, consequence: String) -> RoomCleanupReview.Row {
+        #if ROOM_APP_STORE
+        let parents = Set(cleanupCandidates(for: key).filter { isEntrySelected($0.id, sourceID: key) }
+            .map { $0.url.deletingLastPathComponent().path })
+        #else
+        let parents = Set<String>()
+        #endif
+        return .init(id: key, name: name, bytes: bytes, consequence: consequence,
+                     entryIDs: selectedIDs(for: key), parentFolders: parents, pickedBytes: selectedBytes(for: key))
     }
 
     init(engine: CacheEngine? = nil, cachesCheckStore: RoomCachesCheckStore = RoomCachesCheckStore(),
@@ -259,6 +282,8 @@ final class RoomViewModel {
         inspectionConfiguration = nil
         configurationRevision = UUID()
         sources = []
+        recentRows = []
+        inUseRows = []
         sourceGroups = [:]
         candidateIndex = [:]
         excludedEntryIDs = []
@@ -414,7 +439,7 @@ final class RoomViewModel {
 
     func selectRecommended() {
         guard canEditSelection else { return }
-        selection = Set(candidateIndex.keys)
+        selection = Set(candidateIndex.keys.filter { !RoomCacheRow.isRecentKey($0) })
         excludedEntryIDs = []
         selectionChanged()
     }
@@ -578,7 +603,10 @@ final class RoomViewModel {
         #endif
         await cachesCheckStore.invalidateBeforeFileChange(at: Date())
         cleanupProgress = [:]
-        let receipt = await engine.clean(entryIDs: ids) { [weak self] id, status in
+        // Only what was ticked by hand on Caches may skip the age rule.
+        let recent = keepsCacheSelection ? [] : candidateIndex.filter { RoomCacheRow.isRecentKey($0.key) }
+            .reduce(into: Set<UUID>()) { $0.formUnion($1.value.ids) }
+        let receipt = await engine.clean(entryIDs: ids, includingRecent: ids.intersection(recent)) { [weak self] id, status in
             await self?.reportCleanupProgress(id: id, status: status)
         }
         await makeRoomStore?.recordMove(receipt: receipt)
@@ -777,6 +805,14 @@ final class RoomViewModel {
         return names == .orderedSame ? a.id < b.id : names == .orderedAscending
     }
 
+    private static func candidates(in entries: [CacheEntry]) -> CandidateIndex? {
+        guard entries.contains(where: { $0.byteCount > 0 }) else { return nil }
+        let items = entries.sorted { $0.byteCount == $1.byteCount ? $0.url.path < $1.url.path : $0.byteCount > $1.byteCount }
+            .map { RoomCleanupCandidate(id: $0.id, name: $0.name, url: $0.url, bytes: $0.byteCount) }
+        let sizes = Dictionary(items.map { ($0.id, $0.bytes) }, uniquingKeysWith: { first, _ in first })
+        return CandidateIndex(items: items, ids: Set(sizes.keys), bytesByID: sizes, bytes: sizes.values.reduce(0, +))
+    }
+
     private func apply(_ result: ScanReport, selectInitially: Bool, allowsCleanup: Bool = true) {
         report = allowsCleanup ? result : nil
         if allowsCleanup { lastScanned = result.scannedAt }
@@ -801,6 +837,9 @@ final class RoomViewModel {
                 group.eligibleEntries.contains { !ignoredEntryIDs.contains($0.id) && !movedEntryIDs.contains($0.id) }
             }
                 .map(\.consequence).filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })).sorted()
+            let recentConsequences = Array(Set(groups.filter { group in
+                group.recentEntries.contains { !ignoredEntryIDs.contains($0.id) && !movedEntryIDs.contains($0.id) }
+            }.map { Self.withoutAgeRule($0.consequence) }.filter { !$0.isEmpty })).sorted()
             let issues = groups.flatMap(\.issues).map(\.message)
             let held = Dictionary(grouping: entries.filter { !allowsCleanup || !$0.eligibility.isEligible || ignoredEntryIDs.contains($0.id) }) {
                 if ignoredEntryIDs.contains($0.id) { return "You asked Room not to suggest this" }
@@ -832,31 +871,51 @@ final class RoomViewModel {
                         reason: ignoredEntryIDs.contains($0.id) ? "You asked Room not to suggest this" : $0.eligibility.reason)
                 },
                 isInspectionOnly: inspectionOnly,
-                cleanupConsequences: cleanupConsequences
+                cleanupConsequences: cleanupConsequences,
+                recentConsequences: recentConsequences
             )
         }.filter { $0.entryCount > 0 || $0.isPartial || $0.blockedReason != nil && movedEntryIDs.isEmpty }.sorted {
             Self.listsBefore((agents: $0.category == .agents, bytes: $0.eligibleBytes, name: $0.name, id: $0.id),
                              (agents: $1.category == .agents, bytes: $1.eligibleBytes, name: $1.name, id: $1.id))
         }
+        // Entries that are not ticked for you, listed by what the person can do with them.
+        func listed(_ sourceID: String, _ matches: (Eligibility) -> Bool) -> [CacheEntry] {
+            guard allowsCleanup else { return [] }
+            return (sourceGroups[sourceID] ?? []).flatMap(\.entries).filter {
+                matches($0.eligibility) && $0.byteCount > 0 && !movedEntryIDs.contains($0.id) && !ignoredEntryIDs.contains($0.id)
+            }
+        }
+        let now = Date()
+        recentRows = sources.compactMap { source in
+            let entries = listed(source.id, \.isRecent)
+            guard let newest = entries.map(\.modifiedAt).max() else { return nil }
+            return RoomCacheRow(id: RoomCacheRow.recentKey(source.id), sourceID: source.id, name: source.name,
+                                path: source.path, note: RoomCacheRow.recentNote(newest: newest, now: now),
+                                bytes: entries.reduce(0) { $0 + $1.byteCount })
+        }.sorted { $0.bytes == $1.bytes ? $0.id < $1.id : $0.bytes > $1.bytes }
+        inUseRows = sources.compactMap { source in
+            let entries = listed(source.id, \.isInUse)
+            guard let reason = entries.max(by: { $0.byteCount < $1.byteCount })?.eligibility.reason else { return nil }
+            return RoomCacheRow(id: "inuse:" + source.id, sourceID: source.id, name: source.name, path: source.path,
+                                note: RoomCacheRow.inUseNote(reason), bytes: entries.reduce(0) { $0 + $1.byteCount })
+        }.sorted { $0.bytes == $1.bytes ? $0.id < $1.id : $0.bytes > $1.bytes }
         protectedSources = result.protectedData.map {
             RoomProtectedSource(id: $0.id, name: $0.title, path: $0.url.path,
                 reason: $0.reason, bytes: $0.byteCount)
         }
         if allowsCleanup {
             candidateIndex = sourceGroups.compactMapValues { groups in
-                let entries = groups.flatMap(\.eligibleEntries)
-                    .filter { !movedEntryIDs.contains($0.id) && !ignoredEntryIDs.contains($0.id) }
-                guard entries.contains(where: { $0.byteCount > 0 }) else { return nil }
-                let items = entries.sorted { $0.byteCount == $1.byteCount ? $0.url.path < $1.url.path : $0.byteCount > $1.byteCount }
-                    .map { RoomCleanupCandidate(id: $0.id, name: $0.name, url: $0.url, bytes: $0.byteCount) }
-                let sizes = Dictionary(items.map { ($0.id, $0.bytes) }, uniquingKeysWith: { first, _ in first })
-                return CandidateIndex(items: items, ids: Set(sizes.keys), bytesByID: sizes, bytes: sizes.values.reduce(0, +))
+                Self.candidates(in: groups.flatMap(\.eligibleEntries)
+                    .filter { !movedEntryIDs.contains($0.id) && !ignoredEntryIDs.contains($0.id) })
+            }
+            for row in recentRows {
+                if let index = Self.candidates(in: listed(row.sourceID, \.isRecent)) { candidateIndex[row.id] = index }
             }
         } else {
             candidateIndex = [:]
         }
         let available = Set(candidateIndex.keys)
-        selection = selectInitially ? available : selection.intersection(available)
+        selection = selectInitially ? available.filter { !RoomCacheRow.isRecentKey($0) } : selection.intersection(available)
         excludedEntryIDs.formIntersection(candidateIndex.values.reduce(into: Set<UUID>()) { $0.formUnion($1.ids) })
         selection = selection.filter { !selectedIDs(for: $0).isEmpty }
     }
@@ -933,6 +992,8 @@ final class RoomViewModel {
         inspectionConfiguration = nil
         configurationRevision = UUID()
         sources = []
+        recentRows = []
+        inUseRows = []
         sourceGroups = [:]
         protectedSources = []
         measuredSourceCount = 0
@@ -1142,6 +1203,11 @@ final class RoomViewModel {
          "obsidian": "Interface caches; vaults stay in place", "postman": "HTTP and compiled rendering caches",
          "insomnia": "HTTP and compiled rendering caches", "lmstudio-render": "Interface caches; model files stay in place",
          "temporary-karma": "Generated webpack test bundles",
+         "cocoapods": "Downloaded pods and specs", "pnpm-cache": "Package metadata and one-off downloads",
+         "dart-pub": "Packages from pub.dev", "simulator-caches": "Files simulators build again",
+         "electron-downloads": "Downloaded app runtimes", "electron-builder": "Downloaded build tools",
+         "typescript": "Downloaded type packages", "composer": "Package downloads", "ccache": "Compiled objects",
+         "sccache": "Compiled objects", "android-user-cache": "Downloaded tool data",
          "discovered-app-caches": "Other app cache folders · inspect only",
          "discovered-hidden-caches": "Hidden caches, models, and tools · inspect only",
          "discovered-temporary": "Other temporary items · inspect only",

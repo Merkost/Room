@@ -56,10 +56,10 @@ struct RoomDockPlanTests {
         #expect(RoomDiskDock.make(input) == .init(main: .stop))
     }
 
-    @Test func developerAsksForAFolderThenScans() {
-        #expect(RoomDeveloperDock.make(scanning: false, hasFolders: false, hasResults: false) == .init(main: .chooseProjects))
-        #expect(RoomDeveloperDock.make(scanning: false, hasFolders: true, hasResults: false) == .init(main: .scan(again: false)))
-        #expect(RoomDeveloperDock.make(scanning: false, hasFolders: true, hasResults: true) == .init(main: .scan(again: true)))
-        #expect(RoomDeveloperDock.make(scanning: true, hasFolders: true, hasResults: true) == .init(main: .stop))
+    @Test func developerScansAndAsksOnlyForTheHomeWhenItMust() {
+        #expect(RoomDeveloperDock.make(scanning: false, needsHome: true, hasResults: false) == .init(main: .allowHome))
+        #expect(RoomDeveloperDock.make(scanning: false, needsHome: false, hasResults: false) == .init(main: .scan(again: false)))
+        #expect(RoomDeveloperDock.make(scanning: false, needsHome: true, hasResults: true) == .init(main: .scan(again: true)))
+        #expect(RoomDeveloperDock.make(scanning: true, needsHome: false, hasResults: true) == .init(main: .stop))
     }
 }

@@ -376,10 +376,10 @@ enum RoomTokens {
     }
 
     enum Developer {
-        static let rowMinHeight: CGFloat = 44
-        static let breakdownHeight: CGFloat = 8
-        static let breakdownGap: CGFloat = 2
-        static let breakdownSteps: [Double] = [1, 0.72, 0.5, 0.34, 0.22]
+        /// A row's name column inside one of the two columns.
+        static let nameColumn: CGFloat = 190
+        /// Narrower than this, two columns have no room for bars beside readable names.
+        static let barsBreak: CGFloat = 840
         static let actionSize: CGFloat = 28
     }
 

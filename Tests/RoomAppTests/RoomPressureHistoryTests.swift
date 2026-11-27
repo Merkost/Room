@@ -35,25 +35,7 @@ struct RoomPressureHistoryTests {
         check("DMR-C104_RetentionCapped", { var s = RoomPressureSeries(bucketSeconds: 900, capacity: 96)
             for i in 0..<300 { s.record(.normal, usedBytes: 1, swapBytes: nil, at: t0.addingTimeInterval(Double(i) * 900)) }
             return s.buckets.count == 96 }())
-        let fmtTime: (Date) -> String = { d in let c = cal.dateComponents([.hour, .minute], from: d); return String(format: "%02d:%02d", c.hour ?? 0, c.minute ?? 0) }
-        let sentence = RoomPressureFinding.sentence(hist.day, now: t0.addingTimeInterval(119 * 60), rangeName: "last 24 hours", time: fmtTime)
-        check("DMR-C105_FindingSinceAndEpisodes", sentence.hasPrefix("Normal since 08:45. 1 Elevated episode in the last 24 hours, none Critical."))
-        let fresh = RoomPressureFinding.sentence(RoomPressureSeries(bucketSeconds: 900, capacity: 96), now: t0, rangeName: "last 24 hours", time: fmtTime)
-        check("DMR-C106_FirstVisitCopy", fresh == "Room starts keeping a 24-hour record now.")
-        var allNormal = RoomPressureSeries(bucketSeconds: 900, capacity: 96)
-        allNormal.record(.normal, usedBytes: nil, swapBytes: nil, at: t0)
-        check("DMR-C107_RunAtRecordStartSaysSo", RoomPressureFinding.sentence(allNormal, now: t0, rangeName: "last 24 hours", time: fmtTime).hasPrefix("Normal since 08:00, when this record starts."))
-        let ep = RoomPressureFinding.episodes([.init(index: 0, worst: .elevated, usedSum: 0, count: 1, lastSwapBytes: nil), nil,
-                                                .init(index: 2, worst: .elevated, usedSum: 0, count: 1, lastSwapBytes: nil),
-                                                .init(index: 3, worst: .critical, usedSum: 0, count: 1, lastSwapBytes: nil)])
-        check("DMR-C108_GapSplitsEpisodes", ep == .init(elevated: 2, critical: 1))
-        let gapRun = RoomPressureFinding.currentRun([.init(index: 0, worst: .normal, usedSum: 0, count: 1, lastSwapBytes: nil), nil,
-                                                     .init(index: 2, worst: .normal, usedSum: 0, count: 1, lastSwapBytes: nil),
-                                                     .init(index: 3, worst: .normal, usedSum: 0, count: 1, lastSwapBytes: nil)])
-        check("DMR-C115_GapEndsCurrentRun", gapRun?.startIndex == 2 && gapRun?.boundedByRecord == true)
-        check("DMR-C109_ReadoutDuration", RoomPressureFinding.readout(dayCols, at: 90, bucketSeconds: 900, label: "08:30") == "08:30 · Elevated for 15 min")
-        check("DMR-C110_ReadoutGap", RoomPressureFinding.readout(dayCols, at: 10, bucketSeconds: 900, label: "Wed 15:30") == "Wed 15:30 · Room wasn't running")
-        check("DMR-C111_NoPercentageAnywhere", !sentence.contains("%") && RoomPressureLevel.allCases.map(\.pocketFill) == [0, 0.5, 1])
+        check("DMR-C111_ThreePocketLevels", RoomPressureLevel.allCases.map(\.pocketFill) == [0, 0.5, 1])
         let samples = (0..<3).map { (at: now.addingTimeInterval(Double(-$0) * 20), bytes: Int64(15 + $0) * gb) }
         check("DMR-C112_AverageNamesRealWindow", RoomMemoryInUse.average(samples, now: now)?.caption == "last 1 min"
               && RoomMemoryInUse.average(samples, now: now)?.bytes == 16 * gb)

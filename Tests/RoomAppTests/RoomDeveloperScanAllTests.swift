@@ -4,7 +4,7 @@ import Testing
 @testable import RoomApp
 @testable import RoomCore
 
-@Suite("Developer: one scan fills every section") @MainActor
+@Suite("Developer: one scan reads everything") @MainActor
 struct RoomDeveloperScanAllTests {
     @Test("One scan from any section reads every section that has a folder")
     func oneScanReadsEverySection() async throws {
@@ -16,7 +16,6 @@ struct RoomDeveloperScanAllTests {
             return ScanAllFixture.report()
         }
         for role in [RoomDeveloperFolderRole.project, .android, .gradle, .codex] { model.attach(role: role, to: fixture.folderID) }
-        model.section = .aiTools
 
         model.scan()
         try await wait { !model.isScanning }
@@ -41,11 +40,7 @@ struct RoomDeveloperScanAllTests {
         #expect(!model.canScan)
         #expect(!model.hasScannableFolders)
         model.attach(role: .codex, to: fixture.folderID)
-        for section in RoomDeveloperSection.allCases {
-            model.section = section
-            #expect(model.canScan)
-        }
-        model.section = .rooms
+        #expect(model.canScan)
 
         model.scan()
         try await wait { !model.isScanning }
@@ -168,17 +163,6 @@ struct RoomDeveloperScanAllTests {
         #expect(!model.isScanning)
         #expect(model.scanParts.isEmpty)
         await gate.open()
-    }
-
-    @Test("Rooms has nothing to scan when the only folder is Simulator Devices")
-    func simulatorsDoNotFeedRooms() throws {
-        let fixture = try ScanAllFixture()
-        defer { fixture.remove() }
-        let model = fixture.model { _, _ in ScanAllFixture.report() }
-        model.attach(role: .simulators, to: fixture.folderID)
-        #expect(!model.hasFoldersForSection)
-        model.section = .devices
-        #expect(model.hasFoldersForSection)
     }
 
     private func showsDeveloperScan(_ center: RoomActivityCenter) -> Bool {

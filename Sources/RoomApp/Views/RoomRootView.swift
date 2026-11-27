@@ -20,9 +20,9 @@ struct RoomRootView: View {
     @Environment(\.roomMotion) private var motion
     #if DEBUG
     @State private var developer = RoomDeveloperModel.debugFixture()
-        ?? RoomDeveloperModel(unreferencedStore: .init(writer: .shared), activityCenter: .shared)
+        ?? RoomDeveloperModel(unreferencedStore: .init(writer: .shared), activityCenter: .shared, discovery: .standard)
     #else
-    @State private var developer = RoomDeveloperModel(unreferencedStore: .init(writer: .shared), activityCenter: .shared)
+    @State private var developer = RoomDeveloperModel(unreferencedStore: .init(writer: .shared), activityCenter: .shared, discovery: .standard)
     #endif
     @State private var sheet: RoomSheet?
     @State private var showingCustomise = false
@@ -61,7 +61,7 @@ struct RoomRootView: View {
     @State private var scanEverything = RoomScanEverything()
 
     private var commandItems: [RoomCommandBar.Item] {
-        RoomCommandBar.items(values: dockValues, developerRooms: RoomDeveloperSection.allCases.map(\.rawValue))
+        RoomCommandBar.items(values: dockValues)
     }
 
     /// Every receipt: cache moves and, in Direct, folders moved from the Disk Map.
@@ -100,6 +100,7 @@ struct RoomRootView: View {
 
     private var dockValues: RoomPlaceValue.Input {
         RoomPlaceValue.Input(freeBytes: insights.volumeCapacity?.freeBytes,
+                               capacityBytes: insights.volumeCapacity?.capacityBytes,
                                mappedBytes: insights.diskMap.current?.tree.allocatedBytes,
                                cachesChecked: model.hasReport && !model.isScanning,
                                cachesReclaimableBytes: model.clearableBytes,
@@ -108,13 +109,13 @@ struct RoomRootView: View {
                                receipts: allActivity.count)
     }
 
-    /// The Developer row shows the figure the Developer screen's headline shows for the room it opens on.
+    /// The Developer row shows the figure the Developer screen's headline shows.
     private var developerHeadlineBytes: Int64 {
         #if ROOM_APP_STORE
-        developer.headlineBytes(for: developer.section)
+        developer.headline.total
         #else
-        developer.headlineBytes(for: developer.section,
-                                worktreesBytes: agentWork.report?.items.reduce(Int64(0)) { $0 + $1.allocatedBytes } ?? 0)
+        RoomDeveloperPresentation.sum([developer.headline.total,
+            agentWork.report?.items.reduce(Int64(0)) { $0 + $1.allocatedBytes } ?? 0])
         #endif
     }
 
@@ -177,7 +178,7 @@ struct RoomRootView: View {
         RoomShellView(navigation: navigation, insights: insights, dockValues: dockValues,
                       activity: rowActivity.rows, stopPlace: stopPlace,
                       openGoTo: { openGoTo(keyboard: $0) }) {
-            RoomScreenScaffold(title: screenActions.title, subtitle: screenSubtitle,
+            RoomScreenScaffold(title: screenActions.title, subtitle: nil,
                                scrolls: !Self.framedDestinations.contains(destination), chip: AnyView(topBar)) {
                 screenContent
                     .environment(\.roomEnter, RoomEnterContext(animated: navigation.selectionOrigin == .pointer,
@@ -232,7 +233,6 @@ struct RoomRootView: View {
                     .modifier(RoomAccentRoot())
                     .preferredColorScheme(colorScheme)
             case .protectedSources: RoomWhatStaysSheet(model: model)
-            case .scanIssues: RoomScanIssuesSheet(issues: model.scanIssues)
             #if ROOM_APP_STORE
             case .restore(let record): RoomStoreRestoreSheet(model: model, record: record)
             #endif
@@ -372,15 +372,6 @@ struct RoomRootView: View {
         return String(localized: "menu.disk.compareDate", defaultValue: "Compare with \(day)")
     }
 
-    private var screenSubtitle: String? {
-        switch destination {
-        case .overview: nil
-        case .disk: nil
-        case .developer: developer.section.rawValue   // the mockup's crumb: Developer › Rooms
-        case .clean, .memory, .history, .settings: nil
-        }
-    }
-
     private func openPinnedRoom(_ id: UUID) {
         guard insights.canChooseDiskLocation else { return }
         guard rooms.url(for: id) != nil else {
@@ -399,8 +390,8 @@ struct RoomRootView: View {
                                developerBytes: developer.headline.total, makeRoom: startMakeRoom, scan: scanEverything)
         case .clean:
             RoomCachesView(model: model, review: { openReview(.caches) },
-                inspect: { sheet = .source($0) }, showKept: { sheet = .protectedSources },
-                showScanNotes: { sheet = .scanIssues }, restore: restoreFromCaches,
+                inspect: { sheet = .source($0) }, showHidden: { sheet = .protectedSources },
+                restore: restoreFromCaches,
                 agentWorktreeBytes: heavyAgentWorktreeBytes, reviewWorktrees: reviewAgentWorktrees)
                 .roomPanelArrival(enabled: navigation.selectionOrigin == .pointer, from: RoomTokens.Space.tight)
         case .memory:
@@ -448,7 +439,7 @@ struct RoomRootView: View {
         nil
         #else
         {
-            developer.section = .worktrees
+            developer.showingWorktrees = true
             navigation.select(.screen(.developer), origin: .controlActivation)
         }
         #endif
@@ -573,9 +564,6 @@ struct RoomRootView: View {
         }
         switch item.target {
         case .place(let place): go(place)
-        case .developerRoom(let name):
-            go(.developer)
-            if let section = RoomDeveloperSection(rawValue: name) { developer.section = section }
         case .action(.checkCaches):
             go(.clean)
             if model.canScan, !model.isScanning { model.scan() }
@@ -685,7 +673,7 @@ private struct RoomMapCleanupContext {
 }
 
 private enum RoomSheet: Identifiable {
-    case review, source(RoomSource), welcome, protectedSources, scanIssues
+    case review, source(RoomSource), welcome, protectedSources
     case mapCleanup(RoomMapCleanupContext)
     #if ROOM_APP_STORE
     case restore(RoomActivity)
@@ -697,7 +685,6 @@ private enum RoomSheet: Identifiable {
         case .source(let source): "source-\(source.id)"
         case .welcome: "welcome"
         case .protectedSources: "protected"
-        case .scanIssues: "issues"
         #if ROOM_APP_STORE
         case .restore(let record): "restore-\(record.id)"
         #endif

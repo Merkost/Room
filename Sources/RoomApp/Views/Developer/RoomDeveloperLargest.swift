@@ -1,7 +1,7 @@
 import RoomCore
-import SwiftUI
+import Foundation
 
-/// One row of a Developer room's evidence: the largest things in it (mockup `DEV`).
+/// One row of a Developer section: the largest things in it.
 nonisolated struct RoomDeveloperLargestRow: Identifiable, Equatable, Sendable {
     let id: String
     let name: String
@@ -12,10 +12,8 @@ nonisolated struct RoomDeveloperLargestRow: Identifiable, Equatable, Sendable {
     var glyph: RoomGlyph = .folder
 }
 
-/// The rows each Developer room leads with, largest first (FEATURES: "Largest items with dots").
+/// The rows each Developer section leads with, largest first.
 enum RoomDeveloperLargest {
-    static let limit = 5
-
     static func projects(_ summary: RoomDevSummary?) -> [RoomDeveloperLargestRow] {
         guard let summary else { return [] }
         return summary.rows.filter { $0.totalBytes > 0 }.sorted { $0.totalBytes > $1.totalBytes }.map { row in
@@ -24,17 +22,6 @@ enum RoomDeveloperLargest {
             return RoomDeveloperLargestRow(id: row.project.root, name: row.project.name, meta: meta, bytes: row.totalBytes,
                                            path: row.project.root, project: true, glyph: .term)
         }
-    }
-
-    static func toolchains(_ report: DeveloperResourcesReport?) -> [RoomDeveloperLargestRow] {
-        guard let report else { return [] }
-        let groups = Dictionary(grouping: report.toolchains, by: \.kind)
-        return groups.map { kind, items in
-            let count = Set(items.map(\.version)).count
-            return RoomDeveloperLargestRow(id: kind.rawValue, name: kind.title,
-                                           meta: count == 1 ? "1 version" : "\(count) versions",
-                                           bytes: items.reduce(0) { $0 + $1.bytes }, path: nil, glyph: .layers)
-        }.sorted { $0.bytes > $1.bytes }
     }
 
     static func devices(_ report: DeveloperResourcesReport?) -> [RoomDeveloperLargestRow] {
@@ -98,30 +85,5 @@ enum RoomDeveloperLargest {
         let parts = last.split(separator: "-")
         guard let os = parts.first else { return identifier }
         return "\(os) \(parts.dropFirst().joined(separator: "."))"
-    }
-}
-
-/// The room's largest things as evidence rows, with a designed empty line when the room has nothing yet.
-struct RoomDeveloperLargestList: View {
-    let rows: [RoomDeveloperLargestRow]
-    let empty: String
-    @Environment(\.roomMotion) private var motion
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            if rows.isEmpty {
-                RoomEmptyLine(glyph: .developer, text: empty)
-            } else {
-                ForEach(Array(rows.prefix(RoomDeveloperLargest.limit).enumerated()), id: \.element.id) { index, row in
-                    RoomEvidenceRow(name: row.name, meta: row.meta, bytes: row.bytes) {
-                        RoomThingIcon(path: row.path, name: row.name, fallback: row.glyph, project: row.project)
-                    }
-                    .padding(.horizontal, RoomTokens.Space.row)
-                    .roomRowHover()
-                    .padding(.horizontal, -RoomTokens.Space.row)
-                    .roomEnter(2 + index)
-                }
-            }
-        }
     }
 }
