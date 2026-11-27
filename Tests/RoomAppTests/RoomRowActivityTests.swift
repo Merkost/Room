@@ -79,7 +79,7 @@ struct RoomRowActivityTests {
     }
 
     @Test func trackerSettlesOnItsTimer() async throws {
-        let tracker = RoomSidebarActivity(settleDelay: .milliseconds(20))
+        let tracker = RoomPlaceActivity(settleDelay: .milliseconds(20))
         tracker.update([.clean: working(1, of: 2)], open: .overview)
         tracker.update([.clean: .idle.with(done: "Found 2 GB")], open: .overview)
         #expect(tracker.row(.clean).phase == .finished)

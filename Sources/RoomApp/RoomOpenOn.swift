@@ -26,7 +26,6 @@ extension RoomSelectionOrigin {
 @Observable @MainActor
 final class RoomWindowNavigation {
     private(set) var history: RoomNavigationHistory
-    private(set) var prefersSidebarIcons: Bool
     private(set) var selectionOrigin = RoomSelectionOrigin.programmatic
     /// When the place last changed, for the content arrival (`RoomEnterContext`).
     private(set) var changedAt = Date.distantPast
@@ -43,7 +42,6 @@ final class RoomWindowNavigation {
             preference: defaults.string(forKey: "RoomOpenOn") ?? RoomOpenOn.last.rawValue,
             last: defaults.string(forKey: "RoomLastDestination"))
         history = RoomNavigationHistory(current: .screen(destination))
-        prefersSidebarIcons = defaults.bool(forKey: "RoomSidebarIconsOnly")
         needsWelcome = RoomOnboardingFlow.shouldShow(storedVersion: defaults.integer(forKey: "RoomOnboardingVersion"))
     }
 
@@ -61,15 +59,6 @@ final class RoomWindowNavigation {
 
     func removeRoute(_ route: RoomRoute) {
         change(.programmatic) { history.remove(route, fallback: .screen(.disk)) }
-    }
-
-    /// Whether the last fold came from the keyboard (⌃⌘S): keyboard actions never animate.
-    private(set) var sidebarFoldByKeyboard = false
-
-    func toggleSidebarLabels() {
-        sidebarFoldByKeyboard = RoomSelectionOrigin.controlActivation == .keyboard
-        prefersSidebarIcons.toggle()
-        defaults.set(prefersSidebarIcons, forKey: "RoomSidebarIconsOnly")
     }
 
     func transaction(for origin: RoomSelectionOrigin) -> Transaction {

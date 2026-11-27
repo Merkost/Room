@@ -80,15 +80,14 @@ struct RoomSettingsScreen: View {
                         .toggleStyle(RoomSwitchStyle()).labelsHidden()
                         .disabled(reduceMotion)
                 }
-                Button("More settings…", action: openAllSettings)
-                    .roomLink(accent)
-                    .font(RoomTokens.Typography.bodyStrong)
-                    .padding(.top, RoomTokens.Space.group)
-                    .accessibilityHint("Opens the Settings window: menu bar, folder access and About")
             }
+            .frame(maxWidth: RoomTokens.Space.measure, alignment: .leading)
         } action: {
             EmptyView()
         }
+        .roomDock(RoomDockAction(title: "All settings…", symbol: "gearshape", filled: false,
+                                 hint: "Opens the Settings window: menu bar, folder access and About",
+                                 identifier: "RoomAllSettings", perform: openAllSettings))
     }
 
     static let goalChoices: [Int64] = [20, 30, 40, 50, 75, 100]

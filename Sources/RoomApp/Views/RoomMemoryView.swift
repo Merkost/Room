@@ -36,35 +36,25 @@ struct RoomMemoryView: View {
                         note: "Sampled once a second while this is open", scrollsEvidence: true) {
             VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
                 RoomMemoryCurve(samples: insights.memorySamples.values)
-                    .frame(minHeight: RoomTokens.Memory2.curveHeight, maxHeight: RoomTokens.Memory2.curveHeight * 1.6)
-                    .layoutPriority(1)
+                    .frame(height: RoomTokens.Memory2.curveHeight)
                 if let report = insights.memoryReport {
                     RoomMemoryFigures(report: report)
-                    VStack(alignment: .leading, spacing: 2) {
-                        ForEach(Array(report.processes.sorted { $0.residentBytes > $1.residentBytes }.prefix(3))) { process in
-                            RoomEvidenceRow(name: process.name, bytes: process.residentBytes,
-                                            value: RoomFormat.memory(process.residentBytes)) {
-                                RoomProcessIcon(pid: process.id, name: process.name)
-                            }
-                        }
-                    }
+                    // Suggestions come before any long list of processes (DESIGN.md).
+                    if !report.recommendations.isEmpty { recommendations(report) }
+                    #if ROOM_APP_STORE
+                    storeMeasuredProcesses(report)
+                    #else
+                    applicationsSection
+                    if !memoryActions.results.isEmpty { quitResults }
+                    #endif
                 }
                 DisclosureGroup("More detail", isExpanded: $showingDetail) {
                     VStack(alignment: .leading, spacing: RoomTokens.Space.breath1) {
                         Text(finding).font(RoomTokens.Typography.body).foregroundStyle(RoomTokens.Ink.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                         RoomPressureTimeline(series: series, now: now, level: level, finding: finding, range: $range)
-                        #if ROOM_APP_STORE
-                        if let report = insights.memoryReport {
-                            if !report.recommendations.isEmpty { recommendations(report) }
-                            storeMeasuredProcesses(report)
-                        }
-                        #else
-                        if let report = insights.memoryReport, !report.recommendations.isEmpty { recommendations(report) }
-                        if let report = insights.memoryReport {
-                            applicationsSection(report)
-                            if !memoryActions.results.isEmpty { quitResults }
-                        }
+                        #if !ROOM_APP_STORE
+                        if let report = insights.memoryReport { otherProcesses(report) }
                         #endif
                         if let report = insights.memoryReport {
                             HStack(alignment: .top, spacing: 20) {
@@ -94,6 +84,7 @@ struct RoomMemoryView: View {
         } action: {
             EmptyView()
         }
+        .roomDock(dockMain)
         .animation(animation, value: memoryActions.selectedCount)
         .task {
             memoryActions.refresh(from: insights.memoryReport)
@@ -123,6 +114,21 @@ struct RoomMemoryView: View {
         #endif
     }
 
+    private var dockMain: RoomDockAction {
+        #if !ROOM_APP_STORE
+        let count = memoryActions.selectedCount
+        if count > 0 {
+            return RoomDockAction(title: "Quit \(count) \(count == 1 ? "app" : "apps")…", enabled: !memoryActions.isApplying,
+                                  hint: "Opens a review. Nothing is forced to close",
+                                  identifier: "RoomMemoryQuit", stamp: memoryActions.selection.sorted().map(String.init).joined(separator: ",")) {
+                quitReview = memoryActions.review()
+            }
+        }
+        #endif
+        return RoomDockAction(title: "Refresh", symbol: "arrow.clockwise", filled: false, enabled: !insights.isScanningMemory,
+                              identifier: "RoomMemoryRefresh", perform: insights.scanMemory)
+    }
+
     private func updateMonitoring(in window: NSWindow? = nil) {
         let primary = window ?? NSApp?.windows.first { $0.identifier == RoomApplicationDelegate.primaryWindowID }
         let visible = primary?.occlusionState.contains(.visible) ?? true
@@ -132,50 +138,46 @@ struct RoomMemoryView: View {
     #if ROOM_APP_STORE
     @ViewBuilder private func storeMeasuredProcesses(_ report: MemoryReport) -> some View {
         if !report.processes.isEmpty {
-            DisclosureGroup("Apps using the most") {
-                VStack(spacing: 12) {
-                    ForEach(Array(report.processes.prefix(8))) { process in
-                        HStack(spacing: 16) {
-                            Text(process.name).lineLimit(1)
-                            Spacer(minLength: 12)
-                            Text(RoomFormat.memory(process.residentBytes)).monospacedDigit()
-                                .foregroundStyle(.secondary)
-                        }
-                        .font(RoomTokens.Typography.body)
+            VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
+                Text("Apps using the most").font(RoomTokens.Typography.section).accessibilityHeading(.h2)
+                ForEach(Array(report.processes.prefix(8))) { process in
+                    HStack(spacing: 16) {
+                        Text(process.name).lineLimit(1)
+                        Spacer(minLength: 12)
+                        Text(RoomFormat.memory(process.residentBytes)).monospacedDigit()
+                            .foregroundStyle(.secondary)
                     }
-                    Text("Resident memory can include shared pages. These values are not added as a system total.")
-                        .font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    .font(RoomTokens.Typography.body)
                 }
-                .padding(.top, 12)
+                Text("Resident memory can include shared pages. These values are not added as a system total.")
+                    .font(RoomTokens.Typography.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .font(RoomTokens.Typography.body)
         }
     }
     #endif
 
     private func recommendations(_ report: MemoryReport) -> some View {
-        DisclosureGroup("Suggestions (\(report.recommendations.count))") {
-            VStack(alignment: .leading, spacing: 16) {
-                ForEach(report.recommendations) { recommendation in
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(recommendation.title).font(RoomTokens.Typography.bodyStrong)
-                        Text(recommendation.detail)
-                            .font(RoomTokens.Typography.body).foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+        VStack(alignment: .leading, spacing: RoomTokens.Space.row) {
+            ForEach(report.recommendations) { recommendation in
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(recommendation.title).font(RoomTokens.Typography.bodyStrong)
+                        .foregroundStyle(RoomTokens.Ink.graphite)
+                    Text(recommendation.detail)
+                        .font(RoomTokens.Typography.body).foregroundStyle(RoomTokens.Ink.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            .padding(.top, 12)
         }
-        .font(RoomTokens.Typography.body)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Suggestions")
     }
 
     #if !ROOM_APP_STORE
-    private func applicationsSection(_ report: MemoryReport) -> some View {
+    private var applicationsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Apps using the most").font(RoomTokens.Typography.title)
+                Text("Apps using the most").font(RoomTokens.Typography.section)
                 Spacer()
                 Button("Activity Monitor") { insights.openActivityMonitor() }
                     .buttonStyle(.plain).foregroundStyle(.secondary)
@@ -198,50 +200,45 @@ struct RoomMemoryView: View {
                     }
                     .buttonStyle(.plain).font(RoomTokens.Typography.body).foregroundStyle(.secondary)
                 }
-                HStack(spacing: 12) {
-                    if memoryActions.selectedCount > 0 {
+                if memoryActions.selectedCount > 0 {
+                    HStack(spacing: 12) {
                         Text("\(memoryActions.selectedCount) selected").font(RoomTokens.Typography.body).foregroundStyle(.secondary)
                         Button("Clear") { memoryActions.clearSelection() }
                             .buttonStyle(.plain).font(RoomTokens.Typography.body).foregroundStyle(.secondary)
                     }
-                    Spacer()
-                    Button("Quit apps…") {
-                        quitReview = memoryActions.review()
-                    }
-                    .roomSecondary(.regular)
-                    .disabled(memoryActions.selectedCount == 0 || memoryActions.isApplying)
                 }
-                .padding(.top, 5)
-            }
-            let selectablePIDs = Set(memoryActions.applications.map(\.id))
-            let other = report.processes.filter { !selectablePIDs.contains($0.id) }
-            if !other.isEmpty {
-                DisclosureGroup("Other measured processes") {
-                    VStack(spacing: 3) {
-                        ForEach(Array(other.prefix(6))) { process in
-                            Button { insights.openActivityMonitor() } label: {
-                                HStack(spacing: 12) {
-                                    Text(process.name).lineLimit(1)
-                                    Spacer()
-                                    Text(RoomFormat.memory(process.residentBytes)).monospacedDigit().foregroundStyle(.secondary)
-                                    Image(systemName: "arrow.up.right").foregroundStyle(.tertiary)
-                                }
-                                .font(RoomTokens.Typography.body).padding(.vertical, 7)
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Inspect \(process.name) in Activity Monitor")
-                        }
-                    }
-                    .padding(.horizontal, 5).padding(.top, 5)
-                }
-                .font(RoomTokens.Typography.body).foregroundStyle(.secondary)
-                .padding(.top, 8)
             }
             if let message = memoryActions.statusMessage {
                 Text(message).font(RoomTokens.Typography.body).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+        }
+    }
+
+    @ViewBuilder private func otherProcesses(_ report: MemoryReport) -> some View {
+        let selectable = Set(memoryActions.applications.map(\.id))
+        let other = report.processes.filter { !selectable.contains($0.id) }
+        if !other.isEmpty {
+            DisclosureGroup("Other measured processes") {
+                VStack(spacing: 3) {
+                    ForEach(Array(other.prefix(6))) { process in
+                        Button { insights.openActivityMonitor() } label: {
+                            HStack(spacing: 12) {
+                                Text(process.name).lineLimit(1)
+                                Spacer()
+                                Text(RoomFormat.memory(process.residentBytes)).monospacedDigit().foregroundStyle(.secondary)
+                                Image(systemName: "arrow.up.right").foregroundStyle(.tertiary)
+                            }
+                            .font(RoomTokens.Typography.body).padding(.vertical, 7)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Inspect \(process.name) in Activity Monitor")
+                    }
+                }
+                .padding(.horizontal, 5).padding(.top, 5)
+            }
+            .font(RoomTokens.Typography.body).foregroundStyle(.secondary)
         }
     }
 

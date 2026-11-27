@@ -77,6 +77,31 @@ extension RoomTokens {
         static let shadowY: CGFloat = 2
     }
 
+    /// The floating dock and the top bar's icons.
+    enum Dock {
+        static let margin: CGFloat = 12
+        static let padding: CGFloat = 7
+        static let radius: CGFloat = 24
+        static let itemWidth: CGFloat = 82
+        static let itemHeight: CGFloat = 64
+        static let itemRadius: CGFloat = 17
+        static let itemGap: CGFloat = 2
+        static let dividerHeight: CGFloat = 36
+        static let figureHeight: CGFloat = 15
+        static let hoverLift: CGFloat = 3
+        static let sideSize: CGFloat = 36
+        static let mainWidth: CGFloat = 196
+        /// The label's width inside the filled capsule's padding.
+        static let mainLabelWidth: CGFloat = 156
+        static let barIcon: CGFloat = 28
+        static let title = Font.system(size: 11.5, weight: .medium)
+        static let titleSelected = Font.system(size: 11.5, weight: .semibold)
+        /// What screens leave free at the bottom so nothing hides behind the dock.
+        static let reserve: CGFloat = margin + padding * 2 + itemHeight + 6
+        /// Clears the window's close, minimise and zoom buttons in the top bar.
+        static let trafficLights: CGFloat = 78
+    }
+
     /// The screen hierarchy: one serif headline (number first), one supporting line, the evidence, a quiet note and
     /// at most one filled button.
     enum Screen2 {
@@ -107,7 +132,8 @@ extension RoomTokens {
         static let factValue = Font.system(size: 13.5, weight: .medium)
         static let figure = Font.custom(RoomDS.displayFamilyName, fixedSize: 22).weight(.medium)
         static let planHeight: CGFloat = 226
-        static let planMaxHeight: CGFloat = 340
+        /// The shortest the Disk Map may get when notices and chips share a small window with it.
+        static let mapMinHeight: CGFloat = 140
         static let planGap: CGFloat = 6
         static let planRadius: CGFloat = 14
         static let planPad: CGFloat = 12
@@ -118,7 +144,7 @@ extension RoomTokens {
         static let planFreeBoost: Double = 26
         static let mapTileRadius: CGFloat = 12
         static let toastHeight: CGFloat = 40
-        static let toastBottom: CGFloat = 88
+        static let toastBottom: CGFloat = Dock.reserve + 6
         static let toastHold: Duration = .seconds(6)
         static let sheetWidth: CGFloat = 420
         static let sheetRadius: CGFloat = 22
@@ -141,7 +167,7 @@ extension RoomTokens {
         // The pane (mockup `.pane`): bar, then the headline 34 below it
         static let switchWidth: CGFloat = 36
         static let switchHeight: CGFloat = 22
-        static let paneTop: CGFloat = 14
+        static let paneTop: CGFloat = 9
         static let paneLeading: CGFloat = 30
         static let paneTrailing: CGFloat = 44
         static let paneBottom: CGFloat = 36

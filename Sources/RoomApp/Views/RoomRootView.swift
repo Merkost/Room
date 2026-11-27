@@ -48,9 +48,7 @@ struct RoomRootView: View {
     private var destination: RoomDestination { navigation.destination }
     /// Screens drawn with `RoomScreenFrame` (headline, evidence, footer) manage their own scrolling.
     static let framedDestinations: Set<RoomDestination> = [.overview, .clean, .memory, .developer, .disk, .history, .settings]
-    /// Memory's sidebar sparkline only takes new samples while Memory is open, so the column never moves at idle.
-    @State private var sidebarMemory: [Int64] = []
-    @State private var rowActivity = RoomSidebarActivity()
+    @State private var rowActivity = RoomPlaceActivity()
     /// Make room: the bytes the review chose (for "Moving 7 of 22 GB") and the toast after it lands.
     @State private var makeRoomTotal: Int64 = 0
     @State private var madeToast: RoomMadeToastState?
@@ -63,7 +61,7 @@ struct RoomRootView: View {
     @State private var scanEverything = RoomScanEverything()
 
     private var commandItems: [RoomCommandBar.Item] {
-        RoomCommandBar.items(values: sidebarValues, developerRooms: RoomDeveloperSection.allCases.map(\.rawValue))
+        RoomCommandBar.items(values: dockValues, developerRooms: RoomDeveloperSection.allCases.map(\.rawValue))
     }
 
     /// Every receipt: cache moves and, in Direct, folders moved from the Disk Map.
@@ -100,13 +98,13 @@ struct RoomRootView: View {
         rowActivity.stop(place)
     }
 
-    private var sidebarValues: RoomSidebarValue.Input {
-        RoomSidebarValue.Input(freeBytes: insights.volumeCapacity?.freeBytes,
-                               mappedFolders: insights.diskMap.current?.tree.children.count,
+    private var dockValues: RoomPlaceValue.Input {
+        RoomPlaceValue.Input(freeBytes: insights.volumeCapacity?.freeBytes,
+                               mappedBytes: insights.diskMap.current?.tree.allocatedBytes,
                                cachesChecked: model.hasReport && !model.isScanning,
                                cachesReclaimableBytes: model.clearableBytes,
                                developerBytes: developerHeadlineBytes,
-                               memorySamples: sidebarMemory,
+                               memoryUsedBytes: insights.memoryReport?.usedBytes,
                                receipts: allActivity.count)
     }
 
@@ -176,16 +174,19 @@ struct RoomRootView: View {
     }
 
     var body: some View {
-        RoomShellView(navigation: navigation, rooms: rooms, insights: insights, selectRoom: openPinnedRoom,
-                      savedViews: savedViews, selectSavedView: openSavedView,
-                      sidebarValues: sidebarValues, couldGoBytes: couldGoBytes,
-                      rowActivity: rowActivity.rows, stopPlace: stopPlace,
+        RoomShellView(navigation: navigation, insights: insights, dockValues: dockValues,
+                      activity: rowActivity.rows, stopPlace: stopPlace,
                       openGoTo: { openGoTo(keyboard: $0) }) {
             RoomScreenScaffold(title: screenActions.title, subtitle: screenSubtitle,
-                               scrolls: !Self.framedDestinations.contains(destination), chip: AnyView(statusChip)) {
+                               scrolls: !Self.framedDestinations.contains(destination), chip: AnyView(topBar)) {
                 screenContent
                     .environment(\.roomEnter, RoomEnterContext(animated: navigation.selectionOrigin == .pointer,
                                                                 at: navigation.changedAt))
+            }
+            .overlay {
+                if let madeToast, !madeToast.restored {
+                    RoomReceiptDots().id(madeToast.receiptID)
+                }
             }
             .overlay(alignment: .bottom) {
                 if let madeToast {
@@ -310,6 +311,15 @@ struct RoomRootView: View {
         }
     }
 
+    private var topBar: some View {
+        HStack(spacing: RoomTokens.Space.row) {
+            statusChip
+            RoomTopBarActions(model: model, destination: destination,
+                              openGoTo: { openGoTo(keyboard: RoomSelectionOrigin.controlActivation == .keyboard) },
+                              show: { navigation.select(.screen($0), origin: RoomSelectionOrigin.controlActivation) })
+        }
+    }
+
     /// The bar's status chip (mockup `.chip`): "Up to date" or "Working", with its activity popover. Customise Overview
     /// (View menu, ⌥⌘C) opens from here now that the toolbar is gone.
     private var statusChip: some View {
@@ -396,15 +406,20 @@ struct RoomRootView: View {
         case .memory:
             RoomMemoryView(insights: insights, memoryActions: memoryActions)
         case .disk:
-            RoomDiskMapView(insights: insights, rooms: rooms, savedViews: savedViews,
-                savedViewDisplay: savedViewDisplay, openSavedView: openSavedView,
-                canInspectCacheSource: { cacheSource(for: $0) != nil },
-                inspectCacheSource: inspectCacheSource, cleanupAction: mapCleanupAction,
-                activateCleanup: activateMapCleanup,
-                folderTrash: RoomFolderTrashModel.isAvailable ? folderTrash : nil,
-                folderMoved: { receipt in
-                    if receipt.canRestore { showToast(RoomMadeToastState(receiptID: receipt.id, bytes: receipt.trashedBytes)) }
-                })
+            // One column: the scaffold would lay two sibling views on top of each other.
+            VStack(spacing: 0) {
+                RoomPinnedChips(navigation: navigation, rooms: rooms, canOpenRooms: insights.canChooseDiskLocation,
+                                openRoom: openPinnedRoom, savedViews: savedViews, openSavedView: openSavedView)
+                RoomDiskMapView(insights: insights, rooms: rooms, savedViews: savedViews,
+                    savedViewDisplay: savedViewDisplay, openSavedView: openSavedView,
+                    canInspectCacheSource: { cacheSource(for: $0) != nil },
+                    inspectCacheSource: inspectCacheSource, cleanupAction: mapCleanupAction,
+                    activateCleanup: activateMapCleanup,
+                    folderTrash: RoomFolderTrashModel.isAvailable ? folderTrash : nil,
+                    folderMoved: { receipt in
+                        if receipt.canRestore { showToast(RoomMadeToastState(receiptID: receipt.id, bytes: receipt.trashedBytes)) }
+                    })
+            }
         case .developer:
             #if ROOM_APP_STORE
             RoomDeveloperView(model: developer)
@@ -505,9 +520,6 @@ struct RoomRootView: View {
             .onChange(of: rowSignals, initial: true) { _, signals in
             rowActivity.update(signals, open: navigation.route.highlightedScreen)
         }
-            .onChange(of: insights.memorySamples.values, initial: true) { _, values in
-            if destination == .memory || sidebarMemory.isEmpty { sidebarMemory = values }
-        }
     }
 
     private func openReview(_ kind: RoomReviewKind) {
@@ -554,7 +566,7 @@ struct RoomRootView: View {
             if keyboard {
                 navigation.select(.screen(place), origin: origin)
             } else {
-                withAnimation(RoomSidebar.selectionAnimation(origin: origin, motion: motion)) {
+                withAnimation(RoomDock.selectionAnimation(origin: origin, motion: motion)) {
                     navigation.select(.screen(place), origin: origin)
                 }
             }

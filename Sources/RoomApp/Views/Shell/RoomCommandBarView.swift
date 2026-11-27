@@ -86,7 +86,7 @@ struct RoomCommandBarView: View {
             RoomGlyphView(glyph: item.glyph).foregroundStyle(highlighted ? accent.text : RoomTokens.Ink.secondary)
             Text(item.title).foregroundStyle(RoomTokens.Ink.graphite).lineLimit(1)
             Spacer(minLength: RoomTokens.Space.row)
-            RoomSidebarValueView(value: item.value)
+            RoomPlaceValueView(value: item.value)
         }
         .padding(.horizontal, RoomTokens.Space.row)
         .frame(height: RoomTokens.Screen2.commandRow)
@@ -100,37 +100,8 @@ struct RoomCommandBarView: View {
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(item.title)
-        .accessibilityValue(RoomSidebar.spokenValue(item.value, hidden: hide.masksNow))
+        .accessibilityValue(RoomDock.spokenValue(item.value, hidden: hide.masksNow))
         .accessibilityAddTraits(highlighted ? [.isButton, .isSelected] : [.isButton])
         .accessibilityAction { run(item, false) }
-    }
-}
-
-/// The sidebar's "Go to ⌘K" field (a button that opens the bar).
-struct RoomGoToField: View {
-    let labelled: Bool
-    let open: () -> Void
-
-    var body: some View {
-        Button(action: open) {
-            HStack(spacing: 8) {
-                RoomGlyphView(glyph: .search, size: 13, weight: 1.6)
-                if labelled {
-                    Text("Go to").font(RoomTokens.Nav.goFont)
-                    Spacer(minLength: 0)
-                    Text(verbatim: "⌘K").font(RoomTokens.Typography.micro)
-                }
-            }
-            .foregroundStyle(RoomTokens.Ink.tertiary)
-            .padding(.horizontal, labelled ? 9 : 0)
-            .frame(maxWidth: .infinity, minHeight: RoomTokens.Nav.goHeight)
-            .background(RoomTokens.Surface.tile, in: RoundedRectangle(cornerRadius: RoomTokens.Nav.goRadius))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(RoomPressStyle())
-        .help("Go to (⌘K)")
-        .accessibilityLabel("Go to")
-        .accessibilityHint("Command K")
-        .accessibilityIdentifier("RoomGoTo")
     }
 }

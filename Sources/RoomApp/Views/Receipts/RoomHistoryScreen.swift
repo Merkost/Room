@@ -73,10 +73,7 @@ struct RoomHistoryScreen: View {
                     }
                 }
                 if presentation.receipts > 0 {
-                    HStack(spacing: RoomTokens.Space.row) {
-                        Text("In Trash until you empty it.").foregroundStyle(RoomTokens.Ink.secondary)
-                        Button("Open Trash", action: model.openTrash).roomLink(accent)
-                    }
+                    Text("In Trash until you empty it.").foregroundStyle(RoomTokens.Ink.secondary)
                     .font(RoomTokens.Typography.body)
                     .padding(.top, RoomTokens.Space.row)
                 }
@@ -84,13 +81,13 @@ struct RoomHistoryScreen: View {
         } action: {
             EmptyView()
         }
+        .roomDock(RoomDockAction(title: "Open Trash", symbol: "trash", filled: false, identifier: "RoomHistoryOpenTrash",
+                                 perform: model.openTrash))
         .task { await model.refreshHistory() }
     }
 
-    /// Mockup `.li .lnk`: Restore waits at the end of the row and shows on hover or keyboard focus (VoiceOver always
-    /// reaches it); a receipt that cannot come back says why in the quiet ink.
+    /// Restore sits at the end of the row; a receipt that cannot come back says why in the quiet ink.
     private func row(_ receipt: RoomActivity) -> some View {
-        RoomHoverReveal { revealed in
             RoomEvidenceRow(name: receipt.title, meta: Self.when(receipt.date), bytes: receipt.bytes, masksName: false) {
                 RoomQuietTile(glyph: receipt.details.first?.source == "diskMap" ? .diskMap : .box)
             } trailing: {
@@ -99,7 +96,6 @@ struct RoomHistoryScreen: View {
                         Button("Restore") { restore(receipt) }
                             .roomLink(accent)
                             .disabled(model.isScanning || model.isWorking)
-                            .opacity(revealed ? 1 : 0)
                             .accessibilityLabel(hide.masksNow ? "Restore receipt" : "Restore \(receipt.title)")
                     } else {
                         Text(receipt.restoredCount > 0 ? "Restored" : "In Trash").foregroundStyle(RoomTokens.Ink.tertiary)
@@ -108,7 +104,6 @@ struct RoomHistoryScreen: View {
                 .font(RoomTokens.Typography.bodyStrong)
                 .frame(minWidth: 64, alignment: .trailing)
             }
-        }
     }
 
     static func when(_ date: Date) -> String {

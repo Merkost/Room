@@ -768,6 +768,15 @@ final class RoomViewModel {
         NSWorkspace.shared.open(trash)
     }
 
+    /// Agent sources first, then by what could go; equal sizes go by name, so rows keep their places between checks.
+    nonisolated static func listsBefore(_ a: (agents: Bool, bytes: Int64, name: String, id: String),
+                                        _ b: (agents: Bool, bytes: Int64, name: String, id: String)) -> Bool {
+        if a.agents != b.agents { return a.agents }
+        if a.bytes != b.bytes { return a.bytes > b.bytes }
+        let names = a.name.localizedStandardCompare(b.name)
+        return names == .orderedSame ? a.id < b.id : names == .orderedAscending
+    }
+
     private func apply(_ result: ScanReport, selectInitially: Bool, allowsCleanup: Bool = true) {
         report = allowsCleanup ? result : nil
         if allowsCleanup { lastScanned = result.scannedAt }
@@ -826,8 +835,8 @@ final class RoomViewModel {
                 cleanupConsequences: cleanupConsequences
             )
         }.filter { $0.entryCount > 0 || $0.isPartial || $0.blockedReason != nil && movedEntryIDs.isEmpty }.sorted {
-            if ($0.category == .agents) != ($1.category == .agents) { return $0.category == .agents }
-            return $0.eligibleBytes > $1.eligibleBytes
+            Self.listsBefore((agents: $0.category == .agents, bytes: $0.eligibleBytes, name: $0.name, id: $0.id),
+                             (agents: $1.category == .agents, bytes: $1.eligibleBytes, name: $1.name, id: $1.id))
         }
         protectedSources = result.protectedData.map {
             RoomProtectedSource(id: $0.id, name: $0.title, path: $0.url.path,

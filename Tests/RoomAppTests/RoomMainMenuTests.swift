@@ -75,7 +75,7 @@ struct RoomMainMenuTests {
         #expect(go.first { $0.title == "Back" }?.key == "[")
         #expect(go.first { $0.title == "Forward" }?.key == "]")
         #expect(go.first { $0.title == "Forward" }?.enabled == false)
-        #expect(view.first { $0.title == "Hide Sidebar Labels" }?.key == "s")
+        #expect(!view.contains { $0.title.contains("Sidebar") })
         let window = try menu("Window")
         #expect(window.contains { $0.title == "Minimize" && $0.key == "m" })
         #expect(!window.contains { $0.title == "Close" && !$0.alternate })

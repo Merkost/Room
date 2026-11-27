@@ -27,6 +27,38 @@ nonisolated enum RoomCachesReadyCopy {
     }
 }
 
+/// What the dock offers on Caches: stop, check (or choose the folder to check), or review with a second way to check.
+nonisolated struct RoomCachesDock: Equatable, Sendable {
+    enum Step: Equatable, Sendable { case stop, check, chooseFolder, review(bytes: Int64), none }
+    let main: Step
+    var checkAgain = false
+
+    struct Input: Equatable, Sendable {
+        var scanning = false
+        var needsFolder = false
+        /// A finished check could read none of the approved folders.
+        var unreadableFolders = false
+        var hasReport = false
+        var partial = false
+        var afterRestore = false
+        /// nil when the hero offers no review.
+        var reviewBytes: Int64?
+        var movedWithNothingLeft = false
+    }
+
+    static func make(_ input: Input) -> RoomCachesDock {
+        if input.scanning { return RoomCachesDock(main: .stop) }
+        if input.unreadableFolders { return RoomCachesDock(main: .chooseFolder) }
+        let start: Step = input.needsFolder ? .chooseFolder : .check
+        if !input.hasReport, !input.partial { return RoomCachesDock(main: start) }
+        if input.afterRestore || input.partial { return RoomCachesDock(main: start) }
+        if let bytes = input.reviewBytes, !(input.movedWithNothingLeft && bytes == 0) {
+            return RoomCachesDock(main: .review(bytes: bytes), checkAgain: !input.needsFolder)
+        }
+        return RoomCachesDock(main: start)
+    }
+}
+
 struct RoomCachesView: View {
     @Environment(\.roomHide) private var hide
     private var hidden: Bool { hide.masksNow }
@@ -107,9 +139,6 @@ struct RoomCachesView: View {
                         .opacity(model.isAfterRestore ? 0.6 : 1)
                     if allClear { startingPlaces(checked: true) }
                 } else {
-                    startAction(hero: true)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, RoomTokens.Space.group)
                     startingPlaces(checked: false)
                     lastReceipt
                 }
@@ -130,17 +159,9 @@ struct RoomCachesView: View {
                 }
             }
         } action: {
-            HStack(spacing: RoomTokens.Space.group) {
-                if model.isScanning {
-                    Button("Stop", action: model.cancelScan).roomQuiet(large: true)
-                } else if model.hasReport, !needsFolderApproval {
-                    Button("Check again", action: model.scan).roomQuiet(large: true)
-                        .disabled(!model.canScan)
-                }
-                // Before the first check the button stands in the middle of the page, not here.
-                if !model.isScanning, model.hasReport || model.isPartialScan { primary(hero) }
-            }
+            EmptyView()
         }
+        .roomDock(dockMain, side: dockSide)
         .foregroundStyle(RoomTokens.Ink.graphite)
         .task(id: undo) {
             guard undo != nil else { return }
@@ -180,54 +201,51 @@ struct RoomCachesView: View {
         }
     }
 
-    @ViewBuilder
-    private func primary(_ hero: RoomCachesHero) -> some View {
-        if model.isAfterRestore || model.isPartialScan {
-            startAction(hero: false)
-        } else {
-            switch hero.primary {
-            case .check, .checkAgain:
-                checkButton(hero: false)
-            case .chooseFolderAndCheck:
-                chooseFolderButton(hero: false)
-            case .review(let bytes):
-                if model.movedReceipt == nil || bytes > 0 {
-                    Button(bytes > 0 ? "Review \(format(bytes))" : "Review", action: review)
-                    .roomScreenPrimary(accent).disabled(!model.canReviewCleanup) // one-filled: exclusive with Check (hero.primary switch)
-                    .help(hero.disabledReason ?? "Review the selected caches.")
-                }
-            case .none: EmptyView()
-            }
+    private var dock: RoomCachesDock {
+        var reviewBytes: Int64?
+        if case .review(let bytes) = hero.primary { reviewBytes = bytes }
+        return .make(.init(scanning: model.isScanning, needsFolder: needsFolderApproval,
+                           unreadableFolders: hero.primary == .chooseFolderAndCheck, hasReport: model.hasReport,
+                           partial: model.isPartialScan, afterRestore: model.isAfterRestore, reviewBytes: reviewBytes,
+                           movedWithNothingLeft: model.movedReceipt != nil))
+    }
+
+    private var dockMain: RoomDockAction? {
+        switch dock.main {
+        case .stop:
+            return RoomDockAction(title: "Stop", filled: false, identifier: "RoomCachesCheck", perform: model.cancelScan)
+        case .check:
+            let again = model.hasReport && !model.isPartialScan
+            return RoomDockAction(title: again ? "Check again" : String(localized: "caches.action.check",
+                                  defaultValue: "Check caches", table: "Caches", bundle: RoomCopy.bundle),
+                                  symbol: "magnifyingglass", filled: !(again && hero.primary == .none),
+                                  enabled: model.canScan, identifier: "RoomCachesCheck", perform: model.scan)
+        case .chooseFolder:
+            return RoomDockAction(title: String(localized: "caches.action.choose", defaultValue: "Choose Folder & Check",
+                                                table: "Caches", bundle: RoomCopy.bundle),
+                                  symbol: "folder.badge.plus", enabled: model.canScan, identifier: "RoomCachesCheck",
+                                  perform: chooseFolder)
+        case .review(let bytes):
+            return RoomDockAction(title: bytes > 0 ? "Review \(RoomCachesVisibility.figure(format(bytes), hidden: hidden))" : "Review",
+                                  enabled: model.canReviewCleanup,
+                                  hint: hero.disabledReason ?? "Review the selected caches.",
+                                  identifier: "RoomCachesReview", perform: review)
+        case .none:
+            return nil
         }
     }
 
-    @ViewBuilder
-    private func startAction(hero: Bool) -> some View {
-        if needsFolderApproval { chooseFolderButton(hero: hero) } else { checkButton(hero: hero) }
+    private var dockSide: RoomDockAction? {
+        guard dock.checkAgain else { return nil }
+        return RoomDockAction(title: "Check again", enabled: model.canScan, identifier: "RoomCachesCheckAgain", perform: model.scan)
     }
 
-    private func chooseFolderButton(hero: Bool) -> some View {
-        Button {
-            #if ROOM_APP_STORE
-            model.chooseStoreFolder(scanAfterApproval: true)
-            #else
-            model.scan()
-            #endif
-        } label: {
-            Label(String(localized: "caches.action.choose", defaultValue: "Choose Folder & Check",
-                table: "Caches", bundle: RoomCopy.bundle), systemImage: "folder.badge.plus")
-        }
-        .roomScreenPrimary(accent, hero: hero) // one-filled: exclusive with Check (Store folder approval)
-        .disabled(!model.canScan)
-    }
-
-    private func checkButton(hero: Bool) -> some View {
-        Button(action: model.scan) {
-            Label(String(localized: "caches.action.check", defaultValue: "Check caches", table: "Caches",
-                bundle: RoomCopy.bundle), systemImage: "magnifyingglass")
-        }
-        .roomScreenPrimary(accent, hero: hero)
-        .disabled(!model.canScan)
+    private func chooseFolder() {
+        #if ROOM_APP_STORE
+        model.chooseStoreFolder(scanAfterApproval: true)
+        #else
+        model.scan()
+        #endif
     }
 
     /// Before a check: the places Room will look, as the mockup's evidence rows (icon, name, where), so the screen

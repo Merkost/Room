@@ -464,28 +464,6 @@
         }
       }
     },
-    "menu.sidebarLabels.hide": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Hide Sidebar Labels"
-          }
-        }
-      }
-    },
-    "menu.sidebarLabels.show": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Show Sidebar Labels"
-          }
-        }
-      }
-    },
     "menu.stop": {
       "extractionState": "manual",
       "localizations": {

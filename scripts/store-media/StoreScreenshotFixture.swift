@@ -120,7 +120,6 @@ struct StoreScreenshotFixture: View {
             pressureStore: pressureStore, activityCenter: activity, readMemory: { Self.memoryReport() })
         rooms = RoomRoomsModel(store: RoomRoomsStore(directory: directory), access: access)
 
-        sampleDefaults.set(CommandLine.arguments.contains("--rail"), forKey: "RoomSidebarIconsOnly")
         navigation = RoomWindowNavigation(defaults: sampleDefaults)
         switch screen {
         case .overview, .monitor: navigation.select(.overview)
@@ -210,9 +209,9 @@ struct StoreScreenshotFixture: View {
         if screen == .monitor {
             RoomMenuBarView(insights: insights, cacheModel: caches, rooms: rooms, openRoom: {}, showSettings: {})
         } else if (screen == .developer || screen == .aiTools) && !Self.rich {
-            RoomShellView(navigation: navigation, rooms: rooms, insights: insights, selectRoom: { _ in },
-                          sidebarValues: .init(freeBytes: 120_000_000_000, mappedFolders: 7, developerBytes: developer.totalBytes),
-                          developerSection: developer.section, selectDeveloperSection: { developer.section = $0 }) {
+            RoomShellView(navigation: navigation, insights: insights,
+                          dockValues: .init(freeBytes: 120_000_000_000, mappedBytes: 7_000_000_000,
+                                            developerBytes: developer.totalBytes)) {
                 RoomScreenScaffold(title: "Developer", subtitle: nil, scrolls: false) {
                     #if ROOM_APP_STORE
                     RoomDeveloperView(model: developer)
@@ -311,12 +310,12 @@ struct StoreScreenshotFixture: View {
     }
 
     /// `--tour`: drives the window through the pointer motions on a fixed clock so a recording can be checked frame by
-    /// frame (pill slide and arrival, Disk Map zoom in and out, rail fold and unfold, the review card in and out).
+    /// frame (pill slide and arrival, Disk Map zoom in and out, the review card in and out).
     private func tour() async {
         let motion = RoomMotionPolicy(gentleMotion: true, reduceMotion: false)
         func wait(_ seconds: Double) async { try? await Task.sleep(for: .seconds(seconds)) }
         func go(_ place: RoomDestination) {
-            withAnimation(RoomSidebar.selectionAnimation(origin: .pointer, motion: motion)) {
+            withAnimation(RoomDock.selectionAnimation(origin: .pointer, motion: motion)) {
                 navigation.select(.screen(place), origin: .pointer)
             }
         }
@@ -325,8 +324,6 @@ struct StoreScreenshotFixture: View {
             await wait(2); go(.disk)
             await wait(2); withAnimation(RoomTokens.Motion.zoom) { _ = insights.diskMap.go(to: "Developer") }
             await wait(2); withAnimation(RoomTokens.Motion.zoom) { _ = insights.diskMap.go(to: "") }
-            await wait(2); navigation.toggleSidebarLabels()
-            await wait(2); navigation.toggleSidebarLabels()
             await wait(2); go(.clean)
             await wait(1.5); withAnimation(motion.animation(RoomTokens.Motion.glass, fallback: RoomTokens.Motion.fade)) { showReview = true }
             await wait(2); withAnimation(motion.animation(RoomTokens.Motion.glass, fallback: RoomTokens.Motion.fade)) { showReview = false }
@@ -385,7 +382,7 @@ struct StoreScreenshotFixture: View {
             cancelled: false, volumeUUID: "sample-volume", issueCount: 0, tree: tree)
     }
 
-    /// Sixty seconds of memory between 9 and 12 GB, so the curve and the sidebar sparkline have a shape.
+    /// Sixty seconds of memory between 9 and 12 GB, so the curve has a shape.
     private static func memoryCurve() -> [Int64] {
         let shape: [Double] = [9, 9, 10, 10, 9, 9, 10, 11, 11, 10, 10, 9, 10, 10, 11, 12, 12, 11, 10, 10, 9, 9, 10, 10, 11,
                                10, 10, 9, 10, 9, 11, 10, 10, 12, 11, 10, 9, 10, 11, 10]

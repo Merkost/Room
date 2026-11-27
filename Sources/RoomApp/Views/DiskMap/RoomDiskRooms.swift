@@ -107,7 +107,10 @@ struct RoomDiskRoomsView: View {
     @Environment(\.roomAccent) private var accent
     @Environment(\.roomHide) private var hide
     @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.roomMotion) private var motion
     @State private var hovered: String?
+    /// Presses on rooms that stay: each one shakes its room once.
+    @State private var refusals: [String: Int] = [:]
 
     var body: some View {
         GeometryReader { geometry in
@@ -151,7 +154,7 @@ struct RoomDiskRoomsView: View {
             if ticksAvailable, let protection = room.room.protection, !room.isOther,
                hovered == room.id || !selection.isEmpty {
                 let reason = protection.sentence(name: hide.masksNow ? "this folder" : room.room.name)
-                Button { toggle(room) } label: {
+                Button { press(room) } label: {
                     Image(systemName: "lock.fill")
                         .font(RoomTokens.Typography.roomGlyph)
                         .foregroundStyle(RoomTokens.Ink.tertiary)
@@ -176,6 +179,17 @@ struct RoomDiskRoomsView: View {
         }
         .clipShape(shape)
         .contentShape(shape)
+        // A refused tick: one short shake. Reduce Motion keeps just the reason under the map.
+        .keyframeAnimator(initialValue: CGFloat.zero, trigger: refusals[room.id] ?? 0) { tile, x in
+            tile.offset(x: motion.isFull ? x : 0)
+        } keyframes: { _ in
+            KeyframeTrack {
+                LinearKeyframe(-6, duration: 0.08)
+                LinearKeyframe(5, duration: 0.1)
+                LinearKeyframe(-2, duration: 0.08)
+                LinearKeyframe(0, duration: 0.07)
+            }
+        }
         .onHover { inside in hovered = inside ? room.id : (hovered == room.id ? nil : hovered) }
         .onTapGesture(count: 2) { if room.canStepInside { stepInside(room.id, anchor) } }
         .onTapGesture { tap(room, anchor: anchor) }
@@ -193,10 +207,15 @@ struct RoomDiskRoomsView: View {
         }
     }
 
+    private func press(_ room: RoomDiskRoom) {
+        if room.room.protection != nil { refusals[room.id, default: 0] += 1 }
+        toggle(room)
+    }
+
     private func tap(_ room: RoomDiskRoom, anchor: UnitPoint) {
         let command = NSEvent.modifierFlags.contains(.command)
         if ticksAvailable && (command || !selection.isEmpty) {
-            toggle(room)
+            press(room)
         } else if picked == room.id, room.canStepInside {
             stepInside(room.id, anchor)
         } else {

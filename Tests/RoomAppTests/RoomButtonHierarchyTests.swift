@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 
-/// Spec rule (REVIEW 2026-11-23 §3, BRAND-DS "build must not do"): exactly one filled button per screen.
+/// Spec rule: one filled button per context. In the window it is the dock's.
 /// A lint over the view sources: every filled style counts against its surface (a screen, or a sheet on its own).
 /// Mutually exclusive branches (a start panel that never shows beside the screen's main action) are allowed only
 /// when the line says so with `// one-filled: exclusive <why>`.
@@ -67,12 +67,10 @@ struct RoomButtonHierarchyTests {
         for (surface, sites) in bySurface {
             #expect(sites.count == 1, "\(surface) has \(sites.count) filled buttons: \(sites)")
         }
-        // nav-v3 (FEATURES table): these screens keep exactly one; Memory, History and Settings have none.
-        for screen in ["Overview", "Disk Map", "Caches", "Developer"] {
-            #expect(bySurface[screen]?.count == 1, "\(screen) should have its one filled button")
-        }
-        for screen in ["Memory", "Settings"] {
-            #expect(bySurface[screen] == nil, "\(screen) has no filled button")
+        // The dock owns the window's filled button; the screens have none of their own.
+        #expect(bySurface["Window chrome"]?.map(\.file) == ["RoomDock.swift"])
+        for screen in ["Overview", "Disk Map", "Caches", "Developer", "Memory", "Settings"] {
+            #expect(bySurface[screen] == nil, "\(screen) has no filled button of its own")
         }
     }
 

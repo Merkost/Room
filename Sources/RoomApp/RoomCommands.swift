@@ -72,7 +72,7 @@ struct RoomCommands: Commands {
             comparisonTitle: screen?.comparisonTitle,
             menuBarEnabled: menuBarEnabled, edition: edition, window: windowContext.window, isWorking: isWorking(),
             canPin: rooms.canChooseFolder, supportAvailable: links.support != nil, privacyAvailable: links.privacy != nil,
-            sidebarIconsOnly: navigation.prefersSidebarIcons, canGoBack: navigation.canGoBack,
+            canGoBack: navigation.canGoBack,
             canGoForward: navigation.canGoForward, hasPinnedRooms: !rooms.visibleRooms.isEmpty,
             canOpenPinnedRooms: canOpenPinnedRooms()))
     }
@@ -161,7 +161,6 @@ struct RoomCommands: Commands {
         switch id {
         case .back: if window == .main { navigation.back() }
         case .forward: if window == .main { navigation.forward() }
-        case .sidebarLabels: if window == .main { navigation.toggleSidebarLabels() }
         case .monitor: if menuBarEnabled { showMonitor() }
         case .pin: if !isWorking() { rooms.chooseFolder() }
         case .trash: openTrash()

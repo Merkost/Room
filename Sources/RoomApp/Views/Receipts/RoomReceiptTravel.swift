@@ -30,35 +30,33 @@ extension EnvironmentValues {
     }
 }
 
-struct RoomReceiptTravelPill: View {
-    let text: String
-    /// Pill centre in the `RoomScreenScaffold.space` coordinate space.
-    let origin: CGPoint
-    let finished: () -> Void
+/// A cleanup has landed: a handful of dots leave the cleared rows for History, where the receipt now is. Nothing
+/// heads for free space, because the files still sit in Trash. Reduce Motion draws nothing (History brightens).
+struct RoomReceiptDots: View {
     @Environment(\.roomMotion) private var motion
-    @Environment(\.roomScreenSize) private var screen
-    @State private var shown = false
-    @State private var arrived = false
+    @Environment(\.roomAccent) private var accent
+    @State private var gone = false
+
+    private static let count = 14
 
     var body: some View {
-        let travel = RoomReceiptTravel.offset(from: origin, screenWidth: screen.width, fullMotion: motion.isFull)
-        Label(text, systemImage: "trash")
-            .font(RoomTokens.Typography.section)
-            .padding(.horizontal, RoomTokens.Space.inner)
-            .frame(height: RoomTokens.Map.readoutHeight)
-            .background(RoomTokens.Surface.group, in: Capsule())
-            .overlay { Capsule().strokeBorder(RoomTokens.Surface.line2) }
-            .scaleEffect(arrived && motion.isFull ? 0.4 : 1)
-            .offset(arrived ? travel : .zero)
-            .opacity(shown && !arrived ? 1 : 0)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
-            .task {
-                withAnimation(motion.animation(RoomTokens.Motion.standard)) { shown = true }
-                try? await Task.sleep(for: .seconds(RoomReceiptTravel.hold))
-                withAnimation(motion.animation(RoomTokens.Motion.page)) { arrived = true }
-                try? await Task.sleep(for: .seconds(RoomReceiptTravel.trip))
-                finished()
+        GeometryReader { geometry in
+            if motion.isFull {
+                ForEach(0..<Self.count, id: \.self) { index in
+                    let start = CGPoint(x: geometry.size.width * (0.18 + 0.03 * Double((index * 5) % Self.count)),
+                                        y: geometry.size.height * (0.42 + 0.025 * Double((index * 3) % 7)))
+                    Circle().fill(accent.text)
+                        .frame(width: RoomTokens.Nav.dot + 2, height: RoomTokens.Nav.dot + 2)
+                        .position(gone ? CGPoint(x: geometry.size.width - RoomTokens.Space.breath2 - RoomTokens.Dock.barIcon,
+                                                 y: RoomTokens.Screen2.paneTop + RoomTokens.Screen2.barHeight / 2) : start)
+                        .opacity(gone ? 0 : 1)
+                        .scaleEffect(gone ? 0.4 : 1)
+                        .animation(RoomTokens.Motion.eo(0.7).delay(Double(index) * 0.025), value: gone)
+                }
             }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+        .onAppear { gone = true }
     }
 }

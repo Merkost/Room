@@ -252,20 +252,3 @@ struct RoomSwitchStyle: ToggleStyle {
         .accessibilityRepresentation { Toggle(isOn: configuration.$isOn) { configuration.label } }
     }
 }
-
-/// A list row whose secondary link shows on hover or focus (mockup `.li:hover .lnk`), with the row's hover wash.
-struct RoomHoverReveal<Content: View>: View {
-    @ViewBuilder let content: (Bool) -> Content
-    @State private var hovering = false
-    @FocusState private var focused: Bool
-
-    var body: some View {
-        content(hovering || focused)
-            .animation(RoomTokens.Motion.hover, value: hovering)
-            .padding(.horizontal, RoomTokens.Space.row)
-            .background(hovering ? RoomTokens.Surface.hover : Color.clear, in: RoundedRectangle(cornerRadius: RoomTokens.Radius.row))
-            .padding(.horizontal, -RoomTokens.Space.row)
-            .focused($focused)
-            .onHover { inside in withAnimation(RoomTokens.Motion.hover) { hovering = inside } }
-    }
-}

@@ -14,7 +14,8 @@ Use native Liquid Glass for navigation, buttons, menus, and transient surfaces. 
 - Page titles: 22–24 pt. Section titles: 16 pt. Body and row labels: 13–14 pt. Supporting labels: 12 pt; functional text never falls below 11 pt.
 - The primary measured amount is 36–40 pt; sibling amounts are 20–24 pt. Units stay attached to their value and baseline. A missing measurement never displays as a measured zero.
 - The main canvas uses 40 pt gutters at detail widths of 700 pt and above, and 24 pt below that. Screen titles align with the content column. Section gaps are 24 pt. Group padding and content corners are 16 pt.
-- One primary action per working context, using the system accent and native prominent glass. Secondary actions use ordinary glass or plain controls. Controls in a row share their height and baseline.
+- One primary action per working context. In the window it lives in the dock's action slot and nowhere else; sheets, the popover and onboarding keep their own. Secondary actions use ordinary glass or plain controls. Controls in a row share their height and baseline.
+- Each screen has one headline and one body of evidence; the body repeats no figure or control. The dock's figure is that place's summary.
 
 ## Working surfaces
 
@@ -24,7 +25,7 @@ Memory leads with measured usage, actual pressure, and the refresh action. Compr
 
 Disk Map gives the largest area to the actual folder map. Keep one clear folder context, labeled Scan/Rescan/Stop, category evidence, and hidden-file controls. Developer resources group related rows, align sizes to one trailing edge, and expose uncertainty about use and project references.
 
-Navigation uses stable targets. Keep the product identity, five destinations, and settings aligned without duplicate enclosures. The menu-bar popup uses the same type, spacing, metric meanings, and action hierarchy as the app.
+Navigation is a floating Liquid Glass dock: Overview, Disk Map, Caches, Developer and Memory, each with its figure and engine state, then a fixed-width slot for the screen's next step, so neither the places nor the button move. History, Settings and Go to sit in the top bar. Screens reserve the dock's height. Playful moments are one-shot, tied to a real event, and fade in place under Reduce Motion. The menu-bar popup uses the same type, spacing, metric meanings, and action hierarchy as the app.
 
 ## Interaction and truth
 

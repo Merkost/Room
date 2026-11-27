@@ -71,25 +71,19 @@ nonisolated struct RoomOverviewFloorPlan: Equatable, Sendable {
         let usable = max(0, width - gap * CGFloat(rooms.count - 1))
         let weights = rooms.map { max(0.5, Double($0.bytes) / 1e9 + ($0.isFree ? freeBoostGB : 0)) }
         var widths = Array(repeating: minimum, count: rooms.count)
-        var flexible = Set(rooms.indices)
+        var flexible = Array(rooms.indices)
         var remaining = usable
-        // Give each room its share; rooms that fall under the minimum keep the minimum and leave the pool.
+        // Give each room its share; rooms that fall under the minimum keep the minimum and leave the pool. Every pass
+        // judges all rooms against the same pool, so the widths never depend on the order they are looked at.
         while !flexible.isEmpty {
             let pool = flexible.reduce(0) { $0 + weights[$1] }
-            var changed = false
-            for index in flexible {
-                let share = remaining * CGFloat(weights[index] / pool)
-                if share < minimum {
-                    widths[index] = minimum
-                    remaining -= minimum
-                    flexible.remove(index)
-                    changed = true
-                }
-            }
-            if !changed {
+            let short = flexible.filter { remaining * CGFloat(weights[$0] / pool) < minimum }
+            if short.isEmpty {
                 for index in flexible { widths[index] = remaining * CGFloat(weights[index] / pool) }
                 break
             }
+            remaining -= minimum * CGFloat(short.count)
+            flexible.removeAll(where: short.contains)
         }
         return widths
     }
@@ -141,7 +135,7 @@ struct RoomOverviewFloorPlanView: View {
             .animation(motion.animation(RoomTokens.Motion.room, fallback: nil), value: widths)
         }
         // At least the mockup's 226 pt; a taller window gives the plan the extra room instead of an empty band.
-        .frame(minHeight: RoomTokens.Screen2.planHeight, maxHeight: RoomTokens.Screen2.planMaxHeight)
+        .frame(minHeight: RoomTokens.Screen2.planHeight, maxHeight: .infinity)
         .layoutPriority(1)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Floor plan of this Mac")

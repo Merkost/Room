@@ -24,7 +24,7 @@ struct RoomScanBoard: View {
                 }
             }
         }
-        .frame(minHeight: RoomTokens.Scan.boardMinHeight, maxHeight: RoomTokens.Screen2.planMaxHeight)
+        .frame(minHeight: RoomTokens.Scan.boardMinHeight, maxHeight: .infinity)
         .layoutPriority(1)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Scan progress")
