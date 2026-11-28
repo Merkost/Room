@@ -81,7 +81,8 @@ extension CacheConfiguration {
             ("claude-tasks", "Claude tasks", ".claude/tasks"),
             ("claude-todos", "Claude todos", ".claude/todos"),
             ("claude-paste", "Claude pasted content", ".claude/paste-cache"),
-            ("claude-plugins", "Claude plugins", ".claude/plugins")
+            ("claude-plugins", "Claude plugins", ".claude/plugins"),
+            ("claude-worktrees", "Claude worktrees", ".claude/worktrees")
         ]
         let protectedLocations = protected.map {
             ProtectedLocation(id: $0.0, title: $0.1, url: location($0.2),

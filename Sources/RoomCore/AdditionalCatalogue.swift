@@ -106,6 +106,11 @@ extension CacheConfiguration {
                     processes: processes, inspect: false, category: category, existingOnly: false)
             }
         }
+        // Chromium's component updater keeps downloaded CRX packages here and
+        // fetches them again when missing. Installed components stay in place.
+        add("codex-component-downloads", "Codex component downloads", "Library/Application Support/Codex/component_crx_cache",
+            "Downloaded component packages are fetched again by Codex. Installed components, profiles, conversations and credentials are excluded.",
+            processes: ["codex", "chatgpt"], inspect: false, category: "agents")
         let managed: [(String, String, String, String, String)] = [
             ("pnpm-store", "pnpm package store", "Library/pnpm/store", "developer", "Packages can be linked into projects. Use pnpm store prune to remove unreferenced packages; Room only measures this store."),
             ("pnpm-store-legacy", "pnpm package store", ".pnpm-store", "developer", "Packages can be linked into projects. Manage this store with pnpm; Room never moves its files."),
@@ -132,9 +137,35 @@ extension CacheConfiguration {
             ("lmstudio-models", "Local model files", ".lmstudio/models", "agents", "Model files may be imported originals. Inspect only; Room never removes model weights."),
             ("ollama-models", "Ollama models", ".ollama/models", "agents", "Installed local models are retained. Manage model versions through Ollama; inspect only."),
             ("huggingface-models", "Hugging Face models", ".cache/huggingface", "agents", "Model snapshots and shared blobs can be referenced by local tools. Manage them through Hugging Face; inspect only."),
-            ("copilot-indexes", "Copilot project indexes", ".cache/github-copilot", "agents", "Project indexes and context can be valuable active agent state. Inspect only.")
+            ("copilot-indexes", "Copilot project indexes", ".cache/github-copilot", "agents", "Project indexes and context can be valuable active agent state. Inspect only."),
+            // Claude desktop (ChatGPT/Codex below). Measured only: each holds a VM, installed tools or session state.
+            ("claude-vm-bundles", "Claude virtual machine", "Library/Application Support/Claude/vm_bundles", "agents", "The Claude app's virtual machine image runs its agent sessions and downloads again only through the app. Manage it in the Claude app; Room only measures it."),
+            ("claude-desktop-code", "Claude Code in the Claude app", "Library/Application Support/Claude/claude-code", "agents", "Installed Claude Code versions used by the Claude app. Manage them in the Claude app; Room only measures them."),
+            ("claude-desktop-code-vm", "Claude Code for the virtual machine", "Library/Application Support/Claude/claude-code-vm", "agents", "Installed Claude Code versions used inside the app's virtual machine. Manage them in the Claude app; Room only measures them."),
+            ("claude-desktop-sessions", "Claude app sessions", "Library/Application Support/Claude/claude-code-sessions", "agents", "Session records the Claude app uses to resume work. Manage sessions in the Claude app; inspect only."),
+            ("claude-local-agent-sessions", "Claude local agent sessions", "Library/Application Support/Claude/local-agent-mode-sessions", "agents", "Local agent session state can hold work in progress. Manage it in the Claude app; inspect only."),
+            ("claude-scratch-workspaces", "Claude scratch workspaces", "Library/Application Support/Claude/scratch-workspaces", "agents", "Scratch workspaces can hold files an agent wrote. Review them in the Claude app; inspect only."),
+            ("codex-artifact-sessions", "Codex artifact sessions", "Library/Application Support/Codex/artifact-sessions", "agents", "Artifacts and previews from Codex sessions can be user work. Manage them in Codex; inspect only."),
+            ("codex-widevine", "Codex media component", "Library/Application Support/Codex/WidevineCdm", "agents", "An installed media playback component. Codex manages its version; inspect only."),
+            // Claude Code home (CLAUDE_CONFIG_DIR, default ~/.claude).
+            ("claude-skills", "Claude skills", ".claude/skills", "agents", "Skills you or your team wrote. Manage them in Claude; Room only measures them."),
+            ("claude-jobs", "Claude background jobs", ".claude/jobs", "agents", "Background session state Claude Code needs to keep. Manage background sessions in Claude; inspect only."),
+            ("claude-security", "Claude security data", ".claude/security", "agents", "Security data written by Claude Code. Its contents are not documented as disposable, so manage it in Claude; Room only measures it."),
+            ("claude-downloads", "Claude downloads", ".claude/downloads", "agents", "Files Claude Code downloaded may still be in use and are not documented as disposable. Manage them in Claude; inspect only."),
+            ("claude-backups", "Claude settings backups", ".claude/backups", "agents", "Earlier copies of Claude's configuration used for recovery. Claude Code rotates them itself; inspect only."),
+            ("claude-telemetry", "Claude telemetry queue", ".claude/telemetry", "agents", "Telemetry Claude Code manages itself. It is not documented as disposable; inspect only."),
+            // Codex home (CODEX_HOME, default ~/.codex).
+            ("codex-computer-use", "Codex computer use", ".codex/computer-use", "agents", "Installed helper tools used by Codex. Manage them in Codex; inspect only."),
+            ("codex-vendor-imports", "Codex imported tools", ".codex/vendor_imports", "agents", "Imported tools and skills used by Codex. Manage them in Codex; inspect only."),
+            ("codex-shell-snapshots", "Codex shell snapshots", ".codex/shell_snapshots", "agents", "Shell environment snapshots for Codex sessions, possibly active. Codex manages them; inspect only.")
         ]
         for (id, title, path, category, reason) in managed { add(id, title, path, reason, category: category) }
+        // Codex keeps conversation history, state and logs in versioned SQLite
+        // files that are open while it runs. Measured as single files only.
+        for (id, title, path, reason) in [
+            ("codex-log-database", "Codex log database", ".codex/logs_2.sqlite", "Codex writes its diagnostic logs to this database while it runs. Manage logs in Codex; inspect only."),
+            ("codex-state-database", "Codex state database", ".codex/state_5.sqlite", "Codex keeps conversation and app state here. Manage it in Codex; Room only measures it.")
+        ] { add(id, title, path, reason, category: "agents", scope: .singleFile) }
         if sandboxLimit > 0 {
             for (id, path) in [("docker-disk", "Library/Containers/com.docker.docker/Data/vms/0/data/Docker.raw"),
                                ("docker-disk-legacy", "Library/Containers/com.docker.docker/Data/vms/0/data/Docker.qcow2")] {
@@ -150,7 +181,8 @@ extension CacheConfiguration {
             ("HOMEBREW_CACHE", "homebrew", "Homebrew cache"), ("GOCACHE", "go", "Go cache"),
             ("PLAYWRIGHT_BROWSERS_PATH", "playwright", "Playwright browsers"),
             ("PUPPETEER_CACHE_DIR", "puppeteer", "Puppeteer browsers"),
-            ("HF_HOME", "huggingface", "Hugging Face store"), ("OLLAMA_MODELS", "ollama", "Ollama models")
+            ("HF_HOME", "huggingface", "Hugging Face store"), ("OLLAMA_MODELS", "ollama", "Ollama models"),
+            ("CODEX_HOME", "codex-home", "Codex home"), ("CLAUDE_CONFIG_DIR", "claude-config", "Claude home")
         ] {
             guard let value = environment[variable], value.hasPrefix("/"), !value.contains("\0"),
                   !value.split(separator: "/").contains(where: { $0 == "." || $0 == ".." }),

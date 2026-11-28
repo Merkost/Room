@@ -6,7 +6,11 @@ extension RoomDeveloperModel {
     /// `projects`, `gradle`, `sdk`, `derived`, `konan` (and optionally `avd`, `simulators`, `ai-codex`). It runs against isolated defaults
     /// and bookmarks so the real app state is never touched. `ROOM_DEBUG_DEVELOPER_SCAN=1` scans on launch and
     /// `ROOM_DEBUG_DEVELOPER_SECTION` picks the tab.
+    /// The screenshot fixture hands its own model to the window this way.
+    static var debugInjected: RoomDeveloperModel?
+
     static func debugFixture() -> RoomDeveloperModel? {
+        if let debugInjected { return debugInjected }
         let environment = ProcessInfo.processInfo.environment
         guard let path = environment["ROOM_DEBUG_DEVELOPER_ROOT"] else { return nil }
         let root = URL(fileURLWithPath: path, isDirectory: true)

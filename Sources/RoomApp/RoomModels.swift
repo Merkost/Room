@@ -1,6 +1,10 @@
 import Foundation
 
-nonisolated enum RoomDestination: String, Hashable, Sendable { case overview, clean, memory, disk, developer }
+nonisolated enum RoomDestination: String, Hashable, Sendable {
+    case overview, clean, memory, disk, developer
+    /// Room 1.2 (nav-v3): History and Settings are places in the window, at the bottom of the sidebar.
+    case history, settings
+}
 
 enum RoomCacheScanScope: String, CaseIterable, Identifiable, Sendable {
     case full, quick

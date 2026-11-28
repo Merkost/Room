@@ -6,7 +6,9 @@ struct RoomCleanupReviewSheet: View {
     let model: RoomViewModel
     var mapCleanup: RoomMapCleanup? = nil
     var canAccessMapCleanup: () -> Bool = { true }
-    @Environment(\.dismiss) private var dismiss
+    /// Set when the review is drawn in the window (`roomSheetOverlay`) rather than as a system sheet.
+    var close: (() -> Void)? = nil
+    @Environment(\.dismiss) private var systemDismiss
     @Environment(\.roomAccent) private var accent
     @Environment(\.roomMotion) private var motion
     @State private var committed: RoomCleanupReview?
@@ -28,6 +30,10 @@ struct RoomCleanupReviewSheet: View {
         #endif
     }
 
+    private func dismiss() {
+        if let close { close() } else { systemDismiss() }
+    }
+
     var body: some View {
         let review = presentation
         let mapIssue = mapCleanupIssue(review)
@@ -35,125 +41,87 @@ struct RoomCleanupReviewSheet: View {
             ? Set(model.cleanupProgress.filter { $0.value == .trashed }.keys)
             : []
         let ticked = review.tickedRows(reported: saved)
-        VStack(alignment: .leading, spacing: RoomTokens.Space.group) {
-            VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
-                Text("caches.review.title", tableName: "Caches", bundle: RoomCopy.bundle).font(RoomTokens.Typography.lead.weight(.semibold)).accessibilityHeading(.h1)
-                if let mapCleanup {
-                    Text(hidden ? "Clearable caches in the selected location." :
-                        "Clearable caches in “\(mapCleanup.location.lastPathComponent)”.")
-                        .foregroundStyle(RoomTokens.Ink.secondary)
-                } else {
-                    Text("caches.review.intro", tableName: "Caches", bundle: RoomCopy.bundle).foregroundStyle(RoomTokens.Ink.secondary)
-                }
-            }
+        let kind: RoomReviewWords.Kind = mapCleanup == nil ? .caches : .cachesInFolder
+        VStack(alignment: .leading, spacing: 0) {
+            Text(verbatim: RoomReviewWords.title(review.selectedBytes, hidden: hidden))
+                .font(RoomTokens.Screen2.sheetTitle)
+                .tracking(-0.5)
+                .monospacedDigit()
+                .foregroundStyle(RoomTokens.Ink.graphite)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityLabel(hidden ? "Move selected items to Trash?" : RoomReviewWords.title(review.selectedBytes, hidden: false))
+            Text(RoomReviewWords.body(kind))
+                .font(RoomTokens.Typography.body)
+                .foregroundStyle(RoomTokens.Ink.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, RoomTokens.Space.tight)
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: RoomTokens.Space.group) {
+                LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(review.rows) { row in
-                        let selected = review.selected.contains(row.id)
-                        let partial = selected && row.selectedBytes < row.bytes
-                        Toggle(isOn: Binding(get: { selectedRows.contains(row.id) },
-                                             set: { setSelection(row.id, selected: $0) })) {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(hidden ? "Name hidden" : row.name)
-                                        .font(RoomTokens.Typography.section)
-                                        .overlay {
-                                            Rectangle()
-                                                .fill(RoomTokens.Ink.secondary)
-                                                .frame(height: 1)
-                                                .scaleEffect(x: selected ? 0 : 1, y: 1, anchor: .leading)
-                                                .animation(motion.animation(RoomTokens.Motion.standard, fallback: nil), value: selected)
-                                                .allowsHitTesting(false)
-                                                .accessibilityHidden(true)
-                                        }
-                                    rowDetail(row)
-                                }
-                                Spacer()
-                                Text(format(selected ? row.selectedBytes : row.bytes))
-                                    .font(RoomTokens.Typography.section.monospacedDigit())
-                                if ticked.contains(row.id) {
-                                    RoomCheckmarkPath()
-                                        .stroke(accent.text, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
-                                        .frame(width: 9, height: 6)
-                                        .roomPanelArrival()
-                                        .accessibilityLabel("Saved in receipt")
-                                } else if review.phase == .moving, row.entryIDs.contains(where: { model.cleanupProgress[$0] == .failed }) {
-                                    Text("Kept").foregroundStyle(RoomTokens.Ink.secondary)
-                                }
-                            }
-                        }
-                        .toggleStyle(.checkbox)
-                        .disabled(!review.canCancel || !model.canEditSelection || mapIssue != nil)
-                        .help(hidden ? "" : row.location ?? "")
-                        .accessibilityValue(partial ? "Some items selected" : selected ? "Selected" : "Not selected")
+                        reviewRow(row, review: review, ticked: ticked.contains(row.id), editable: review.canCancel
+                                  && model.canEditSelection && mapIssue == nil)
                     }
                     VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
-                        Text("Before you move").font(RoomTokens.Typography.section)
                         ForEach(review.beforeYouMove(keptBytes: model.heldBytes,
                             keptExample: hidden ? nil : model.protectedSources.first?.name, format: format), id: \.self) { line in
-                            Label(line, systemImage: "circle.fill")
-                                .font(RoomTokens.Typography.caption).foregroundStyle(RoomTokens.Ink.secondary)
+                            Text(line).font(RoomTokens.Typography.caption).foregroundStyle(RoomTokens.Ink.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                     }
+                    .padding(.top, RoomTokens.Space.row)
                     if let mapIssue {
-                        Label(mapIssue, systemImage: "arrow.clockwise.circle")
+                        Text(mapIssue)
                             .foregroundStyle(RoomTokens.Ink.secondary)
                             .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, RoomTokens.Space.row)
                             .accessibilityIdentifier("RoomMapCleanupUnavailable")
                     }
                     #if ROOM_APP_STORE
                     if review.selectedBytes > 0 && mapIssue == nil {
                         RoomStorePermissionSection(model: model, retry: { Task { await prepareStoreReview() } },
                             canApprove: { mapCleanupIssue(presentation) == nil })
+                            .padding(.top, RoomTokens.Space.row)
                     }
                     #endif
                     if let message = model.errorMessage {
                         Text(message)
                             .foregroundStyle(RoomTokens.Ink.secondary)
                             .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, RoomTokens.Space.row)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 4)
             }
-            .frame(maxHeight: 340)
+            // As tall as the list, up to 300 pt, so a short review has no empty band above the buttons.
+            .scrollBounceBehavior(.basedOnSize)
+            .frame(maxHeight: min(300, CGFloat(review.rows.count) * RoomTokens.Screen2.sheetRow + RoomTokens.Screen2.sheetNotes))
+            .padding(.top, RoomTokens.Space.group)
             HStack(spacing: RoomTokens.Space.row) {
-                Text("Selected \(format(review.selectedBytes)) of \(format(review.offeredBytes))")
-                    .foregroundStyle(RoomTokens.Ink.secondary)
                 Spacer()
                 Button("Cancel") { dismiss() }
-                    .roomSecondary().keyboardShortcut(.cancelAction)
+                    .roomQuiet().keyboardShortcut(.cancelAction)
                     .disabled(!review.canCancel || model.isWorking)
                 Button {
                     move()
                 } label: {
-                    ZStack {
-                        if review.phase == .moving {
-                            Text(commitLabel(.move(review.selectedBytes))).hidden().accessibilityHidden(true)
-                        }
-                        // Keep the primary button's position while it acknowledges the operation.
-                        RoomChangingLabel(value: review.phase == .moving, animates: !hidden, alignment: .center) {
-                            if review.phase == .moving {
-                                HStack(spacing: RoomTokens.Space.row) {
-                                    ProgressView().controlSize(.small)
-                                    Text(commitLabel(review.commit))
-                                }
-                            } else {
-                                Text(commitLabel(review.commit))
-                            }
-                        }
+                    RoomChangingLabel(value: review.phase == .moving, animates: !hidden, alignment: .center) {
+                        Text(commitLabel(review.commit))
                     }
                 }
-                .roomPrimary(accent).keyboardShortcut(.defaultAction)
+                .roomScreenPrimary(accent).keyboardShortcut(.defaultAction)
                 .disabled(!canCommit(review))
                 .accessibilityLabel(hidden && review.canCommit ? "Move selected items to Trash. Sizes hidden." : commitLabel(review.commit))
                 .accessibilityIdentifier("RoomReviewMoveButton")
             }
+            .padding(.top, RoomTokens.Space.group)
         }
-        .font(RoomTokens.Typography.caption)
-        .padding(RoomTokens.Space.breath1)
-        .frame(width: 560)
+        .font(RoomTokens.Typography.body)
+        .padding(.horizontal, RoomTokens.Screen2.sheetPad)
+        .padding(.top, RoomTokens.Screen2.sheetPad)
+        .padding(.bottom, RoomTokens.Screen2.sheetPadBottom)
+        .frame(width: RoomTokens.Screen2.sheetWidth)
         .interactiveDismissDisabled(!review.canCancel || model.isWorking)
+        .onExitCommand { if review.canCancel && !model.isWorking { dismiss() } }
         #if ROOM_APP_STORE
         .task { await prepareStoreReview() }
         .onChange(of: mapIssue) { _, issue in
@@ -161,6 +129,44 @@ struct RoomCleanupReviewSheet: View {
         }
         .onDisappear { model.discardStoreReview() }
         #endif
+    }
+
+    /// One chosen place: tick (editable while reviewing), its real icon, name, size; a check once saved in the receipt.
+    private func reviewRow(_ row: RoomCleanupReview.Row, review: RoomCleanupReview, ticked: Bool, editable: Bool) -> some View {
+        let selected = review.selected.contains(row.id)
+        let partial = selected && row.selectedBytes < row.bytes
+        let path = row.location ?? model.sources.first { $0.id == row.id }?.path
+        return Button {
+            setSelection(row.id, selected: !selectedRows.contains(row.id))
+        } label: {
+            HStack(spacing: RoomTokens.Space.row) {
+                RoomTick(on: selected, partial: partial)
+                RoomThingIcon(path: path, name: row.name, fallback: .box, size: RoomTokens.Screen2.iconSmall)
+                VStack(alignment: .leading, spacing: 1) {
+                    RoomMaskable(row.name, kind: .name).foregroundStyle(selected ? RoomTokens.Ink.graphite : RoomTokens.Ink.tertiary)
+                        .lineLimit(1)
+                    rowDetail(row).font(RoomTokens.Typography.caption).lineLimit(1)
+                }
+                Spacer(minLength: RoomTokens.Space.row)
+                if ticked {
+                    RoomCheckmarkPath()
+                        .stroke(accent.text, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+                        .frame(width: 9, height: 6)
+                        .accessibilityLabel("Saved in receipt")
+                } else if review.phase == .moving, row.entryIDs.contains(where: { model.cleanupProgress[$0] == .failed }) {
+                    Text("Kept").foregroundStyle(RoomTokens.Ink.secondary)
+                }
+                RoomMaskable(RoomFormat.gb(selected ? row.selectedBytes : row.bytes))
+                    .foregroundStyle(RoomTokens.Ink.secondary)
+            }
+            .frame(minHeight: RoomTokens.Screen2.sheetRow)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!editable)
+        .help(hidden ? "" : row.location ?? "")
+        .accessibilityLabel(hidden ? "Place, name hidden" : row.name)
+        .accessibilityValue(partial ? "Some items selected" : selected ? "Selected" : "Not selected")
     }
 
     private func mapCleanupIssue(_ review: RoomCleanupReview) -> String? {
@@ -182,9 +188,8 @@ struct RoomCleanupReviewSheet: View {
                     .foregroundStyle(RoomTokens.Ink.secondary)
                     .lineLimit(1).truncationMode(.middle)
             }
-        } else {
-            Text(row.consequence).foregroundStyle(RoomTokens.Ink.secondary)
         }
+        // Cache rows stay one line (mockup `.sheet li`); what moving means is said once under the list.
     }
 
     private func setSelection(_ id: String, selected: Bool) {

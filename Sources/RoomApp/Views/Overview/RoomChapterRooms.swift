@@ -37,8 +37,9 @@ struct RoomChapterRooms: View {
 
     private func heading(showsHistory: Bool) -> some View {
         VStack(alignment: .leading, spacing: RoomTokens.Space.tight) {
-            Label("Your Rooms", systemImage: "folder")
-                .font(RoomTokens.Typography.title)
+            Text("Your Rooms")
+                .font(RoomDisplayType.chapter)
+                .tracking(RoomDisplayType.chapterTracking)
                 .accessibilityHeading(.h2)
             if showsHistory {
                 Text("12-week history")

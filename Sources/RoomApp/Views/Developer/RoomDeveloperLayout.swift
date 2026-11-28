@@ -142,6 +142,22 @@ extension RoomDeveloperModel {
                                   storage: storageReport != nil, aiTools: aiToolsReport != nil)
     }
 
+    /// The figure the Developer screen's headline shows for a room, so the sidebar value matches the screen it opens
+    /// ("120 GB in projects" on Rooms and Matrix, the devices, storage, AI tools or worktrees total elsewhere).
+    func headlineBytes(for section: RoomDeveloperSection, worktreesBytes: Int64 = 0) -> Int64 {
+        let headline = headline
+        func part(_ kind: RoomDeveloperHeadline.Kind) -> Int64 { headline.parts.first { $0.kind == kind }?.bytes ?? 0 }
+        switch section {
+        case .rooms, .matrix: return part(.inUse) + part(.unreferenced)
+        case .devices: return part(.devices)
+        case .storage: return part(.toolStorage)
+        case .aiTools: return part(.aiTools)
+        #if !ROOM_APP_STORE
+        case .worktrees: return worktreesBytes
+        #endif
+        }
+    }
+
     var headline: RoomDeveloperHeadline {
         let reports = [report, devicesReport, storageReport, aiToolsReport].compactMap { $0 }
         let partial = (summary?.partial ?? false) || reports.contains { $0.isPartial || $0.cancelled }

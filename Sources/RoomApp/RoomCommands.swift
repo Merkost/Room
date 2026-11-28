@@ -12,6 +12,7 @@ struct RoomScreenActions {
     var canEnclose = false
     var enclose: () -> Void = {}
     var showHistory: (() -> Void)?
+    var openGoTo: (() -> Void)?
     var customise: () -> Void = {}
     var showDiskInspector: (() -> Void)?
     var diskInspectorVisible = false
@@ -175,6 +176,8 @@ struct RoomCommands: Commands {
             if window == .main, screen?.destination == .overview { screen?.customise() }
         case .showHistory:
             if window == .main { screen?.showHistory?() }
+        case .goTo:
+            if window == .main { screen?.openGoTo?() }
         case .enclosing:
             if window == .main, !isWorking(), let screen, screen.canEnclose, !screen.isScanning {
                 withoutNavigationAnimation(screen.enclose)

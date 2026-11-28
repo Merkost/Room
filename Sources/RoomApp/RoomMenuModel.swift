@@ -58,8 +58,11 @@ nonisolated enum RoomMenuModel {
         case caches
         case developer
         case memory
+        case history
+        case settingsScreen
         case pinnedRooms
         case showHistory
+        case goTo
         case enclosing
         case minimize
         case minimizeAll
@@ -136,8 +139,11 @@ nonisolated enum RoomMenuModel {
             case .caches: String(localized: "menu.caches", defaultValue: "Caches", bundle: RoomCopy.bundle)
             case .developer: String(localized: "menu.developer", defaultValue: "Developer", bundle: RoomCopy.bundle)
             case .memory: String(localized: "menu.memory", defaultValue: "Memory", bundle: RoomCopy.bundle)
+            case .history: String(localized: "menu.history", defaultValue: "History", bundle: RoomCopy.bundle)
+            case .settingsScreen: String(localized: "menu.settingsScreen", defaultValue: "Settings", bundle: RoomCopy.bundle)
             case .pinnedRooms: String(localized: "Rooms")
             case .showHistory: String(localized: "menu.showHistory", defaultValue: "Show History", bundle: RoomCopy.bundle)
+            case .goTo: String(localized: "menu.goTo", defaultValue: "Go to…", bundle: RoomCopy.bundle)
             case .enclosing: String(localized: "menu.enclosing", defaultValue: "Enclosing Folder", bundle: RoomCopy.bundle)
             case .minimize: "Minimize"
             case .minimizeAll: "Minimize All"
@@ -174,7 +180,7 @@ nonisolated enum RoomMenuModel {
     }
 
     enum Destination: String, CaseIterable, Sendable {
-        case overview, disk, clean, developer, memory
+        case overview, disk, clean, developer, memory, history, settings
 
         var item: ID {
             switch self {
@@ -183,9 +189,12 @@ nonisolated enum RoomMenuModel {
             case .clean: .caches
             case .developer: .developer
             case .memory: .memory
+            case .history: .history
+            case .settings: .settingsScreen
             }
         }
 
+        /// ⌘1 … ⌘7 in sidebar order (nav-v3).
         var shortcut: Shortcut? {
             switch self {
             case .overview: .init("1")
@@ -193,6 +202,8 @@ nonisolated enum RoomMenuModel {
             case .clean: .init("3")
             case .developer: .init("4")
             case .memory: .init("5")
+            case .history: .init("6")
+            case .settings: .init("7")
             }
         }
 
@@ -203,6 +214,8 @@ nonisolated enum RoomMenuModel {
             case .clean: "archivebox"      // DS-13 (BRAND-DS §7.2)
             case .developer: "hammer"
             case .memory: "memorychip"
+            case .history: "doc.plaintext"
+            case .settings: "slider.horizontal.3"
             }
         }
 
@@ -213,13 +226,14 @@ nonisolated enum RoomMenuModel {
             case .clean: .rescanCaches
             case .developer: .rescanDeveloper
             case .memory: .refreshMemory
+            case .history, .settings: nil
             }
         }
 
         var canStop: Bool {
             switch self {
             case .disk, .clean, .developer: true
-            case .overview, .memory: false
+            case .overview, .memory, .history, .settings: false
             }
         }
     }
@@ -353,6 +367,7 @@ nonisolated enum RoomMenuModel {
             add(.go, .pinnedRooms, enabled: canStart && input.canOpenPinnedRooms)
         }
         add(.go, .showHistory, .init("y"), enabled: main)
+        add(.go, .goTo, .init("k"), enabled: main)
         add(.go, .enclosing, .init("↑"), enabled: main && input.destination == .disk && canStart && input.canEnclose && !input.isScanning)
 
         add(.window, .minimize, .init("m"), enabled: hasKeyWindow, native: true)

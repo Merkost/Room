@@ -750,46 +750,13 @@
         }
       }
     },
-    "onboarding.v3.step1.name": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Your Mac"
-          }
-        }
-      }
-    },
-    "onboarding.v3.step2.name": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Your say"
-          }
-        }
-      }
-    },
-    "onboarding.v3.step3.name": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "First step"
-          }
-        }
-      }
-    },
     "onboarding.v3.step1.title": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Room to breathe."
+            "value": "Meet your Mac"
           }
         }
       }
@@ -849,17 +816,6 @@
         }
       }
     },
-    "onboarding.v3.plan.notMapped": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Not mapped yet"
-          }
-        }
-      }
-    },
     "onboarding.v3.plan.notMappedDetail": {
       "extractionState": "manual",
       "localizations": {
@@ -904,35 +860,13 @@
         }
       }
     },
-    "onboarding.v3.plan.empty.title": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Your Mac’s plan appears here once macOS answers."
-          }
-        }
-      }
-    },
-    "onboarding.v3.plan.empty.detail": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Room only draws what it has measured."
-          }
-        }
-      }
-    },
     "onboarding.v3.step2.title": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Nothing moves until you say so."
+            "value": "You say what moves"
           }
         }
       }
@@ -959,28 +893,6 @@
         }
       }
     },
-    "onboarding.v3.example.move": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Move to Trash"
-          }
-        }
-      }
-    },
-    "onboarding.v3.example.moved": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Moved to Trash"
-          }
-        }
-      }
-    },
     "onboarding.v3.example.putBack": {
       "extractionState": "manual",
       "localizations": {
@@ -988,193 +900,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Put back"
-          }
-        }
-      }
-    },
-    "onboarding.v3.example.back": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Back where it was"
-          }
-        }
-      }
-    },
-    "onboarding.v3.example.row.name": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "DerivedData"
-          }
-        }
-      }
-    },
-    "onboarding.v3.example.row.kind": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Xcode cache"
-          }
-        }
-      }
-    },
-    "onboarding.v3.example.row.where": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Now in"
-          }
-        }
-      }
-    },
-    "onboarding.v3.example.row.trash": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Trash"
-          }
-        }
-      }
-    },
-    "onboarding.v3.example.row.receipt": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Receipt"
-          }
-        }
-      }
-    },
-    "onboarding.v3.example.row.kept": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Kept in History"
-          }
-        }
-      }
-    },
-    "onboarding.v3.example.row.keptShort": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Kept"
-          }
-        }
-      }
-    },
-    "onboarding.v3.example.row.restored": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Restored"
-          }
-        }
-      }
-    },
-    "onboarding.v3.example.foot": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Room never empties the Trash. That stays yours."
-          }
-        }
-      }
-    },
-    "onboarding.v3.rail.1": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "You review first"
-          }
-        }
-      }
-    },
-    "onboarding.v3.rail.1.detail": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Nothing is picked for you."
-          }
-        }
-      }
-    },
-    "onboarding.v3.rail.2": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Trash, with a receipt"
-          }
-        }
-      }
-    },
-    "onboarding.v3.rail.2.detail": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Every move is written down."
-          }
-        }
-      }
-    },
-    "onboarding.v3.rail.3": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "You can put it back"
-          }
-        }
-      }
-    },
-    "onboarding.v3.rail.3.detail": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Try it: press Put back."
-          }
-        }
-      }
-    },
-    "onboarding.v3.local": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No account. Everything runs on this Mac."
           }
         }
       }
@@ -1196,7 +921,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Where should Room look first?"
+            "value": "Pick your first step"
           }
         }
       }
@@ -1289,17 +1014,6 @@
         }
       }
     },
-    "onboarding.v3.or": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Or start with"
-          }
-        }
-      }
-    },
     "onboarding.v3.caches": {
       "extractionState": "manual",
       "localizations": {
@@ -1328,7 +1042,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Watch memory in the menu bar"
+            "value": "Watch memory"
           }
         }
       }
@@ -1339,7 +1053,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Room is finishing another task. This is ready in a moment."
+            "value": "Room is finishing up. One moment."
           }
         }
       }
@@ -1617,6 +1331,94 @@
           "stringUnit": {
             "state": "translated",
             "value": "Caches grew %@ this week."
+          }
+        }
+      }
+    },
+    "onboarding.v3.a11y.example.room": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Example room"
+          }
+        }
+      }
+    },
+    "onboarding.v3.a11y.example.roomHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moves to the example Trash. Nothing on your Mac moves."
+          }
+        }
+      }
+    },
+    "onboarding.v3.step1.free": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ free"
+          }
+        }
+      }
+    },
+    "onboarding.v3.step1.line": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Every ring is free space."
+          }
+        }
+      }
+    },
+    "onboarding.v3.step1.line.tooLarge": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Plans stop at 26 TB for now."
+          }
+        }
+      }
+    },
+    "onboarding.v3.step1.line.unreadable": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free space shows once macOS answers."
+          }
+        }
+      }
+    },
+    "onboarding.v3.step2.line": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Click a room, then put it back."
+          }
+        }
+      }
+    },
+    "onboarding.v3.step3.line": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The rest waits on Overview."
           }
         }
       }

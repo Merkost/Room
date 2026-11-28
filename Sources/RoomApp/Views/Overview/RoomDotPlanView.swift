@@ -286,7 +286,9 @@ struct RoomDotPlanView: View {
             let frame = highlightedRoom.flatMap { geometry.frame(for: $0) } ?? geometry.wall
             let ring = Path(roundedRect: frame.insetBy(dx: -Tokens.focusOffset, dy: -Tokens.focusOffset),
                             cornerRadius: RoomTokens.Radius.planRoom)
-            paint.stroke(ring, accent.text, lineWidth: Tokens.focusWall)
+            // A lit room is outlined in ink (DS-8), so kind colours never compete with the accent; keyboard focus on
+            // the whole plan keeps the accent ring.
+            paint.stroke(ring, highlightedRoom == nil ? accent.text : RoomTokens.Ink.graphite, lineWidth: Tokens.focusWall)
         }
         if !usesExternalLegend { drawRoomLabels(presentation, geometry: geometry, paint: &paint) }
         return paint

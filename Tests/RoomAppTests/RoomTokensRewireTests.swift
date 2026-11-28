@@ -46,13 +46,13 @@ struct RoomTokensRewireTests {
         row("Kind.archives.fill", RoomTokens.Kind.archives.fill, 0xDDBBA9, 0x5C3F33),
         row("Kind.system.fill", RoomTokens.Kind.system.fill, 0xCBD0D3, 0x3A3F43),
         row("Kind.hidden.fill", RoomTokens.Kind.hidden.fill, 0xCCBCD3, 0x4A3C52),
-        row("Kind.developer.mark", RoomTokens.Kind.developer.mark, 0x2E8AA0, 0x4FA9BF),
-        row("Kind.media.mark", RoomTokens.Kind.media.mark, 0x5F9150, 0x7DB06C),
-        row("Kind.documents.mark", RoomTokens.Kind.documents.mark, 0x5F7DBB, 0x7E9BD8),
-        row("Kind.apps.mark", RoomTokens.Kind.apps.mark, 0x9A8A14, 0xBFAE3A),
-        row("Kind.archives.mark", RoomTokens.Kind.archives.mark, 0xCE5660, 0xE87C86),
-        row("Kind.system.mark", RoomTokens.Kind.system.mark, 0x7F8990, 0x98A2A8),
-        row("Kind.hidden.mark", RoomTokens.Kind.hidden.mark, 0x9670AE, 0xB28DCB),
+        row("Kind.developer.mark", RoomTokens.Kind.developer.mark, 0x137A8F, 0x6CBFCC),
+        row("Kind.media.mark", RoomTokens.Kind.media.mark, 0x276F1C, 0x85C678),
+        row("Kind.documents.mark", RoomTokens.Kind.documents.mark, 0x3A57BA, 0xA9B8F6),
+        row("Kind.apps.mark", RoomTokens.Kind.apps.mark, 0xA07800, 0xE6BB45),
+        row("Kind.archives.mark", RoomTokens.Kind.archives.mark, 0xB73F2B, 0xE0705A),
+        row("Kind.system.mark", RoomTokens.Kind.system.mark, 0x717980, 0x9AA4AA),
+        row("Kind.hidden.mark", RoomTokens.Kind.hidden.mark, 0xA75FC1, 0xB489CE),
         row("Kind.tileInk", RoomTokens.Kind.tileInk, 0x222527, 0xF3F5F6),
         row("Kind.tileInk2", RoomTokens.Kind.tileInk2, 0x3E4448, 0xC5CCD0)
     ]
@@ -108,11 +108,11 @@ struct RoomTokensRewireTests {
         #expect(T.unit(for: 20) == Font.system(size: 14, weight: .regular))
     }
 
-    @Test func motionIsUnchanged() {
+    /// DS-9: the four RoomDS durations, the page spring and the one overshoot; no duplicate timings.
+    @Test func motionUsesTheDSDurations() {
         typealias M = RoomTokens.Motion
         #expect(M.quick == Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.12))
         #expect(M.standard == Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.20))
-        #expect(M.exit == Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.12))
         #expect(M.pageResponse == 0.32)
         #expect(M.page == Animation.spring(response: 0.32, dampingFraction: 1))
         #expect(M.success == Animation.spring(response: 0.28, dampingFraction: 0.7))
@@ -122,7 +122,7 @@ struct RoomTokensRewireTests {
         #expect(M.tooltipDelay == 0.5)
         #expect(M.pressScale == 0.96)
         #expect(M.fadeDuration == 0.15)
-        #expect(M.receiptLead == Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.28))
-        #expect(M.settle == Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.24))
+        #expect(M.morphDuration == RoomDS.Motion.Duration.page.seconds)
+        #expect(M.groupStagger == 0.07)
     }
 }

@@ -124,3 +124,23 @@ nonisolated enum RoomStoreGrantPlan {
         (granted.intersection(required), granted.subtracting(required), required.subtracting(granted))
     }
 }
+
+/// The review sheet's words (nav-v3): "Move 22 GB to Trash?" and one plain line about what happens next.
+nonisolated enum RoomReviewWords {
+    enum Kind: Sendable { case caches, cachesInFolder, ownFolders }
+
+    static func title(_ bytes: Int64, hidden: Bool) -> String {
+        hidden ? "Move ••• to Trash?" : "Move \(RoomFormat.gb(bytes)) to Trash?"
+    }
+
+    static func body(_ kind: Kind) -> String {
+        switch kind {
+        case .caches:
+            "Rebuildable caches. They stay in Trash until you empty it, and History can put all of it back."
+        case .cachesInFolder:
+            "Rebuildable caches inside the folder you picked. They stay in Trash until you empty it, and History can put them back."
+        case .ownFolders:
+            "These are your own folders, not caches. They stay in Trash until you empty it, and History can put them back."
+        }
+    }
+}

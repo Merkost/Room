@@ -2,11 +2,11 @@
 set -euo pipefail
 
 if [[ ${1:-} == --help ]]; then
-    print 'Usage: zsh scripts/store-media/launch-fixture.zsh <build-directory> <state-directory> <scene> [--interactive]'
-    print 'Scenes: overview, disk-map, caches-review, developer, memory, monitor, ai-tools'
+    print 'Usage: zsh scripts/store-media/launch-fixture.zsh <build-directory> <state-directory> <scene> [--interactive] [--light]'
+    print 'Scenes: overview, disk-map, caches, caches-review, developer, memory, history, settings, monitor, ai-tools'
     exit 0
 fi
-if [[ $# -lt 3 || $# -gt 4 || ( $# -eq 4 && $4 != --interactive ) ]]; then
+if [[ $# -lt 3 ]]; then
     print -u2 'Supply the build directory, state directory and scene. Use --help for usage.'
     exit 2
 fi
@@ -15,7 +15,7 @@ bundle="${1:A}/Room Screenshot Fixture.app"
 state_dir="${2:A}"
 scene=$3
 case "$scene" in
-    overview|disk-map|caches-review|developer|memory|monitor|ai-tools) ;;
+    overview|disk-map|caches|caches-review|developer|memory|history|settings|monitor|ai-tools) ;;
     *) print -u2 "Unknown fixture scene: $scene"; exit 2 ;;
 esac
 if [[ ! -x "$bundle/Contents/MacOS/StoreScreenshotFixture" ]]; then

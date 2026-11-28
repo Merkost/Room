@@ -38,25 +38,22 @@ struct RoomActivityPill: View {
             Button {
                 expanded.toggle()
             } label: {
-                HStack(spacing: RoomTokens.Space.row) {
-                    mark(appearance)
-                        .roomPanelArrival()
-                        .id(appearance)
-                        .frame(width: Self.markSize, height: Self.markSize)
+                HStack(spacing: 7) {
+                    dot(appearance)
                     RoomChangingLabel(value: text, animates: !hidden) {
-                        Text(text).font(RoomTokens.Typography.caption.monospacedDigit())
+                        Text(text).font(RoomTokens.Screen2.chipFont)
+                            .foregroundStyle(RoomTokens.Ink.secondary)
                             .lineLimit(1).truncationMode(.middle)
                             .frame(maxWidth: 200)
                     }
                 }
-                .padding(.horizontal, 10)
-                .frame(minHeight: Self.height)
+                .padding(.horizontal, RoomTokens.Screen2.chipPadH)
+                .padding(.vertical, RoomTokens.Screen2.chipPadV)
                 .fixedSize(horizontal: true, vertical: false)
+                .background(RoomTokens.Surface.tile, in: Capsule())
                 .contentShape(Capsule())
             }
-            .buttonStyle(RoomHoverButtonStyle(cornerRadius: Self.height / 2, isActive: expanded))
-            .background(RoomTokens.Surface.group, in: Capsule())
-            .overlay { Capsule().strokeBorder(RoomTokens.Surface.line2).allowsHitTesting(false) }
+            .buttonStyle(RoomPressStyle())
             .accessibilityLabel(spoken(state))
             .accessibilityHint("Shows activity details")
             .onHover { inside in
@@ -94,6 +91,17 @@ struct RoomActivityPill: View {
                 .padding(RoomTokens.Space.group)
             }
         }
+    }
+
+    /// The chip's dot (mockup `.chip i`): quiet at rest, the accent and a little larger while anything works.
+    private func dot(_ appearance: Mark) -> some View {
+        let on = appearance == .scanning || appearance == .made
+        let ink = appearance == .needsAccess ? RoomTokens.Status.elevated : (on ? accent.text : RoomTokens.Ink.tertiary)
+        return Circle().fill(ink)
+            .frame(width: RoomTokens.Screen2.chipDot, height: RoomTokens.Screen2.chipDot)
+            .scaleEffect(appearance == .scanning && motion.isFull ? 1.25 : 1)
+            .animation(motion.animation(RoomTokens.Motion.check, fallback: RoomTokens.Motion.fade), value: appearance)
+            .accessibilityHidden(true)
     }
 
     @ViewBuilder
@@ -168,6 +176,7 @@ struct RoomActivityPill: View {
 
     private func toolbarLabel(_ state: RoomActivityPillState) -> String {
         if prefersQuietIdleLabel, case .idle(.some) = state { return String(localized: "Up to date") }
+        if prefersQuietIdleLabel, case .scanning = state { return String(localized: "Working") }
         return label(state)
     }
 
@@ -199,7 +208,7 @@ private struct RoomMadeMark: View {
                     .trim(from: 0, to: visible ? 1 : 0)
                     .stroke(RoomTokens.Surface.canvas, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
                     .frame(width: 7, height: 5)
-                    .animation(motion.animation(RoomTokens.Motion.receiptLead, fallback: nil), value: visible)
+                    .animation(motion.animation(RoomDS.Motion.timed(.page), fallback: nil), value: visible)
             }
             .scaleEffect(visible ? 1 : 0.6)
             .animation(motion.animation(RoomTokens.Motion.success, fallback: nil), value: visible)

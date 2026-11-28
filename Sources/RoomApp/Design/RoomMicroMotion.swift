@@ -5,8 +5,8 @@ extension RoomMotionPolicy {
     var labelReplacement: AnyTransition {
         guard isFull else { return .identity }
         return .asymmetric(
-            insertion: .offset(y: 3).combined(with: .opacity).animation(RoomTokens.Motion.rollIn),
-            removal: .offset(y: -3).combined(with: .opacity).animation(RoomTokens.Motion.rollOut)
+            insertion: .offset(y: 3).combined(with: .opacity).animation(RoomTokens.Motion.standard),
+            removal: .offset(y: -3).combined(with: .opacity).animation(RoomTokens.Motion.quick)
         )
     }
 
@@ -14,7 +14,7 @@ extension RoomMotionPolicy {
         guard isFull else { return .opacity.animation(RoomTokens.Motion.fade) }
         return .asymmetric(
             insertion: .offset(y: -RoomTokens.Space.row).combined(with: .opacity).animation(RoomTokens.Motion.standard),
-            removal: .opacity.animation(RoomTokens.Motion.exit)
+            removal: .opacity.animation(RoomTokens.Motion.quick)
         )
     }
 }
@@ -74,7 +74,7 @@ private struct RoomPanelChange<Identity: Hashable>: ViewModifier {
             content.id(identity)
                 .transition(.asymmetric(
                     insertion: arrival.animation(RoomTokens.Motion.standard.delay(RoomPanelChangeTiming.insertionDelay)),
-                    removal: .opacity.animation(RoomTokens.Motion.exit)))
+                    removal: .opacity.animation(RoomTokens.Motion.quick)))
         }
         .animation(motion.animation(RoomTokens.Motion.standard), value: identity)
     }
@@ -90,11 +90,26 @@ private struct RoomNumericTransition<Value: Equatable>: ViewModifier {
         let animates = enabled && motion.isFull && !hide.masksNow
         content
             .contentTransition(animates ? .numericText() : .identity)
+            // A RoomMaskable inside sets its own (opacity) content transition, which would win over this one; it reads
+            // this flag instead, so masked figures roll too when their value really changes.
+            .environment(\.roomNumericRoll, animates)
             .animation(animates ? RoomTokens.Motion.countAnimation : nil, value: value)
             .transaction(value: hide) { transaction in
                 transaction.animation = nil
                 transaction.disablesAnimations = true
             }
+    }
+}
+
+private struct RoomNumericRollKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// True inside `roomNumericTransition` while full motion is on and Hide is off: figures roll digit by digit.
+    var roomNumericRoll: Bool {
+        get { self[RoomNumericRollKey.self] }
+        set { self[RoomNumericRollKey.self] = newValue }
     }
 }
 

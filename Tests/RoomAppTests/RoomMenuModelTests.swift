@@ -22,8 +22,8 @@ struct RoomMenuModelTests {
         let keys = items.compactMap(\.shortcut)
         #expect(Set(keys).count == keys.count)
         #expect(!keys.contains(.init("r", [.shift, .command])))
-        #expect(items.filter { $0.section == .go }.dropFirst(2).prefix(5).map(\.title) == RoomSidebar.items.map(\.title))
-        #expect(items.filter { $0.section == .go }.dropFirst(2).prefix(5).map { $0.shortcut?.key } == RoomSidebar.items.map(\.shortcut))
+        #expect(items.filter { $0.section == .go }.dropFirst(2).prefix(7).map(\.title) == RoomSidebar.items.map(\.title))
+        #expect(items.filter { $0.section == .go }.dropFirst(2).prefix(7).map { $0.shortcut?.key } == RoomSidebar.items.map(\.shortcut))
     }
 
     @Test func modalAndWorkingGuards() {
