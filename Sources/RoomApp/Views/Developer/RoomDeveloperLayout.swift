@@ -3,7 +3,7 @@ import RoomCore
 
 /// The one number that matters, and the parts it is made of.
 struct RoomDeveloperHeadline: Equatable {
-    enum Kind: CaseIterable { case inUse, unreferenced, devices, toolStorage, aiTools }
+    enum Kind: CaseIterable { case inUse, unreferenced, buildFolders, devices, toolStorage, aiTools }
     struct Part: Equatable, Identifiable {
         let kind: Kind
         let bytes: Int64
@@ -17,9 +17,10 @@ struct RoomDeveloperHeadline: Equatable {
     var unreferenced: Int64 { parts.first { $0.kind == .unreferenced }?.bytes ?? 0 }
     var isEmpty: Bool { total == 0 }
 
-    init(inUse: Int64 = 0, unreferenced: Int64 = 0, devices: Int64 = 0, toolStorage: Int64 = 0,
+    init(inUse: Int64 = 0, unreferenced: Int64 = 0, buildFolders: Int64 = 0, devices: Int64 = 0, toolStorage: Int64 = 0,
          aiTools: Int64 = 0, partial: Bool = false) {
         let all: [Part] = [.init(kind: .inUse, bytes: inUse), .init(kind: .unreferenced, bytes: unreferenced),
+                           .init(kind: .buildFolders, bytes: buildFolders),
                            .init(kind: .devices, bytes: devices), .init(kind: .toolStorage, bytes: toolStorage),
                            .init(kind: .aiTools, bytes: aiTools)]
         parts = all.filter { $0.bytes > 0 }.sorted { $0.bytes > $1.bytes }
@@ -61,12 +62,14 @@ extension RoomDeveloperModel {
     var headline: RoomDeveloperHeadline {
         let reports = [report, devicesReport, storageReport, aiToolsReport].compactMap { $0 }
         let partial = (summary?.partial ?? false) || reports.contains { $0.isPartial || $0.cancelled }
+            || (projectScan.map { $0.partial || $0.projects.contains(where: \.partial) } ?? false)
             || (storageReport?.storageResources.contains(where: \.isPartial) ?? false)
             || (aiToolsReport?.aiStorageResources.contains(where: \.isPartial) ?? false)
         let devices = (devicesReport?.androidDevices.map(\.allocatedBytes) ?? [])
             + (devicesReport?.simulatorDevices.map(\.allocatedBytes) ?? [])
         return RoomDeveloperHeadline(
             inUse: summary?.pinnedBytes ?? 0, unreferenced: summary?.orphanBytes ?? 0,
+            buildFolders: projectScan?.buildBytes ?? 0,
             devices: RoomDeveloperPresentation.sum(devices),
             toolStorage: RoomDeveloperPresentation.sum(storageReport?.storageResources.map(\.allocatedBytes) ?? []),
             aiTools: RoomDeveloperPresentation.sum(aiToolsReport?.aiStorageResources.map(\.allocatedBytes) ?? []),
@@ -82,7 +85,7 @@ extension RoomDeveloperModel {
             case .devices: ("Devices", .phone, [.devices])
             case .toolStorage: ("Storage", .box, [.toolStorage])
             case .aiTools: ("AI tools", .spark, [.aiTools])
-            default: ("Projects", .folder, [.inUse, .unreferenced])
+            default: ("Projects", .folder, [.inUse, .unreferenced, .buildFolders])
             }
             let state: RoomScanTile.State = switch part.state {
             case .waiting: .waiting
@@ -94,6 +97,23 @@ extension RoomDeveloperModel {
             tile.value = RoomFormat.gb(RoomDeveloperPresentation.sum(headline.parts.filter { kinds.contains($0.kind) }.map(\.bytes)))
             tile.detail = Self.scanDetail(state)
             return tile
+        }
+        if let state = buildFoldersState {
+            // Build folders are measured beside the project review and count toward the Projects tile.
+            let tileState: RoomScanTile.State = switch state {
+            case .waiting: .waiting
+            case .reading: .reading(fraction: nil)
+            case .done: .done
+            case .stopped: .stopped
+            }
+            if let index = tiles.firstIndex(where: { $0.id == "Projects" }) {
+                if case .reading = tileState { tiles[index].state = tileState; tiles[index].detail = Self.scanDetail(tileState) }
+            } else {
+                var tile = RoomScanTile(id: "Projects", title: "Projects", glyph: .folder, state: tileState)
+                tile.value = RoomFormat.gb(projectScan?.buildBytes ?? 0)
+                tile.detail = Self.scanDetail(tileState)
+                tiles.insert(tile, at: 0)
+            }
         }
         if scanIncludedWorktrees {
             // Worktrees are read alongside; a stopped scan marks the other parts, so it marks these too.

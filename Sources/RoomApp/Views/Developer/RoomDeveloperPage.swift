@@ -28,10 +28,11 @@ struct RoomDeveloperPage: Equatable {
 
     var total: Int64 { RoomDeveloperPresentation.sum(parts.map(\.bytes)) }
 
-    static func make(headline: RoomDeveloperHeadline, worktreesBytes: Int64, projects: Int) -> RoomDeveloperPage {
+    static func make(headline: RoomDeveloperHeadline, worktreesBytes: Int64, projects: Int,
+                     clearable: Int64 = 0) -> RoomDeveloperPage {
         func bytes(_ kind: RoomDeveloperHeadline.Kind) -> Int64 { headline.parts.first { $0.kind == kind }?.bytes ?? 0 }
         let parts = [
-            Part(kind: .projects, bytes: RoomDeveloperPresentation.sum([bytes(.inUse), bytes(.unreferenced)])),
+            Part(kind: .projects, bytes: RoomDeveloperPresentation.sum([bytes(.inUse), bytes(.unreferenced), bytes(.buildFolders)])),
             Part(kind: .devices, bytes: bytes(.devices)),
             Part(kind: .storage, bytes: bytes(.toolStorage)),
             Part(kind: .aiTools, bytes: bytes(.aiTools)),
@@ -42,7 +43,8 @@ struct RoomDeveloperPage: Equatable {
             ? RoomHeadline(figure: headline.partial ? RoomFormat.lowerBound(total) : RoomFormat.gb(total), words: "of developer files")
             : .words("No developer files")
         let unused = bytes(.unreferenced)
-        let supporting = unused > 0 ? "\(RoomFormat.gb(unused)) that nothing uses"
+        let supporting = clearable > 0 ? "\(RoomFormat.gb(clearable)) of build folders in projects untouched for a month"
+            : unused > 0 ? "\(RoomFormat.gb(unused)) that nothing uses"
             : projects == 1 ? "1 project" : "\(projects) projects"
         return RoomDeveloperPage(parts: parts, headline: words, supporting: supporting)
     }

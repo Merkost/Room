@@ -4,12 +4,15 @@ import SwiftUI
 
 /// What the dock offers on Developer.
 nonisolated struct RoomDeveloperDock: Equatable, Sendable {
-    enum Step: Equatable, Sendable { case stop, allowHome, scan(again: Bool) }
+    enum Step: Equatable, Sendable { case stop, allowHome, scan(again: Bool), review(Int64) }
     let main: Step
+    /// Rescan beside Review, so ticking never hides it.
+    var rescan = false
 
-    static func make(scanning: Bool, needsHome: Bool, hasResults: Bool) -> RoomDeveloperDock {
+    static func make(scanning: Bool, needsHome: Bool, hasResults: Bool, reviewBytes: Int64 = 0) -> RoomDeveloperDock {
         if scanning { return RoomDeveloperDock(main: .stop) }
         if needsHome, !hasResults { return RoomDeveloperDock(main: .allowHome) }
+        if reviewBytes > 0 { return RoomDeveloperDock(main: .review(reviewBytes), rescan: true) }
         return RoomDeveloperDock(main: .scan(again: hasResults))
     }
 }
@@ -23,6 +26,10 @@ struct RoomDeveloperView: View {
     @Bindable var agentWork: AgentWorkModel
     var memoryReport: MemoryReport?
     #endif
+    /// Moves ticked build folders to Trash. nil in the App Store edition, where they are shown but not ticked.
+    var folderTrash: RoomFolderTrashModel?
+    var folderMoved: (FolderTrashReceipt) -> Void = { _ in }
+    @State private var buildReview: RoomFolderTrashModel.Review?
     @Environment(\.roomHide) private var hide
     @Environment(\.roomAccent) private var accent
     @Environment(\.roomMotion) private var motion
@@ -41,6 +48,7 @@ struct RoomDeveloperView: View {
 
     private var hasResults: Bool {
         var results = model.report != nil || model.devicesReport != nil || model.storageReport != nil || model.aiToolsReport != nil
+            || model.projectScan != nil
         #if !ROOM_APP_STORE
         results = results || agentWork.report != nil
         #endif
@@ -56,8 +64,17 @@ struct RoomDeveloperView: View {
     }
 
     private var page: RoomDeveloperPage {
-        .make(headline: model.headline, worktreesBytes: worktreesBytes, projects: model.report?.projects.count ?? 0)
+        .make(headline: model.headline, worktreesBytes: worktreesBytes, projects: projectCount,
+              clearable: canTick ? RoomDeveloperBuildFolders.staleBytes(model.projectScan, now: Date()) : 0)
     }
+
+    /// Projects of every kind: the build-folder search and the Gradle and Xcode review, counted once.
+    private var projectCount: Int {
+        Set((model.report?.projects.map { URL(fileURLWithPath: $0.root).standardizedFileURL.path } ?? [])
+            + (model.projectScan?.projects.map(\.id) ?? [])).count
+    }
+
+    private var canTick: Bool { folderTrash != nil }
 
     private var layoutState: RoomDeveloperLayoutState {
         if hasResults { return .workspace }
@@ -108,7 +125,16 @@ struct RoomDeveloperView: View {
             }
         }
         .animation(motion.animation(RoomTokens.Motion.fade), value: layoutState)
-        .roomDock(dockMain)
+        .roomDock(dockMain, side: dockSide)
+        .sheet(item: $buildReview) { review in
+            if let folderTrash {
+                RoomFolderReviewSheet(review: review, model: folderTrash) { receipt in
+                    guard let receipt else { return }
+                    model.removeMoved(receipt)
+                    if receipt.movedCount > 0 { folderMoved(receipt) }
+                }
+            }
+        }
         .alert("Couldn’t add that folder", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) {
             Button("OK") { model.errorMessage = nil }
         } message: { Text(hide.masksNow ? "Choose the folder again." : model.errorMessage ?? "") }
@@ -126,10 +152,30 @@ struct RoomDeveloperView: View {
         isScanning ? "Stop" : hasResults ? "Rescan all" : "Scan all"
     }
 
+    private var dock: RoomDeveloperDock {
+        .make(scanning: model.isScanning, needsHome: model.needsHomeAccess, hasResults: hasResults,
+              reviewBytes: canTick ? model.selectedBuildBytes : 0)
+    }
+
+    private var dockSide: RoomDockAction? {
+        guard dock.rescan else { return nil }
+        return RoomDockAction(title: Self.scanTitle(isScanning: false, hasResults: true), symbol: "arrow.clockwise",
+                              enabled: model.canScan && !model.isChoosingFolder, identifier: "RoomDeveloperScanButton") { model.scan() }
+    }
+
+    private func reviewBuildFolders() {
+        guard let folderTrash, let review = folderTrash.review(buildFolders: model.selectedBuildFolders) else { return }
+        buildReview = review
+    }
+
     private var dockMain: RoomDockAction {
-        let dock = RoomDeveloperDock.make(scanning: model.isScanning, needsHome: model.needsHomeAccess, hasResults: hasResults)
+        let dock = dock
         let id = "RoomDeveloperScanButton"
         switch dock.main {
+        case .review(let bytes):
+            return RoomDockAction(title: hide.masksNow ? "Review" : "Review \(RoomFormat.gb(bytes))",
+                                  enabled: folderTrash?.canMove == true, hint: "Review the ticked build folders.",
+                                  identifier: "RoomDeveloperReview", perform: reviewBuildFolders)
         case .stop:
             return RoomDockAction(title: Self.scanTitle(isScanning: true, hasResults: hasResults), filled: false,
                                   identifier: id) { model.stop() }
@@ -200,9 +246,12 @@ struct RoomDeveloperView: View {
     }
 
     @ViewBuilder private func leftColumn(_ page: RoomDeveloperPage) -> some View {
-        section(.projects, page: page, rows: RoomDeveloperLargest.projects(model.summary), limit: Self.projectRows,
-                trailing: model.report.map { "\($0.projects.count) found" },
-                empty: model.report == nil ? "Not read yet" : "No Gradle or Xcode projects found")
+        section(.projects, page: page, rows: RoomDeveloperLargest.projects(model.summary, scan: model.projectScan),
+                limit: Self.projectRows,
+                trailing: model.report == nil && model.projectScan == nil ? nil
+                    : canTick && model.projectScan?.projects.contains(where: { $0.buildBytes > 0 }) == true
+                        ? "\(projectCount) found · tick to clear build folders" : "\(projectCount) found",
+                empty: model.report == nil && model.projectScan == nil ? "Not read yet" : "No projects found")
         versions
     }
 
@@ -249,21 +298,13 @@ struct RoomDeveloperView: View {
                 Text(empty).font(RoomTokens.Typography.caption).foregroundStyle(RoomTokens.Ink.tertiary)
                     .padding(.top, RoomTokens.Space.tight)
             }
+            // Once any row has a tick, every row keeps the tick's room so icons and names line up.
+            let ticking = kind == .projects && canTick && rows.contains { $0.buildBytes > 0 }
             ForEach(shown.shown) { row in
-                RoomEvidenceRow(name: row.name, meta: row.meta, bytes: row.bytes, barColor: color(kind),
-                                nameColumn: RoomTokens.Developer.nameColumn,
-                                showsBar: width < Self.twoColumnWidth || width >= RoomTokens.Developer.barsBreak) {
-                    RoomThingIcon(path: row.path, name: row.name, fallback: row.glyph, project: row.project)
-                }
-                .padding(.horizontal, RoomTokens.Space.row)
-                .roomRowHover()
-                .padding(.horizontal, -RoomTokens.Space.row)
-                .contextMenu {
-                    if let path = row.path {
-                        Button("Show in Finder") {
-                            NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
-                        }
-                    }
+                if ticking, row.buildBytes > 0 {
+                    tickRow(row, kind: kind)
+                } else {
+                    plainRow(row, kind: kind, reservesTick: ticking)
                 }
             }
             if shown.hidden > 0 || open && rows.count > limit + 1 {
@@ -274,6 +315,64 @@ struct RoomDeveloperView: View {
                 .font(RoomTokens.Typography.caption)
                 .padding(.top, RoomTokens.Space.tight)
             }
+        }
+    }
+
+    private func evidence<Leading: View>(_ row: RoomDeveloperLargestRow, kind: RoomDeveloperPage.Kind, dimmed: Bool = false,
+                                         ticking: Bool = false, @ViewBuilder leading: @escaping () -> Leading) -> some View {
+        RoomEvidenceRow(name: row.name, meta: row.meta, bytes: row.bytes, barColor: color(kind), dimmed: dimmed,
+                        nameColumn: RoomTokens.Developer.nameColumn + (ticking ? RoomTokens.Developer.tickColumn : 0),
+                        showsBar: width < Self.twoColumnWidth || width >= RoomTokens.Developer.barsBreak, icon: leading)
+    }
+
+    private func plainRow(_ row: RoomDeveloperLargestRow, kind: RoomDeveloperPage.Kind, reservesTick: Bool = false) -> some View {
+        evidence(row, kind: kind, ticking: reservesTick) {
+            HStack(spacing: RoomTokens.Space.row) {
+                if reservesTick { Color.clear.frame(width: RoomTokens.Screen2.tick, height: RoomTokens.Screen2.tick) }
+                RoomThingIcon(path: row.path, name: row.name, fallback: row.glyph, project: row.project)
+            }
+        }
+        .padding(.horizontal, RoomTokens.Space.row)
+        .roomRowHover()
+        .padding(.horizontal, -RoomTokens.Space.row)
+        .contextMenu { finderItem(row.path) }
+    }
+
+    /// A project with build folders: the tick says whether they go in the review.
+    private func tickRow(_ row: RoomDeveloperLargestRow, kind: RoomDeveloperPage.Kind) -> some View {
+        let on = model.buildSelection.contains(row.id)
+        let project = model.projectScan?.projects.first { $0.id == row.id }
+        let folders = project?.buildFolders ?? []
+        return Button { model.toggleBuildFolders(row.id) } label: {
+            evidence(row, kind: kind, dimmed: !on, ticking: true) {
+                HStack(spacing: RoomTokens.Space.row) {
+                    RoomTick(on: on)
+                    RoomThingIcon(path: row.path, name: row.name, fallback: row.glyph, project: row.project)
+                }
+            }
+            .padding(.horizontal, RoomTokens.Space.row)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(RoomHoverButtonStyle(cornerRadius: RoomTokens.Radius.row))
+        .padding(.horizontal, -RoomTokens.Space.row)
+        .disabled(model.isScanning)
+        .help(hide.masksNow ? "" : ([project.map(RoomDeveloperBuildFolders.summary) ?? ""]
+            + folders.map { "\($0.name)  \(RoomFormat.gb($0.bytes))" }).joined(separator: "\n"))
+        .accessibilityLabel("\(row.name), \(project.map(RoomDeveloperBuildFolders.summary) ?? ""), \(row.meta ?? "")")
+        .accessibilityValue("\(hide.masksNow ? "size hidden" : RoomFormat.gb(row.buildBytes)) of build folders, \(on ? "chosen" : "not chosen")")
+        .accessibilityAddTraits(on ? [.isSelected] : [])
+        .accessibilityHint("Toggles this project's build folders in the review")
+        .contextMenu {
+            finderItem(row.path)
+            ForEach(folders) { folder in
+                Button("Show \(folder.name) in Finder") { NSWorkspace.shared.activateFileViewerSelecting([folder.url]) }
+            }
+        }
+    }
+
+    @ViewBuilder private func finderItem(_ path: String?) -> some View {
+        if let path {
+            Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)]) }
         }
     }
 

@@ -10,17 +10,39 @@ nonisolated struct RoomDeveloperLargestRow: Identifiable, Equatable, Sendable {
     let path: String?
     var project = false
     var glyph: RoomGlyph = .folder
+    /// Build folders in it that can be ticked and moved to Trash.
+    var buildBytes: Int64 = 0
+    /// Sizes are lower bounds.
+    var partial = false
 }
 
 /// The rows each Developer section leads with, largest first.
 enum RoomDeveloperLargest {
-    static func projects(_ summary: RoomDevSummary?) -> [RoomDeveloperLargestRow] {
-        guard let summary else { return [] }
-        return summary.rows.filter { $0.totalBytes > 0 }.sorted { $0.totalBytes > $1.totalBytes }.map { row in
+    /// Every project found, of any kind: its build folders, plus what Gradle and Xcode keep for it elsewhere.
+    /// Projects Room suggests clearing lead, so nothing ticked hides behind "N more"; ticking never reorders the list.
+    static func projects(_ summary: RoomDevSummary?, scan: DeveloperProjectScan? = nil, now: Date = Date()) -> [RoomDeveloperLargestRow] {
+        let suggested = RoomDeveloperBuildFolders.suggested(scan, now: now)
+        var rows: [String: RoomDeveloperLargestRow] = [:]
+        for row in summary?.rows ?? [] where row.totalBytes > 0 {
             let builds = row.segments.filter { $0.kind == .derivedData }.reduce(Int64(0)) { $0 + $1.bytes }
             let meta = builds > 0 ? "builds \(RoomFormat.gb(builds))" : (row.kindLine.isEmpty ? nil : row.kindLine)
-            return RoomDeveloperLargestRow(id: row.project.root, name: row.project.name, meta: meta, bytes: row.totalBytes,
-                                           path: row.project.root, project: true, glyph: .term)
+            let path = URL(fileURLWithPath: row.project.root).standardizedFileURL.path
+            rows[path] = RoomDeveloperLargestRow(id: path, name: row.project.name, meta: meta, bytes: row.totalBytes,
+                                                 path: row.project.root, project: true, glyph: .term)
+        }
+        for project in scan?.projects ?? [] where project.buildBytes > 0 {
+            let path = project.url.standardizedFileURL.path
+            let elsewhere = rows[path]?.bytes ?? 0
+            rows[path] = RoomDeveloperLargestRow(id: project.id, name: project.name,
+                                                 meta: RoomDeveloperBuildFolders.meta(project, now: now, alsoElsewhere: elsewhere > 0),
+                                                 bytes: RoomDeveloperPresentation.sum([project.buildBytes, elsewhere]),
+                                                 path: project.url.path, project: true, glyph: .term,
+                                                 buildBytes: project.buildBytes, partial: project.partial)
+        }
+        return rows.values.sorted { left, right in
+            let (a, b) = (suggested.contains(left.id), suggested.contains(right.id))
+            if a != b { return a }
+            return left.bytes == right.bytes ? left.id < right.id : left.bytes > right.bytes
         }
     }
 
@@ -70,12 +92,16 @@ enum RoomDeveloperLargest {
     static func title(_ tool: DeveloperAITool) -> String {
         switch tool {
         case .codex: "Codex"
-        case .claudeCode: "Claude"
+        case .claudeCode: "Claude Code"
         case .chatGPT: "ChatGPT"
         case .cursor: "Cursor"
         case .gemini: "Gemini CLI"
         case .copilot: "GitHub Copilot CLI"
-        case .ollama: "Local models"
+        case .ollama: "Ollama"
+        case .claudeApp: "Claude app"
+        case .codexApp: "Codex app"
+        case .lmStudio: "LM Studio"
+        case .huggingFace: "Hugging Face"
         }
     }
 

@@ -415,7 +415,11 @@ struct RoomRootView: View {
             #if ROOM_APP_STORE
             RoomDeveloperView(model: developer)
             #else
-            RoomDeveloperView(model: developer, agentWork: agentWork, memoryReport: insights.memoryReport)
+            RoomDeveloperView(model: developer, agentWork: agentWork, memoryReport: insights.memoryReport,
+                              folderTrash: RoomFolderTrashModel.isAvailable ? folderTrash : nil,
+                              folderMoved: { receipt in
+                                  if receipt.canRestore { showToast(RoomMadeToastState(receiptID: receipt.id, bytes: receipt.trashedBytes)) }
+                              })
             #endif
         case .history:
             RoomHistoryScreen(model: model, restore: restoreReceipt, extraActivity: folderTrash.activity)

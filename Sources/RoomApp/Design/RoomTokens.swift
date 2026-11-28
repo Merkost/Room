@@ -378,6 +378,8 @@ enum RoomTokens {
     enum Developer {
         /// A row's name column inside one of the two columns.
         static let nameColumn: CGFloat = 190
+        /// Extra name room for a row with a tick (or one keeping the tick's place), so the quiet line still fits.
+        static let tickColumn: CGFloat = 90
         /// Narrower than this, two columns have no room for bars beside readable names.
         static let barsBreak: CGFloat = 840
         static let actionSize: CGFloat = 28
