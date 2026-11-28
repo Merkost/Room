@@ -5,7 +5,7 @@ import RoomCore
 /// Roles reference shared read-only bookmarks; no second set of permissions is stored.
 enum RoomDeveloperFolderRole: String, CaseIterable, Codable, Identifiable {
     case android, gradle, project, sdk, xcode, konan, simulators, simulatorRuntimes
-    case codex, claudeCode, chatGPT, cursor, gemini, copilot, ollama
+    case codex, claudeCode, chatGPT, cursor, gemini, copilot, ollama, claudeApp, codexApp, lmStudio, huggingFace
     var id: String { rawValue }
     var requiresFolderPicker: Bool { self == .simulators || self == .simulatorRuntimes || aiTool != nil }
     static let storageRoles: [Self] = [.gradle, .sdk, .simulators, .simulatorRuntimes]
@@ -27,6 +27,10 @@ enum RoomDeveloperFolderRole: String, CaseIterable, Codable, Identifiable {
         case .gemini: "Gemini CLI"
         case .copilot: "GitHub Copilot CLI"
         case .ollama: "Ollama"
+        case .claudeApp: "Claude app"
+        case .codexApp: "Codex app"
+        case .lmStudio: "LM Studio"
+        case .huggingFace: "Hugging Face"
         }
     }
     var symbol: String {
@@ -44,7 +48,9 @@ enum RoomDeveloperFolderRole: String, CaseIterable, Codable, Identifiable {
         case .chatGPT: "bubble.left.and.bubble.right"
         case .cursor: "cursorarrow.rays"
         case .copilot: "chevron.left.forwardslash.chevron.right"
-        case .ollama: "shippingbox"
+        case .ollama, .lmStudio, .huggingFace: "shippingbox"
+        case .claudeApp: "sparkle"
+        case .codexApp: "terminal"
         }
     }
 
@@ -71,6 +77,10 @@ enum RoomDeveloperFolderRole: String, CaseIterable, Codable, Identifiable {
         case .gemini: path = ".gemini"
         case .copilot: path = ".copilot"
         case .ollama: path = ".ollama"
+        case .claudeApp: path = "Library/Application Support/Claude"
+        case .codexApp: path = "Library/Application Support/Codex"
+        case .lmStudio: path = ".lmstudio"
+        case .huggingFace: path = ".cache/huggingface"
         }
         return home?.appendingPathComponent(path, isDirectory: true)
     }
@@ -125,6 +135,13 @@ final class RoomDeveloperModel {
     private(set) var automaticLocations: [RoomDeveloperLocation] = []
     /// The project walk reached a limit, so some projects may be missing.
     private(set) var projectSearchPartial = false
+    /// Projects of every kind and their build folders, from the home search.
+    private(set) var projectScan: DeveloperProjectScan?
+    /// Where the build-folder search is: nil when this scan does not include it.
+    private(set) var buildFoldersState: RoomDeveloperScanPart.State?
+    /// Projects whose build folders are ticked, by project path.
+    private(set) var buildSelection: Set<String> = []
+    @ObservationIgnored private var buildTask: Task<Void, Never>?
     private(set) var report: DeveloperResourcesReport?
     private(set) var devicesReport: DeveloperResourcesReport?
     private(set) var storageReport: DeveloperResourcesReport?
@@ -151,6 +168,7 @@ final class RoomDeveloperModel {
         !isScanningResources && worktrees?.isScanning == true ? Self.worktreesProgress : resourceProgress
     }
     private static let worktreesProgress = "Reading agent worktrees…"
+    private static let buildFoldersProgress = "Measuring build folders…"
     var errorMessage: String?
 
     init(access: RoomFileAccess = .shared, defaults: UserDefaults = .standard,
@@ -302,6 +320,7 @@ final class RoomDeveloperModel {
 
     private func discardResults() {
         report = nil; devicesReport = nil; storageReport = nil; aiToolsReport = nil; summary = nil
+        projectScan = nil; buildSelection = []
     }
 
     var locations: [RoomDeveloperLocation] { manualLocations + automaticLocations }
@@ -418,8 +437,10 @@ final class RoomDeveloperModel {
         scanParts = []; scanIncludedWorktrees = false
         generation = UUID()
         task?.cancel(); task = nil; isScanningResources = false
+        buildTask?.cancel(); buildTask = nil; buildFoldersState = nil
         activityCenter?.clear(.developer)
         report = nil; devicesReport = nil; storageReport = nil; aiToolsReport = nil; summary = nil; resourceProgress = ""
+        projectScan = nil; buildSelection = []
     }
 
     /// Reads every part that has a folder, one after another; each section fills as its part finishes.
@@ -439,6 +460,7 @@ final class RoomDeveloperModel {
         let skipped = Set(skippedPaths)
         // Known now, so the parts appear at once; projects found below join the first of them.
         if search == nil { plan(token: token) }
+        startBuildFolders(in: search, skipped: skipped, token: token)
         task = Task { [weak self] in
             if let search {
                 guard let found = await self?.findProjects(in: search, skipped: skipped) else { return }
@@ -462,10 +484,14 @@ final class RoomDeveloperModel {
                 partial = partial || result.isPartial
                 if cancelled { break }
             }
-            // Worktrees are read alongside; the scan (and its activity pill) ends when they do.
+            // Worktrees and build folders are read alongside; the scan (and its activity pill) ends when they do.
             if let worktrees = self?.worktrees, worktrees.isScanning {
                 self?.showWorktreesProgress(token: token)
                 await worktrees.waitForScan()
+            }
+            if let builds = self?.buildTask {
+                if self?.buildFoldersState == .reading { self?.resourceProgress = Self.buildFoldersProgress }
+                await builds.value
             }
             cancelled = cancelled || Task.isCancelled
             self?.finishScan(token: token, progress: cancelled ? "Stopped · partial review" : (partial ? "Partial review" : "Review complete"))
@@ -552,6 +578,8 @@ final class RoomDeveloperModel {
         guard generation == token else { return }
         isScanningResources = false
         task = nil
+        if buildFoldersState == .reading || buildFoldersState == .waiting { buildTask?.cancel(); buildFoldersState = .stopped }
+        buildTask = nil
         for index in scanParts.indices where scanParts[index].state != .done { scanParts[index].state = .stopped }
         activityCenter?.clear(.developer)
         resourceProgress = progress
@@ -572,6 +600,74 @@ final class RoomDeveloperModel {
         }
     }
 
+    // MARK: Build folders
+
+    /// Searches the home for projects of every kind and measures their build folders, beside the other parts.
+    private func startBuildFolders(in home: URL?, skipped: Set<String>, token: UUID) {
+        buildTask?.cancel(); buildTask = nil
+        guard let home, let read = discovery?.buildFolders else { buildFoldersState = nil; return }
+        buildFoldersState = .reading
+        #if ROOM_APP_STORE
+        // The search reads through the home's grant; losing that grant must discard what it found.
+        if let grant = grant(containing: home) { scannedAccess.insert(grant.id + ":" + grant.url.path) }
+        #endif
+        let close = openScope(containing: home)
+        let progress: @Sendable (String) -> Void = { [weak self] name in
+            guard let model = self else { return }
+            Task { @MainActor in model.noteBuildProgress(name, token: token) }
+        }
+        buildTask = Task { [weak self] in
+            defer { close() }
+            let result = await read(home, skipped, progress)
+            guard let self, self.generation == token else { return }
+            let cancelled = Task.isCancelled
+            self.projectScan = result
+            // A stopped search suggests nothing: what it saw of each project may be too little to judge.
+            self.buildSelection = cancelled ? [] : RoomDeveloperBuildFolders.suggested(result, now: Date())
+            self.buildFoldersState = cancelled ? .stopped : .done
+        }
+    }
+
+    /// Names the project being measured once the other parts are done and the scan is waiting on this one.
+    private func noteBuildProgress(_ name: String, token: UUID) {
+        guard generation == token, buildFoldersState == .reading,
+              resourceProgress == Self.buildFoldersProgress || resourceProgress.hasPrefix("Measuring ") else { return }
+        resourceProgress = "Measuring \(name)…"
+    }
+
+    func toggleBuildFolders(_ projectID: String) {
+        guard !isScanning, projectScan?.projects.contains(where: { $0.id == projectID && $0.buildBytes > 0 }) == true else { return }
+        if buildSelection.remove(projectID) == nil { buildSelection.insert(projectID) }
+    }
+
+    var selectedBuildBytes: Int64 {
+        RoomDeveloperBuildFolders.bytes(projectScan, selection: buildSelection)
+    }
+
+    /// The ticked folders, for the review sheet.
+    var selectedBuildFolders: [(url: URL, project: URL, name: String, bytes: Int64)] {
+        (projectScan?.projects ?? []).filter { buildSelection.contains($0.id) }.flatMap { project in
+            project.buildFolders.map { ($0.url, project.url, project.name + " · " + $0.name, $0.bytes) }
+        }
+    }
+
+    /// Takes what moved to Trash off the page, so it never counts twice.
+    func removeMoved(_ receipt: FolderTrashReceipt) {
+        guard let scan = projectScan else { return }
+        let moved = Set(receipt.items.filter { $0.status == .trashed }.map(\.originalPath))
+        guard !moved.isEmpty else { return }
+        projectScan = RoomDeveloperBuildFolders.removing(moved, from: scan)
+        buildSelection = buildSelection.filter { id in projectScan?.projects.contains { $0.id == id && $0.buildBytes > 0 } == true }
+    }
+
+    #if DEBUG
+    /// Screenshot fixture only.
+    func debugInstall(projects: DeveloperProjectScan) {
+        projectScan = projects
+        buildSelection = RoomDeveloperBuildFolders.suggested(projects, now: Date())
+    }
+    #endif
+
     func clearUnreferencedHistory() {
         unreferencedLoad?.cancel()
         unreferencedLoad = nil
@@ -581,6 +677,7 @@ final class RoomDeveloperModel {
 
     func stop() {
         if worktrees?.isScanning == true { worktrees?.stop() }
+        buildTask?.cancel()
         guard isScanningResources else { return }
         task?.cancel()
         resourceProgress = "Stopping…"

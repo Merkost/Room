@@ -56,7 +56,7 @@ public enum DeveloperResourcesScope: Sendable {
 }
 
 public enum DeveloperAITool: String, CaseIterable, Codable, Sendable {
-    case codex, claudeCode, chatGPT, cursor, gemini, copilot, ollama
+    case codex, claudeCode, chatGPT, cursor, gemini, copilot, ollama, claudeApp, codexApp, lmStudio, huggingFace
 }
 
 public struct DeveloperAIToolRoot: Sendable {

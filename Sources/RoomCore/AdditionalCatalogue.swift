@@ -35,7 +35,8 @@ extension CacheConfiguration {
                 cleanupPolicy: .inspectOnly(protection.reason), candidateDepth: root.candidateDepth,
                 excludedURLs: root.excludedURLs, childNameRule: root.childNameRule,
                 excludedChildNameRules: root.excludedChildNameRules, inspectionNodeLimit: root.inspectionNodeLimit,
-                inspectionTimeLimit: root.inspectionTimeLimit, contentValidation: root.contentValidation)
+                inspectionTimeLimit: root.inspectionTimeLimit, contentValidation: root.contentValidation,
+                runningLock: root.runningLock)
         }
         var roots = base.roots.filter { sandboxLimit > 0 || automaticPathAllowed($0.url) }.map(retainedRoot)
         var protected = base.protectedLocations

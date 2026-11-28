@@ -718,6 +718,7 @@ public actor CacheEngine {
     }
 
     private static func activeProcess(for root: CacheRoot, in names: [String]) -> String? {
+        if let lock = root.runningLock, lockIsHeld(lock) { return root.title }
         let containedPrefix = root.url.path == "/" ? "/" : root.url.path + "/"
         if names.contains(where: { $0.hasPrefix("/") && $0.hasPrefix(containedPrefix) }) {
             return "A cached tool"
@@ -735,6 +736,19 @@ public actor CacheEngine {
             }) { return guardName.prefix(1).uppercased() + guardName.dropFirst() }
         }
         return nil
+    }
+
+    /// Chromium and Electron apps hold a SingletonLock link named "host-pid" while they run, and remove it when they
+    /// quit. A link whose process is gone was left by a crash. Anything Room can't read counts as held.
+    static func lockIsHeld(_ lock: URL) -> Bool {
+        var info = stat()
+        guard lstat(lock.path, &info) == 0 else { return false }
+        var buffer = [CChar](repeating: 0, count: 1_024)
+        let count = readlink(lock.path, &buffer, buffer.count - 1)
+        guard count > 0 else { return true }
+        let target = String(decoding: buffer.prefix(count).map { UInt8(bitPattern: $0) }, as: UTF8.self)
+        guard let last = target.split(separator: "-").last, let pid = pid_t(last), pid > 0 else { return true }
+        return kill(pid, 0) == 0 || errno == EPERM
     }
 
     private func validateTrashLocation(_ url: URL, originalURL: URL) throws {

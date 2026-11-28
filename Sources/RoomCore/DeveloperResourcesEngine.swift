@@ -665,6 +665,37 @@ private struct DRAIStorageLocation {
             ]
         case .ollama:
             return [.init("logs", "App and server logs", .diagnostics), .init("models", "Installed models", .runtime)]
+        case .claudeApp:
+            // ~/Library/Application Support/Claude: the desktop app, its virtual machine and the Claude Code it runs.
+            return renderingCaches + [
+                .init("vm_bundles", "Virtual machine", .runtime),
+                .init("claude-code", "Claude Code versions", .runtime),
+                .init("claude-code-vm", "Claude Code for the virtual machine", .runtime),
+                .init("claude-code-sessions", "App sessions", .history),
+                .init("local-agent-mode-sessions", "Local agent sessions", .history),
+                .init("scratch-workspaces", "Scratch workspaces", .worktrees),
+            ]
+        case .codexApp:
+            // ~/Library/Application Support/Codex: the desktop app's browser profile and downloaded components.
+            return renderingCaches + [
+                .init("component_crx_cache", "Component downloads", .cache),
+                .init("OptGuidePredictionModels", "Browser prediction models", .cache),
+                .init("OnDeviceHeadSuggestModel", "Search suggestion model", .cache),
+                .init("artifact-sessions", "Artifact sessions", .history),
+            ]
+        case .lmStudio:
+            return [
+                .init("models", "Downloaded models", .runtime),
+                .init("extensions", "Runtimes and extensions", .runtime),
+                .init("conversations", "Conversations", .history),
+                .init("server-logs", "Server logs", .diagnostics),
+            ]
+        case .huggingFace:
+            return [
+                .init("hub", "Downloaded models", .runtime),
+                .init("datasets", "Downloaded datasets", .runtime),
+                .init("xet", "Download cache", .cache),
+            ]
         }
     }
 }

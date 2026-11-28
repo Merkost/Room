@@ -39,8 +39,7 @@ struct RoomFolderReviewSheet: View {
             .frame(maxHeight: 240)
             .padding(.top, RoomTokens.Space.group)
             if !review.dropped.isEmpty, phase == .reviewing {
-                Text(review.dropped.count == 1 ? "1 ticked room could not be checked, so it is not in this review."
-                     : "\(review.dropped.count) ticked rooms could not be checked, so they are not in this review.")
+                Text(Self.droppedLine(review))
                     .font(RoomTokens.Typography.caption).foregroundStyle(RoomTokens.Ink.secondary)
                     .padding(.top, RoomTokens.Space.row)
             }
@@ -76,6 +75,12 @@ struct RoomFolderReviewSheet: View {
         .onExitCommand { if phase == .reviewing { dismiss() } }
     }
 
+    static func droppedLine(_ review: RoomFolderTrashModel.Review) -> String {
+        let noun = review.isBuildFolders ? ("folder", "folders") : ("room", "rooms")
+        return review.dropped.count == 1 ? "1 ticked \(noun.0) could not be checked, so it is not in this review."
+            : "\(review.dropped.count) ticked \(noun.1) could not be checked, so they are not in this review."
+    }
+
     private var title: String {
         if case .outcome(let receipt) = phase {
             guard let receipt, receipt.movedCount > 0 else { return "Nothing moved" }
@@ -86,7 +91,7 @@ struct RoomFolderReviewSheet: View {
 
     private var subtitle: String {
         if case .outcome = phase { return "Folders that could not move are where they were." }
-        return RoomReviewWords.body(.ownFolders)
+        return RoomReviewWords.body(review.isBuildFolders ? .buildFolders : .ownFolders)
     }
 
     private func row(index: Int, request: FolderTrashRequest) -> some View {

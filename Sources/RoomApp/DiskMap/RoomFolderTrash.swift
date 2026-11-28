@@ -53,6 +53,10 @@ final class RoomFolderTrashModel {
         let names: [String]
         /// Rooms that were ticked but could not be verified, so they are not in this review.
         var dropped: [String] = []
+        /// nil for Disk Map folders; "developer" for project build folders.
+        var origin: String?
+        var isBuildFolders: Bool { origin == Self.developer }
+        static let developer = "developer"
         var bytes: Int64 { requests.reduce(0) { $0 + $1.bytes } }
     }
 
@@ -107,6 +111,25 @@ final class RoomFolderTrashModel {
         return requests.isEmpty ? nil : Review(requests: requests, names: names, dropped: dropped)
     }
 
+    /// Builds the review for project build folders chosen on Developer. Each is checked again on disk when it moves.
+    func review(buildFolders: [(url: URL, project: URL, name: String, bytes: Int64)]) -> Review? {
+        guard Self.isAvailable else { return nil }
+        var requests: [FolderTrashRequest] = []
+        var names: [String] = []
+        var dropped: [String] = []
+        for folder in buildFolders {
+            guard DeveloperProjectScanner.isBuildFolder(folder.url, project: folder.project),
+                  let identity = FolderTrashEngine.identity(of: folder.url) else {
+                dropped.append(folder.name)
+                continue
+            }
+            requests.append(FolderTrashRequest(url: folder.url, bytes: folder.bytes, device: identity.device,
+                                               inode: identity.inode, project: folder.project))
+            names.append(folder.name)
+        }
+        return requests.isEmpty ? nil : Review(requests: requests, names: names, dropped: dropped, origin: Review.developer)
+    }
+
     func move(_ review: Review) async -> FolderTrashReceipt? {
         guard canMove else {
             message = "Room is already moving or restoring something. Try again when it finishes."
@@ -116,7 +139,7 @@ final class RoomFolderTrashModel {
         defer { isMoving = false }
         let receipt: FolderTrashReceipt
         do {
-            receipt = try await engine.move(review.requests)
+            receipt = try await engine.move(review.requests, origin: review.origin)
         } catch {
             message = "Room could not save a receipt, so nothing moved."
             return nil
@@ -166,14 +189,23 @@ final class RoomFolderTrashModel {
             RoomActivity(id: receipt.id, date: receipt.date, bytes: receipt.movedBytes,
                          itemCount: receipt.movedCount, restoredCount: receipt.restoredCount, errorCount: receipt.failedCount,
                          canRestore: receipt.canRestore,
-                         title: receipt.movedCount == 1 ? "1 folder from Disk Map" : "\(receipt.movedCount) folders from Disk Map",
+                         title: Self.activityTitle(receipt),
                          details: receipt.items.filter { $0.status == .trashed || $0.status == .restored }.map { item in
                              RoomActivityItem(id: UUID(), name: (item.originalPath as NSString).lastPathComponent,
                                               path: item.originalPath, message: item.message ?? "", isRestored: item.status == .restored,
-                                              canRestore: item.status == .trashed, bytes: item.bytes, source: "diskMap")
+                                              canRestore: item.status == .trashed, bytes: item.bytes,
+                                              source: receipt.origin == Review.developer ? "developer" : "diskMap")
                          })
         }
     }
 
     func owns(_ id: UUID) -> Bool { receipts.contains { $0.id == id } }
+
+    static func activityTitle(_ receipt: FolderTrashReceipt) -> String {
+        let count = receipt.movedCount
+        if receipt.origin == Review.developer {
+            return count == 1 ? "1 build folder from Developer" : "\(count) build folders from Developer"
+        }
+        return count == 1 ? "1 folder from Disk Map" : "\(count) folders from Disk Map"
+    }
 }

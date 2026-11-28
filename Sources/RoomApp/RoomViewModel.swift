@@ -1162,6 +1162,11 @@ final class RoomViewModel {
         if id.hasPrefix("pnpm-store") { return "pnpm-store" }
         if id.hasPrefix("docker-disk") { return "docker-disk" }
         if Self.managedFamilies[id] != nil { return id }
+        if id.hasPrefix("xcode-device-support") { return "xcode-device-support" }
+        if id == "xcode-previews" || id == "xcode-playground-devices" { return id }
+        if id.hasPrefix("poetry-") { return "poetry" }
+        // An Electron app found by its profile: "app:<app>:<folder>" groups by app.
+        if id.hasPrefix("app:"), let app = id.split(separator: ":").dropFirst().first { return "app:" + app }
         if id.hasPrefix("codex") { return "codex" }
         if id.hasPrefix("claude") { return "claude" }
         if id.hasPrefix("xcode") { return "xcode" }
@@ -1183,7 +1188,8 @@ final class RoomViewModel {
          "cursor": "Cursor", "vscode": "VS Code", "antigravity": "Antigravity", "swiftpm": "Swift packages", "androidstudio": "Android Studio",
          "jetbrains": "JetBrains", "deno": "Deno", "go": "Go", "cargo": "Rust packages", "slack": "Slack", "discord": "Discord",
          "notion": "Notion", "figma": "Figma", "obsidian": "Obsidian", "postman": "Postman", "insomnia": "Insomnia",
-         "lmstudio-render": "LM Studio interface"][id] ?? fallback
+         "lmstudio-render": "LM Studio interface", "xcode-device-support": "Device support",
+         "xcode-previews": "SwiftUI previews", "xcode-playground-devices": "Playground simulators", "poetry": "Poetry"][id] ?? fallback
     }
 
     private func familySubtitle(_ id: String, fallback: String? = nil) -> String {
@@ -1192,6 +1198,8 @@ final class RoomViewModel {
         if let managed = Self.managedFamilies[id] { return managed.subtitle }
         if id.hasPrefix("sandbox-cache-") { return "Sandboxed app cache · inspect only" }
         if id.hasPrefix("custom-") { return "Custom tool location · inspect only" }
+        if id.hasPrefix("app:") { return "Downloaded web content and graphics caches" }
+        if id.hasPrefix("update-") { return "A downloaded app update" }
         return ["codex": "Interface caches and old diagnostics", "claude": "Rendering caches and old diagnostics",
          "xcode": "Derived build data and indexes", "gradle": "Dependencies and build transforms",
          "npm": "Package downloads and execution cache", "yarn": "Package download cache", "pip": "Downloads and built wheels", "homebrew": "Downloaded package archives",
@@ -1208,6 +1216,13 @@ final class RoomViewModel {
          "electron-downloads": "Downloaded app runtimes", "electron-builder": "Downloaded build tools",
          "typescript": "Downloaded type packages", "composer": "Package downloads", "ccache": "Compiled objects",
          "sccache": "Compiled objects", "android-user-cache": "Downloaded tool data",
+         "xcode-device-support": "Debug symbols copied from your devices", "xcode-previews": "Simulators Xcode made for previews",
+         "xcode-playground-devices": "Simulators Xcode made for playgrounds", "simulator-logs": "Old simulator logs",
+         "corepack": "Package manager downloads", "github-cli": "Saved answers and run logs",
+         "pkg-native": "Files packaged tools unpack", "prisma-engines": "Downloaded engines",
+         "selenium": "Downloaded browser drivers", "poetry": "Downloads and package metadata", "pipenv": "Package downloads",
+         "python-bytecode": "Compiled Python files", "blender-kernels": "Compiled render kernels",
+         "ollama-logs": "Old logs", "lmstudio-logs": "Old logs", "chatgpt-cache": "Downloaded images and web content",
          "discovered-app-caches": "Other app cache folders · inspect only",
          "discovered-hidden-caches": "Hidden caches, models, and tools · inspect only",
          "discovered-temporary": "Other temporary items · inspect only",

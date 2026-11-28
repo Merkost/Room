@@ -127,7 +127,7 @@ nonisolated enum RoomStoreGrantPlan {
 
 /// The review sheet's words (nav-v3): "Move 22 GB to Trash?" and one plain line about what happens next.
 nonisolated enum RoomReviewWords {
-    enum Kind: Sendable { case caches, cachesInFolder, ownFolders }
+    enum Kind: Sendable { case caches, cachesInFolder, ownFolders, buildFolders }
 
     static func title(_ bytes: Int64, hidden: Bool) -> String {
         hidden ? "Move ••• to Trash?" : "Move \(RoomFormat.gb(bytes)) to Trash?"
@@ -141,6 +141,8 @@ nonisolated enum RoomReviewWords {
             "Rebuildable caches inside the folder you picked. They stay in Trash until you empty it, and History can put them back."
         case .ownFolders:
             "These are your own folders, not caches. They stay in Trash until you empty it, and History can put them back."
+        case .buildFolders:
+            "Folders your project tools make again when you install or build. They stay in Trash until you empty it, and History can put them back."
         }
     }
 }

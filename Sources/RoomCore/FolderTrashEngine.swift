@@ -27,9 +27,11 @@ public struct FolderTrashRequest: Equatable, Sendable {
     public let bytes: Int64
     public let device: UInt64
     public let inode: UInt64
+    /// Set for a project's build folder (node_modules, .venv): the project it must still be the build output of.
+    public let project: URL?
 
-    public init(url: URL, bytes: Int64, device: UInt64, inode: UInt64) {
-        self.url = url; self.bytes = bytes; self.device = device; self.inode = inode
+    public init(url: URL, bytes: Int64, device: UInt64, inode: UInt64, project: URL? = nil) {
+        self.url = url; self.bytes = bytes; self.device = device; self.inode = inode; self.project = project
     }
 }
 
@@ -53,10 +55,12 @@ public struct FolderTrashReceipt: Codable, Identifiable, Equatable, Sendable {
     public let id: UUID
     public let date: Date
     public var items: [FolderTrashItem]
+    /// Where the folders were chosen: nil for the Disk Map, "developer" for project build folders.
+    public var origin: String?
     /// A later write of this receipt failed: what moved is known now, but may not survive a relaunch.
     public internal(set) var receiptWriteFailed = false
 
-    private enum CodingKeys: String, CodingKey { case id, date, items }
+    private enum CodingKeys: String, CodingKey { case id, date, items, origin }
 
     /// Bytes that actually left their place (in Trash now or put back since); failed items never count.
     public var movedBytes: Int64 { items.filter { $0.status == .trashed || $0.status == .restored }.reduce(0) { $0 + $1.bytes } }
@@ -149,11 +153,11 @@ public actor FolderTrashEngine {
 
     // MARK: Move and restore
 
-    public func move(_ requests: [FolderTrashRequest]) throws -> FolderTrashReceipt {
+    public func move(_ requests: [FolderTrashRequest], origin: String? = nil) throws -> FolderTrashReceipt {
         var receipt = FolderTrashReceipt(id: UUID(), date: Date(), items: requests.map {
             FolderTrashItem(originalPath: $0.url.standardizedFileURL.path, trashPath: nil, bytes: $0.bytes,
                             device: $0.device, inode: $0.inode, status: .pending, message: nil)
-        })
+        }, origin: origin)
         // The receipt exists before anything moves, so an interrupted move can still be traced. No receipt, no move.
         do { try save(receipt) } catch { throw FolderTrashError.receiptNotSaved }
         for index in receipt.items.indices {
@@ -164,7 +168,7 @@ public actor FolderTrashEngine {
             }
             let item = receipt.items[index]
             let url = URL(fileURLWithPath: item.originalPath, isDirectory: true)
-            if let problem = check(url, device: item.device, inode: item.inode) {
+            if let problem = check(url, device: item.device, inode: item.inode, project: requests[index].project) {
                 receipt.items[index].status = .failed
                 receipt.items[index].message = problem
                 continue
@@ -233,8 +237,9 @@ public actor FolderTrashEngine {
             .sorted { $0.date > $1.date }
     }
 
-    private func check(_ url: URL, device: UInt64, inode: UInt64) -> String? {
+    private func check(_ url: URL, device: UInt64, inode: UInt64, project: URL?) -> String? {
         let resolved = url.standardizedFileURL
+        if let project { return checkBuildFolder(resolved, project: project.standardizedFileURL, device: device, inode: inode) }
         if let protection = Self.protection(for: resolved, home: home) {
             return protection.sentence(name: resolved.lastPathComponent)
         }
@@ -251,6 +256,28 @@ public actor FolderTrashEngine {
         case .none: return "The folder is too large for Room to check, so it stays."
         }
         guard !directory.standardizedFileURL.path.hasPrefix(resolved.path + "/") else { return "Room keeps its own records here." }
+        return nil
+    }
+
+    /// A build folder may be hidden (.venv, .next) and may be too large to walk for libraries; instead it must still
+    /// be, on disk now, the build output of a project that is itself an ordinary folder Room would move.
+    private func checkBuildFolder(_ url: URL, project: URL, device: UInt64, inode: UInt64) -> String? {
+        if let protection = Self.protection(for: project, home: home) {
+            return protection.sentence(name: project.lastPathComponent)
+        }
+        guard url.path.hasPrefix(project.path + "/") else { return "It is not inside its project any more. It stays." }
+        let between = url.path.dropFirst(project.path.count + 1).split(separator: "/").dropLast()
+        guard !between.contains(where: { $0.hasPrefix(".") || $0 == ".." }) else { return "Room could not check this folder, so it stays." }
+        let real = url.resolvingSymlinksInPath()
+        guard real.path == url.path, project.resolvingSymlinksInPath().path == project.path else {
+            return "The folder moved or became a link. It stays."
+        }
+        guard DeveloperProjectScanner.isBuildFolder(url, project: project) else {
+            return "It no longer looks like this project’s build output, so it stays."
+        }
+        guard let now = Self.identity(of: url) else { return "Room could not check this folder, so it stays." }
+        guard now.device == device, now.inode == inode else { return "The folder changed since the review. It stays." }
+        guard !directory.standardizedFileURL.path.hasPrefix(url.path + "/") else { return "Room keeps its own records here." }
         return nil
     }
 

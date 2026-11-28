@@ -5,7 +5,7 @@ extension CacheConfiguration {
     /// Known rebuildable caches plus bounded, read-only inventory of other cache,
     /// log and current-user temporary locations. Never treats a name as permission to delete.
     public static var full: CacheConfiguration {
-        addingDiscoveredSources(to: addingAdditionalSources(to: .deep, maximumSandboxRoots: 0), temporaryDirectory: FileManager.default.temporaryDirectory, userCacheDirectory: currentUserCacheDirectory())
+        addingDiscoveredSources(to: addingSmartSources(to: addingAdditionalSources(to: .deep, maximumSandboxRoots: 0)), temporaryDirectory: FileManager.default.temporaryDirectory, userCacheDirectory: currentUserCacheDirectory())
     }
 
     static func addingDiscoveredSources(to base: CacheConfiguration, temporaryDirectory: URL,
@@ -33,7 +33,8 @@ extension CacheConfiguration {
                 cleanupPolicy: root.cleanupPolicy,
                 candidateDepth: root.id == "gradle" ? 3 : (root.id == "npm" ? 5 : root.candidateDepth),
                 excludedURLs: root.excludedURLs, childNameRule: root.childNameRule, excludedChildNameRules: root.excludedChildNameRules, inspectionNodeLimit: root.inspectionNodeLimit,
-                inspectionTimeLimit: root.inspectionTimeLimit, contentValidation: root.contentValidation)
+                inspectionTimeLimit: root.inspectionTimeLimit, contentValidation: root.contentValidation,
+                runningLock: root.runningLock)
         }
         let temporary = automaticDirectory(temporaryDirectory)
         let generated = temporary.map { generatedKarmaFolders(in: $0) } ?? []

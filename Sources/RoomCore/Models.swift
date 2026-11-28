@@ -277,13 +277,16 @@ public struct CacheRoot: Sendable {
     public let excludedChildNameRules: [CacheChildNameRule]
     public let inspectionNodeLimit: Int
     public let inspectionTimeLimit: TimeInterval
+    /// Chromium's SingletonLock: while it points at a live process, the app that owns this cache is open.
+    public let runningLock: URL?
 
     public init(id: String, title: String, subtitle: String, symbol: String, category: String,
                 url: URL, consequence: String, minimumAge: TimeInterval = 7 * 86_400,
                 guardedProcesses: [String] = [], scope: CacheScope = .children,
                 cleanupPolicy: CacheCleanupPolicy = .allowed, candidateDepth: Int = 1,
                 excludedURLs: [URL] = [], childNameRule: CacheChildNameRule? = nil, excludedChildNameRules: [CacheChildNameRule] = [], inspectionNodeLimit: Int = 25_000,
-                inspectionTimeLimit: TimeInterval = 2, contentValidation: CacheContentValidation? = nil) {
+                inspectionTimeLimit: TimeInterval = 2, contentValidation: CacheContentValidation? = nil,
+                runningLock: URL? = nil) {
         self.id = id
         self.title = title
         self.subtitle = subtitle
@@ -302,6 +305,7 @@ public struct CacheRoot: Sendable {
         self.excludedChildNameRules = excludedChildNameRules
         self.inspectionNodeLimit = max(1, inspectionNodeLimit)
         self.inspectionTimeLimit = max(0, inspectionTimeLimit)
+        self.runningLock = runningLock?.roomLexicallyNormalized
     }
 }
 

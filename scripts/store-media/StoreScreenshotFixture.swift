@@ -158,6 +158,7 @@ struct StoreScreenshotFixture: View {
         if Self.rich {
             developer.debugInstall(review: Self.richReview(workspace: workspace), devices: Self.richDevices(home: sampleHome),
                                    storage: Self.richStorage(home: sampleHome), aiTools: Self.richAI(home: sampleHome))
+            developer.debugInstall(projects: Self.richBuildFolders(workspace: workspace))
             developer.debugRemember(workspace, role: .project)
             RoomDeveloperModel.debugInjected = developer
             caches.debugActivity = Self.richReceipts()
@@ -451,6 +452,27 @@ struct StoreScreenshotFixture: View {
                   bytes: gb(1.6), partial: false)]
         return DeveloperResourcesReport(id: UUID(), scannedAt: Date(), androidDevices: [], gradleResources: [],
             projectWrappers: [], projects: projects, toolchains: toolchains, issues: [], cancelled: false, isPartial: false)
+    }
+
+    /// Sample projects of several kinds and their build folders; some untouched for months, some from this week.
+    private static func richBuildFolders(workspace: URL) -> DeveloperProjectScan {
+        let day: TimeInterval = 86_400
+        let samples: [(String, [DeveloperProjectKind], [(String, Double)], Double)] = [
+            ("web-shop", [.node], [("node_modules", 2.4), (".next", 0.9)], 120),
+            ("photo-lab", [.rust], [("target", 6.1)], 75),
+            ("notes-api", [.python], [(".venv", 1.2), (".mypy_cache", 0.2)], 40),
+            ("recipes-app", [.flutter], [("build", 1.8), (".dart_tool", 0.4)], 3),
+            ("room", [.swiftPackage, .xcode], [(".build", 3.2)], 0),
+            ("dashboard", [.node], [("node_modules", 1.1), (".turbo", 0.3)], 9),
+        ]
+        let projects = samples.map { name, kinds, folders, age in
+            let url = workspace.appendingPathComponent(name, isDirectory: true)
+            return DeveloperFoundProject(url: url, kinds: kinds, buildFolders: folders.map { folder, size in
+                DeveloperBuildFolder(url: url.appendingPathComponent(folder, isDirectory: true), name: folder,
+                                     kind: kinds[0], bytes: gb(size), partial: false, sharesFiles: false)
+            }, lastChanged: Date(timeIntervalSinceNow: -age * day))
+        }
+        return DeveloperProjectScan(projects: projects, partial: false)
     }
 
     private static func richDevices(home: URL) -> DeveloperResourcesReport {
